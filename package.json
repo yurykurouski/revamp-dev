@@ -1,0 +1,32 @@
+{
+  "name": "revamp-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Revamp SaaS - Automated Website Audit and MVP Redesign Platform",
+  "type": "module",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build:packages && npm run build:apps",
+    "build:packages": "npm run build --workspace=@revamp/shared-types && npm run build --workspace=@revamp/validation",
+    "build:apps": "npm run build --workspace=@revamp/api && npm run build --workspace=@revamp/workers && npm run build --workspace=@revamp/dashboard",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint .",
+    "dev:api": "npm run dev --workspace=@revamp/api",
+    "dev:workers": "npm run dev --workspace=@revamp/workers",
+    "dev:dashboard": "npm run dev --workspace=@revamp/dashboard",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.1",
+    "@typescript-eslint/eslint-plugin": "^8.18.0",
+    "@typescript-eslint/parser": "^8.18.0",
+    "eslint": "^9.16.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}

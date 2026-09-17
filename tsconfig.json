@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared-types" },
+    { "path": "./packages/validation" },
+    { "path": "./apps/api" },
+    { "path": "./apps/workers" },
+    { "path": "./apps/dashboard" }
+  ]
+}
