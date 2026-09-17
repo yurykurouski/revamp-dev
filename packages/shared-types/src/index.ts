@@ -1,0 +1,249 @@
+// ==============================================================================
+// Revamp SaaS Shared Types & Interfaces
+// ==============================================================================
+
+// 1. Common Enums and Statuses
+export type NicheType =
+  | 'dental'
+  | 'auto'
+  | 'legal'
+  | 'beauty'
+  | 'construction'
+  | 'medical'
+  | 'restaurant'
+  | 'fitness'
+  | 'other';
+
+export type LeadStatus =
+  | 'PENDING'
+  | 'AUDITING'
+  | 'MVP_READY'
+  | 'AWAITING_APPROVAL'
+  | 'SCHEDULED'
+  | 'SENT'
+  | 'ENGAGED'
+  | 'UNSUBSCRIBED';
+
+export type AuditStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
+
+export type EmailCampaignStatus =
+  | 'DRAFT'
+  | 'NEEDS_APPROVAL'
+  | 'APPROVED'
+  | 'SCHEDULED'
+  | 'SENDING'
+  | 'DELIVERED'
+  | 'BOUNCED'
+  | 'REJECTED';
+
+// 2. Lead Domain Entity
+export interface ILeadContacts {
+  phone?: string;
+  email: string;
+  address?: string;
+  workingHours?: string;
+}
+
+export interface ILead {
+  _id: string;
+  businessName: string;
+  originalUrl: string;
+  domain: string;
+  niche: NicheType;
+  city?: string;
+  contactEmail: string;
+  contactPhone?: string;
+  ownerName?: string;
+  status: LeadStatus;
+  totalScore?: number;
+  tags: string[];
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+// 3. Audit Domain Entity
+export interface IAuditScores {
+  total: number;         // 0 - 100
+  design: number;        // 0 - 100
+  accessibility: number; // 0 - 100
+  performance: number;   // 0 - 100
+  standards: number;     // 0 - 100
+}
+
+export interface ILighthouseMetrics {
+  lcp: number;       // ms
+  fidOrInp?: number; // ms
+  cls: number;
+  speedIndex?: number;
+}
+
+export interface IA11yViolation {
+  id: string;
+  description: string;
+  impact?: 'minor' | 'moderate' | 'serious' | 'critical';
+  selector: string;
+}
+
+export interface IA11ySummary {
+  violationsCount: number;
+  contrastIssuesCount: number;
+  missingAltCount: number;
+  criticalViolations: IA11yViolation[];
+}
+
+export interface ICriticalFlaw {
+  title: string;
+  impact: string;
+  recommendation: string;
+}
+
+export interface IDesignCritique {
+  visualHierarchyRating: number;
+  mobileFriendlinessRating: number;
+  primaryCtaFound: boolean;
+  datedDesignFactors: string[];
+  criticalFlaws: ICriticalFlaw[];
+  quickWins: string[];
+}
+
+export interface IExtractedBrandTokens {
+  primaryColor: string;
+  secondaryColor: string;
+  accentColor: string;
+  fontFamilies: string[];
+  logoUrl?: string;
+  faviconUrl?: string;
+}
+
+export interface IScreenshotUrls {
+  desktopOriginal: string;
+  mobileOriginal: string;
+  comparisonBanner?: string;
+}
+
+export interface IAudit {
+  _id: string;
+  leadId: string;
+  status: AuditStatus;
+  scores: IAuditScores;
+  lighthouseMetrics: ILighthouseMetrics;
+  a11ySummary: IA11ySummary;
+  designCritique: IDesignCritique;
+  extractedBrandTokens: IExtractedBrandTokens;
+  screenshotUrls: IScreenshotUrls;
+  aiFallbackUsed?: boolean;
+  errorMessage?: string;
+  createdAt: string | Date;
+  completedAt?: string | Date;
+}
+
+// 4. MVP Project Domain Entity
+export interface IMvpServiceItem {
+  title: string;
+  description: string;
+  lucideIconName: string;
+}
+
+export interface IMvpTrustSignal {
+  metric: string;
+  label: string;
+}
+
+export interface IMvpGeneratedContent {
+  hero: {
+    badge: string;
+    headline: string;
+    subheadline: string;
+    primaryCtaText: string;
+    secondaryCtaText: string;
+  };
+  services: IMvpServiceItem[];
+  trustSignals: IMvpTrustSignal[];
+  offerNotice: string;
+}
+
+export interface IMvpProject {
+  _id: string;
+  auditId: string;
+  leadId: string;
+  previewSlug: string;
+  fullPreviewUrl: string;
+  storageHtmlPath: string;
+  comparisonBannerUrl?: string;
+  generatedContent: IMvpGeneratedContent;
+  colorPalette: {
+    primary: string;
+    secondary: string;
+    accent: string;
+  };
+  isPublished: boolean;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+// 5. Email Campaign Domain Entity
+export interface IEmailMetrics {
+  openedAt?: string | Date;
+  openCount: number;
+  clickedAt?: string | Date;
+  clickCount: number;
+  demoVisitCount: number;
+  totalDwellTimeSeconds: number;
+}
+
+export interface IEmailCampaign {
+  _id: string;
+  leadId: string;
+  auditId: string;
+  mvpProjectId: string;
+  status: EmailCampaignStatus;
+  senderEmail: string;
+  recipientEmail: string;
+  subject: string;
+  previewText?: string;
+  bodyHtml: string;
+  bodyPlainText?: string;
+  trackingToken: string;
+  requiresManualReview: boolean;
+  approvedBy?: string;
+  approvedAt?: string | Date;
+  scheduledAt?: string | Date;
+  sentAt?: string | Date;
+  metrics: IEmailMetrics;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+// 6. Analytics Event
+export interface IAnalyticsEvent {
+  _id: string;
+  mvpProjectId: string;
+  eventType: 'open' | 'click' | 'dwell_time' | 'cta_click' | 'booking_intent';
+  dwellTimeSeconds?: number;
+  metadata?: Record<string, unknown>;
+  timestamp: string | Date;
+}
+
+// 7. BullMQ Queue Data Payloads
+export interface IAuditJobData {
+  leadId: string;
+  url: string;
+  niche: NicheType;
+}
+
+export interface IAiGenerationJobData {
+  leadId: string;
+  auditId: string;
+  forceRegenerate?: boolean;
+}
+
+export interface IDeployJobData {
+  leadId: string;
+  auditId: string;
+  mvpProjectId: string;
+}
+
+export interface IEmailDispatchJobData {
+  campaignId: string;
+  leadId: string;
+}

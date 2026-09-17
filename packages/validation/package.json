@@ -1,0 +1,18 @@
+{
+  "name": "@revamp/validation",
+  "version": "0.1.0",
+  "description": "Zod validation schemas for Revamp SaaS",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2"
+  }
+}
