@@ -22,6 +22,14 @@ export const createApp = (): Express => {
   // API Routes
   app.use(env.API_PREFIX, routes);
 
+  // 404 Not Found Handler
+  app.use((_req, res) => {
+    res.status(404).json({
+      success: false,
+      message: 'Endpoint not found',
+    });
+  });
+
   // Global Error Handler
   app.use(errorHandler);
 
