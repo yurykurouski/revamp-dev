@@ -14,6 +14,8 @@
     "build:apps": "npm run build --workspace=@revamp/api && npm run build --workspace=@revamp/workers && npm run build --workspace=@revamp/dashboard",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "dev:api": "npm run dev --workspace=@revamp/api",
     "dev:workers": "npm run dev --workspace=@revamp/workers",
     "dev:dashboard": "npm run dev --workspace=@revamp/dashboard",
@@ -23,10 +25,13 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
+    "@types/supertest": "^7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.18.0",
     "@typescript-eslint/parser": "^8.18.0",
     "eslint": "^9.16.0",
     "prettier": "^3.4.2",
-    "typescript": "^5.7.2"
+    "supertest": "^7.2.2",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.1"
   }
 }

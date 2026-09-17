@@ -39,6 +39,24 @@ export const errorHandler = (
     return;
   }
 
+  // Mongoose invalid ObjectId / CastError
+  if (err.name === 'CastError') {
+    res.status(400).json({
+      success: false,
+      message: 'Invalid resource identifier format',
+    });
+    return;
+  }
+
+  // MongoDB duplicate key error
+  if ((err as Error & { code?: number }).code === 11000) {
+    res.status(409).json({
+      success: false,
+      message: 'Duplicate field value entered',
+    });
+    return;
+  }
+
   // Unhandled internal server error
   console.error('[Unhandled Error]', err);
   res.status(500).json({

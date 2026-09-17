@@ -93,7 +93,16 @@ export const NicheEnumSchema = z.enum([
  */
 export const CreateLeadSchema = z.object({
   businessName: z.string().min(2).max(100),
-  originalUrl: z.string().url(),
+  originalUrl: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (!/^https?:\/\//i.test(trimmed) && trimmed.includes('.')) {
+        return `https://${trimmed}`;
+      }
+      return trimmed;
+    }
+    return val;
+  }, z.string().url()),
   contactEmail: z.string().email(),
   niche: NicheEnumSchema.default('other'),
   city: z.string().max(100).optional(),

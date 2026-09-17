@@ -86,6 +86,15 @@ Revamp-dev/
    * Inside the dashboard, previews must be embedded exclusively through `<iframe sandbox="allow-scripts allow-same-origin">`.
 4. **Strict Schema Validation (Zod):**
    * All LLM responses and incoming HTTP request payloads must be validated using Zod schemas from `@revamp/validation` before persisting or processing.
+5. **Mandatory Test Coverage (Testing Policy):**
+   * All new or modified functionality, endpoints, services, background workers, and validation schemas MUST be covered with automated tests using Vitest.
+   * Testing must span all core layers:
+     - **Validation & Schemas:** Test valid cases, invalid inputs, edge cases, and boundary limits.
+     - **Middleware & Services:** Test error handlers, request validation, business operations, and database persistence.
+     - **API Endpoints:** Test HTTP status codes (200, 201, 400, 404, 500), payload structures, and error responses.
+     - **Workers & Queues:** Test job payload handling, state transitions, and error recovery.
+     - **Frontend Stores:** Test Zustand state transitions, filter mutations, and reset actions.
+   * All test suites must execute and pass cleanly (`npm test`) with 0 failures prior to submitting any task.
 
 ---
 
@@ -102,15 +111,16 @@ All development tasks are tracked in the Linear project: [Revamp (REV)](https://
 ### 4.2. Using Linear MCP
 When the `linear` MCP server is available in the agent environment:
 * Query task requirements before starting work using `get_issue` (ID: `REV-<number>`).
-* Verify acceptance criteria against both the issue description and [`milestones.md`](../Revamp-docs/milestones.md) before considering a task finished.
+* Verify acceptance criteria against both the issue description and [`milestones.md`](file:///Users/yurykurouski/code/ehu/Revamp-docs/milestones.md) before considering a task finished.
 
 ---
 
 ## 5. Pre-Commit Checklist (Definition of Done)
 
-* [ ] Verified against the architecture in [blueprint.md](../Revamp-docs/blueprint.md) and requirements in [spec.md](../Revamp-docs/spec.md).
+* [ ] Verified against the architecture in [blueprint.md](file:///Users/yurykurouski/code/ehu/Revamp-docs/blueprint.md) and requirements in [spec.md](file:///Users/yurykurouski/code/ehu/Revamp-docs/spec.md).
 * [ ] TypeScript compilation passes without errors: `npm run build` or `npm run typecheck`.
 * [ ] Linter passes with no warnings: `npm run lint`.
+* [ ] **Automated tests pass with full coverage:** `npm test` runs cleanly with 0 failures and covers all added/modified functionality.
 * [ ] All public API endpoints validate request payloads via Zod schemas from `packages/validation`.
 * [ ] Heavy or asynchronous operations are dispatched through BullMQ queues.
 * [ ] External resources (Playwright browser contexts, Redis/Mongo connections) are cleanly closed and managed.
