@@ -15,13 +15,23 @@ export type NicheType =
   | 'other';
 
 export type LeadStatus =
+  | 'QUEUED'
   | 'PENDING'
   | 'AUDITING'
+  | 'AUDITED'
+  | 'GENERATING'
   | 'MVP_READY'
+  | 'NEEDS_APPROVAL'
   | 'AWAITING_APPROVAL'
+  | 'APPROVED'
   | 'SCHEDULED'
   | 'SENT'
+  | 'DISPATCHED'
+  | 'OPENED'
+  | 'CLICKED'
   | 'ENGAGED'
+  | 'REPLIED'
+  | 'REJECTED'
   | 'UNSUBSCRIBED';
 
 export type AuditStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
