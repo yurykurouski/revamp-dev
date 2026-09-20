@@ -5,6 +5,7 @@ import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
 import { createEmailWorker } from './workers/email.worker.js';
 import { redisConnection } from './queues/connection.js';
+import { browserService } from './services/browser.service.js';
 
 async function startWorkers(): Promise<void> {
   try {
@@ -29,6 +30,7 @@ async function startWorkers(): Promise<void> {
         deployWorker.close(),
         emailWorker.close(),
       ]);
+      await browserService.close();
       await redisConnection.quit();
       await mongoose.disconnect();
       console.log('[Workers] All workers closed and connections closed.');
