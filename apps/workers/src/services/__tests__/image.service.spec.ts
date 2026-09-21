@@ -49,4 +49,49 @@ describe('ImageService', () => {
     expect(metadata.width).toBe(800);
     expect(metadata.height).toBe(500);
   });
+
+  it('should generate a 1200x630 Before/After comparison marketing banner in WebP', async () => {
+    // Generate dummy mobile screens (375x812)
+    const oldMobile = await sharp({
+      create: {
+        width: 375,
+        height: 812,
+        channels: 4,
+        background: { r: 220, g: 38, b: 38, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const newMobile = await sharp({
+      create: {
+        width: 375,
+        height: 812,
+        channels: 4,
+        background: { r: 34, g: 197, b: 94, alpha: 1 },
+      },
+    })
+      .png()
+      .toBuffer();
+
+    const bannerBuffer = await ImageService.createComparisonBanner({
+      originalMobileBuffer: oldMobile,
+      newMvpMobileBuffer: newMobile,
+      businessName: 'Стоматология Престиж',
+      oldLcpSeconds: 4.8,
+      oldA11yViolationsCount: 16,
+      newScore: 96,
+    });
+
+    expect(bannerBuffer).toBeInstanceOf(Buffer);
+    expect(bannerBuffer.length).toBeGreaterThan(0);
+
+    const metadata = await sharp(bannerBuffer).metadata();
+    expect(metadata.format).toBe('webp');
+    expect(metadata.width).toBe(1200);
+    expect(metadata.height).toBe(630);
+
+    // Assert compressed banner size is lightweight (< 150 KB)
+    expect(bannerBuffer.length).toBeLessThan(150 * 1024);
+  });
 });

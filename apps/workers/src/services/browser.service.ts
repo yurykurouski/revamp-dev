@@ -331,6 +331,37 @@ export class BrowserService {
   }
 
   /**
+   * Renders static HTML and captures a screenshot (defaults to mobile 375x812 Retina)
+   */
+  async captureHtmlScreenshot(
+    html: string,
+    options: { width?: number; height?: number; deviceScaleFactor?: number } = {},
+  ): Promise<Buffer> {
+    const width = options.width ?? 375;
+    const height = options.height ?? 812;
+    const deviceScaleFactor = options.deviceScaleFactor ?? 2;
+
+    const browser = await this.getBrowser();
+    this.jobCount++;
+
+    const context = await browser.newContext({
+      viewport: { width, height },
+      deviceScaleFactor,
+      isMobile: width < 768,
+    });
+
+    try {
+      const page = await context.newPage();
+      await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
+      await page.waitForTimeout(300);
+      const buffer = await page.screenshot({ fullPage: false });
+      return Buffer.from(buffer);
+    } finally {
+      await context.close();
+    }
+  }
+
+  /**
    * Graceful cleanup of the browser instance
    */
   async close(): Promise<void> {

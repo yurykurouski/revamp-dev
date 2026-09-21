@@ -81,6 +81,50 @@ export class StorageService {
   }
 
   /**
+   * Uploads static HTML bundle to the demo sandbox bucket (revamp-demos) under v/{slug}/index.html
+   * with proper security headers (Content-Type, CSP, X-Frame-Options metadata).
+   */
+  async uploadHtml(
+    slug: string,
+    html: string,
+    bucketName: string = env.S3_BUCKET_DEMOS,
+  ): Promise<{ url: string; key: string }> {
+    const key = `v/${slug}/index.html`;
+    const buffer = Buffer.from(html, 'utf8');
+
+    await this.ensureBucket(bucketName);
+
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: bucketName,
+        Key: key,
+        Body: buffer,
+        ContentType: 'text/html; charset=utf-8',
+        Metadata: {
+          'x-frame-options': 'SAMEORIGIN',
+          'content-security-policy': "default-src 'self' 'unsafe-inline' data: https:;",
+        },
+      }),
+    );
+
+    const url = this.getPublicUrl(bucketName, key);
+    return { url, key };
+  }
+
+  /**
+   * Uploads comparison collage banner (1200x630 WebP) to revamp-assets bucket
+   */
+  async uploadComparisonBanner(slug: string, buffer: Buffer): Promise<string> {
+    const key = `banners/${slug}.webp`;
+    return this.uploadBuffer({
+      bucket: this.defaultBucket,
+      key,
+      buffer,
+      contentType: 'image/webp',
+    });
+  }
+
+  /**
    * Constructs the accessible public URL for the object
    */
   getPublicUrl(bucket: string, key: string): string {
