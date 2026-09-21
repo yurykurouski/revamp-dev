@@ -10,6 +10,7 @@ import {
   DesignCritiqueOutputSchema,
   MvpContentOutputSchema,
   EmailDraftOutputSchema,
+  BentoTemplateDataSchema,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -257,4 +258,102 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => EmailDraftOutputSchema.parse(invalidDraft)).toThrow();
     });
   });
+
+  describe('BentoTemplateDataSchema (REV-11)', () => {
+    it('should validate a complete BentoTemplateData payload', () => {
+      const data = {
+        businessName: 'Стоматология Улыбка',
+        niche: 'dental',
+        palette: {
+          primary: '#5c5bed',
+          secondary: '#b8c4fe',
+          accent: '#5c5bed',
+        },
+        contacts: {
+          phone: '+7 (812) 123-45-67',
+          email: 'info@smiledental.ru',
+          address: 'Невский проспект, 100',
+          city: 'Санкт-Петербург',
+        },
+        hero: {
+          badge: '✨ Акция месяца',
+          headline: 'Идеальная улыбка без боли и переплат',
+          subheadline: 'Современные технологии и безболезненное лечение с гарантией 5 лет.',
+          primaryCtaText: 'Записаться онлайн',
+          secondaryCtaText: 'Позвонить',
+        },
+        services: [
+          {
+            title: 'Имплантация зубов',
+            description: 'Швейцарские импланты с пожизненной гарантией от ведущих хирургов.',
+            lucideIconName: 'shield-check',
+            badge: 'Хит',
+            highlight: true,
+          },
+          {
+            title: 'Отбеливание Zoom 4',
+            description: 'Осветление эмали до 8 тонов всего за один визит.',
+            lucideIconName: 'sparkles',
+          },
+        ],
+        trustSignals: [
+          { metric: '4.9 ★', label: 'Рейтинг в Яндекс Картах' },
+          { metric: '15 лет', label: 'Безупречной репутации' },
+        ],
+        reviews: [
+          {
+            author: 'Мария П.',
+            rating: 5,
+            comment: 'Отличная клиника, вежливые врачи!',
+            source: 'Яндекс Карты',
+          },
+        ],
+      };
+
+      const parsed = BentoTemplateDataSchema.parse(data);
+      expect(parsed.businessName).toBe('Стоматология Улыбка');
+      expect(parsed.palette.primary).toBe('#5c5bed');
+      expect(parsed.services).toHaveLength(2);
+      expect(parsed.reviews).toHaveLength(1);
+    });
+
+    it('should reject invalid hex color in palette', () => {
+      const invalid = {
+        businessName: 'Auto Fix',
+        palette: {
+          primary: 'invalid-hex',
+          secondary: '#b8c4fe',
+          accent: '#5c5bed',
+        },
+        contacts: {},
+        hero: {
+          headline: 'Headline',
+          subheadline: 'Subheadline',
+        },
+        services: [{ title: 'Service', description: 'Description' }],
+      };
+
+      expect(() => BentoTemplateDataSchema.parse(invalid)).toThrow();
+    });
+
+    it('should reject empty services list', () => {
+      const emptyServices = {
+        businessName: 'Auto Fix',
+        palette: {
+          primary: '#5c5bed',
+          secondary: '#b8c4fe',
+          accent: '#5c5bed',
+        },
+        contacts: {},
+        hero: {
+          headline: 'Headline',
+          subheadline: 'Subheadline',
+        },
+        services: [],
+      };
+
+      expect(() => BentoTemplateDataSchema.parse(emptyServices)).toThrow();
+    });
+  });
 });
+

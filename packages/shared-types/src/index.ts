@@ -257,3 +257,56 @@ export interface IEmailDispatchJobData {
   campaignId: string;
   leadId: string;
 }
+
+// 8. Bento Template Data Interfaces
+export interface IBentoReviewItem {
+  author: string;
+  rating: number; // 1-5
+  comment: string;
+  date?: string;
+  source?: 'Яндекс Карты' | 'Google Карты' | '2ГИС' | 'Прямой отзыв';
+}
+
+export interface IBentoServiceCard {
+  title: string;
+  description: string;
+  lucideIconName?: string;
+  badge?: string;
+  highlight?: boolean;
+}
+
+export interface IBentoTemplateData {
+  businessName: string;
+  niche?: NicheType;
+  logoUrl?: string;
+  monogramSvg?: string;
+  palette: {
+    primary: string;
+    secondary: string;
+    accent: string;
+  };
+  fontFamilies?: string[];
+  contacts: {
+    phone?: string;
+    email?: string;
+    address?: string;
+    workingHours?: string;
+    city?: string;
+  };
+  hero: {
+    badge?: string;
+    headline: string;
+    subheadline: string;
+    primaryCtaText?: string;
+    secondaryCtaText?: string;
+  };
+  services: IBentoServiceCard[];
+  trustSignals?: Array<{
+    metric: string;
+    label: string;
+  }>;
+  reviews?: IBentoReviewItem[];
+  trackingToken?: string;
+  customHeadSnippet?: string;
+}
+

@@ -181,3 +181,68 @@ export const TestEmailOutreachSchema = z.object({
 });
 
 export type TestEmailOutreachDto = z.infer<typeof TestEmailOutreachSchema>;
+
+/**
+ * 4. Bento Template Schemas (REV-11)
+ */
+export const BentoReviewItemSchema = z.object({
+  author: z.string().min(1).max(60),
+  rating: z.number().min(1).max(5).default(5),
+  comment: z.string().min(5).max(300),
+  date: z.string().max(50).optional(),
+  source: z.enum(['Яндекс Карты', 'Google Карты', '2ГИС', 'Прямой отзыв']).optional(),
+});
+
+export type BentoReviewItem = z.infer<typeof BentoReviewItemSchema>;
+
+export const BentoServiceCardSchema = z.object({
+  title: z.string().min(1).max(60),
+  description: z.string().min(1).max(200),
+  lucideIconName: z.string().optional(),
+  badge: z.string().max(30).optional(),
+  highlight: z.boolean().optional(),
+});
+
+export type BentoServiceCard = z.infer<typeof BentoServiceCardSchema>;
+
+export const BentoTemplateDataSchema = z.object({
+  businessName: z.string().min(1).max(100),
+  niche: NicheEnumSchema.optional(),
+  logoUrl: z.string().url().optional(),
+  monogramSvg: z.string().optional(),
+  palette: z.object({
+    primary: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
+    secondary: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
+    accent: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
+  }),
+  fontFamilies: z.array(z.string()).optional(),
+  contacts: z.object({
+    phone: z.string().max(30).optional(),
+    email: z.string().email().optional(),
+    address: z.string().max(150).optional(),
+    workingHours: z.string().max(100).optional(),
+    city: z.string().max(100).optional(),
+  }),
+  hero: z.object({
+    badge: z.string().max(50).optional(),
+    headline: z.string().min(1).max(120),
+    subheadline: z.string().min(1).max(250),
+    primaryCtaText: z.string().max(40).optional(),
+    secondaryCtaText: z.string().max(40).optional(),
+  }),
+  services: z.array(BentoServiceCardSchema).min(1).max(10),
+  trustSignals: z
+    .array(
+      z.object({
+        metric: z.string().max(25),
+        label: z.string().max(60),
+      }),
+    )
+    .optional(),
+  reviews: z.array(BentoReviewItemSchema).optional(),
+  trackingToken: z.string().optional(),
+  customHeadSnippet: z.string().optional(),
+});
+
+export type BentoTemplateData = z.infer<typeof BentoTemplateDataSchema>;
+
