@@ -107,6 +107,7 @@ export const createAuditWorker = (): Worker => {
             designCritique: critiqueResult.critique,
             aiFallbackUsed: critiqueResult.aiFallbackUsed,
             extractedBrandTokens: brandResult.tokens,
+            extractedServices: brandResult.services,
           },
           { new: true },
         ).exec();

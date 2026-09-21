@@ -101,6 +101,13 @@ const AuditSchema = new Schema<IAuditDocument>(
     errorMessage: {
       type: String,
     },
+    extractedServices: {
+      type: [String],
+      default: [],
+    },
+    generatedContent: {
+      type: Schema.Types.Mixed,
+    },
     completedAt: {
       type: Date,
     },
