@@ -25,6 +25,7 @@ import { useLeadsQuery } from '../hooks/useLeads.js';
 import { KanbanBoard } from '../components/KanbanBoard.js';
 import { LeadsDataGrid } from '../components/LeadsDataGrid.js';
 import { AddLeadModal } from '../components/AddLeadModal.js';
+import { SideBySideInspectorModal } from '../components/SideBySideInspectorModal.js';
 import { LeadStatus, NicheType } from '@revamp/shared-types';
 
 export const LeadsPage: React.FC = () => {
@@ -212,6 +213,9 @@ export const LeadsPage: React.FC = () => {
 
       {/* Quick Add Lead Modal Dialog */}
       <AddLeadModal />
+
+      {/* Side-by-Side Split Screen Inspector Dialog */}
+      <SideBySideInspectorModal />
     </Box>
   );
 };

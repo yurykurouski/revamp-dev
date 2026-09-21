@@ -30,3 +30,12 @@ export const useCreateLeadMutation = () => {
     },
   });
 };
+
+export const useAuditQuery = (auditId: string | null) => {
+  return useQuery({
+    queryKey: ['audit', auditId],
+    queryFn: () => (auditId ? apiClient.getAudit(auditId) : null),
+    enabled: Boolean(auditId),
+    staleTime: 60000,
+  });
+};

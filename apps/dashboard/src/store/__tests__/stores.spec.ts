@@ -107,6 +107,26 @@ describe('Zustand Dashboard Stores', () => {
       expect(useHitlModalStore.getState().activeBreakpoint).toBe('tablet');
     });
 
+    it('should switch original screenshot tabs between desktop and mobile', () => {
+      expect(useHitlModalStore.getState().originalScreenTab).toBe('desktop');
+
+      useHitlModalStore.getState().setOriginalScreenTab('mobile');
+      expect(useHitlModalStore.getState().originalScreenTab).toBe('mobile');
+
+      useHitlModalStore.getState().setOriginalScreenTab('desktop');
+      expect(useHitlModalStore.getState().originalScreenTab).toBe('desktop');
+    });
+
+    it('should switch active modal tabs between inspector and email editor', () => {
+      expect(useHitlModalStore.getState().activeTab).toBe('inspector');
+
+      useHitlModalStore.getState().setActiveTab('email_editor');
+      expect(useHitlModalStore.getState().activeTab).toBe('email_editor');
+
+      useHitlModalStore.getState().setActiveTab('inspector');
+      expect(useHitlModalStore.getState().activeTab).toBe('inspector');
+    });
+
     it('should correctly map breakpoint widths', () => {
       expect(BREAKPOINT_WIDTHS.mobile).toBe('375px');
       expect(BREAKPOINT_WIDTHS.tablet).toBe('768px');

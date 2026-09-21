@@ -58,4 +58,18 @@ describe('Dashboard apiClient', () => {
       }),
     ).rejects.toThrow();
   });
+
+  it('should fetch audit diagnostics and critique details', async () => {
+    const audit = await apiClient.getAudit('audit-listonosz-001');
+
+    expect(audit).toBeDefined();
+    expect(audit.id).toBe('audit-listonosz-001');
+    expect(audit.lcpSeconds).toBe(3.4);
+    expect(audit.a11yViolationsCount).toBe(14);
+    expect(audit.criticalFlaws.length).toBe(3);
+    expect(audit.quickWins.length).toBe(3);
+    expect(audit.desktopScreenshotUrl).toBeDefined();
+    expect(audit.mobileScreenshotUrl).toBeDefined();
+    expect(audit.colorPalette.primary).toBe('#5c5bed');
+  });
 });

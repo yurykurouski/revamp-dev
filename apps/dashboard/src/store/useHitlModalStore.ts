@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 
 export type PreviewBreakpoint = 'mobile' | 'tablet' | 'desktop';
+export type OriginalScreenTab = 'desktop' | 'mobile';
+export type ModalActiveTab = 'inspector' | 'email_editor';
 
 export const BREAKPOINT_WIDTHS: Record<PreviewBreakpoint, string> = {
   mobile: '375px',
@@ -13,9 +15,14 @@ interface HitlModalState {
   selectedLeadId: string | null;
   selectedAuditId: string | null;
   activeBreakpoint: PreviewBreakpoint;
-  openModal: (leadId: string, auditId: string) => void;
+  originalScreenTab: OriginalScreenTab;
+  activeTab: ModalActiveTab;
+
+  openModal: (leadId: string, auditId?: string) => void;
   closeModal: () => void;
   setBreakpoint: (breakpoint: PreviewBreakpoint) => void;
+  setOriginalScreenTab: (tab: OriginalScreenTab) => void;
+  setActiveTab: (tab: ModalActiveTab) => void;
 }
 
 export const useHitlModalStore = create<HitlModalState>((set) => ({
@@ -23,11 +30,17 @@ export const useHitlModalStore = create<HitlModalState>((set) => ({
   selectedLeadId: null,
   selectedAuditId: null,
   activeBreakpoint: 'desktop',
+  originalScreenTab: 'desktop',
+  activeTab: 'inspector',
+
   openModal: (leadId, auditId) =>
     set({
       isOpen: true,
       selectedLeadId: leadId,
-      selectedAuditId: auditId,
+      selectedAuditId: auditId || `audit-${leadId}`,
+      activeBreakpoint: 'desktop',
+      originalScreenTab: 'desktop',
+      activeTab: 'inspector',
     }),
   closeModal: () =>
     set({
@@ -36,4 +49,6 @@ export const useHitlModalStore = create<HitlModalState>((set) => ({
       selectedAuditId: null,
     }),
   setBreakpoint: (breakpoint) => set({ activeBreakpoint: breakpoint }),
+  setOriginalScreenTab: (tab) => set({ originalScreenTab: tab }),
+  setActiveTab: (tab) => set({ activeTab: tab }),
 }));

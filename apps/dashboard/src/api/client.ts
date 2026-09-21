@@ -282,4 +282,128 @@ export const apiClient = {
     localLeadsCache = [newLead, ...localLeadsCache];
     return newLead;
   },
+
+  /**
+   * Fetches audit diagnostics and critique details for Side-by-Side Inspector
+   */
+  async getAudit(auditId: string): Promise<IAuditDetail> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/audit/${auditId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          const a = data.data;
+          return {
+            id: a._id || auditId,
+            leadId: a.leadId,
+            desktopScreenshotUrl:
+              a.screenshotUrls?.desktopOriginal ||
+              'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp',
+            mobileScreenshotUrl:
+              a.screenshotUrls?.mobileOriginal ||
+              'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp',
+            lcpSeconds: a.lighthouseMetrics?.lcp ? a.lighthouseMetrics.lcp / 1000 : 3.4,
+            a11yScore: a.scores?.a11y || 68,
+            a11yViolationsCount: a.a11ySummary?.violationsCount || 14,
+            visualHierarchyRating: a.designCritique?.visualHierarchyRating || 55,
+            mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating || 45,
+            criticalFlaws: a.designCritique?.criticalFlaws || [
+              {
+                title: 'Отсутствует заметная кнопка целевого действия (CTA) на первом экране',
+                impact: 'Пользователи не понимают следующий шаг, что снижает конверсию на 40-50%',
+                recommendation: 'Добавить контрастную кнопку с высоким z-index вверху страницы',
+              },
+              {
+                title: 'Низкая контрастность текста на темном фоне (WCAG AA)',
+                impact: 'Текст сложно читать при ярком свете, увеличивая показатель отказов',
+                recommendation: 'Увеличить контраст шрифтов до 4.5:1 и применить светлую Bento-сетку',
+              },
+              {
+                title: 'Медленная отрисовка первого контента LCP (3.4 сек)',
+                impact: 'Каждая секунда задержки увеличивает отток мобильного трафика на 10-20%',
+                recommendation: 'Сократить блокирующие скрипты и загружать чистый HTML с инлайн-стилями',
+              },
+            ],
+            quickWins: a.designCritique?.quickWins || [
+              'Клик для звонка в один тап (tel: ссылка в шапке)',
+              'Интерактивная форма экспресс-заявки с валидацией',
+              'Бейджи доверия с рейтингом и опытом компании',
+            ],
+            colorPalette: {
+              primary: a.extractedBrandTokens?.primaryColor || '#5c5bed',
+              secondary: a.extractedBrandTokens?.secondaryColor || '#b8c4fe',
+              accent: a.extractedBrandTokens?.accentColor || '#5c5bed',
+            },
+          };
+        }
+      }
+    } catch {
+      // Backend not running, use mock
+    }
+
+    // Default mock audit details (matching Listonosz Courier & Logistics from REV-10/11/12/13)
+    return {
+      id: auditId,
+      leadId: auditId.replace('audit-', 'lead-'),
+      desktopScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp',
+      mobileScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp',
+      lcpSeconds: 3.4,
+      a11yScore: 68,
+      a11yViolationsCount: 14,
+      visualHierarchyRating: 55,
+      mobileFriendlinessRating: 45,
+      criticalFlaws: [
+        {
+          title: 'Отсутствует заметная кнопка целевого действия (CTA) на первом экране',
+          impact: 'Пользователи не понимают следующий шаг, что снижает конверсию на 40-50%',
+          recommendation: 'Добавить контрастную кнопку «Заказать доставку» вверху страницы',
+        },
+        {
+          title: 'Низкая контрастность текста на темном фоне (WCAG 2.1 AA)',
+          impact: 'Текст сложно читать при дневном свете, пользователи закрывают сайт',
+          recommendation: 'Увеличить контраст шрифтов до 4.5:1 и применить современную светлую Bento-сетку',
+        },
+        {
+          title: 'Медленная отрисовка контента LCP (3.4 сек)',
+          impact: 'Каждая секунда задержки увеличивает отток мобильного трафика на 10-20%',
+          recommendation: 'Оптимизировать ресурсы, сократить скрипты и отдавать чистый быстрый HTML',
+        },
+      ],
+      quickWins: [
+        'Клик для звонка в один тап (кнопка в шапке)',
+        'Интерактивная форма быстрой заявки с авто-валидацией',
+        'Бейджи доверия с рейтингом 4.9 и опытом на рынке',
+      ],
+      colorPalette: {
+        primary: '#5c5bed',
+        secondary: '#b8c4fe',
+        accent: '#5c5bed',
+      },
+    };
+  },
 };
+
+export interface ICriticalFlaw {
+  title: string;
+  impact: string;
+  recommendation: string;
+}
+
+export interface IAuditDetail {
+  id: string;
+  leadId: string;
+  desktopScreenshotUrl: string;
+  mobileScreenshotUrl: string;
+  lcpSeconds: number;
+  a11yScore: number;
+  a11yViolationsCount: number;
+  visualHierarchyRating: number;
+  mobileFriendlinessRating: number;
+  criticalFlaws: ICriticalFlaw[];
+  quickWins: string[];
+  colorPalette: {
+    primary: string;
+    secondary: string;
+    accent: string;
+  };
+}
