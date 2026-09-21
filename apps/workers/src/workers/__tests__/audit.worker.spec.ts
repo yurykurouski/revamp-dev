@@ -46,7 +46,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     expect(capturedProcessor).toBeTypeOf('function');
   });
 
-  it('should capture screenshots, compress to WebP, upload to S3, and update Audit in MongoDB', async () => {
+  it('should capture full audit, compress to WebP, upload to S3, and update Audit with a11y & vitals in MongoDB', async () => {
     createAuditWorker();
     expect(capturedProcessor).not.toBeNull();
 
@@ -71,10 +71,30 @@ describe('AuditWorker (@revamp/workers)', () => {
     } as any);
 
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
-    vi.mocked(browserService.captureScreenshots).mockResolvedValue({
+    vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('raw-desktop-png'),
       mobileBuffer: Buffer.from('raw-mobile-png'),
+      a11yResult: {
+        a11yScore: 82,
+        summary: {
+          violationsCount: 3,
+          contrastIssuesCount: 2,
+          missingAltCount: 1,
+          criticalViolations: [
+            { id: 'image-alt', description: 'Missing alt', impact: 'critical', selector: 'img' },
+          ],
+        },
+        rawViolations: [],
+      },
+      vitalsResult: {
+        lcpSeconds: 2.1,
+        lighthouseMetrics: { lcp: 2100, cls: 0.03, speedIndex: 1900 },
+        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        performanceScore: 90,
+        standardsScore: 100,
+      },
     });
+
     vi.mocked(ImageService.compressToWebp)
       .mockResolvedValueOnce(Buffer.from('webp-desktop'))
       .mockResolvedValueOnce(Buffer.from('webp-mobile'));
@@ -97,7 +117,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     );
 
     // Browser capture and WebP compression
-    expect(browserService.captureScreenshots).toHaveBeenCalledWith('https://test-dental.com');
+    expect(browserService.captureFullAudit).toHaveBeenCalledWith('https://test-dental.com');
     expect(ImageService.compressToWebp).toHaveBeenCalledTimes(2);
 
     // S3 upload
@@ -112,18 +132,33 @@ describe('AuditWorker (@revamp/workers)', () => {
       expect.any(Buffer),
     );
 
-    // Audit document update with URLs
+    // Audit document update with URLs, scores, and metrics
     expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
       { leadId: 'lead-123' },
-      {
+      expect.objectContaining({
         desktopScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/lead-123/desktop.webp',
         mobileScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp',
-        screenshotUrls: {
-          desktopOriginal: 'http://localhost:9000/revamp-assets/screenshots/lead-123/desktop.webp',
-          mobileOriginal: 'http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp',
-        },
-      },
+        a11yScore: 82,
+        lcp: 2.1,
+        scores: expect.objectContaining({
+          accessibility: 82,
+          performance: 90,
+          standards: 100,
+        }),
+        lighthouseMetrics: { lcp: 2100, cls: 0.03, speedIndex: 1900 },
+        a11ySummary: expect.objectContaining({
+          violationsCount: 3,
+          contrastIssuesCount: 2,
+          missingAltCount: 1,
+        }),
+      }),
       { new: true },
+    );
+
+    // Lead score update
+    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+      'lead-123',
+      expect.objectContaining({ totalScore: expect.any(Number) }),
     );
 
     expect(result).toEqual(
@@ -131,6 +166,8 @@ describe('AuditWorker (@revamp/workers)', () => {
         success: true,
         leadId: 'lead-123',
         url: 'https://test-dental.com',
+        a11yScore: 82,
+        lcp: 2.1,
         desktopScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/lead-123/desktop.webp',
         mobileScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp',
       }),
@@ -162,7 +199,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     } as any);
 
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
-    vi.mocked(browserService.captureScreenshots).mockRejectedValue(
+    vi.mocked(browserService.captureFullAudit).mockRejectedValue(
       new Error('ERR_CONNECTION_REFUSED'),
     );
 

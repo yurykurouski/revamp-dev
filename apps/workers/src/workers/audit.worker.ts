@@ -35,9 +35,14 @@ export const createAuditWorker = (): Worker => {
         // 2. Ensure S3 / MinIO storage bucket exists
         await storageService.ensureBucket();
 
-        // 3. Capture Desktop (1440x900) and Mobile (375x812) screenshots via Playwright
-        console.log(`[AuditWorker] Capturing screenshots for ${url}...`);
-        const { desktopBuffer, mobileBuffer } = await browserService.captureScreenshots(url);
+        // 3. Capture screenshots, perform Axe-core WCAG audit, and collect Core Web Vitals
+        console.log(`[AuditWorker] Running Playwright crawl, a11y audit, and vitals collection for ${url}...`);
+        const {
+          desktopBuffer,
+          mobileBuffer,
+          a11yResult,
+          vitalsResult,
+        } = await browserService.captureFullAudit(url);
 
         // 4. Compress screenshots to modern WebP format
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
@@ -53,7 +58,14 @@ export const createAuditWorker = (): Worker => {
           storageService.uploadScreenshot(leadId, 'mobile', mobileWebp),
         ]);
 
-        // 6. Update Audit document in MongoDB with screenshot URLs
+        // 6. Aggregate Scores (Design score will be computed in REV-9 by Vision LLM)
+        const totalScore = Math.round(
+          a11yResult.a11yScore * 0.4 +
+            vitalsResult.performanceScore * 0.4 +
+            vitalsResult.standardsScore * 0.2,
+        );
+
+        // 7. Update Audit document in MongoDB with full deterministic metrics
         await Audit.findOneAndUpdate(
           { leadId },
           {
@@ -63,30 +75,50 @@ export const createAuditWorker = (): Worker => {
               desktopOriginal: desktopScreenshotUrl,
               mobileOriginal: mobileScreenshotUrl,
             },
+            a11yScore: a11yResult.a11yScore,
+            lcp: vitalsResult.lcpSeconds,
+            scores: {
+              total: totalScore,
+              design: 0,
+              accessibility: a11yResult.a11yScore,
+              performance: vitalsResult.performanceScore,
+              standards: vitalsResult.standardsScore,
+            },
+            lighthouseMetrics: vitalsResult.lighthouseMetrics,
+            a11ySummary: a11yResult.summary,
           },
           { new: true },
         ).exec();
 
+        // 8. Update Lead totalScore
+        await Lead.findByIdAndUpdate(leadId, { totalScore }).exec();
+
         console.log(
-          `[AuditWorker] Successfully generated and stored screenshots for lead ${leadId}.\n` +
-            `   - Desktop: ${desktopScreenshotUrl}\n` +
-            `   - Mobile:  ${mobileScreenshotUrl}`,
+          `[AuditWorker] Successfully completed audit for lead ${leadId}:\n` +
+            `   - a11yScore:   ${a11yResult.a11yScore}/100 (${a11yResult.summary.violationsCount} violations)\n` +
+            `   - LCP:         ${vitalsResult.lcpSeconds}s (Perf score: ${vitalsResult.performanceScore}/100)\n` +
+            `   - Standards:   ${vitalsResult.standardsScore}/100 (SSL: ${vitalsResult.standards.hasSsl})\n` +
+            `   - Desktop URL: ${desktopScreenshotUrl}\n` +
+            `   - Mobile URL:  ${mobileScreenshotUrl}`,
         );
 
         return {
           success: true,
           leadId,
           url,
+          a11yScore: a11yResult.a11yScore,
+          lcp: vitalsResult.lcpSeconds,
           desktopScreenshotUrl,
           mobileScreenshotUrl,
+          totalScore,
           processedAt: new Date().toISOString(),
         };
       } catch (error: unknown) {
         const errorMessage =
           error instanceof Error
             ? error.message
-            : 'Failed to capture or upload screenshots';
-        console.error(`[AuditWorker] Error processing screenshots for lead ${leadId}:`, error);
+            : 'Failed to complete audit inspection';
+        console.error(`[AuditWorker] Error processing audit for lead ${leadId}:`, error);
 
         await Audit.findOneAndUpdate(
           { leadId },

@@ -1,8 +1,15 @@
 import { chromium, Browser, BrowserContextOptions, Page } from 'playwright';
+import { axeService, AxeAuditResult } from './axe.service.js';
+import { vitalsService, VitalsAuditResult } from './vitals.service.js';
 
 export interface ScreenshotResult {
   desktopBuffer: Buffer;
   mobileBuffer: Buffer;
+}
+
+export interface FullAuditCrawlingResult extends ScreenshotResult {
+  a11yResult: AxeAuditResult;
+  vitalsResult: VitalsAuditResult;
 }
 
 export class BrowserService {
@@ -77,21 +84,34 @@ export class BrowserService {
       }
     }
 
-    // Short stabilization wait for web fonts and animations
+    // Short stabilization wait for web fonts and layout shifts
     await page.waitForTimeout(600);
   }
 
   /**
-   * Captures Desktop (1440x900) and Mobile (375x812) screenshots with strict context isolation
+   * Captures Desktop (1440x900) and Mobile (375x812) screenshots
    */
   async captureScreenshots(url: string): Promise<ScreenshotResult> {
+    const full = await this.captureFullAudit(url);
+    return {
+      desktopBuffer: full.desktopBuffer,
+      mobileBuffer: full.mobileBuffer,
+    };
+  }
+
+  /**
+   * Executes complete crawler pass: Desktop & Mobile screenshots, Axe-core WCAG audit, and Core Web Vitals
+   */
+  async captureFullAudit(url: string): Promise<FullAuditCrawlingResult> {
     const browser = await this.getBrowser();
     this.jobCount++;
 
     let desktopBuffer: Buffer;
     let mobileBuffer: Buffer;
+    let a11yResult: AxeAuditResult;
+    let vitalsResult: VitalsAuditResult;
 
-    // 1. Desktop Screenshot (1440x900 viewport height)
+    // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
       viewport: { width: 1440, height: 900 },
       userAgent:
@@ -105,14 +125,13 @@ export class BrowserService {
       await this.navigateWithFallback(page, url, 25000);
       desktopBuffer = await page.screenshot({
         type: 'png',
-        fullPage: false, // first screen / above the fold
+        fullPage: false,
       });
     } finally {
-      // Mandatory context isolation cleanup
       await desktopContext.close();
     }
 
-    // 2. Mobile Screenshot (375x812 iPhone / Pixel emulation)
+    // 2. Mobile Screenshot (375x812), A11y WCAG scan, and Core Web Vitals
     const mobileOptions: BrowserContextOptions = {
       viewport: { width: 375, height: 812 },
       userAgent:
@@ -126,18 +145,27 @@ export class BrowserService {
     try {
       const page = await mobileContext.newPage();
       await this.navigateWithFallback(page, url, 25000);
+
+      // Screenshot first screen
       mobileBuffer = await page.screenshot({
         type: 'png',
         fullPage: false,
       });
+
+      // Deterministic Core Web Vitals & Web Standards
+      vitalsResult = await vitalsService.collectVitals(page, url);
+
+      // Deterministic WCAG 2.1 AA Axe-core audit
+      a11yResult = await axeService.scanPage(page);
     } finally {
-      // Mandatory context isolation cleanup
       await mobileContext.close();
     }
 
     return {
       desktopBuffer,
       mobileBuffer,
+      a11yResult,
+      vitalsResult,
     };
   }
 
