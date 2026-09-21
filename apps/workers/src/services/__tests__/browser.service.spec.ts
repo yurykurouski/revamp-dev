@@ -45,6 +45,18 @@ describe('BrowserService', () => {
       waitForLoadState: vi.fn().mockResolvedValue(undefined),
       waitForTimeout: vi.fn().mockResolvedValue(undefined),
       screenshot: vi.fn().mockResolvedValue(Buffer.from('screenshot-data')),
+      evaluate: vi.fn().mockResolvedValue({
+        colors: ['rgb(79, 70, 229)', 'rgb(255, 255, 255)'],
+        fontFamilies: ['Inter'],
+        faviconUrl: 'https://example.com/favicon.ico',
+        logoUrl: 'https://example.com/logo.png',
+        phone: '+1 555-1234',
+        email: 'info@example.com',
+        address: '123 Test St',
+        workingHours: '9-18',
+        socialLinks: [{ platform: 'telegram', url: 'https://t.me/test' }],
+        services: ['Service 1'],
+      }),
     };
 
     mockContext = {

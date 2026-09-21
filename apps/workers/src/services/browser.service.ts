@@ -1,6 +1,7 @@
 import { chromium, Browser, BrowserContextOptions, Page } from 'playwright';
 import { axeService, AxeAuditResult } from './axe.service.js';
 import { vitalsService, VitalsAuditResult } from './vitals.service.js';
+import { RawBrandExtractionData } from './brand-extractor.service.js';
 
 export interface ScreenshotResult {
   desktopBuffer: Buffer;
@@ -10,6 +11,7 @@ export interface ScreenshotResult {
 export interface FullAuditCrawlingResult extends ScreenshotResult {
   a11yResult: AxeAuditResult;
   vitalsResult: VitalsAuditResult;
+  rawBrandData: RawBrandExtractionData;
 }
 
 export class BrowserService {
@@ -89,6 +91,161 @@ export class BrowserService {
   }
 
   /**
+   * Extracts raw brand colors, fonts, logo candidates, and contacts directly from page DOM
+   */
+  async extractRawBrandData(page: Page): Promise<RawBrandExtractionData> {
+    return page.evaluate(() => {
+      const colors: string[] = [];
+      const colorElements = document.querySelectorAll(
+        'button, header, nav, a, h1, h2, h3, [class*="btn"], [class*="hero"], footer, body, input',
+      );
+      for (let i = 0; i < Math.min(colorElements.length, 60); i++) {
+        const el = colorElements[i];
+        if (!el) continue;
+        try {
+          const style = window.getComputedStyle(el);
+          if (
+            style.backgroundColor &&
+            style.backgroundColor !== 'rgba(0, 0, 0, 0)' &&
+            style.backgroundColor !== 'transparent'
+          ) {
+            colors.push(style.backgroundColor);
+          }
+          if (style.color) {
+            colors.push(style.color);
+          }
+          if (style.borderColor && style.borderColor !== 'rgba(0, 0, 0, 0)') {
+            colors.push(style.borderColor);
+          }
+        } catch {
+          // ignore styling access errors
+        }
+      }
+
+      // Font families
+      const fontFamilies: string[] = [];
+      try {
+        const bodyFont = window.getComputedStyle(document.body).fontFamily;
+        if (bodyFont) fontFamilies.push(bodyFont);
+        const heading = document.querySelector('h1, h2');
+        if (heading) {
+          const hFont = window.getComputedStyle(heading).fontFamily;
+          if (hFont) fontFamilies.push(hFont);
+        }
+      } catch {
+        // ignore
+      }
+
+      // Favicon
+      let faviconUrl: string | undefined = undefined;
+      const iconLink = document.querySelector(
+        'link[rel*="icon"], link[rel*="apple-touch-icon"]',
+      ) as HTMLLinkElement | null;
+      if (iconLink && iconLink.href) {
+        faviconUrl = iconLink.href;
+      }
+
+      // Logo candidate
+      let logoUrl: string | undefined = undefined;
+      const logoImg = document.querySelector(
+        'header img[class*="logo" i], header img[id*="logo" i], header img[alt*="logo" i], nav img[class*="logo" i], nav img[id*="logo" i], a[href="/"] img, header img, nav img',
+      ) as HTMLImageElement | null;
+      if (logoImg && logoImg.src && !logoImg.src.startsWith('data:image/svg')) {
+        logoUrl = logoImg.src;
+      }
+
+      // Contact phone
+      let phone: string | undefined = undefined;
+      const telLink = document.querySelector('a[href^="tel:"]') as HTMLAnchorElement | null;
+      if (telLink) {
+        phone = telLink.getAttribute('href')?.replace(/^tel:/i, '').trim();
+      }
+      if (!phone) {
+        const textBlocks = Array.from(
+          document.querySelectorAll('header, footer, [class*="contact"], [class*="phone"]'),
+        )
+          .map((el) => el.textContent || '')
+          .join(' ');
+        const phoneMatch = textBlocks.match(
+          /(?:\+?\d{1,3}[-.\s]?)?\(?\d{2,4}\)?[-.\s]?\d{2,4}[-.\s]?\d{2,4}/,
+        );
+        if (phoneMatch && phoneMatch[0] && phoneMatch[0].replace(/\D/g, '').length >= 7) {
+          phone = phoneMatch[0].trim();
+        }
+      }
+
+      // Contact email
+      let email: string | undefined = undefined;
+      const mailLink = document.querySelector('a[href^="mailto:"]') as HTMLAnchorElement | null;
+      if (mailLink) {
+        email = mailLink.getAttribute('href')?.replace(/^mailto:/i, '').split('?')[0]?.trim();
+      }
+
+      // Physical address
+      let address: string | undefined = undefined;
+      const addressEl = document.querySelector('[itemprop="address"], address, [class*="address"]');
+      if (addressEl && addressEl.textContent) {
+        address = addressEl.textContent.trim().replace(/\s+/g, ' ');
+      }
+
+      // Working hours
+      let workingHours: string | undefined = undefined;
+      const hoursEl = document.querySelector(
+        '[itemprop="openingHours"], [class*="hours"], [class*="schedule"]',
+      );
+      if (hoursEl && hoursEl.textContent) {
+        workingHours = hoursEl.textContent.trim().replace(/\s+/g, ' ');
+      }
+
+      // Social Links
+      const socialLinks: Array<{ platform: string; url: string }> = [];
+      const links = document.querySelectorAll('a[href]');
+      const platforms = [
+        { name: 'telegram', regex: /t\.me|telegram/i },
+        { name: 'whatsapp', regex: /wa\.me|whatsapp/i },
+        { name: 'vk', regex: /vk\.com/i },
+        { name: 'instagram', regex: /instagram\.com/i },
+        { name: 'facebook', regex: /facebook\.com/i },
+        { name: 'linkedin', regex: /linkedin\.com/i },
+        { name: 'youtube', regex: /youtube\.com/i },
+      ];
+      for (let i = 0; i < links.length; i++) {
+        const href = links[i]?.getAttribute('href') || '';
+        for (const p of platforms) {
+          if (p.regex.test(href) && !socialLinks.some((s) => s.platform === p.name)) {
+            socialLinks.push({ platform: p.name, url: href });
+          }
+        }
+      }
+
+      // Services
+      const services: string[] = [];
+      const serviceHeadings = document.querySelectorAll(
+        '[class*="service"] h2, [class*="service"] h3, [class*="service"] h4, [class*="service"] li',
+      );
+      for (let i = 0; i < Math.min(serviceHeadings.length, 8); i++) {
+        const txt = serviceHeadings[i]?.textContent?.trim();
+        if (txt && txt.length > 2 && txt.length < 80) {
+          services.push(txt);
+        }
+      }
+
+      return {
+        colors,
+        fontFamilies,
+        faviconUrl,
+        logoUrl,
+        phone,
+        email,
+        address,
+        workingHours,
+        socialLinks,
+        services,
+      };
+    });
+  }
+
+  /**
    * Captures Desktop (1440x900) and Mobile (375x812) screenshots
    */
   async captureScreenshots(url: string): Promise<ScreenshotResult> {
@@ -100,7 +257,7 @@ export class BrowserService {
   }
 
   /**
-   * Executes complete crawler pass: Desktop & Mobile screenshots, Axe-core WCAG audit, and Core Web Vitals
+   * Executes complete crawler pass: Desktop & Mobile screenshots, Axe-core WCAG audit, Core Web Vitals, and Brand DNA
    */
   async captureFullAudit(url: string): Promise<FullAuditCrawlingResult> {
     const browser = await this.getBrowser();
@@ -110,6 +267,7 @@ export class BrowserService {
     let mobileBuffer: Buffer;
     let a11yResult: AxeAuditResult;
     let vitalsResult: VitalsAuditResult;
+    let rawBrandData: RawBrandExtractionData;
 
     // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
@@ -127,6 +285,8 @@ export class BrowserService {
         type: 'png',
         fullPage: false,
       });
+      // Extract brand data on Desktop viewport where full layout is present
+      rawBrandData = await this.extractRawBrandData(page);
     } finally {
       await desktopContext.close();
     }
@@ -166,6 +326,7 @@ export class BrowserService {
       mobileBuffer,
       a11yResult,
       vitalsResult,
+      rawBrandData,
     };
   }
 

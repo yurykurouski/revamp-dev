@@ -95,6 +95,18 @@ describe('AuditWorker (@revamp/workers)', () => {
         performanceScore: 90,
         standardsScore: 100,
       },
+      rawBrandData: {
+        colors: ['rgb(79, 70, 229)', 'rgb(255, 255, 255)'],
+        fontFamilies: ['Inter'],
+        faviconUrl: 'https://example.com/favicon.ico',
+        logoUrl: 'https://example.com/logo.png',
+        phone: '+1 555-1234',
+        email: 'info@example.com',
+        address: '123 Test St',
+        workingHours: '9-18',
+        socialLinks: [{ platform: 'telegram', url: 'https://t.me/test' }],
+        services: ['General Dentistry'],
+      },
     });
 
     vi.mocked(ImageService.compressToWebp)
@@ -188,6 +200,11 @@ describe('AuditWorker (@revamp/workers)', () => {
           mobileFriendlinessRating: 80,
           criticalFlaws: expect.any(Array),
         }),
+        extractedBrandTokens: expect.objectContaining({
+          primaryColor: expect.any(String),
+          secondaryColor: expect.any(String),
+          accentColor: expect.any(String),
+        }),
       }),
       { new: true },
     );
@@ -195,10 +212,12 @@ describe('AuditWorker (@revamp/workers)', () => {
     // Lead score and status update
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
       'lead-123',
-      {
+      expect.objectContaining({
         status: 'AUDITED',
         totalScore: 85,
-      },
+        contactPhone: '+1 555-1234',
+        city: '123 Test St',
+      }),
     );
 
     expect(result).toEqual(
@@ -210,6 +229,8 @@ describe('AuditWorker (@revamp/workers)', () => {
         lcp: 2.1,
         totalScore: 85,
         aiFallbackUsed: false,
+        extractedBrandTokens: expect.any(Object),
+        contacts: expect.objectContaining({ phone: '+1 555-1234' }),
       }),
     );
   });
