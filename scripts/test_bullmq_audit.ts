@@ -10,7 +10,7 @@ import { browserService } from '../apps/workers/src/services/browser.service.js'
 
 async function testBullMQWorker() {
   console.log(`\n======================================================`);
-  console.log(`⚡ Testing End-to-End BullMQ Audit Worker Pipeline`);
+  console.log(`⚡ Testing End-to-End BullMQ Audit Worker Pipeline (REV-9)`);
   console.log(`======================================================\n`);
 
   await mongoose.connect(env.MONGODB_URI);
@@ -24,14 +24,14 @@ async function testBullMQWorker() {
   const auditQueue = new Queue(QUEUE_NAMES.AUDIT, { connection: redisConnection });
 
   // Create Lead & Audit in Mongo
-  const targetUrl = 'https://news.ycombinator.com';
+  const targetUrl = process.argv[2] || 'https://news.ycombinator.com';
   const domain = new URL(targetUrl).hostname;
   const lead = await Lead.create({
-    businessName: `${domain} (BullMQ Demo)`,
+    businessName: `${domain} (REV-9 Demo)`,
     originalUrl: targetUrl,
     domain: domain,
     niche: 'other',
-    contactEmail: `news@${domain}`,
+    contactEmail: `contact@${domain}`,
     status: 'QUEUED',
   });
   const audit = await Audit.create({
@@ -43,6 +43,7 @@ async function testBullMQWorker() {
   const job = await auditQueue.add('audit-lead', {
     leadId: lead._id.toString(),
     url: targetUrl,
+    niche: 'other',
   });
 
   const queueEvents = new QueueEvents(QUEUE_NAMES.AUDIT, { connection: redisConnection });
@@ -51,18 +52,35 @@ async function testBullMQWorker() {
   console.log(`[4] Job enqueued with ID: ${job.id}. Waiting for worker to complete...`);
 
   // Wait for job completion
-  await job.waitUntilFinished(queueEvents, 45000);
+  await job.waitUntilFinished(queueEvents, 60000);
   console.log(`[5] BullMQ job ${job.id} finished successfully!`);
 
   // Verify MongoDB status
   const updatedAudit = await Audit.findById(audit._id);
   const updatedLead = await Lead.findById(lead._id);
 
-  console.log(`\n📋 MongoDB Verification:`);
-  console.log(`- Lead status:   ${updatedLead?.status}`);
-  console.log(`- Audit status:  ${updatedAudit?.status}`);
-  console.log(`- Desktop WebP:  ${updatedAudit?.desktopScreenshotUrl}`);
-  console.log(`- Mobile WebP:   ${updatedAudit?.mobileScreenshotUrl}`);
+  console.log(`\n📋 MongoDB Verification (REV-9 DoD):`);
+  console.log(`- Lead status:    ${updatedLead?.status}`);
+  console.log(`- Lead score:     ${updatedLead?.totalScore}/100`);
+  console.log(`- Audit status:   ${updatedAudit?.status}`);
+  console.log(`- Total Score:    ${updatedAudit?.scores.total}/100`);
+  console.log(`  * Design:       ${updatedAudit?.scores.design}/100`);
+  console.log(`  * Performance:  ${updatedAudit?.scores.performance}/100`);
+  console.log(`  * Accessibility:${updatedAudit?.scores.accessibility}/100`);
+  console.log(`  * Standards:    ${updatedAudit?.scores.standards}/100`);
+  console.log(`- AI Fallback:    ${updatedAudit?.aiFallbackUsed}`);
+  console.log(`- Visual rating:  ${updatedAudit?.designCritique.visualHierarchyRating}/100`);
+  console.log(`- Mobile rating:  ${updatedAudit?.designCritique.mobileFriendlinessRating}/100`);
+  console.log(`- Critical Flaws: (${updatedAudit?.designCritique.criticalFlaws.length})`);
+  updatedAudit?.designCritique.criticalFlaws.forEach((flaw, i) => {
+    console.log(`    ${i + 1}. [${flaw.title}] -> Impact: ${flaw.impact}`);
+  });
+  console.log(`- Quick Wins:     (${updatedAudit?.designCritique.quickWins.length})`);
+  updatedAudit?.designCritique.quickWins.forEach((win, i) => {
+    console.log(`    ${i + 1}. ${win}`);
+  });
+  console.log(`- Desktop WebP:   ${updatedAudit?.desktopScreenshotUrl}`);
+  console.log(`- Mobile WebP:    ${updatedAudit?.mobileScreenshotUrl}`);
 
   await queueEvents.close();
   await auditWorker.close();

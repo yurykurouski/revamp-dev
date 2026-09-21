@@ -7,13 +7,15 @@ import { Lead } from '../models/Lead.model.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
 import { storageService } from '../services/storage.service.js';
+import { designCritiqueService } from '../services/design-critique.service.js';
+import { ScoringService } from '../services/scoring.service.js';
 
 export const createAuditWorker = (): Worker => {
   const worker = new Worker<IAuditJobData>(
     QUEUE_NAMES.AUDIT,
     async (job: Job<IAuditJobData>) => {
-      const { leadId, url } = job.data;
-      console.log(`[AuditWorker] Received job ${job.id} for lead: ${leadId}, URL: ${url}`);
+      const { leadId, url, niche } = job.data;
+      console.log(`[AuditWorker] Received job ${job.id} for lead: ${leadId}, URL: ${url}, niche: ${niche}`);
 
       // 1. Update Lead and Audit status to denote active processing
       await Promise.all([
@@ -44,11 +46,11 @@ export const createAuditWorker = (): Worker => {
           vitalsResult,
         } = await browserService.captureFullAudit(url);
 
-        // 4. Compress screenshots to modern WebP format
+        // 4. Compress screenshots to modern WebP format (max 1024px width for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
         const [desktopWebp, mobileWebp] = await Promise.all([
-          ImageService.compressToWebp(desktopBuffer, { quality: 80 }),
-          ImageService.compressToWebp(mobileBuffer, { quality: 80 }),
+          ImageService.compressToWebp(desktopBuffer, { quality: 80, maxWidth: 1024 }),
+          ImageService.compressToWebp(mobileBuffer, { quality: 80, maxWidth: 1024 }),
         ]);
 
         // 5. Upload WebP images to S3 / MinIO
@@ -58,17 +60,32 @@ export const createAuditWorker = (): Worker => {
           storageService.uploadScreenshot(leadId, 'mobile', mobileWebp),
         ]);
 
-        // 6. Aggregate Scores (Design score will be computed in REV-9 by Vision LLM)
-        const totalScore = Math.round(
-          a11yResult.a11yScore * 0.4 +
-            vitalsResult.performanceScore * 0.4 +
-            vitalsResult.standardsScore * 0.2,
-        );
+        // 6. Vision LLM UX/UI Critique (DesignCritiqueAgent - REV-9)
+        console.log(`[AuditWorker] Running Vision UX/UI analysis for lead ${leadId}...`);
+        const critiqueResult = await designCritiqueService.analyzeDesign({
+          mobileScreenshotWebp: mobileWebp,
+          desktopScreenshotWebp: desktopWebp,
+          niche,
+          a11yScore: a11yResult.a11yScore,
+          lcpSeconds: vitalsResult.lcpSeconds,
+          originalUrl: url,
+        });
 
-        // 7. Update Audit document in MongoDB with full deterministic metrics
+        // 7. Calculate Composite Scores (Formula: 0.35 Design + 0.25 Perf + 0.20 A11y + 0.20 Standards)
+        const designScore = ScoringService.calculateDesignScore(critiqueResult.critique);
+        const scores = ScoringService.calculateCompositeScore({
+          designScore,
+          performanceScore: vitalsResult.performanceScore,
+          accessibilityScore: a11yResult.a11yScore,
+          standardsScore: vitalsResult.standardsScore,
+        });
+
+        // 8. Update Audit document in MongoDB with full metrics, critique, and COMPLETED status
         await Audit.findOneAndUpdate(
           { leadId },
           {
+            status: 'COMPLETED',
+            completedAt: new Date(),
             desktopScreenshotUrl,
             mobileScreenshotUrl,
             screenshotUrls: {
@@ -77,27 +94,28 @@ export const createAuditWorker = (): Worker => {
             },
             a11yScore: a11yResult.a11yScore,
             lcp: vitalsResult.lcpSeconds,
-            scores: {
-              total: totalScore,
-              design: 0,
-              accessibility: a11yResult.a11yScore,
-              performance: vitalsResult.performanceScore,
-              standards: vitalsResult.standardsScore,
-            },
+            scores,
             lighthouseMetrics: vitalsResult.lighthouseMetrics,
             a11ySummary: a11yResult.summary,
+            designCritique: critiqueResult.critique,
+            aiFallbackUsed: critiqueResult.aiFallbackUsed,
           },
           { new: true },
         ).exec();
 
-        // 8. Update Lead totalScore
-        await Lead.findByIdAndUpdate(leadId, { totalScore }).exec();
+        // 9. Update Lead status to AUDITED and save totalScore
+        await Lead.findByIdAndUpdate(leadId, {
+          status: 'AUDITED',
+          totalScore: scores.total,
+        }).exec();
 
         console.log(
           `[AuditWorker] Successfully completed audit for lead ${leadId}:\n` +
-            `   - a11yScore:   ${a11yResult.a11yScore}/100 (${a11yResult.summary.violationsCount} violations)\n` +
-            `   - LCP:         ${vitalsResult.lcpSeconds}s (Perf score: ${vitalsResult.performanceScore}/100)\n` +
-            `   - Standards:   ${vitalsResult.standardsScore}/100 (SSL: ${vitalsResult.standards.hasSsl})\n` +
+            `   - Total Score: ${scores.total}/100\n` +
+            `   - Design:      ${scores.design}/100 (Fallback used: ${critiqueResult.aiFallbackUsed})\n` +
+            `   - a11yScore:   ${scores.accessibility}/100 (${a11yResult.summary.violationsCount} violations)\n` +
+            `   - Performance: ${scores.performance}/100 (LCP: ${vitalsResult.lcpSeconds}s)\n` +
+            `   - Standards:   ${scores.standards}/100 (SSL: ${vitalsResult.standards.hasSsl})\n` +
             `   - Desktop URL: ${desktopScreenshotUrl}\n` +
             `   - Mobile URL:  ${mobileScreenshotUrl}`,
         );
@@ -110,7 +128,10 @@ export const createAuditWorker = (): Worker => {
           lcp: vitalsResult.lcpSeconds,
           desktopScreenshotUrl,
           mobileScreenshotUrl,
-          totalScore,
+          totalScore: scores.total,
+          scores,
+          designCritique: critiqueResult.critique,
+          aiFallbackUsed: critiqueResult.aiFallbackUsed,
           processedAt: new Date().toISOString(),
         };
       } catch (error: unknown) {
@@ -123,6 +144,7 @@ export const createAuditWorker = (): Worker => {
         await Audit.findOneAndUpdate(
           { leadId },
           {
+            status: 'FAILED',
             errorMessage,
           },
         ).exec();
