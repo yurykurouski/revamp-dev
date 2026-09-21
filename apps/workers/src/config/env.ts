@@ -18,6 +18,7 @@ const EnvSchema = z.object({
   S3_BUCKET_DEMOS: z.string().default('revamp-demos'),
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
+  GEMINI_API_KEY: z.string().optional(),
 });
 
 export const env = EnvSchema.parse(process.env);

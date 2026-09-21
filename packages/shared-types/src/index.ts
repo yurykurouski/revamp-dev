@@ -143,6 +143,8 @@ export interface IAudit {
   screenshotUrls: IScreenshotUrls;
   aiFallbackUsed?: boolean;
   errorMessage?: string;
+  extractedServices?: string[];
+  generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;
 }
