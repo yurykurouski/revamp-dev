@@ -110,6 +110,24 @@ export const CreateLeadSchema = z.object({
   ownerName: z.string().max(100).optional(),
 });
 
+export const QuickAddLeadSchema = z.object({
+  url: z.preprocess((val) => {
+    if (typeof val === 'string') {
+      const trimmed = val.trim();
+      if (!/^https?:\/\//i.test(trimmed) && trimmed.includes('.')) {
+        return `https://${trimmed}`;
+      }
+      return trimmed;
+    }
+    return val;
+  }, z.string().url('Укажите корректный URL сайта (например, https://example.com)')),
+  niche: NicheEnumSchema.default('other'),
+  businessName: z.string().min(2).max(100).optional(),
+  contactEmail: z.string().email('Некорректный адрес электронной почты').optional().or(z.literal('')),
+});
+
+export type QuickAddLeadInput = z.infer<typeof QuickAddLeadSchema>;
+
 export type CreateLeadDto = z.infer<typeof CreateLeadSchema>;
 
 /**

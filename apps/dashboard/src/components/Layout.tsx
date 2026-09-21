@@ -9,11 +9,11 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ children }) => {
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: '#F8FAFC' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', backgroundColor: 'background.default' }}>
       <Sidebar />
-      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column' }}>
+      <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Header />
-        <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+        <Box component="main" sx={{ flexGrow: 1, p: 3, overflowX: 'auto' }}>
           {children}
         </Box>
       </Box>

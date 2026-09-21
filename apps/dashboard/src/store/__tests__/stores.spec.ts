@@ -1,18 +1,25 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useLeadFilterStore } from '../useLeadFilterStore.js';
 import { useHitlModalStore, BREAKPOINT_WIDTHS } from '../useHitlModalStore.js';
+import { useThemeStore } from '../useThemeStore.js';
 
 describe('Zustand Dashboard Stores', () => {
   describe('useLeadFilterStore', () => {
     beforeEach(() => {
       useLeadFilterStore.getState().resetFilters();
+      useLeadFilterStore.getState().setViewMode('kanban');
+      useLeadFilterStore.getState().closeAddModal();
     });
 
-    it('should initialize with default empty filters', () => {
+    it('should initialize with default empty filters and kanban view mode', () => {
       const state = useLeadFilterStore.getState();
       expect(state.searchQuery).toBe('');
       expect(state.selectedStatus).toBe('ALL');
       expect(state.selectedNiche).toBe('ALL');
+      expect(state.viewMode).toBe('kanban');
+      expect(state.page).toBe(0);
+      expect(state.pageSize).toBe(10);
+      expect(state.isAddModalOpen).toBe(false);
     });
 
     it('should update search query', () => {
@@ -30,10 +37,34 @@ describe('Zustand Dashboard Stores', () => {
       expect(useLeadFilterStore.getState().selectedNiche).toBe('dental');
     });
 
-    it('should reset all filters to default', () => {
+    it('should toggle view mode between kanban and table', () => {
+      useLeadFilterStore.getState().setViewMode('table');
+      expect(useLeadFilterStore.getState().viewMode).toBe('table');
+
+      useLeadFilterStore.getState().setViewMode('kanban');
+      expect(useLeadFilterStore.getState().viewMode).toBe('kanban');
+    });
+
+    it('should handle pagination changes', () => {
+      useLeadFilterStore.getState().setPage(2);
+      useLeadFilterStore.getState().setPageSize(25);
+      expect(useLeadFilterStore.getState().page).toBe(2);
+      expect(useLeadFilterStore.getState().pageSize).toBe(25);
+    });
+
+    it('should toggle add lead modal state', () => {
+      useLeadFilterStore.getState().openAddModal();
+      expect(useLeadFilterStore.getState().isAddModalOpen).toBe(true);
+
+      useLeadFilterStore.getState().closeAddModal();
+      expect(useLeadFilterStore.getState().isAddModalOpen).toBe(false);
+    });
+
+    it('should reset all filters to default and reset page to 0', () => {
       useLeadFilterStore.getState().setSearchQuery('Test Query');
       useLeadFilterStore.getState().setSelectedStatus('SENT');
       useLeadFilterStore.getState().setSelectedNiche('auto');
+      useLeadFilterStore.getState().setPage(4);
 
       useLeadFilterStore.getState().resetFilters();
 
@@ -41,6 +72,7 @@ describe('Zustand Dashboard Stores', () => {
       expect(state.searchQuery).toBe('');
       expect(state.selectedStatus).toBe('ALL');
       expect(state.selectedNiche).toBe('ALL');
+      expect(state.page).toBe(0);
     });
   });
 
@@ -89,6 +121,27 @@ describe('Zustand Dashboard Stores', () => {
       expect(state.isOpen).toBe(false);
       expect(state.selectedLeadId).toBeNull();
       expect(state.selectedAuditId).toBeNull();
+    });
+  });
+
+  describe('useThemeStore', () => {
+    it('should toggle theme mode between light and dark', () => {
+      useThemeStore.getState().setTheme('light');
+      expect(useThemeStore.getState().mode).toBe('light');
+
+      useThemeStore.getState().toggleTheme();
+      expect(useThemeStore.getState().mode).toBe('dark');
+
+      useThemeStore.getState().toggleTheme();
+      expect(useThemeStore.getState().mode).toBe('light');
+    });
+
+    it('should explicitly set theme mode', () => {
+      useThemeStore.getState().setTheme('dark');
+      expect(useThemeStore.getState().mode).toBe('dark');
+
+      useThemeStore.getState().setTheme('light');
+      expect(useThemeStore.getState().mode).toBe('light');
     });
   });
 });

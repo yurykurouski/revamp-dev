@@ -5,7 +5,6 @@ import {
   Card,
   CardContent,
   Grid,
-  Chip,
   TextField,
   InputAdornment,
   MenuItem,
@@ -13,91 +12,59 @@ import {
   FormControl,
   InputLabel,
   Button,
+  CircularProgress,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
 import SendIcon from '@mui/icons-material/Send';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
-import { useHitlModalStore } from '../store/useHitlModalStore.js';
-import { NicheType } from '@revamp/shared-types';
-
-interface LeadItem {
-  id: string;
-  businessName: string;
-  originalUrl: string;
-  niche: string;
-  city: string;
-  totalScore: number;
-  status: 'PENDING' | 'AWAITING_APPROVAL' | 'SENT' | 'ENGAGED';
-}
-
-const mockLeads: LeadItem[] = [
-  {
-    id: 'lead-1',
-    businessName: 'Стоматология "Дента Люкс"',
-    originalUrl: 'https://dental-lux-spb.example.com',
-    niche: 'dental',
-    city: 'Санкт-Петербург',
-    totalScore: 42,
-    status: 'AWAITING_APPROVAL',
-  },
-  {
-    id: 'lead-2',
-    businessName: 'Автосервис "Мотор Экспресс"',
-    originalUrl: 'https://motor-express.example.com',
-    niche: 'auto',
-    city: 'Москва',
-    totalScore: 36,
-    status: 'AWAITING_APPROVAL',
-  },
-  {
-    id: 'lead-3',
-    businessName: 'Юридическое бюро "Щит и Закон"',
-    originalUrl: 'https://shield-legal.example.com',
-    niche: 'legal',
-    city: 'Казань',
-    totalScore: 58,
-    status: 'SENT',
-  },
-  {
-    id: 'lead-4',
-    businessName: 'Клиника косметологии "Эстетик"',
-    originalUrl: 'https://estetik-clinic.example.com',
-    niche: 'beauty',
-    city: 'Екатеринбург',
-    totalScore: 49,
-    status: 'ENGAGED',
-  },
-];
+import { useLeadsQuery } from '../hooks/useLeads.js';
+import { KanbanBoard } from '../components/KanbanBoard.js';
+import { LeadsDataGrid } from '../components/LeadsDataGrid.js';
+import { AddLeadModal } from '../components/AddLeadModal.js';
+import { LeadStatus, NicheType } from '@revamp/shared-types';
 
 export const LeadsPage: React.FC = () => {
-  const { searchQuery, selectedNiche, setSearchQuery, setSelectedNiche } = useLeadFilterStore();
-  const { openModal } = useHitlModalStore();
+  const {
+    searchQuery,
+    selectedStatus,
+    selectedNiche,
+    viewMode,
+    setSearchQuery,
+    setSelectedStatus,
+    setSelectedNiche,
+    resetFilters,
+  } = useLeadFilterStore();
 
-  const filteredLeads = mockLeads.filter((lead) => {
-    const matchesSearch = lead.businessName.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesNiche = selectedNiche === 'ALL' || lead.niche === selectedNiche;
-    return matchesSearch && matchesNiche;
-  });
+  const { data, isLoading, isError } = useLeadsQuery();
+
+  const leads = data?.leads ?? [];
+  const kpi = data?.kpi ?? {
+    totalLeads: leads.length,
+    needsApproval: leads.filter((l) => l.status === 'NEEDS_APPROVAL').length,
+    scheduled: leads.filter((l) => l.status === 'SCHEDULED').length,
+    sent: leads.filter((l) => l.status === 'SENT').length,
+    engaged: leads.filter((l) => l.status === 'CLICKED' || l.status === 'OPENED').length,
+  };
 
   return (
     <Box>
       {/* Top Metrics Cards */}
-      <Grid container spacing={2.5} sx={{ mb: 4 }}>
+      <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
         <Grid item xs={12} sm={6} md={3}>
           <Card>
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary">
-                  Всего лидов
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
+                  Всего лидов в воронке
                 </Typography>
-                <CheckCircleOutlineIcon sx={{ color: '#4F46E5', fontSize: 22 }} />
+                <CheckCircleOutlineIcon sx={{ color: 'primary.main', fontSize: 22 }} />
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#0F172A' }}>
-                24
+              <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary' }}>
+                {kpi.totalLeads}
               </Typography>
             </CardContent>
           </Card>
@@ -107,13 +74,13 @@ export const LeadsPage: React.FC = () => {
           <Card sx={{ borderLeft: '4px solid #F59E0B' }}>
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
                   Ожидают аппрува (HITL)
                 </Typography>
                 <PendingActionsIcon sx={{ color: '#F59E0B', fontSize: 22 }} />
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#F59E0B' }}>
-                8
+              <Typography variant="h4" sx={{ fontWeight: 800, color: '#F59E0B' }}>
+                {kpi.needsApproval}
               </Typography>
             </CardContent>
           </Card>
@@ -123,13 +90,13 @@ export const LeadsPage: React.FC = () => {
           <Card>
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
                   Отправлено писем
                 </Typography>
                 <SendIcon sx={{ color: '#10B981', fontSize: 22 }} />
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#0F172A' }}>
-                12
+              <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary' }}>
+                {kpi.sent}
               </Typography>
             </CardContent>
           </Card>
@@ -139,13 +106,13 @@ export const LeadsPage: React.FC = () => {
           <Card>
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
                   Изучили демо (Engaged)
                 </Typography>
                 <VisibilityIcon sx={{ color: '#06B6D4', fontSize: 22 }} />
               </Box>
-              <Typography variant="h4" sx={{ fontWeight: 700, color: '#06B6D4' }}>
-                5
+              <Typography variant="h4" sx={{ fontWeight: 800, color: '#06B6D4' }}>
+                {kpi.engaged}
               </Typography>
             </CardContent>
           </Card>
@@ -154,23 +121,41 @@ export const LeadsPage: React.FC = () => {
 
       {/* Filter Bar */}
       <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center' }}>
+        <CardContent sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
-            placeholder="Поиск по названию бизнеса..."
+            placeholder="Поиск по сайту, названию или городу..."
             size="small"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: '#94A3B8', fontSize: 20 }} />
+                  <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
                 </InputAdornment>
               ),
             }}
-            sx={{ width: 320 }}
+            sx={{ width: { xs: '100%', sm: 300 } }}
           />
 
-          <FormControl size="small" sx={{ width: 200 }}>
+          <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 } }}>
+            <InputLabel id="status-select-label">Статус воронки</InputLabel>
+            <Select
+              labelId="status-select-label"
+              label="Статус воронки"
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as LeadStatus | 'ALL')}
+            >
+              <MenuItem value="ALL">Все статусы</MenuItem>
+              <MenuItem value="QUEUED">В очереди</MenuItem>
+              <MenuItem value="NEEDS_APPROVAL">Ожидает ревью</MenuItem>
+              <MenuItem value="SCHEDULED">Запланировано</MenuItem>
+              <MenuItem value="SENT">Отправлено</MenuItem>
+              <MenuItem value="OPENED">Открыто</MenuItem>
+              <MenuItem value="CLICKED">Изучает демо</MenuItem>
+            </Select>
+          </FormControl>
+
+          <FormControl size="small" sx={{ width: { xs: '100%', sm: 190 } }}>
             <InputLabel id="niche-select-label">Ниша бизнеса</InputLabel>
             <Select
               labelId="niche-select-label"
@@ -179,68 +164,54 @@ export const LeadsPage: React.FC = () => {
               onChange={(e) => setSelectedNiche(e.target.value as NicheType | 'ALL')}
             >
               <MenuItem value="ALL">Все ниши</MenuItem>
-              <MenuItem value="dental">Стоматология</MenuItem>
-              <MenuItem value="auto">Автосервис</MenuItem>
-              <MenuItem value="legal">Юристы</MenuItem>
-              <MenuItem value="beauty">Салоны красоты</MenuItem>
+              <MenuItem value="dental">🦷 Стоматология</MenuItem>
+              <MenuItem value="auto">🚗 Автосервис</MenuItem>
+              <MenuItem value="legal">⚖️ Юристы</MenuItem>
+              <MenuItem value="beauty">💇 Салоны красоты</MenuItem>
+              <MenuItem value="restaurant">🍽️ Рестораны</MenuItem>
+              <MenuItem value="fitness">🏋️ Фитнес</MenuItem>
+              <MenuItem value="other">📦 Прочий бизнес</MenuItem>
             </Select>
           </FormControl>
+
+          {(searchQuery || selectedStatus !== 'ALL' || selectedNiche !== 'ALL') && (
+            <Button
+              variant="text"
+              color="inherit"
+              size="small"
+              startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
+              onClick={resetFilters}
+              sx={{ color: 'text.secondary' }}
+            >
+              Сбросить
+            </Button>
+          )}
+
+          <Box sx={{ flexGrow: 1 }} />
+
+          <Typography variant="body2" color="text.secondary">
+            Найдено: <strong>{leads.length}</strong>
+          </Typography>
         </CardContent>
       </Card>
 
-      {/* Leads List */}
-      <Grid container spacing={2}>
-        {filteredLeads.map((lead) => (
-          <Grid item xs={12} md={6} key={lead.id}>
-            <Card sx={{ p: 2.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                <Box>
-                  <Typography variant="h6" sx={{ fontWeight: 600, color: '#0F172A', mb: 0.5 }}>
-                    {lead.businessName}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    {lead.city} • Ниша: {lead.niche}
-                  </Typography>
-                </Box>
-                <Chip
-                  label={`Скоринг: ${lead.totalScore}/100`}
-                  size="small"
-                  sx={{
-                    fontWeight: 700,
-                    backgroundColor: lead.totalScore < 50 ? '#FEE2E2' : '#FEF3C7',
-                    color: lead.totalScore < 50 ? '#DC2626' : '#D97706',
-                  }}
-                />
-              </Box>
+      {/* Main View: Kanban vs Table */}
+      {isLoading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+          <CircularProgress />
+        </Box>
+      ) : isError ? (
+        <Box sx={{ textAlign: 'center', py: 6, color: 'error.main' }}>
+          <Typography variant="h6">Не удалось загрузить лиды</Typography>
+        </Box>
+      ) : viewMode === 'kanban' ? (
+        <KanbanBoard leads={leads} />
+      ) : (
+        <LeadsDataGrid leads={leads} isLoading={isLoading} />
+      )}
 
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pt: 1, borderTop: '1px solid #F1F5F9' }}>
-                <Typography variant="caption" sx={{ color: '#64748B' }}>
-                  URL: {lead.originalUrl}
-                </Typography>
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  {lead.status === 'AWAITING_APPROVAL' && (
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      size="small"
-                      startIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
-                      onClick={() => openModal(lead.id, `audit-${lead.id}`)}
-                    >
-                      HITL Ревью & Аппрув
-                    </Button>
-                  )}
-                  {lead.status === 'SENT' && (
-                    <Chip label="Письмо отправлено" size="small" color="success" variant="outlined" />
-                  )}
-                  {lead.status === 'ENGAGED' && (
-                    <Chip label="Смотрит демо" size="small" color="secondary" />
-                  )}
-                </Box>
-              </Box>
-            </Card>
-          </Grid>
-        ))}
-      </Grid>
+      {/* Quick Add Lead Modal Dialog */}
+      <AddLeadModal />
     </Box>
   );
 };
