@@ -82,6 +82,16 @@ async function testBullMQWorker() {
   console.log(`- Desktop WebP:   ${updatedAudit?.desktopScreenshotUrl}`);
   console.log(`- Mobile WebP:    ${updatedAudit?.mobileScreenshotUrl}`);
 
+  console.log(`\n🎨 Extracted Brand Tokens & Factual Data (REV-10 DoD):`);
+  console.log(`- Primary Color:   ${updatedAudit?.extractedBrandTokens?.primaryColor}`);
+  console.log(`- Secondary Color: ${updatedAudit?.extractedBrandTokens?.secondaryColor}`);
+  console.log(`- Accent Color:    ${updatedAudit?.extractedBrandTokens?.accentColor}`);
+  console.log(`- Font Families:   ${updatedAudit?.extractedBrandTokens?.fontFamilies?.join(', ')}`);
+  console.log(`- Favicon URL:     ${updatedAudit?.extractedBrandTokens?.faviconUrl || 'N/A'}`);
+  console.log(`- Logo URL:        ${updatedAudit?.extractedBrandTokens?.logoUrl?.startsWith('data:image/svg') ? 'Generated SVG Monogram' : updatedAudit?.extractedBrandTokens?.logoUrl || 'N/A'}`);
+  console.log(`- Enriched Phone:  ${updatedLead?.contactPhone || 'N/A'}`);
+  console.log(`- Enriched City:   ${updatedLead?.city || 'N/A'}`);
+
   await queueEvents.close();
   await auditWorker.close();
   await auditQueue.close();
