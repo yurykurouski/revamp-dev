@@ -2,6 +2,28 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserService } from '../browser.service.js';
 import { chromium } from 'playwright';
 
+vi.mock('../axe.service.js', () => ({
+  axeService: {
+    scanPage: vi.fn().mockResolvedValue({
+      a11yScore: 85,
+      summary: { violationsCount: 2, contrastIssuesCount: 1, missingAltCount: 1, criticalViolations: [] },
+      rawViolations: [],
+    }),
+  },
+}));
+
+vi.mock('../vitals.service.js', () => ({
+  vitalsService: {
+    collectVitals: vi.fn().mockResolvedValue({
+      lcpSeconds: 1.8,
+      lighthouseMetrics: { lcp: 1800, cls: 0.02, speedIndex: 1700 },
+      standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+      performanceScore: 95,
+      standardsScore: 100,
+    }),
+  },
+}));
+
 vi.mock('playwright', () => {
   return {
     chromium: {
@@ -115,6 +137,17 @@ describe('BrowserService', () => {
     expect(mockPage.waitForLoadState).toHaveBeenCalledWith('domcontentloaded', { timeout: 10000 });
     expect(result.desktopBuffer).toBeDefined();
     expect(result.mobileBuffer).toBeDefined();
+  });
+
+  it('should execute captureFullAudit returning screenshots, a11yResult, and vitalsResult', async () => {
+    const service = new BrowserService(20);
+    const result = await service.captureFullAudit('https://full-audit-test.com');
+
+    expect(result.desktopBuffer).toBeInstanceOf(Buffer);
+    expect(result.mobileBuffer).toBeInstanceOf(Buffer);
+    expect(result.a11yResult.a11yScore).toBe(85);
+    expect(result.vitalsResult.lcpSeconds).toBe(1.8);
+    expect(mockContext.close).toHaveBeenCalledTimes(2);
   });
 
   it('should close browser gracefully on close()', async () => {
