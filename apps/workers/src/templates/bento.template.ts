@@ -1070,11 +1070,11 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
         </p>
 
         <div class="hero-actions">
-          <a href="#booking" class="btn-primary">
+          <a href="#booking" class="btn-primary" data-revamp-cta="primary-booking">
             <span>${primaryCtaText}</span>
             ${getLucideIconSvg('arrow-right', { size: 18 })}
           </a>
-          <a href="tel:${phoneClean}" class="btn-secondary">
+          <a href="tel:${phoneClean}" class="btn-secondary" data-revamp-cta="call">
             ${getLucideIconSvg('phone', { size: 18 })}
             <span>${secondaryCtaText}</span>
           </a>
@@ -1315,12 +1315,16 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
               ? `
           try {
             if (navigator.sendBeacon) {
-              navigator.sendBeacon('/api/v1/track/booking/${data.trackingToken}', JSON.stringify({
-                name: nameVal,
-                phone: phoneVal,
-                service: serviceSelect ? serviceSelect.value : '',
-                timestamp: new Date().toISOString()
-              }));
+              navigator.sendBeacon('/api/v1/track/mvp-event', new Blob([JSON.stringify({
+                token: '${data.trackingToken}',
+                eventType: 'booking_intent',
+                metadata: {
+                  name: nameVal,
+                  phone: phoneVal,
+                  service: serviceSelect ? serviceSelect.value : '',
+                  timestamp: new Date().toISOString()
+                }
+              })], { type: 'application/json' }));
             }
           } catch (err) {}
           `
@@ -1362,6 +1366,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       });
     })();
   </script>
+  <script src="/api/v1/track/revamp-tracker.js" data-token="${data.trackingToken || ''}" async></script>
 </body>
 </html>`;
 }

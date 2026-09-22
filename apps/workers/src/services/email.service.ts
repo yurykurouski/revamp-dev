@@ -273,6 +273,17 @@ export class EmailService {
       }
     }
 
+    // Append 1x1 tracking pixel to HTML (REV-18)
+    const trackingPixelUrl = `${publicUrl}/track/open/${trackingToken}.gif`;
+    if (!preparedHtml.includes(trackingPixelUrl)) {
+      const trackingPixelHtml = `\n<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;width:1px;height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;" alt="" />`;
+      if (preparedHtml.includes('</body>')) {
+        preparedHtml = preparedHtml.replace('</body>', `${trackingPixelHtml}\n</body>`);
+      } else {
+        preparedHtml = `${preparedHtml}${trackingPixelHtml}`;
+      }
+    }
+
     // Append 1-click unsubscribe footer to Plain Text
     let preparedText = options.text || '';
     if (!preparedText.includes(unsubscribeUrl)) {

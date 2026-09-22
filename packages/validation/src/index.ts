@@ -267,3 +267,34 @@ export const BentoTemplateDataSchema = z.object({
 
 export type BentoTemplateData = z.infer<typeof BentoTemplateDataSchema>;
 
+/**
+ * 5. Telemetry & Tracking Schemas (REV-18)
+ */
+export const MvpTrackEventSchema = z
+  .object({
+    token: z.string().min(1).optional(),
+    trackingToken: z.string().min(1).optional(),
+    mvpProjectId: z.string().optional(),
+    leadId: z.string().optional(),
+    eventType: z.enum([
+      'open',
+      'click',
+      'pageview',
+      'dwell_time',
+      'cta_click',
+      'booking_intent',
+      'scroll_depth',
+    ]),
+    dwellTimeSeconds: z.number().nonnegative().optional(),
+    scrollDepthPercent: z.number().min(0).max(100).optional(),
+    metadata: z.record(z.unknown()).optional(),
+  })
+  .refine(
+    (data) => Boolean(data.token || data.trackingToken || data.mvpProjectId || data.leadId),
+    {
+      message: 'One of token, trackingToken, mvpProjectId, or leadId must be provided',
+    },
+  );
+
+export type MvpTrackEventDto = z.infer<typeof MvpTrackEventSchema>;
+

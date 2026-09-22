@@ -45,6 +45,10 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       expect(sent.html).toContain('Отписаться от рассылки в 1 клик');
       expect(sent.html).toContain('/track/unsubscribe/token-abc-123');
 
+      // Verify 1x1 tracking pixel injection (REV-18)
+      expect(sent.html).toContain('/track/open/token-abc-123.gif');
+      expect(sent.html).toContain('width="1" height="1"');
+
       // Verify plain text 1-click unsubscribe footer
       expect(sent.text).toContain('Отписаться от рассылки в 1 клик:');
       expect(sent.text).toContain('/track/unsubscribe/token-abc-123');
@@ -52,7 +56,7 @@ describe('EmailService & Providers (@revamp/workers)', () => {
 
     it('should not duplicate unsubscribe footer if it is already present in HTML and text', async () => {
       const customUnsubscribe = 'http://localhost:4000/api/v1/track/unsubscribe/token-xyz';
-      const existingHtml = `<p>Текст письма</p><a href="${customUnsubscribe}">Отписаться</a>`;
+      const existingHtml = `<p>Текст письма</p><a href="${customUnsubscribe}">Отписаться</a><img src="http://localhost:4000/api/v1/track/open/token-xyz.gif" width="1" height="1" style="display:none;" alt="" />`;
       const existingText = `Текст письма. Отписка: ${customUnsubscribe}`;
 
       await service.sendEmail({

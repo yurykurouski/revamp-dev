@@ -11,6 +11,7 @@ import {
   MvpContentOutputSchema,
   EmailDraftOutputSchema,
   BentoTemplateDataSchema,
+  MvpTrackEventSchema,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -355,5 +356,76 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => BentoTemplateDataSchema.parse(emptyServices)).toThrow();
     });
   });
+
+  describe('MvpTrackEventSchema (REV-18 Telemetry)', () => {
+    it('should validate valid telemetry dwell_time event with token', () => {
+      const valid = {
+        token: 'tok-123456',
+        eventType: 'dwell_time',
+        dwellTimeSeconds: 32,
+        scrollDepthPercent: 75,
+        metadata: { referrer: 'https://mail.google.com' },
+      };
+
+      const parsed = MvpTrackEventSchema.parse(valid);
+      expect(parsed.token).toBe('tok-123456');
+      expect(parsed.eventType).toBe('dwell_time');
+      expect(parsed.dwellTimeSeconds).toBe(32);
+      expect(parsed.scrollDepthPercent).toBe(75);
+    });
+
+    it('should validate valid CTA click event with mvpProjectId', () => {
+      const valid = {
+        mvpProjectId: 'mvp-789',
+        eventType: 'cta_click',
+        metadata: { buttonId: 'book-now-btn' },
+      };
+
+      const parsed = MvpTrackEventSchema.parse(valid);
+      expect(parsed.mvpProjectId).toBe('mvp-789');
+      expect(parsed.eventType).toBe('cta_click');
+    });
+
+    it('should reject if none of token, trackingToken, mvpProjectId, or leadId are provided', () => {
+      const invalid = {
+        eventType: 'pageview',
+        dwellTimeSeconds: 10,
+      };
+
+      expect(() => MvpTrackEventSchema.parse(invalid)).toThrow(
+        /One of token, trackingToken, mvpProjectId, or leadId must be provided/,
+      );
+    });
+
+    it('should reject negative dwellTimeSeconds', () => {
+      const invalid = {
+        token: 'tok-abc',
+        eventType: 'dwell_time',
+        dwellTimeSeconds: -5,
+      };
+
+      expect(() => MvpTrackEventSchema.parse(invalid)).toThrow();
+    });
+
+    it('should reject scrollDepthPercent greater than 100', () => {
+      const invalid = {
+        token: 'tok-abc',
+        eventType: 'scroll_depth',
+        scrollDepthPercent: 120,
+      };
+
+      expect(() => MvpTrackEventSchema.parse(invalid)).toThrow();
+    });
+
+    it('should reject invalid eventType', () => {
+      const invalid = {
+        token: 'tok-abc',
+        eventType: 'unknown_event_type',
+      };
+
+      expect(() => MvpTrackEventSchema.parse(invalid)).toThrow();
+    });
+  });
 });
+
 

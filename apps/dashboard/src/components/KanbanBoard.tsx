@@ -15,6 +15,7 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import SendIcon from '@mui/icons-material/Send';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import TouchAppIcon from '@mui/icons-material/TouchApp';
+import WhatshotIcon from '@mui/icons-material/Whatshot';
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
@@ -70,6 +71,13 @@ const COLUMNS: KanbanColumnConfig[] = [
     icon: <TouchAppIcon sx={{ fontSize: 18 }} />,
     color: '#10B981',
     bgColor: 'rgba(16, 185, 129, 0.08)',
+  },
+  {
+    status: 'ENGAGED',
+    title: 'Заинтересован (30с+ / CTA)',
+    icon: <WhatshotIcon sx={{ fontSize: 18 }} />,
+    color: '#EC4899',
+    bgColor: 'rgba(236, 72, 153, 0.08)',
   },
 ];
 

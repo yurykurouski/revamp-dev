@@ -3,8 +3,9 @@ import mongoose from 'mongoose';
 import { Lead } from '../Lead.model.js';
 import { Audit } from '../Audit.model.js';
 import { EmailCampaign } from '../EmailCampaign.model.js';
+import { AnalyticsEvent } from '../AnalyticsEvent.model.js';
 
-describe('Mongoose Models (Lead, Audit & EmailCampaign)', () => {
+describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => {
 
   describe('Lead Model', () => {
     it('should create valid lead document instance with defaults', () => {
@@ -129,5 +130,38 @@ describe('Mongoose Models (Lead, Audit & EmailCampaign)', () => {
       expect(err?.errors['trackingToken']).toBeDefined();
     });
   });
+
+  describe('AnalyticsEvent Model (REV-18)', () => {
+    it('should create valid analytics event with defaults', () => {
+      const event = new AnalyticsEvent({
+        eventType: 'dwell_time',
+        trackingToken: 'tok-xyz',
+        dwellTimeSeconds: 45,
+        scrollDepthPercent: 80,
+        ipHash: 'abc123hash',
+        userAgent: 'Mozilla/5.0 Chrome',
+      });
+
+      const err = event.validateSync();
+      expect(err).toBeUndefined();
+      expect(event.eventType).toBe('dwell_time');
+      expect(event.dwellTimeSeconds).toBe(45);
+      expect(event.scrollDepthPercent).toBe(80);
+      expect(event.timestamp).toBeInstanceOf(Date);
+    });
+
+    it('should fail validation when eventType is missing or invalid', () => {
+      const missing = new AnalyticsEvent({});
+      const err1 = missing.validateSync();
+      expect(err1).toBeDefined();
+      expect(err1?.errors['eventType']).toBeDefined();
+
+      const invalid = new AnalyticsEvent({ eventType: 'invalid_type' });
+      const err2 = invalid.validateSync();
+      expect(err2).toBeDefined();
+      expect(err2?.errors['eventType']).toBeDefined();
+    });
+  });
 });
+
 

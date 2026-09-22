@@ -227,11 +227,26 @@ export interface IEmailCampaign {
 }
 
 // 6. Analytics Event
+export type AnalyticsEventType =
+  | 'open'
+  | 'click'
+  | 'pageview'
+  | 'dwell_time'
+  | 'cta_click'
+  | 'booking_intent'
+  | 'scroll_depth';
+
 export interface IAnalyticsEvent {
   _id: string;
-  mvpProjectId: string;
-  eventType: 'open' | 'click' | 'dwell_time' | 'cta_click' | 'booking_intent';
+  leadId?: string;
+  campaignId?: string;
+  mvpProjectId?: string;
+  trackingToken?: string;
+  eventType: AnalyticsEventType;
   dwellTimeSeconds?: number;
+  scrollDepthPercent?: number;
+  ipHash?: string;
+  userAgent?: string;
   metadata?: Record<string, unknown>;
   timestamp: string | Date;
 }

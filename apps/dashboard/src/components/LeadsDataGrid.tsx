@@ -26,7 +26,7 @@ const STATUS_CONFIG: Partial<
   SENT: { label: 'Отправлен', color: 'info' },
   OPENED: { label: 'Открыт', color: 'secondary' },
   CLICKED: { label: 'Клик по ссылке', color: 'success' },
-  ENGAGED: { label: 'Изучает демо', color: 'success' },
+  ENGAGED: { label: 'Заинтересован (30с+ / CTA)', color: 'secondary' },
   REPLIED: { label: 'Ответил', color: 'success' },
   REJECTED: { label: 'Отказ', color: 'error' },
 };
