@@ -284,6 +284,7 @@ export const MvpTrackEventSchema = z
       'cta_click',
       'booking_intent',
       'scroll_depth',
+      'token_usage',
     ]),
     dwellTimeSeconds: z.number().nonnegative().optional(),
     scrollDepthPercent: z.number().min(0).max(100).optional(),

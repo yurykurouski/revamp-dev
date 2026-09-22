@@ -69,21 +69,47 @@ export class BrowserService {
   private async navigateWithFallback(page: Page, url: string, timeoutMs: number = 25000): Promise<void> {
     try {
       await page.goto(url, {
-        waitUntil: 'networkidle',
+        waitUntil: 'domcontentloaded',
         timeout: timeoutMs,
       });
+      // Soft wait for networkidle up to 3.5s without crashing if tracking/analytics hang
+      await page.waitForLoadState('networkidle', { timeout: 3500 }).catch(() => {});
     } catch (error: unknown) {
       const isTimeout =
         error instanceof Error &&
         (error.name === 'TimeoutError' || error.message.includes('timeout'));
       if (isTimeout) {
         console.warn(
-          `[BrowserService] networkidle timed out for ${url}. Falling back to domcontentloaded...`,
+          `[BrowserService] Navigation timed out for ${url}. Falling back to domcontentloaded...`,
         );
         await page.waitForLoadState('domcontentloaded', { timeout: 10000 }).catch(() => {});
       } else {
         throw error;
       }
+    }
+
+    // Detect Cloudflare / Bot challenge screens
+    try {
+      const pageTitle = typeof page.title === 'function' ? await page.title().catch(() => '') : '';
+      const bodySnippet =
+        typeof page.evaluate === 'function'
+          ? await page.evaluate(() => document.body?.innerText?.slice(0, 500) || '').catch(() => '')
+          : '';
+      const isChallenge =
+        pageTitle.includes('Just a moment...') ||
+        pageTitle.includes('Attention Required!') ||
+        bodySnippet.includes('Checking your browser') ||
+        bodySnippet.includes('Cloudflare') ||
+        bodySnippet.includes('Verify you are human');
+
+      if (isChallenge) {
+        console.warn(
+          `[BrowserService] Cloudflare / Bot challenge detected on ${url}. Waiting up to 5s for auto-redirect/resolution...`,
+        );
+        await page.waitForTimeout(5000);
+      }
+    } catch {
+      // ignore
     }
 
     // Short stabilization wait for web fonts and layout shifts
@@ -179,6 +205,17 @@ export class BrowserService {
       const mailLink = document.querySelector('a[href^="mailto:"]') as HTMLAnchorElement | null;
       if (mailLink) {
         email = mailLink.getAttribute('href')?.replace(/^mailto:/i, '').split('?')[0]?.trim();
+      }
+      if (!email) {
+        const textBlocks = Array.from(
+          document.querySelectorAll('header, footer, [class*="contact"], [class*="footer"], address, body'),
+        )
+          .map((el) => el.textContent || '')
+          .join(' ');
+        const emailMatch = textBlocks.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+        if (emailMatch && emailMatch[0]) {
+          email = emailMatch[0].trim();
+        }
       }
 
       // Physical address

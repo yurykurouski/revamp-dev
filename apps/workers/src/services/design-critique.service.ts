@@ -11,11 +11,18 @@ export interface AnalyzeDesignInput {
   originalUrl?: string;
 }
 
+export interface TokenUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
 export interface DesignCritiqueResult {
   critique: DesignCritiqueOutput;
   aiFallbackUsed: boolean;
   modelUsed?: string;
   attempts: number;
+  tokenUsage?: TokenUsage;
 }
 
 export interface DesignCritiqueServiceOptions {
@@ -77,6 +84,7 @@ export class DesignCritiqueService {
         aiFallbackUsed: true,
         modelUsed: 'deterministic-fallback',
         attempts: 1,
+        tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
       };
     }
 
@@ -94,11 +102,16 @@ export class DesignCritiqueService {
         );
 
         let rawResponse: string;
+        let tokenUsage: TokenUsage | undefined;
 
         if (this.provider === 'anthropic') {
-          rawResponse = await this.callAnthropicVision(input, currentTemperature);
+          const res = await this.callAnthropicVision(input, currentTemperature);
+          rawResponse = res.rawResponse;
+          tokenUsage = res.tokenUsage;
         } else {
-          rawResponse = await this.callOpenAiVision(input, currentTemperature);
+          const res = await this.callOpenAiVision(input, currentTemperature);
+          rawResponse = res.rawResponse;
+          tokenUsage = res.tokenUsage;
         }
 
         const parsedJson = this.extractAndParseJson(rawResponse);
@@ -111,6 +124,7 @@ export class DesignCritiqueService {
             aiFallbackUsed: false,
             modelUsed: this.provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' : 'gpt-4o',
             attempts: attemptsCount,
+            tokenUsage,
           };
         } else {
           console.warn(
@@ -139,6 +153,7 @@ export class DesignCritiqueService {
       aiFallbackUsed: true,
       modelUsed: `${this.provider}-fallback`,
       attempts: attemptsCount,
+      tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
     };
   }
 
@@ -148,7 +163,7 @@ export class DesignCritiqueService {
   private async callAnthropicVision(
     input: AnalyzeDesignInput,
     temperature: number,
-  ): Promise<string> {
+  ): Promise<{ rawResponse: string; tokenUsage?: TokenUsage }> {
     const mobileBase64 = input.mobileScreenshotWebp.toString('base64');
     const content: Array<Record<string, unknown>> = [
       {
@@ -197,13 +212,27 @@ export class DesignCritiqueService {
       throw new Error(`Anthropic API error (${response.status}): ${errText}`);
     }
 
-    const data = (await response.json()) as { content?: Array<{ type: string; text?: string }> };
+    const data = (await response.json()) as {
+      content?: Array<{ type: string; text?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
     const textBlock = data.content?.find((c) => c.type === 'text');
     if (!textBlock?.text) {
       throw new Error('Anthropic response missing text content block');
     }
 
-    return textBlock.text;
+    const promptTokens = data.usage?.input_tokens ?? 0;
+    const completionTokens = data.usage?.output_tokens ?? 0;
+    const tokenUsage: TokenUsage | undefined =
+      promptTokens || completionTokens
+        ? {
+            promptTokens,
+            completionTokens,
+            totalTokens: promptTokens + completionTokens,
+          }
+        : undefined;
+
+    return { rawResponse: textBlock.text, tokenUsage };
   }
 
   /**
@@ -212,7 +241,7 @@ export class DesignCritiqueService {
   private async callOpenAiVision(
     input: AnalyzeDesignInput,
     temperature: number,
-  ): Promise<string> {
+  ): Promise<{ rawResponse: string; tokenUsage?: TokenUsage }> {
     const mobileBase64 = input.mobileScreenshotWebp.toString('base64');
     const content: Array<Record<string, unknown>> = [
       {
@@ -262,13 +291,26 @@ export class DesignCritiqueService {
 
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
     const choice = data.choices?.[0]?.message?.content;
     if (!choice) {
       throw new Error('OpenAI response missing message content');
     }
 
-    return choice;
+    const promptTokens = data.usage?.prompt_tokens ?? 0;
+    const completionTokens = data.usage?.completion_tokens ?? 0;
+    const totalTokens = data.usage?.total_tokens ?? promptTokens + completionTokens;
+    const tokenUsage: TokenUsage | undefined =
+      promptTokens || completionTokens || totalTokens
+        ? {
+            promptTokens,
+            completionTokens,
+            totalTokens,
+          }
+        : undefined;
+
+    return { rawResponse: choice, tokenUsage };
   }
 
   /**

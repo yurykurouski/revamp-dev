@@ -290,6 +290,33 @@ export class BrandExtractorService {
   }
 
   /**
+   * Sanitizes phone strings: strips tel:, extraneous whitespace/quotes, validates 7-18 digits
+   */
+  static sanitizePhone(phone?: string): string | undefined {
+    if (!phone || typeof phone !== 'string') return undefined;
+    const clean = phone.trim().replace(/^tel:/i, '').replace(/['"]/g, '');
+    const digitsOnly = clean.replace(/\D/g, '');
+    if (digitsOnly.length < 7 || digitsOnly.length > 18) {
+      return undefined;
+    }
+    return clean.replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Sanitizes email strings: strips mailto:, query params, lowercases, validates RFC regex
+   */
+  static sanitizeEmail(email?: string): string | undefined {
+    if (!email || typeof email !== 'string') return undefined;
+    const clean = email.trim().replace(/^mailto:/i, '').split('?')[0]?.trim().toLowerCase();
+    if (!clean) return undefined;
+    const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+    if (!emailRegex.test(clean)) {
+      return undefined;
+    }
+    return clean;
+  }
+
+  /**
    * Aggregates raw in-page extraction data into structured BrandIdentityResult
    */
   static processBrandData(rawData: RawBrandExtractionData, businessName: string = 'Business'): BrandIdentityResult {
@@ -309,8 +336,8 @@ export class BrandExtractorService {
         faviconUrl: rawData.faviconUrl,
       },
       contacts: {
-        phone: rawData.phone,
-        email: rawData.email,
+        phone: this.sanitizePhone(rawData.phone),
+        email: this.sanitizeEmail(rawData.email),
         address: rawData.address,
         workingHours: rawData.workingHours,
         socialLinks: rawData.socialLinks || [],

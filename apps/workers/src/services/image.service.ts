@@ -3,6 +3,7 @@ import sharp from 'sharp';
 export interface ImageOptimizationOptions {
   quality?: number;
   maxWidth?: number;
+  maxDimension?: number;
 }
 
 export interface ComparisonBannerInput {
@@ -16,7 +17,7 @@ export interface ComparisonBannerInput {
 
 export class ImageService {
   /**
-   * Compresses an image buffer into modern WebP format
+   * Compresses an image buffer into modern WebP format with optional maxDimension cap (e.g. 1024px)
    */
   static async compressToWebp(
     inputBuffer: Buffer,
@@ -25,11 +26,13 @@ export class ImageService {
     const quality = options.quality ?? 80;
     let pipeline = sharp(inputBuffer);
 
-    if (options.maxWidth) {
+    const maxDim = options.maxDimension ?? options.maxWidth;
+    if (maxDim) {
       pipeline = pipeline.resize({
-        width: options.maxWidth,
-        withoutEnlargement: true,
+        width: maxDim,
+        height: maxDim,
         fit: 'inside',
+        withoutEnlargement: true,
       });
     }
 

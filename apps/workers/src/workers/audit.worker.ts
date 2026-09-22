@@ -4,6 +4,7 @@ import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Audit } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
+import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
 import { storageService } from '../services/storage.service.js';
@@ -48,11 +49,11 @@ export const createAuditWorker = (): Worker => {
           rawBrandData,
         } = await browserService.captureFullAudit(url);
 
-        // 4. Compress screenshots to modern WebP format (max 1024px width for Vision LLM input)
+        // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
         const [desktopWebp, mobileWebp] = await Promise.all([
-          ImageService.compressToWebp(desktopBuffer, { quality: 80, maxWidth: 1024 }),
-          ImageService.compressToWebp(mobileBuffer, { quality: 80, maxWidth: 1024 }),
+          ImageService.compressToWebp(desktopBuffer, { quality: 80, maxWidth: 1024, maxDimension: 1024 }),
+          ImageService.compressToWebp(mobileBuffer, { quality: 80, maxWidth: 1024, maxDimension: 1024 }),
         ]);
 
         // 5. Upload WebP images to S3 / MinIO
@@ -77,6 +78,25 @@ export const createAuditWorker = (): Worker => {
           lcpSeconds: vitalsResult.lcpSeconds,
           originalUrl: url,
         });
+
+        // Record token usage event if available
+        if (critiqueResult.tokenUsage) {
+          try {
+            await AnalyticsEvent.create({
+              leadId,
+              eventType: 'token_usage',
+              metadata: {
+                model: critiqueResult.modelUsed,
+                promptTokens: critiqueResult.tokenUsage.promptTokens,
+                completionTokens: critiqueResult.tokenUsage.completionTokens,
+                totalTokens: critiqueResult.tokenUsage.totalTokens,
+                stage: 'audit_vision_critique',
+              },
+            });
+          } catch (eventErr) {
+            console.warn(`[AuditWorker] Failed to record token_usage event for lead ${leadId}:`, eventErr);
+          }
+        }
 
         // 8. Calculate Composite Scores (Formula: 0.35 Design + 0.25 Perf + 0.20 A11y + 0.20 Standards)
         const designScore = ScoringService.calculateDesignScore(critiqueResult.critique);

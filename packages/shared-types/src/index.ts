@@ -234,7 +234,8 @@ export type AnalyticsEventType =
   | 'dwell_time'
   | 'cta_click'
   | 'booking_intent'
-  | 'scroll_depth';
+  | 'scroll_depth'
+  | 'token_usage';
 
 export interface IAnalyticsEvent {
   _id: string;

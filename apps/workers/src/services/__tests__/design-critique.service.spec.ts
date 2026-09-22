@@ -276,6 +276,59 @@ describe('DesignCritiqueService', () => {
       expect(result.aiFallbackUsed).toBe(true);
       expect(result.attempts).toBe(3);
       expect(result.critique.criticalFlaws).toHaveLength(3);
+      expect(result.tokenUsage).toEqual({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
+    });
+
+    it('should extract and calculate tokenUsage from Anthropic usage payload', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: JSON.stringify(validCritiqueResponse) }],
+          usage: { input_tokens: 420, output_tokens: 180 },
+        }),
+      });
+
+      const service = new DesignCritiqueService({
+        provider: 'anthropic',
+        anthropicApiKey: 'sk-ant-test-key',
+        customFetcher: mockFetch as any,
+      });
+
+      const result = await service.analyzeDesign(baseInput);
+
+      expect(result.aiFallbackUsed).toBe(false);
+      expect(result.tokenUsage).toBeDefined();
+      expect(result.tokenUsage).toEqual({
+        promptTokens: 420,
+        completionTokens: 180,
+        totalTokens: 600,
+      });
+    });
+
+    it('should extract and calculate tokenUsage from OpenAI usage payload', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(validCritiqueResponse) } }],
+          usage: { prompt_tokens: 500, completion_tokens: 220, total_tokens: 720 },
+        }),
+      });
+
+      const service = new DesignCritiqueService({
+        provider: 'openai',
+        openaiApiKey: 'sk-openai-test-key',
+        customFetcher: mockFetch as any,
+      });
+
+      const result = await service.analyzeDesign(baseInput);
+
+      expect(result.aiFallbackUsed).toBe(false);
+      expect(result.tokenUsage).toBeDefined();
+      expect(result.tokenUsage).toEqual({
+        promptTokens: 500,
+        completionTokens: 220,
+        totalTokens: 720,
+      });
     });
   });
 });

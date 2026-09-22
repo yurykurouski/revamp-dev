@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createAuditWorker } from '../audit.worker.js';
 import { Audit } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
+import { AnalyticsEvent } from '../../models/AnalyticsEvent.model.js';
 import { browserService } from '../../services/browser.service.js';
 import { ImageService } from '../../services/image.service.js';
 import { storageService } from '../../services/storage.service.js';
@@ -9,6 +10,7 @@ import { designCritiqueService } from '../../services/design-critique.service.js
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
+vi.mock('../../models/AnalyticsEvent.model.js');
 vi.mock('../../services/browser.service.js');
 vi.mock('../../services/image.service.js');
 vi.mock('../../services/storage.service.js');
@@ -132,6 +134,11 @@ describe('AuditWorker (@revamp/workers)', () => {
       aiFallbackUsed: false,
       modelUsed: 'claude-3-5-sonnet-20241022',
       attempts: 1,
+      tokenUsage: {
+        promptTokens: 450,
+        completionTokens: 180,
+        totalTokens: 630,
+      },
     });
 
     const result = await capturedProcessor!(mockJob);
@@ -217,6 +224,21 @@ describe('AuditWorker (@revamp/workers)', () => {
         totalScore: 85,
         contactPhone: '+1 555-1234',
         city: '123 Test St',
+      }),
+    );
+
+    // Analytics token usage event logging
+    expect(AnalyticsEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        leadId: 'lead-123',
+        eventType: 'token_usage',
+        metadata: {
+          model: 'claude-3-5-sonnet-20241022',
+          promptTokens: 450,
+          completionTokens: 180,
+          totalTokens: 630,
+          stage: 'audit_vision_critique',
+        },
       }),
     );
 

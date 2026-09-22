@@ -417,6 +417,25 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => MvpTrackEventSchema.parse(invalid)).toThrow();
     });
 
+    it('should validate valid token_usage event for AI budget tracking', () => {
+      const valid = {
+        leadId: 'lead-12345',
+        eventType: 'token_usage',
+        metadata: {
+          agent: 'DesignCritiqueAgent',
+          model: 'claude-3-5-sonnet',
+          promptTokens: 1200,
+          completionTokens: 350,
+          totalTokens: 1550,
+        },
+      };
+
+      const parsed = MvpTrackEventSchema.parse(valid);
+      expect(parsed.leadId).toBe('lead-12345');
+      expect(parsed.eventType).toBe('token_usage');
+      expect(parsed.metadata?.['totalTokens']).toBe(1550);
+    });
+
     it('should reject invalid eventType', () => {
       const invalid = {
         token: 'tok-abc',

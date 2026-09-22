@@ -175,5 +175,27 @@ describe('BrandExtractorService', () => {
       expect(result.tokens.logoUrl).toContain('data:image/svg+xml');
       expect(decodeURIComponent(result.tokens.logoUrl!)).toContain('>LI<');
     });
+
+    it('should sanitize messy phone numbers and email links', () => {
+      const rawData: RawBrandExtractionData = {
+        colors: [],
+        fontFamilies: [],
+        socialLinks: [],
+        services: [],
+        phone: '  tel:+1 (555) 234-5678  ',
+        email: 'mailto:SUPPORT@Clinic.com?subject=Hello ',
+      };
+
+      const result = BrandExtractorService.processBrandData(rawData, 'Health Clinic');
+      expect(result.contacts.phone).toBe('+1 (555) 234-5678');
+      expect(result.contacts.email).toBe('support@clinic.com');
+    });
+
+    it('should reject invalid phone and email candidates', () => {
+      expect(BrandExtractorService.sanitizePhone('12345')).toBeUndefined(); // too short (< 7 digits)
+      expect(BrandExtractorService.sanitizePhone('not-a-number')).toBeUndefined();
+      expect(BrandExtractorService.sanitizeEmail('not-an-email')).toBeUndefined();
+      expect(BrandExtractorService.sanitizeEmail('missing-domain@')).toBeUndefined();
+    });
   });
 });
