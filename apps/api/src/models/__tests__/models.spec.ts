@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import mongoose from 'mongoose';
 import { Lead } from '../Lead.model.js';
 import { Audit } from '../Audit.model.js';
+import { EmailCampaign } from '../EmailCampaign.model.js';
 
-describe('Mongoose Models (Lead & Audit)', () => {
+describe('Mongoose Models (Lead, Audit & EmailCampaign)', () => {
+
   describe('Lead Model', () => {
     it('should create valid lead document instance with defaults', () => {
       const lead = new Lead({
@@ -93,4 +95,39 @@ describe('Mongoose Models (Lead & Audit)', () => {
       expect(audit.designCritique.criticalFlaws).toHaveLength(1);
     });
   });
+
+  describe('EmailCampaign Model', () => {
+    it('should create valid email campaign document with defaults', () => {
+      const leadId = new mongoose.Types.ObjectId();
+      const campaign = new EmailCampaign({
+        leadId,
+        senderEmail: 'outreach@revampdemo.com',
+        recipientEmail: 'director@listonosz.site',
+        subject: 'Концепция редизайна',
+        bodyHtml: '<p>Привет</p>',
+        trackingToken: 'tok-123456',
+      });
+
+      const err = campaign.validateSync();
+      expect(err).toBeUndefined();
+      expect(campaign.status).toBe('DRAFT');
+      expect(campaign.requiresManualReview).toBe(true);
+      expect(campaign.metrics.openCount).toBe(0);
+      expect(campaign.metrics.clickCount).toBe(0);
+    });
+
+    it('should fail validation when required fields are missing', () => {
+      const campaign = new EmailCampaign({});
+      const err = campaign.validateSync();
+
+      expect(err).toBeDefined();
+      expect(err?.errors['leadId']).toBeDefined();
+      expect(err?.errors['senderEmail']).toBeDefined();
+      expect(err?.errors['recipientEmail']).toBeDefined();
+      expect(err?.errors['subject']).toBeDefined();
+      expect(err?.errors['bodyHtml']).toBeDefined();
+      expect(err?.errors['trackingToken']).toBeDefined();
+    });
+  });
 });
+
