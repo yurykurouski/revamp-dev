@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -27,9 +27,21 @@ import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import SecurityIcon from '@mui/icons-material/Security';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import MailOutlineIcon from '@mui/icons-material/MailOutline';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
-import { useAuditQuery, useLeadsQuery } from '../hooks/useLeads.js';
+import {
+  useAuditQuery,
+  useLeadsQuery,
+  useApproveOutreachMutation,
+  useSendTestEmailMutation,
+  useRejectLeadMutation,
+  useUpdateMvpTokensMutation,
+} from '../hooks/useLeads.js';
+import { ColorPickerToolbar } from './ColorPickerToolbar.js';
+import { EmailDraftEditor } from './EmailDraftEditor.js';
 
 export const SideBySideInspectorModal: React.FC = () => {
   const {
@@ -38,15 +50,74 @@ export const SideBySideInspectorModal: React.FC = () => {
     selectedAuditId,
     activeBreakpoint,
     originalScreenTab,
+    activeTab,
     closeModal,
     setBreakpoint,
     setOriginalScreenTab,
+    setActiveTab,
   } = useHitlModalStore();
 
   const { data: leadsData } = useLeadsQuery();
   const currentLead = leadsData?.leads.find((l) => l.id === selectedLeadId);
 
   const { data: audit, isLoading: isAuditLoading } = useAuditQuery(selectedAuditId);
+
+  const approveMutation = useApproveOutreachMutation();
+  const sendTestMutation = useSendTestEmailMutation();
+  const rejectMutation = useRejectLeadMutation();
+  const updateTokensMutation = useUpdateMvpTokensMutation();
+
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [currentColor, setCurrentColor] = useState<string>('#5c5bed');
+
+  useEffect(() => {
+    if (audit?.colorPalette?.primary) {
+      setCurrentColor(audit.colorPalette.primary);
+    }
+  }, [audit?.colorPalette?.primary]);
+
+  const handleColorChange = (newColor: string) => {
+    setCurrentColor(newColor);
+    // Real-time live update inside iframe without reload
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage(
+        {
+          type: 'REVAMP_UPDATE_THEME',
+          palette: {
+            primary: newColor,
+            accent: newColor,
+          },
+        },
+        '*',
+      );
+    }
+    // Persist to backend API
+    updateTokensMutation.mutate({
+      mvpId: currentLead?.id || 'demo',
+      tokens: { primaryColor: newColor, accentColor: newColor },
+    });
+  };
+
+  const handleColorReset = () => {
+    const resetColor = audit?.colorPalette?.primary || '#5c5bed';
+    handleColorChange(resetColor);
+  };
+
+  const handleApprove = async (emailData: { subject: string; preheader: string; body: string }) => {
+    if (!selectedLeadId) return;
+    await approveMutation.mutateAsync({ leadId: selectedLeadId, emailData });
+  };
+
+  const handleSendTest = async (testEmail: string) => {
+    if (!selectedLeadId) return;
+    await sendTestMutation.mutateAsync({ leadId: selectedLeadId, testEmail });
+  };
+
+  const handleReject = async (reason: string) => {
+    if (!selectedLeadId) return;
+    await rejectMutation.mutateAsync({ leadId: selectedLeadId, reason });
+    closeModal();
+  };
 
   if (!isOpen) return null;
 
@@ -112,32 +183,62 @@ export const SideBySideInspectorModal: React.FC = () => {
           </Box>
         </Box>
 
-        {/* Center: Score Uplift Badge */}
-        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1.5 }}>
-          <Chip
-            label={`Исходный скоринг: ${currentLead?.totalScore ?? 42}/100`}
-            size="small"
+        {/* Center: Tabs switcher */}
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
+          <Tabs
+            value={activeTab}
+            onChange={(_e, val) => setActiveTab(val)}
             sx={{
-              backgroundColor: 'error.light',
-              color: 'error.main',
-              fontWeight: 700,
+              minHeight: 36,
+              '& .MuiTab-root': {
+                minHeight: 36,
+                py: 0.5,
+                px: 2,
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                textTransform: 'none',
+              },
             }}
-          />
-          <ArrowForwardIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
-          <Chip
-            icon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
-            label="Bento MVP: 96/100"
-            size="small"
-            sx={{
-              backgroundColor: 'success.light',
-              color: 'success.main',
-              fontWeight: 700,
-            }}
-          />
+          >
+            <Tab
+              icon={<VisibilityIcon sx={{ fontSize: 18 }} />}
+              iconPosition="start"
+              label="Инспектор сайта (Split View)"
+              value="inspector"
+            />
+            <Tab
+              icon={<MailOutlineIcon sx={{ fontSize: 18 }} />}
+              iconPosition="start"
+              label="Черновик письма & Аппрув (HITL Gate)"
+              value="email_editor"
+            />
+          </Tabs>
         </Box>
 
-        {/* Right: Close Action */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        {/* Right: Score Uplift Badge & Close Action */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', gap: 1 }}>
+            <Chip
+              label={`Исходный скоринг: ${currentLead?.totalScore ?? 42}/100`}
+              size="small"
+              sx={{
+                backgroundColor: 'error.light',
+                color: 'error.main',
+                fontWeight: 700,
+              }}
+            />
+            <ArrowForwardIcon sx={{ color: 'text.secondary', fontSize: 16 }} />
+            <Chip
+              icon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
+              label="Bento MVP: 96/100"
+              size="small"
+              sx={{
+                backgroundColor: 'success.light',
+                color: 'success.main',
+                fontWeight: 700,
+              }}
+            />
+          </Box>
           <Tooltip title="Закрыть инспектор">
             <IconButton onClick={closeModal} size="small" sx={{ p: 1 }}>
               <CloseIcon />
@@ -146,347 +247,384 @@ export const SideBySideInspectorModal: React.FC = () => {
         </Box>
       </DialogTitle>
 
-      {/* Main Split View Content Area */}
+      {/* Main Content Area */}
       <DialogContent sx={{ p: 0, display: 'flex', flexGrow: 1, overflow: 'hidden' }}>
-        <Box
-          sx={{
-            display: 'flex',
-            width: '100%',
-            height: '100%',
-            flexDirection: { xs: 'column', md: 'row' },
-          }}
-        >
-          {/* ============================================================ */}
-          {/* LEFT PANEL: Original Website Diagnostics & Critique         */}
-          {/* ============================================================ */}
+        {activeTab === 'inspector' ? (
           <Box
             sx={{
-              width: { xs: '100%', md: '45%' },
-              borderRight: '1px solid',
-              borderColor: 'divider',
               display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: 'background.paper',
-              overflowY: 'auto',
-              p: 3,
-              gap: 2.5,
+              width: '100%',
+              height: '100%',
+              flexDirection: { xs: 'column', md: 'row' },
             }}
           >
-            {/* Header with Screenshot Mode Tabs */}
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                🔍 Исходный сайт & Дефекты
-              </Typography>
-
-              <Tabs
-                value={originalScreenTab}
-                onChange={(_e, val) => setOriginalScreenTab(val)}
-                sx={{
-                  minHeight: 32,
-                  '& .MuiTab-root': {
-                    minHeight: 32,
-                    py: 0.5,
-                    px: 1.5,
-                    fontSize: '0.8rem',
-                    fontWeight: 600,
-                  },
-                }}
-              >
-                <Tab label="Десктоп (1440px)" value="desktop" />
-                <Tab label="Мобильный (375px)" value="mobile" />
-              </Tabs>
-            </Box>
-
-            {/* Diagnostic Metrics Pills */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
-              <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                <SpeedIcon sx={{ color: '#EF4444', fontSize: 24 }} />
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    LCP (Скорость)
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: '#EF4444' }}>
-                    {audit?.lcpSeconds ? `${audit.lcpSeconds.toFixed(1)}s` : '3.4s'}
-                  </Typography>
-                </Box>
-              </Card>
-
-              <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                <AccessibilityNewIcon sx={{ color: '#F59E0B', fontSize: 24 }} />
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    a11y Ошибки
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: '#F59E0B' }}>
-                    {audit?.a11yViolationsCount ?? 14} нарушений
-                  </Typography>
-                </Box>
-              </Card>
-
-              <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                <SmartphoneIcon sx={{ color: '#6366F1', fontSize: 24 }} />
-                <Box>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    Мобильность
-                  </Typography>
-                  <Typography variant="body2" sx={{ fontWeight: 800, color: '#6366F1' }}>
-                    {audit?.mobileFriendlinessRating ?? 45}/100
-                  </Typography>
-                </Box>
-              </Card>
-            </Box>
-
-            {/* Screenshot Preview Box */}
+            {/* ============================================================ */}
+            {/* LEFT PANEL: Original Website Diagnostics & Critique         */}
+            {/* ============================================================ */}
             <Box
               sx={{
-                border: '1px solid',
+                width: { xs: '100%', md: '45%' },
+                borderRight: '1px solid',
                 borderColor: 'divider',
-                borderRadius: 2,
-                overflow: 'hidden',
-                backgroundColor: 'background.default',
-                height: originalScreenTab === 'desktop' ? 240 : 360,
                 display: 'flex',
-                alignItems: 'flex-start',
-                justifyContent: 'center',
-                boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)',
-                position: 'relative',
-              }}
-            >
-              {isAuditLoading ? (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                  <CircularProgress size={24} />
-                </Box>
-              ) : (
-                <Box
-                  component="img"
-                  src={originalScreenshotUrl}
-                  alt="Original Website Screenshot"
-                  sx={{
-                    width: '100%',
-                    height: 'auto',
-                    objectFit: 'cover',
-                    objectPosition: 'top',
-                  }}
-                  onError={(e) => {
-                    // Fallback to placeholder if image server offline
-                    (e.target as HTMLImageElement).src =
-                      'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80';
-                  }}
-                />
-              )}
-            </Box>
-
-            {/* 3 Critical Flaws from Vision LLM Design Critique */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <ErrorOutlineIcon sx={{ color: '#EF4444', fontSize: 18 }} />
-                3 Критических недостатка (Design Critique Agent)
-              </Typography>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                {audit?.criticalFlaws.map((flaw, idx) => (
-                  <Card
-                    key={idx}
-                    sx={{
-                      p: 1.5,
-                      borderLeft: '4px solid #EF4444',
-                      backgroundColor: 'background.default',
-                    }}
-                  >
-                    <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
-                      {idx + 1}. {flaw.title}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                      <strong>Влияние:</strong> {flaw.impact}
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'primary.main', display: 'block' }}>
-                      <strong>Решение:</strong> {flaw.recommendation}
-                    </Typography>
-                  </Card>
-                ))}
-              </Box>
-            </Box>
-
-            {/* 3 Quick Wins */}
-            <Box>
-              <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 18 }} />
-                Быстрые победы нового прототипа (Quick Wins)
-              </Typography>
-
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
-                {audit?.quickWins.map((win, idx) => (
-                  <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 16, flexShrink: 0 }} />
-                    <Typography variant="caption" color="text.primary" sx={{ fontWeight: 500 }}>
-                      {win}
-                    </Typography>
-                  </Box>
-                ))}
-              </Box>
-            </Box>
-          </Box>
-
-          {/* ============================================================ */}
-          {/* RIGHT PANEL: Interactive Bento MVP Sandboxed IFrame          */}
-          {/* ============================================================ */}
-          <Box
-            sx={{
-              width: { xs: '100%', md: '55%' },
-              display: 'flex',
-              flexDirection: 'column',
-              backgroundColor: 'background.default',
-              overflow: 'hidden',
-            }}
-          >
-            {/* Toolbar: Breakpoint Selectors & External Link */}
-            <Box
-              sx={{
-                p: 2,
-                borderBottom: '1px solid',
-                borderColor: 'divider',
+                flexDirection: 'column',
                 backgroundColor: 'background.paper',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                flexWrap: 'wrap',
-                gap: 1.5,
+                overflowY: 'auto',
+                p: 3,
+                gap: 2.5,
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  Интерактивный MVP:
+              {/* Header with Screenshot Mode Tabs */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
+                  🔍 Исходный сайт & Дефекты
                 </Typography>
 
-                {/* Device Breakpoint Switcher */}
-                <ButtonGroup size="small" variant="outlined">
-                  <Button
-                    variant={activeBreakpoint === 'mobile' ? 'contained' : 'outlined'}
-                    onClick={() => setBreakpoint('mobile')}
-                    startIcon={<SmartphoneIcon sx={{ fontSize: 16 }} />}
-                    sx={{ px: 1.5 }}
-                  >
-                    Mobile (375px)
-                  </Button>
-                  <Button
-                    variant={activeBreakpoint === 'tablet' ? 'contained' : 'outlined'}
-                    onClick={() => setBreakpoint('tablet')}
-                    startIcon={<TabletMacIcon sx={{ fontSize: 16 }} />}
-                    sx={{ px: 1.5 }}
-                  >
-                    Tablet (768px)
-                  </Button>
-                  <Button
-                    variant={activeBreakpoint === 'desktop' ? 'contained' : 'outlined'}
-                    onClick={() => setBreakpoint('desktop')}
-                    startIcon={<LaptopIcon sx={{ fontSize: 16 }} />}
-                    sx={{ px: 1.5 }}
-                  >
-                    Desktop (100%)
-                  </Button>
-                </ButtonGroup>
+                <Tabs
+                  value={originalScreenTab}
+                  onChange={(_e, val) => setOriginalScreenTab(val)}
+                  sx={{
+                    minHeight: 32,
+                    '& .MuiTab-root': {
+                      minHeight: 32,
+                      py: 0.5,
+                      px: 1.5,
+                      fontSize: '0.8rem',
+                      fontWeight: 600,
+                    },
+                  }}
+                >
+                  <Tab label="Десктоп (1440px)" value="desktop" />
+                  <Tab label="Мобильный (375px)" value="mobile" />
+                </Tabs>
               </Box>
 
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Chip
-                  icon={<SecurityIcon sx={{ fontSize: 14 }} />}
-                  label="Sandbox Active"
-                  size="small"
-                  color="success"
-                  variant="outlined"
-                  sx={{ fontSize: '0.72rem', height: 24, fontWeight: 600 }}
-                />
+              {/* Diagnostic Metrics Pills */}
+              <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
+                <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                  <SpeedIcon sx={{ color: '#EF4444', fontSize: 24 }} />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      LCP (Скорость)
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 800, color: '#EF4444' }}>
+                      {audit?.lcpSeconds ? `${audit.lcpSeconds.toFixed(1)}s` : '3.4s'}
+                    </Typography>
+                  </Box>
+                </Card>
 
-                <Tooltip title="Открыть сайт прототипа в отдельной вкладке">
-                  <IconButton
-                    size="small"
-                    href={previewUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    color="primary"
-                    sx={{ p: 0.8 }}
-                  >
-                    <OpenInNewIcon sx={{ fontSize: 18 }} />
-                  </IconButton>
-                </Tooltip>
+                <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                  <AccessibilityNewIcon sx={{ color: '#F59E0B', fontSize: 24 }} />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      a11y Ошибки
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 800, color: '#F59E0B' }}>
+                      {audit?.a11yViolationsCount ?? 14} нарушений
+                    </Typography>
+                  </Box>
+                </Card>
+
+                <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+                  <SmartphoneIcon sx={{ color: '#6366F1', fontSize: 24 }} />
+                  <Box>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                      Мобильность
+                    </Typography>
+                    <Typography variant="body2" sx={{ fontWeight: 800, color: '#6366F1' }}>
+                      {audit?.mobileFriendlinessRating ?? 45}/100
+                    </Typography>
+                  </Box>
+                </Card>
               </Box>
-            </Box>
 
-            {/* IFrame Viewport Container with simulated device chassis */}
-            <Box
-              sx={{
-                flexGrow: 1,
-                p: activeBreakpoint === 'desktop' ? 0 : 3,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-                backgroundColor: 'rgba(15, 23, 42, 0.03)',
-              }}
-            >
+              {/* Screenshot Preview Box */}
               <Box
                 sx={{
-                  transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                  height: '100%',
-                  width:
-                    activeBreakpoint === 'mobile'
-                      ? 375
-                      : activeBreakpoint === 'tablet'
-                      ? 768
-                      : '100%',
-                  borderRadius:
-                    activeBreakpoint === 'mobile'
-                      ? '32px'
-                      : activeBreakpoint === 'tablet'
-                      ? '20px'
-                      : 0,
-                  border:
-                    activeBreakpoint === 'desktop'
-                      ? 'none'
-                      : '10px solid #1E293B',
-                  boxShadow:
-                    activeBreakpoint === 'desktop'
-                      ? 'none'
-                      : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
                   overflow: 'hidden',
+                  backgroundColor: 'background.default',
+                  height: originalScreenTab === 'desktop' ? 240 : 360,
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  justifyContent: 'center',
+                  boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)',
                   position: 'relative',
-                  backgroundColor: '#FFFFFF',
                 }}
               >
-                {/* Mobile Speaker / Camera Notch Simulator */}
-                {activeBreakpoint === 'mobile' && (
+                {isAuditLoading ? (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                    <CircularProgress size={24} />
+                  </Box>
+                ) : (
                   <Box
+                    component="img"
+                    src={originalScreenshotUrl}
+                    alt="Original Website Screenshot"
                     sx={{
-                      position: 'absolute',
-                      top: 0,
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: 120,
-                      height: 18,
-                      backgroundColor: '#1E293B',
-                      borderBottomLeftRadius: 10,
-                      borderBottomRightRadius: 10,
-                      zIndex: 10,
+                      width: '100%',
+                      height: 'auto',
+                      objectFit: 'cover',
+                      objectPosition: 'top',
+                    }}
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src =
+                        'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80';
                     }}
                   />
                 )}
+              </Box>
 
-                {/* Secure Sandboxed Iframe */}
-                <iframe
-                  src={previewUrl}
-                  title="MVP Interactive Sandbox Preview"
-                  sandbox="allow-scripts allow-same-origin"
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    border: 'none',
-                    display: 'block',
-                  }}
+              {/* 3 Critical Flaws from Vision LLM Design Critique */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <ErrorOutlineIcon sx={{ color: '#EF4444', fontSize: 18 }} />
+                  3 Критических недостатка (Design Critique Agent)
+                </Typography>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                  {audit?.criticalFlaws.map((flaw, idx) => (
+                    <Card
+                      key={idx}
+                      sx={{
+                        p: 1.5,
+                        borderLeft: '4px solid #EF4444',
+                        backgroundColor: 'background.default',
+                      }}
+                    >
+                      <Typography variant="body2" sx={{ fontWeight: 700, color: 'text.primary', mb: 0.5 }}>
+                        {idx + 1}. {flaw.title}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                        <strong>Влияние:</strong> {flaw.impact}
+                      </Typography>
+                      <Typography variant="caption" sx={{ color: 'primary.main', display: 'block' }}>
+                        <strong>Решение:</strong> {flaw.recommendation}
+                      </Typography>
+                    </Card>
+                  ))}
+                </Box>
+              </Box>
+
+              {/* 3 Quick Wins */}
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 18 }} />
+                  Быстрые победы нового прототипа (Quick Wins)
+                </Typography>
+
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
+                  {audit?.quickWins.map((win, idx) => (
+                    <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 16, flexShrink: 0 }} />
+                      <Typography variant="caption" color="text.primary" sx={{ fontWeight: 500 }}>
+                        {win}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              </Box>
+            </Box>
+
+            {/* ============================================================ */}
+            {/* RIGHT PANEL: Interactive Bento MVP Sandboxed IFrame          */}
+            {/* ============================================================ */}
+            <Box
+              sx={{
+                width: { xs: '100%', md: '55%' },
+                display: 'flex',
+                flexDirection: 'column',
+                backgroundColor: 'background.default',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Toolbar: Breakpoint Selectors & External Link */}
+              <Box
+                sx={{
+                  p: 2,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'background.paper',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: 1.5,
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                    Интерактивный MVP:
+                  </Typography>
+
+                  {/* Device Breakpoint Switcher */}
+                  <ButtonGroup size="small" variant="outlined">
+                    <Button
+                      variant={activeBreakpoint === 'mobile' ? 'contained' : 'outlined'}
+                      onClick={() => setBreakpoint('mobile')}
+                      startIcon={<SmartphoneIcon sx={{ fontSize: 16 }} />}
+                      sx={{ px: 1.5 }}
+                    >
+                      Mobile (375px)
+                    </Button>
+                    <Button
+                      variant={activeBreakpoint === 'tablet' ? 'contained' : 'outlined'}
+                      onClick={() => setBreakpoint('tablet')}
+                      startIcon={<TabletMacIcon sx={{ fontSize: 16 }} />}
+                      sx={{ px: 1.5 }}
+                    >
+                      Tablet (768px)
+                    </Button>
+                    <Button
+                      variant={activeBreakpoint === 'desktop' ? 'contained' : 'outlined'}
+                      onClick={() => setBreakpoint('desktop')}
+                      startIcon={<LaptopIcon sx={{ fontSize: 16 }} />}
+                      sx={{ px: 1.5 }}
+                    >
+                      Desktop (100%)
+                    </Button>
+                  </ButtonGroup>
+                </Box>
+
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  <Chip
+                    icon={<SecurityIcon sx={{ fontSize: 14 }} />}
+                    label="Sandbox Active"
+                    size="small"
+                    color="success"
+                    variant="outlined"
+                    sx={{ fontSize: '0.72rem', height: 24, fontWeight: 600 }}
+                  />
+
+                  <Tooltip title="Открыть сайт прототипа в отдельной вкладке">
+                    <IconButton
+                      size="small"
+                      href={previewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      color="primary"
+                      sx={{ p: 0.8 }}
+                    >
+                      <OpenInNewIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                  </Tooltip>
+                </Box>
+              </Box>
+
+              {/* Color Palette Live Toolbar (REV-16) */}
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  backgroundColor: 'background.paper',
+                }}
+              >
+                <ColorPickerToolbar
+                  currentPrimary={currentColor}
+                  originalPrimary={audit?.colorPalette?.primary}
+                  onColorChange={handleColorChange}
+                  onReset={handleColorReset}
                 />
+              </Box>
+
+              {/* IFrame Viewport Container with simulated device chassis */}
+              <Box
+                sx={{
+                  flexGrow: 1,
+                  p: activeBreakpoint === 'desktop' ? 0 : 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  backgroundColor: 'rgba(15, 23, 42, 0.03)',
+                }}
+              >
+                <Box
+                  sx={{
+                    transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                    height: '100%',
+                    width:
+                      activeBreakpoint === 'mobile'
+                        ? 375
+                        : activeBreakpoint === 'tablet'
+                        ? 768
+                        : '100%',
+                    borderRadius:
+                      activeBreakpoint === 'mobile'
+                        ? '32px'
+                        : activeBreakpoint === 'tablet'
+                        ? '20px'
+                        : 0,
+                    border:
+                      activeBreakpoint === 'desktop'
+                        ? 'none'
+                        : '10px solid #1E293B',
+                    boxShadow:
+                      activeBreakpoint === 'desktop'
+                        ? 'none'
+                        : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                    overflow: 'hidden',
+                    position: 'relative',
+                    backgroundColor: '#FFFFFF',
+                  }}
+                >
+                  {/* Mobile Speaker / Camera Notch Simulator */}
+                  {activeBreakpoint === 'mobile' && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        top: 0,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 120,
+                        height: 18,
+                        backgroundColor: '#1E293B',
+                        borderBottomLeftRadius: 10,
+                        borderBottomRightRadius: 10,
+                        zIndex: 10,
+                      }}
+                    />
+                  )}
+
+                  {/* Secure Sandboxed Iframe */}
+                  <iframe
+                    ref={iframeRef}
+                    src={previewUrl}
+                    title="MVP Interactive Sandbox Preview"
+                    sandbox="allow-scripts allow-same-origin"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      border: 'none',
+                      display: 'block',
+                    }}
+                  />
+                </Box>
               </Box>
             </Box>
           </Box>
-        </Box>
+        ) : (
+          <Box sx={{ width: '100%', height: '100%', p: 3, overflowY: 'auto' }}>
+            {currentLead && (
+              <EmailDraftEditor
+                lead={currentLead}
+                audit={audit}
+                onApprove={handleApprove}
+                onSendTest={handleSendTest}
+                onReject={handleReject}
+                isActionLoading={
+                  approveMutation.isPending ||
+                  sendTestMutation.isPending ||
+                  rejectMutation.isPending
+                }
+              />
+            )}
+          </Box>
+        )}
       </DialogContent>
 
       {/* Footer / HITL Gate Navigation */}
@@ -506,17 +644,36 @@ export const SideBySideInspectorModal: React.FC = () => {
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 1.5 }}>
-          <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
-            Закрыть инспектор
-          </Button>
-          <Button
-            variant="contained"
-            color="primary"
-            startIcon={<AutoAwesomeIcon />}
-            sx={{ px: 2.5, fontWeight: 700 }}
-          >
-            Перейти к аппруву и отправке
-          </Button>
+          {activeTab === 'inspector' ? (
+            <>
+              <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
+                Закрыть инспектор
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AutoAwesomeIcon />}
+                onClick={() => setActiveTab('email_editor')}
+                sx={{ px: 2.5, fontWeight: 700 }}
+              >
+                Перейти к аппруву и отправке
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                startIcon={<ArrowBackIcon />}
+                onClick={() => setActiveTab('inspector')}
+                color="inherit"
+                sx={{ fontWeight: 600 }}
+              >
+                Назад к инспектору сайта
+              </Button>
+              <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
+                Закрыть
+              </Button>
+            </>
+          )}
         </Box>
       </DialogActions>
     </Dialog>

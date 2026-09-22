@@ -39,3 +39,51 @@ export const useAuditQuery = (auditId: string | null) => {
     staleTime: 60000,
   });
 };
+
+export const useApproveOutreachMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({
+      leadId,
+      emailData,
+    }: {
+      leadId: string;
+      emailData?: { subject: string; preheader: string; body: string };
+    }) => apiClient.approveOutreach(leadId, emailData),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+    },
+  });
+};
+
+export const useSendTestEmailMutation = () => {
+  return useMutation({
+    mutationFn: ({ leadId, testEmail }: { leadId: string; testEmail: string }) =>
+      apiClient.sendTestEmail(leadId, testEmail),
+  });
+};
+
+export const useRejectLeadMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ leadId, reason }: { leadId: string; reason: string }) =>
+      apiClient.rejectLead(leadId, reason),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+    },
+  });
+};
+
+export const useUpdateMvpTokensMutation = () => {
+  return useMutation({
+    mutationFn: ({
+      mvpId,
+      tokens,
+    }: {
+      mvpId: string;
+      tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string };
+    }) => apiClient.updateMvpTokens(mvpId, tokens),
+  });
+};

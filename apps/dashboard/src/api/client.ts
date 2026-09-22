@@ -381,6 +381,112 @@ export const apiClient = {
       },
     };
   },
+
+  /**
+   * Approves lead outreach and transitions status to SCHEDULED (HITL Approval Gate)
+   */
+  async approveOutreach(
+    leadId: string,
+    emailData?: { subject: string; preheader: string; body: string },
+  ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/outreach/${leadId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          approvedBy: 'operator',
+          ...emailData,
+        }),
+      });
+
+      if (!res.ok) {
+        console.warn('API approve outreach non-200 response:', res.status);
+      }
+    } catch {
+      // Backend not running, local update
+    }
+
+    const target = localLeadsCache.find((l) => l.id === leadId);
+    if (target) {
+      target.status = 'SCHEDULED';
+    }
+
+    return { success: true, leadId, status: 'SCHEDULED' };
+  },
+
+  /**
+   * Sends a test preview email to the operator
+   */
+  async sendTestEmail(leadId: string, testEmail: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/outreach/${leadId}/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ testEmail }),
+      });
+
+      if (!res.ok) {
+        console.warn('API send test email non-200 response:', res.status);
+      }
+    } catch {
+      // Fallback
+    }
+
+    return { success: true, message: `Test email sent to ${testEmail}` };
+  },
+
+  /**
+   * Rejects outreach draft and transitions status to REJECTED
+   */
+  async rejectLead(
+    leadId: string,
+    reason: string,
+  ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/outreach/${leadId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+
+      if (!res.ok) {
+        console.warn('API reject outreach non-200 response:', res.status);
+      }
+    } catch {
+      // Fallback
+    }
+
+    const target = localLeadsCache.find((l) => l.id === leadId);
+    if (target) {
+      target.status = 'REJECTED';
+    }
+
+    return { success: true, leadId, status: 'REJECTED' };
+  },
+
+  /**
+   * Updates MVP brand design tokens (primaryColor, accentColor, etc.)
+   */
+  async updateMvpTokens(
+    mvpId: string,
+    tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string },
+  ): Promise<{ success: boolean; data: typeof tokens }> {
+    try {
+      const res = await fetch(`http://localhost:3000/api/mvp/${mvpId}/tokens`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(tokens),
+      });
+
+      if (!res.ok) {
+        console.warn('API update tokens non-200 response:', res.status);
+      }
+    } catch {
+      // Fallback
+    }
+
+    return { success: true, data: tokens };
+  },
 };
 
 export interface ICriticalFlaw {

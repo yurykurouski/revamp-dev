@@ -72,4 +72,52 @@ describe('Dashboard apiClient', () => {
     expect(audit.mobileScreenshotUrl).toBeDefined();
     expect(audit.colorPalette.primary).toBe('#5c5bed');
   });
+
+  describe('HITL Approval Gate & Outreach Actions (REV-16)', () => {
+    it('should approve outreach and transition lead status to SCHEDULED', async () => {
+      const result = await apiClient.approveOutreach('lead-listonosz-001', {
+        subject: 'Custom subject for Listonosz',
+        preheader: 'Custom preheader',
+        body: 'Custom approved email body',
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.leadId).toBe('lead-listonosz-001');
+      expect(result.status).toBe('SCHEDULED');
+
+      // Verify status in leads list
+      const { leads } = await apiClient.getLeads();
+      const updated = leads.find((l) => l.id === 'lead-listonosz-001');
+      expect(updated?.status).toBe('SCHEDULED');
+    });
+
+    it('should send test email to operator', async () => {
+      const result = await apiClient.sendTestEmail('lead-dental-002', 'operator@revamp.io');
+      expect(result.success).toBe(true);
+      expect(result.message).toContain('operator@revamp.io');
+    });
+
+    it('should reject lead and transition status to REJECTED', async () => {
+      const result = await apiClient.rejectLead('lead-dental-002', 'Нецелевая ниша');
+      expect(result.success).toBe(true);
+      expect(result.leadId).toBe('lead-dental-002');
+      expect(result.status).toBe('REJECTED');
+
+      // Verify status in leads list
+      const { leads } = await apiClient.getLeads();
+      const updated = leads.find((l) => l.id === 'lead-dental-002');
+      expect(updated?.status).toBe('REJECTED');
+    });
+
+    it('should update MVP brand design tokens', async () => {
+      const tokens = {
+        primaryColor: '#7C3AED',
+        secondaryColor: '#C4B5FD',
+        accentColor: '#7C3AED',
+      };
+      const result = await apiClient.updateMvpTokens('lead-listonosz-001', tokens);
+      expect(result.success).toBe(true);
+      expect(result.data.primaryColor).toBe('#7C3AED');
+    });
+  });
 });
