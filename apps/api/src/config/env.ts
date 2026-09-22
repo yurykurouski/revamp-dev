@@ -21,6 +21,11 @@ const EnvSchema = z.object({
   S3_BUCKET_ASSETS: z.string().default('revamp-assets'),
   S3_BUCKET_DEMOS: z.string().default('revamp-demos'),
   PREVIEW_DOMAIN: z.string().default('preview.revampdemo.com'),
+  PUBLIC_API_URL: z.string().default('http://localhost:4000/api/v1'),
+  EMAIL_PROVIDER: z.enum(['mock', 'resend', 'sendgrid', 'smtp']).default('mock'),
+  RESEND_API_KEY: z.string().optional(),
+  SENDGRID_API_KEY: z.string().optional(),
+  EMAIL_FROM: z.string().default('Revamp Team <outreach@revampdemo.com>'),
 });
 
 export const env = EnvSchema.parse(process.env);

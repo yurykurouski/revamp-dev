@@ -7,13 +7,20 @@ import { AppError } from '../../middlewares/errorHandler.js';
 import { Audit } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
+import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
+vi.mock('../../models/EmailCampaign.model.js');
 vi.mock('../../queues/audit.queue.js');
+vi.mock('../../queues/email.queue.js', () => ({
+  addEmailDispatchJob: vi.fn().mockResolvedValue({ id: 'mock-email-job-1' }),
+  calculateDispatchDelay: vi.fn().mockReturnValue(25000),
+  emailQueue: {} as any,
+}));
 
 describe('API Routes Integration Tests (Supertest)', () => {
   const app = createApp();
@@ -202,10 +209,28 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/outreach/:id/approve (HITL Gate)', () => {
-    it('should approve outreach draft, update Lead status to SCHEDULED, and return 200', async () => {
+    it('should approve outreach draft, update Lead status to SCHEDULED, enqueue email job, and return 200', async () => {
       const leadId = new mongoose.Types.ObjectId().toString();
+      const campaignId = new mongoose.Types.ObjectId().toString();
+
       vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'SCHEDULED' }),
+        exec: vi.fn().mockResolvedValue({
+          _id: leadId,
+          businessName: 'Custom Business',
+          contactEmail: 'custom@business.com',
+          status: 'SCHEDULED',
+        }),
+      } as any);
+
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({
+          _id: campaignId,
+          leadId,
+          status: 'SCHEDULED',
+          subject: 'Custom Subject',
+          previewText: 'Custom Preheader',
+          approvedAt: new Date().toISOString(),
+        }),
       } as any);
 
       const res = await request(app)
@@ -221,9 +246,12 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('SCHEDULED');
       expect(res.body.data.subject).toBe('Custom Subject');
+      expect(res.body.data.campaignId).toBe(campaignId);
+      expect(res.body.data.jobId).toBe('mock-email-job-1');
       expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
         leadId,
         { $set: { status: 'SCHEDULED' } },
+        { new: true },
       );
     });
   });
@@ -248,6 +276,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
         leadId,
         { $set: { status: 'REJECTED' } },
+        { new: true },
       );
     });
 
