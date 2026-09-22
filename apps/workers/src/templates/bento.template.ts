@@ -1338,6 +1338,28 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
           form.style.display = 'block';
         });
       }
+
+      // Real-time Theme Palette Live Customization via postMessage (REV-16 HITL Gate)
+      window.addEventListener('message', function(event) {
+        if (!event.data || event.data.type !== 'REVAMP_UPDATE_THEME' || !event.data.palette) return;
+        const palette = event.data.palette;
+        if (palette.primary) {
+          document.documentElement.style.setProperty('--brand-primary', palette.primary);
+          const hex = palette.primary.replace('#', '');
+          if (hex.length === 6) {
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            document.documentElement.style.setProperty('--brand-primary-rgb', r + ', ' + g + ', ' + b);
+          }
+        }
+        if (palette.secondary) {
+          document.documentElement.style.setProperty('--brand-secondary', palette.secondary);
+        }
+        if (palette.accent) {
+          document.documentElement.style.setProperty('--brand-accent', palette.accent);
+        }
+      });
     })();
   </script>
 </body>

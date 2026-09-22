@@ -6,6 +6,9 @@ import {
 } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 
+import mongoose from 'mongoose';
+import { Lead } from '../models/Lead.model.js';
+
 const router = Router();
 
 // GET /outreach/pending - Pending approval drafts
@@ -27,14 +30,22 @@ router.post(
   validateBody(ApproveOutreachSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const id = req.params['id'] || '';
+      if (id && mongoose.Types.ObjectId.isValid(id)) {
+        await Lead.findByIdAndUpdate(id, { $set: { status: 'SCHEDULED' } }).exec();
+      }
+
       res.status(200).json({
         success: true,
         message: 'Email approved by operator and queued for sending',
         data: {
-          campaignId: req.params['id'],
+          campaignId: id,
+          leadId: id,
           status: 'SCHEDULED',
           approvedBy: req.body.approvedBy,
           approvedAt: new Date().toISOString(),
+          subject: req.body.subject,
+          preheader: req.body.preheader,
         },
       });
     } catch (error) {
@@ -49,11 +60,17 @@ router.post(
   validateBody(RejectOutreachSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const id = req.params['id'] || '';
+      if (id && mongoose.Types.ObjectId.isValid(id)) {
+        await Lead.findByIdAndUpdate(id, { $set: { status: 'REJECTED' } }).exec();
+      }
+
       res.status(200).json({
         success: true,
         message: 'Campaign draft rejected',
         data: {
-          campaignId: req.params['id'],
+          campaignId: id,
+          leadId: id,
           status: 'REJECTED',
           reason: req.body.reason,
         },

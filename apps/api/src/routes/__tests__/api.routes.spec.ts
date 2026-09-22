@@ -6,11 +6,13 @@ import { LeadService } from '../../services/lead.service.js';
 import { AppError } from '../../middlewares/errorHandler.js';
 import { Audit } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
+import { MvpProject } from '../../models/MvpProject.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
+vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../queues/audit.queue.js');
 
 describe('API Routes Integration Tests (Supertest)', () => {
@@ -196,6 +198,125 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
       expect(res.body.message).toBe('Audit not found');
+    });
+  });
+
+  describe('POST /api/v1/outreach/:id/approve (HITL Gate)', () => {
+    it('should approve outreach draft, update Lead status to SCHEDULED, and return 200', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'SCHEDULED' }),
+      } as any);
+
+      const res = await request(app)
+        .post(`/api/v1/outreach/${leadId}/approve`)
+        .send({
+          approvedBy: 'operator',
+          subject: 'Custom Subject',
+          preheader: 'Custom Preheader',
+          body: 'Hello, check your demo',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('SCHEDULED');
+      expect(res.body.data.subject).toBe('Custom Subject');
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+        leadId,
+        { $set: { status: 'SCHEDULED' } },
+      );
+    });
+  });
+
+  describe('POST /api/v1/outreach/:id/reject', () => {
+    it('should reject outreach draft, update Lead status to REJECTED, and return 200', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'REJECTED' }),
+      } as any);
+
+      const res = await request(app)
+        .post(`/api/v1/outreach/${leadId}/reject`)
+        .send({
+          reason: 'Нецелевой бизнес',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('REJECTED');
+      expect(res.body.data.reason).toBe('Нецелевой бизнес');
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+        leadId,
+        { $set: { status: 'REJECTED' } },
+      );
+    });
+
+    it('should return 400 when rejection reason is too short', async () => {
+      const res = await request(app)
+        .post('/api/v1/outreach/lead-123/reject')
+        .send({
+          reason: 'No', // < 3 characters
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/outreach/:id/test', () => {
+    it('should send test email and return 200', async () => {
+      const res = await request(app)
+        .post('/api/v1/outreach/lead-123/test')
+        .send({
+          testEmail: 'operator@revamp.io',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain('operator@revamp.io');
+    });
+
+    it('should return 400 when test email format is invalid', async () => {
+      const res = await request(app)
+        .post('/api/v1/outreach/lead-123/test')
+        .send({
+          testEmail: 'not-an-email',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  describe('PATCH /api/v1/mvp/:id/tokens', () => {
+    it('should update MVP brand design tokens and return 200', async () => {
+      const projectId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: projectId }),
+      } as any);
+
+      const res = await request(app)
+        .patch(`/api/v1/mvp/${projectId}/tokens`)
+        .send({
+          primaryColor: '#4F46E5',
+          secondaryColor: '#A5B4FC',
+          accentColor: '#4F46E5',
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.primaryColor).toBe('#4F46E5');
+    });
+
+    it('should return 400 when primaryColor is an invalid hex string', async () => {
+      const res = await request(app)
+        .patch('/api/v1/mvp/demo/tokens')
+        .send({
+          primaryColor: 'invalid-hex',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
     });
   });
 

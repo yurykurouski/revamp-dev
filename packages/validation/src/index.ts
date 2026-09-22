@@ -178,6 +178,9 @@ export type UpdateMvpTokensDto = z.infer<typeof UpdateMvpTokensSchema>;
 export const ApproveOutreachSchema = z.object({
   scheduleTime: z.string().datetime().optional(),
   approvedBy: z.string().default('operator'),
+  subject: z.string().optional(),
+  preheader: z.string().optional(),
+  body: z.string().optional(),
 });
 
 export type ApproveOutreachDto = z.infer<typeof ApproveOutreachSchema>;
