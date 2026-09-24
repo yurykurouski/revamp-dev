@@ -36,6 +36,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body).toHaveProperty('status', 'ok');
       expect(res.body).toHaveProperty('services');
       expect(res.body.services.api).toBe('healthy');
+      expect(res.body.services).toHaveProperty('mongodb');
+      expect(res.body.services).toHaveProperty('redis');
     });
   });
 

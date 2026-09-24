@@ -21,7 +21,8 @@
     "dev:dashboard": "npm run dev --workspace=@revamp/dashboard",
     "docker:up": "docker compose up -d",
     "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f"
+    "docker:logs": "docker compose logs -f",
+    "verify:env": "tsx scripts/verify-production-env.ts"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
