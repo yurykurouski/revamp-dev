@@ -50,6 +50,20 @@ describe('Dashboard apiClient', () => {
     expect(leads.length).toBeGreaterThan(0);
   });
 
+  it('should create new lead with valid URL, niche, and contactEmail', async () => {
+    const newLead = await apiClient.createLead({
+      url: 'https://premier-dental.org',
+      niche: 'dental',
+      businessName: 'Premier Dental Care',
+      contactEmail: 'contact@premier-dental.org',
+    });
+
+    expect(newLead.id).toBeDefined();
+    expect(newLead.domain).toBe('premier-dental.org');
+    expect(newLead.businessName).toBe('Premier Dental Care');
+    expect(newLead.status).toBe('QUEUED');
+  });
+
   it('should throw validation error when creating lead with invalid URL', async () => {
     await expect(
       apiClient.createLead({

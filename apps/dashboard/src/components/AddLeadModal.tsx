@@ -65,7 +65,7 @@ export const AddLeadModal: React.FC = () => {
     const payload = {
       url: targetUrl,
       niche,
-      email: email.trim() || undefined,
+      contactEmail: email.trim() || undefined,
     };
 
     const validation = QuickAddLeadSchema.safeParse(payload);

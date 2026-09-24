@@ -128,6 +128,22 @@ export const initialMockLeads: ILeadItem[] = [
   },
 ];
 
+const getApiBaseUrl = (): string => {
+  if (typeof window !== 'undefined' && (window as unknown as { __REVAMP_API_URL__?: string }).__REVAMP_API_URL__) {
+    return (window as unknown as { __REVAMP_API_URL__?: string }).__REVAMP_API_URL__!;
+  }
+  try {
+    if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_URL) {
+      return import.meta.env.VITE_API_URL;
+    }
+  } catch {
+    // fallback
+  }
+  return 'http://localhost:4000/api/v1';
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
 let localLeadsCache: ILeadItem[] = [...initialMockLeads];
 
 export const apiClient = {
@@ -144,7 +160,7 @@ export const apiClient = {
       if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
       if (filters?.niche && filters.niche !== 'ALL') params.append('niche', filters.niche);
 
-      const res = await fetch(`http://localhost:3000/api/leads?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}/leads?${params.toString()}`, {
         headers: { Accept: 'application/json' },
       });
 
@@ -156,32 +172,52 @@ export const apiClient = {
             id?: string;
             businessName?: string;
             domain?: string;
-            url: string;
+            originalUrl?: string;
+            url?: string;
             niche?: NicheType;
             city?: string;
+            contactPhone?: string;
+            contactEmail?: string;
             contacts?: {
               city?: string;
               phone?: string;
             };
+            totalScore?: number;
             score?: number;
             status: LeadStatus;
             auditId?: string;
+            previewUrl?: string;
+            comparisonBannerUrl?: string;
             createdAt: string;
           }
 
-          const serverLeads: ILeadItem[] = (data.data as IServerLead[]).map((l) => ({
-            id: l._id || l.id || `lead-${Math.random()}`,
-            businessName: l.businessName || l.domain || 'Бизнес',
-            domain: l.domain || new URL(l.url).hostname,
-            originalUrl: l.url,
-            niche: l.niche || 'other',
-            city: l.city || l.contacts?.city,
-            phone: l.contacts?.phone,
-            totalScore: l.score,
-            status: l.status,
-            auditId: l.auditId,
-            createdAt: l.createdAt,
-          }));
+          const serverLeads: ILeadItem[] = (data.data as IServerLead[]).map((l) => {
+            const rawUrl = l.originalUrl || l.url || '';
+            let domain = l.domain || '';
+            if (!domain && rawUrl) {
+              try {
+                domain = new URL(rawUrl).hostname.replace(/^www\./, '');
+              } catch {
+                domain = '';
+              }
+            }
+
+            return {
+              id: l._id || l.id || `lead-${Math.random()}`,
+              businessName: l.businessName || domain || 'Бизнес',
+              domain,
+              originalUrl: rawUrl,
+              niche: l.niche || 'other',
+              city: l.city || l.contacts?.city,
+              phone: l.contactPhone || l.contacts?.phone,
+              totalScore: l.totalScore ?? l.score,
+              status: l.status,
+              auditId: l.auditId || l._id || l.id,
+              previewUrl: l.previewUrl,
+              comparisonBannerUrl: l.comparisonBannerUrl,
+              createdAt: l.createdAt,
+            };
+          });
 
           // Deduplicate by URL/domain
           const existingUrls = new Set(serverLeads.map((s) => s.originalUrl));
@@ -240,13 +276,14 @@ export const apiClient = {
     const businessName =
       validated.businessName ||
       `Бизнес «${capitalizedDomain.charAt(0).toUpperCase() + capitalizedDomain.slice(1)}»`;
-    const contactEmail = validated.contactEmail || `info@${domain}`;
+    const fallbackDomain = domain.includes('.') ? domain : `${domain}.com`;
+    const contactEmail = validated.contactEmail || `info@${fallbackDomain}`;
 
     let createdId = `lead-${Date.now()}`;
     let auditId = `audit-${Date.now()}`;
 
     try {
-      const res = await fetch('http://localhost:3000/api/leads', {
+      const res = await fetch(`${API_BASE_URL}/leads`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -257,14 +294,26 @@ export const apiClient = {
         }),
       });
 
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          createdId = data.data._id || createdId;
-          auditId = data.data.auditId || auditId;
+      if (!res.ok) {
+        let errorMsg = `Server error (${res.status})`;
+        try {
+          const errData = await res.json();
+          errorMsg = errData.message || errData.error?.message || errorMsg;
+        } catch {
+          // ignore
         }
+        throw new Error(errorMsg);
       }
-    } catch {
+
+      const data = await res.json();
+      if (data.success && data.data) {
+        createdId = data.data.id || data.data.lead?._id || data.data.lead?.id || createdId;
+        auditId = data.data.auditId || auditId;
+      }
+    } catch (err) {
+      if (err instanceof Error && !err.message.includes('Failed to fetch') && !err.message.includes('ECONNREFUSED')) {
+        throw err;
+      }
       // Fallback in case backend is offline
     }
 
@@ -288,7 +337,7 @@ export const apiClient = {
    */
   async getAudit(auditId: string): Promise<IAuditDetail> {
     try {
-      const res = await fetch(`http://localhost:3000/api/audit/${auditId}`);
+      const res = await fetch(`${API_BASE_URL}/audits/${auditId}`);
       if (res.ok) {
         const data = await res.json();
         if (data.success && data.data) {
@@ -298,37 +347,19 @@ export const apiClient = {
             leadId: a.leadId,
             desktopScreenshotUrl:
               a.screenshotUrls?.desktopOriginal ||
+              a.desktopScreenshotUrl ||
               'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp',
             mobileScreenshotUrl:
               a.screenshotUrls?.mobileOriginal ||
+              a.mobileScreenshotUrl ||
               'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp',
-            lcpSeconds: a.lighthouseMetrics?.lcp ? a.lighthouseMetrics.lcp / 1000 : 3.4,
-            a11yScore: a.scores?.a11y || 68,
-            a11yViolationsCount: a.a11ySummary?.violationsCount || 14,
-            visualHierarchyRating: a.designCritique?.visualHierarchyRating || 55,
-            mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating || 45,
-            criticalFlaws: a.designCritique?.criticalFlaws || [
-              {
-                title: 'Отсутствует заметная кнопка целевого действия (CTA) на первом экране',
-                impact: 'Пользователи не понимают следующий шаг, что снижает конверсию на 40-50%',
-                recommendation: 'Добавить контрастную кнопку с высоким z-index вверху страницы',
-              },
-              {
-                title: 'Низкая контрастность текста на темном фоне (WCAG AA)',
-                impact: 'Текст сложно читать при ярком свете, увеличивая показатель отказов',
-                recommendation: 'Увеличить контраст шрифтов до 4.5:1 и применить светлую Bento-сетку',
-              },
-              {
-                title: 'Медленная отрисовка первого контента LCP (3.4 сек)',
-                impact: 'Каждая секунда задержки увеличивает отток мобильного трафика на 10-20%',
-                recommendation: 'Сократить блокирующие скрипты и загружать чистый HTML с инлайн-стилями',
-              },
-            ],
-            quickWins: a.designCritique?.quickWins || [
-              'Клик для звонка в один тап (tel: ссылка в шапке)',
-              'Интерактивная форма экспресс-заявки с валидацией',
-              'Бейджи доверия с рейтингом и опытом компании',
-            ],
+            lcpSeconds: a.lighthouseMetrics?.lcp ? a.lighthouseMetrics.lcp / 1000 : a.lcp || 3.4,
+            a11yScore: a.scores?.accessibility || a.scores?.a11y || a.a11yScore || 100,
+            a11yViolationsCount: a.a11ySummary?.violationsCount || 0,
+            visualHierarchyRating: a.designCritique?.visualHierarchyRating || 80,
+            mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating || 80,
+            criticalFlaws: a.designCritique?.criticalFlaws || [],
+            quickWins: a.designCritique?.quickWins || [],
             colorPalette: {
               primary: a.extractedBrandTokens?.primaryColor || '#5c5bed',
               secondary: a.extractedBrandTokens?.secondaryColor || '#b8c4fe',
@@ -390,7 +421,7 @@ export const apiClient = {
     emailData?: { subject: string; preheader: string; body: string },
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
     try {
-      const res = await fetch(`http://localhost:3000/api/outreach/${leadId}/approve`, {
+      const res = await fetch(`${API_BASE_URL}/outreach/${leadId}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -419,7 +450,7 @@ export const apiClient = {
    */
   async sendTestEmail(leadId: string, testEmail: string): Promise<{ success: boolean; message: string }> {
     try {
-      const res = await fetch(`http://localhost:3000/api/outreach/${leadId}/test`, {
+      const res = await fetch(`${API_BASE_URL}/outreach/${leadId}/test`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ testEmail }),
@@ -443,7 +474,7 @@ export const apiClient = {
     reason: string,
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
     try {
-      const res = await fetch(`http://localhost:3000/api/outreach/${leadId}/reject`, {
+      const res = await fetch(`${API_BASE_URL}/outreach/${leadId}/reject`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason }),
@@ -472,7 +503,7 @@ export const apiClient = {
     tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string },
   ): Promise<{ success: boolean; data: typeof tokens }> {
     try {
-      const res = await fetch(`http://localhost:3000/api/mvp/${mvpId}/tokens`, {
+      const res = await fetch(`${API_BASE_URL}/mvp/${mvpId}/tokens`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(tokens),
