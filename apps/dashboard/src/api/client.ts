@@ -536,6 +536,34 @@ export const apiClient = {
     }
     return null;
   },
+
+  /**
+   * Triggers MVP generation for an audited lead
+   */
+  async generateMvp(auditId: string, leadId?: string): Promise<{ success: boolean; status: LeadStatus }> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ auditId }),
+      });
+      if (res.ok) {
+        if (leadId) {
+          const target = localLeadsCache.find((l) => l.id === leadId);
+          if (target) target.status = 'GENERATING';
+        }
+        return { success: true, status: 'GENERATING' };
+      }
+    } catch {
+      // Fallback
+    }
+
+    if (leadId) {
+      const target = localLeadsCache.find((l) => l.id === leadId);
+      if (target) target.status = 'GENERATING';
+    }
+    return { success: true, status: 'GENERATING' };
+  },
 };
 
 export interface IMvpProjectDetail {

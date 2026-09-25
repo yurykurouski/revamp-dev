@@ -21,6 +21,7 @@ import BlockIcon from '@mui/icons-material/Block';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
+import { useGenerateMvpMutation } from '../hooks/useLeads.js';
 
 interface KanbanColumnConfig {
   id: string;
@@ -114,6 +115,7 @@ interface KanbanBoardProps {
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
   const { openModal } = useHitlModalStore();
+  const generateMvpMutation = useGenerateMvpMutation();
 
   return (
     <Box
@@ -375,17 +377,30 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       )}
 
                       {lead.status === 'AUDITED' && (
-                        <Chip
-                          label="✓ Аудит готов"
+                        <Button
+                          variant="contained"
+                          color="primary"
                           size="small"
-                          color="success"
-                          variant="outlined"
+                          disabled={
+                            generateMvpMutation.isPending &&
+                            generateMvpMutation.variables?.leadId === lead.id
+                          }
+                          startIcon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
+                          onClick={() =>
+                            generateMvpMutation.mutate({
+                              auditId: lead.auditId || lead.id,
+                              leadId: lead.id,
+                            })
+                          }
                           sx={{
-                            fontSize: '0.7rem',
-                            height: 20,
-                            fontWeight: 600,
+                            fontSize: '0.72rem',
+                            fontWeight: 700,
+                            py: 0.4,
+                            px: 1.2,
                           }}
-                        />
+                        >
+                          Сгенерировать MVP
+                        </Button>
                       )}
 
                       {lead.status === 'GENERATING' && (

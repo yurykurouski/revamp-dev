@@ -2,6 +2,10 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { GenerateMvpSchema, UpdateMvpTokensSchema } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { MvpProject } from '../models/MvpProject.model.js';
+import { Audit } from '../models/Audit.model.js';
+import { Lead } from '../models/Lead.model.js';
+import { addAiGenerationJob } from '../queues/ai.queue.js';
+import { AppError } from '../middlewares/errorHandler.js';
 import mongoose from 'mongoose';
 
 const router = Router();
@@ -12,11 +16,39 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
+      const { auditId, forceRegenerate } = req.body;
+
+      const isValidId = mongoose.Types.ObjectId.isValid(auditId);
+      const audit = await Audit.findOne({
+        $or: [
+          ...(isValidId ? [{ _id: auditId }, { leadId: auditId }] : [{ _id: auditId }]),
+        ],
+      }).exec();
+
+      if (!audit) {
+        throw new AppError('Audit not found', 404);
+      }
+
+      const lead = await Lead.findById(audit.leadId).exec();
+      if (!lead) {
+        throw new AppError('Associated lead not found', 404);
+      }
+
+      await Lead.findByIdAndUpdate(lead._id, { status: 'GENERATING' }).exec();
+
+      const job = await addAiGenerationJob({
+        leadId: lead._id.toString(),
+        auditId: audit._id.toString(),
+        forceRegenerate,
+      });
+
       res.status(202).json({
         success: true,
-        message: 'MVP generation started',
+        message: 'MVP generation enqueued successfully',
         data: {
-          auditId: req.body.auditId,
+          leadId: lead._id.toString(),
+          auditId: audit._id.toString(),
+          jobId: job.id,
           status: 'GENERATING',
         },
       });

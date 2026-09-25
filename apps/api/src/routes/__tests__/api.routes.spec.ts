@@ -16,6 +16,10 @@ vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
 vi.mock('../../queues/audit.queue.js');
+vi.mock('../../queues/ai.queue.js', () => ({
+  addAiGenerationJob: vi.fn().mockResolvedValue({ id: 'mock-ai-job-1' }),
+  aiGenerationQueue: {} as any,
+}));
 vi.mock('../../queues/email.queue.js', () => ({
   addEmailDispatchJob: vi.fn().mockResolvedValue({ id: 'mock-email-job-1' }),
   calculateDispatchDelay: vi.fn().mockReturnValue(25000),
@@ -315,6 +319,62 @@ describe('API Routes Integration Tests (Supertest)', () => {
         });
 
       expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/mvp/generate', () => {
+    it('should validate auditId, update Lead status to GENERATING, enqueue ai-gen job, and return 202', async () => {
+      const auditId = new mongoose.Types.ObjectId().toString();
+      const leadId = new mongoose.Types.ObjectId().toString();
+
+      vi.spyOn(Audit, 'findOne').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({
+          _id: auditId,
+          leadId,
+        }),
+      } as any);
+
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({
+          _id: leadId,
+          businessName: 'Dr. Smile Clinic',
+        }),
+      } as any);
+
+      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({
+          _id: leadId,
+          status: 'GENERATING',
+        }),
+      } as any);
+
+      const res = await request(app)
+        .post('/api/v1/mvp/generate')
+        .send({ auditId });
+
+      expect(res.status).toBe(202);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.status).toBe('GENERATING');
+      expect(res.body.data.leadId).toBe(leadId);
+      expect(res.body.data.jobId).toBe('mock-ai-job-1');
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(leadId, { status: 'GENERATING' });
+    });
+
+    it('should return 400 when auditId is missing', async () => {
+      const res = await request(app).post('/api/v1/mvp/generate').send({});
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+
+    it('should return 404 when audit is not found', async () => {
+      const auditId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Audit, 'findOne').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(null),
+      } as any);
+
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
+      expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
     });
   });

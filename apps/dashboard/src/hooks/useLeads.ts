@@ -96,3 +96,15 @@ export const useUpdateMvpTokensMutation = () => {
     }) => apiClient.updateMvpTokens(mvpId, tokens),
   });
 };
+
+export const useGenerateMvpMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ auditId, leadId }: { auditId: string; leadId?: string }) =>
+      apiClient.generateMvp(auditId, leadId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+    },
+  });
+};
