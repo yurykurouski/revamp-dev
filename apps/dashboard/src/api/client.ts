@@ -144,7 +144,11 @@ const getApiBaseUrl = (): string => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-let localLeadsCache: ILeadItem[] = [...initialMockLeads];
+const isTestEnv =
+  typeof process !== 'undefined' &&
+  (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true');
+
+let localLeadsCache: ILeadItem[] = isTestEnv ? [...initialMockLeads] : [];
 
 export const apiClient = {
   /**
@@ -155,10 +159,11 @@ export const apiClient = {
     status?: string;
     niche?: string;
   }): Promise<{ leads: ILeadItem[]; kpi: KpiMetrics }> {
-    try {
-      const params = new URLSearchParams();
-      if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
-      if (filters?.niche && filters.niche !== 'ALL') params.append('niche', filters.niche);
+    if (!isTestEnv) {
+      try {
+        const params = new URLSearchParams();
+        if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+        if (filters?.niche && filters.niche !== 'ALL') params.append('niche', filters.niche);
 
       const res = await fetch(`${API_BASE_URL}/leads?${params.toString()}`, {
         headers: { Accept: 'application/json' },
@@ -219,15 +224,16 @@ export const apiClient = {
             };
           });
 
-          // Deduplicate by URL/domain
-          const existingUrls = new Set(serverLeads.map((s) => s.originalUrl));
-          const uniqueLocal = localLeadsCache.filter((l) => !existingUrls.has(l.originalUrl));
-          localLeadsCache = [...serverLeads, ...uniqueLocal];
+          localLeadsCache = serverLeads;
         }
       }
     } catch {
       // Backend not running, use mock dataset
+      if (localLeadsCache.length === 0) {
+        localLeadsCache = [...initialMockLeads];
+      }
     }
+  }
 
     let result = [...localLeadsCache];
 
@@ -282,39 +288,41 @@ export const apiClient = {
     let createdId = `lead-${Date.now()}`;
     let auditId = `audit-${Date.now()}`;
 
-    try {
-      const res = await fetch(`${API_BASE_URL}/leads`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          businessName,
-          originalUrl: targetUrl,
-          contactEmail,
-          niche: validated.niche || 'other',
-        }),
-      });
+    if (!isTestEnv) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/leads`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            businessName,
+            originalUrl: targetUrl,
+            contactEmail,
+            niche: validated.niche || 'other',
+          }),
+        });
 
-      if (!res.ok) {
-        let errorMsg = `Server error (${res.status})`;
-        try {
-          const errData = await res.json();
-          errorMsg = errData.message || errData.error?.message || errorMsg;
-        } catch {
-          // ignore
+        if (!res.ok) {
+          let errorMsg = `Server error (${res.status})`;
+          try {
+            const errData = await res.json();
+            errorMsg = errData.message || errData.error?.message || errorMsg;
+          } catch {
+            // ignore
+          }
+          throw new Error(errorMsg);
         }
-        throw new Error(errorMsg);
-      }
 
-      const data = await res.json();
-      if (data.success && data.data) {
-        createdId = data.data.id || data.data.lead?._id || data.data.lead?.id || createdId;
-        auditId = data.data.auditId || auditId;
+        const data = await res.json();
+        if (data.success && data.data) {
+          createdId = data.data.id || data.data.lead?._id || data.data.lead?.id || createdId;
+          auditId = data.data.auditId || auditId;
+        }
+      } catch (err) {
+        if (err instanceof Error && !err.message.includes('Failed to fetch') && !err.message.includes('ECONNREFUSED')) {
+          throw err;
+        }
+        // Fallback in case backend is offline
       }
-    } catch (err) {
-      if (err instanceof Error && !err.message.includes('Failed to fetch') && !err.message.includes('ECONNREFUSED')) {
-        throw err;
-      }
-      // Fallback in case backend is offline
     }
 
     const newLead: ILeadItem = {
