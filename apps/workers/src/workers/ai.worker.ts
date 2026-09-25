@@ -5,6 +5,7 @@ import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { mvpContentService } from '../services/mvp-content.service.js';
+import { addDeployJob } from '../queues/deploy.queue.js';
 
 export const createAiWorker = (): Worker => {
   const worker = new Worker<IAiGenerationJobData>(
@@ -50,6 +51,17 @@ export const createAiWorker = (): Worker => {
 
       // 4. Transition Lead status to NEEDS_APPROVAL (Human-In-The-Loop gate)
       await Lead.findByIdAndUpdate(leadId, { status: 'NEEDS_APPROVAL' }).exec();
+
+      // 5. Auto-chain to Deploy Queue for HTML synthesis, screenshots, and MinIO deployment
+      try {
+        await addDeployJob({
+          leadId,
+          auditId: audit?._id?.toString() || auditId,
+        });
+        console.log(`[AiWorker] Dispatched MVP Deploy job for lead ${leadId}`);
+      } catch (deployErr) {
+        console.error(`[AiWorker] Failed to dispatch deploy job for lead ${leadId}:`, deployErr);
+      }
 
       console.log(
         `[AiWorker] Content generated successfully for ${lead.businessName}. Status set to NEEDS_APPROVAL (Fallback: ${generationResult.aiFallbackUsed}).`,

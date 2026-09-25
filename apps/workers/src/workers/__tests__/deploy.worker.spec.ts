@@ -172,8 +172,12 @@ describe('DeployWorker (@revamp/workers)', () => {
     // Assert comparison banner created
     expect(ImageService.createComparisonBanner).toHaveBeenCalled();
 
-    // Assert Lead transitioned to NEEDS_APPROVAL (HITL constraint)
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(mockLeadId, { status: 'NEEDS_APPROVAL' });
+    // Assert Lead transitioned to NEEDS_APPROVAL (HITL constraint) with previewUrl and comparisonBannerUrl
+    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(mockLeadId, {
+      status: 'NEEDS_APPROVAL',
+      previewUrl: 'http://localhost:9000/revamp-demos/v/stomatologiya-ulybka-456789/index.html',
+      comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/stomatologiya-ulybka-456789.webp',
+    });
 
     // Assert Audit updated with comparisonBanner
     expect(Audit.findByIdAndUpdate).toHaveBeenCalledWith(

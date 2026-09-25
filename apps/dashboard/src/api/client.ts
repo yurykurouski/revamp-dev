@@ -518,7 +518,43 @@ export const apiClient = {
 
     return { success: true, data: tokens };
   },
+
+  /**
+   * Fetches MVP project details by leadId, mvpId, or slug
+   */
+  async getMvp(idOrLeadId: string): Promise<IMvpProjectDetail | null> {
+    try {
+      const res = await fetch(`${API_BASE_URL}/mvp/${idOrLeadId}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success && data.data) {
+          return data.data;
+        }
+      }
+    } catch {
+      // Fallback
+    }
+    return null;
+  },
 };
+
+export interface IMvpProjectDetail {
+  id?: string;
+  _id?: string;
+  leadId: string;
+  auditId?: string;
+  previewSlug?: string;
+  fullPreviewUrl: string;
+  comparisonBannerUrl?: string;
+  storageHtmlPath?: string;
+  colorPalette?: {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+  };
+  generatedContent?: Record<string, unknown>;
+  isPublished?: boolean;
+}
 
 export interface ICriticalFlaw {
   title: string;

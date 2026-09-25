@@ -67,6 +67,8 @@ export interface ILead {
   status: LeadStatus;
   totalScore?: number;
   tags: string[];
+  previewUrl?: string;
+  comparisonBannerUrl?: string;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -268,7 +270,7 @@ export interface IAiGenerationJobData {
 export interface IDeployJobData {
   leadId: string;
   auditId: string;
-  mvpProjectId: string;
+  mvpProjectId?: string;
 }
 
 export interface IEmailDispatchJobData {

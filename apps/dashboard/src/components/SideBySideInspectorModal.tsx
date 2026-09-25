@@ -34,6 +34,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import {
   useAuditQuery,
+  useMvpQuery,
   useLeadsQuery,
   useApproveOutreachMutation,
   useSendTestEmailMutation,
@@ -61,6 +62,7 @@ export const SideBySideInspectorModal: React.FC = () => {
   const currentLead = leadsData?.leads.find((l) => l.id === selectedLeadId);
 
   const { data: audit, isLoading: isAuditLoading } = useAuditQuery(selectedAuditId);
+  const { data: mvp } = useMvpQuery(selectedLeadId);
 
   const approveMutation = useApproveOutreachMutation();
   const sendTestMutation = useSendTestEmailMutation();
@@ -122,8 +124,9 @@ export const SideBySideInspectorModal: React.FC = () => {
   if (!isOpen) return null;
 
   const previewUrl =
+    mvp?.fullPreviewUrl ||
     currentLead?.previewUrl ||
-    `http://localhost:9000/revamp-demos/v/${currentLead?.domain?.replace(/\./g, '-') || 'demo'}/index.html`;
+    '';
 
   const originalScreenshotUrl =
     originalScreenTab === 'desktop'
@@ -498,18 +501,28 @@ export const SideBySideInspectorModal: React.FC = () => {
                     sx={{ fontSize: '0.72rem', height: 24, fontWeight: 600 }}
                   />
 
-                  <Tooltip title="Открыть сайт прототипа в отдельной вкладке">
-                    <IconButton
-                      size="small"
-                      href={previewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      color="primary"
-                      sx={{ p: 0.8 }}
-                    >
-                      <OpenInNewIcon sx={{ fontSize: 18 }} />
-                    </IconButton>
-                  </Tooltip>
+                  {previewUrl ? (
+                    <Tooltip title="Открыть сайт прототипа в отдельной вкладке">
+                      <IconButton
+                        size="small"
+                        href={previewUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        color="primary"
+                        sx={{ p: 0.8 }}
+                      >
+                        <OpenInNewIcon sx={{ fontSize: 18 }} />
+                      </IconButton>
+                    </Tooltip>
+                  ) : (
+                    <Tooltip title="Прототип формируется...">
+                      <span>
+                        <IconButton size="small" disabled sx={{ p: 0.8 }}>
+                          <OpenInNewIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  )}
                 </Box>
               </Box>
 
@@ -590,19 +603,43 @@ export const SideBySideInspectorModal: React.FC = () => {
                     />
                   )}
 
-                  {/* Secure Sandboxed Iframe */}
-                  <iframe
-                    ref={iframeRef}
-                    src={previewUrl}
-                    title="MVP Interactive Sandbox Preview"
-                    sandbox="allow-scripts allow-same-origin"
-                    style={{
-                      width: '100%',
-                      height: '100%',
-                      border: 'none',
-                      display: 'block',
-                    }}
-                  />
+                  {/* Secure Sandboxed Iframe or Loading State */}
+                  {previewUrl ? (
+                    <iframe
+                      ref={iframeRef}
+                      src={previewUrl}
+                      title="MVP Interactive Sandbox Preview"
+                      sandbox="allow-scripts allow-same-origin"
+                      style={{
+                        width: '100%',
+                        height: '100%',
+                        border: 'none',
+                        display: 'block',
+                      }}
+                    />
+                  ) : (
+                    <Box
+                      sx={{
+                        width: '100%',
+                        height: '100%',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        p: 4,
+                        textAlign: 'center',
+                        gap: 2,
+                      }}
+                    >
+                      <CircularProgress size={40} />
+                      <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                        Генерация и деплой интерактивного MVP...
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        Фоновый воркер компилирует Bento-верстку и загружает бандл в изолированное хранилище MinIO.
+                      </Typography>
+                    </Box>
+                  )}
                 </Box>
               </Box>
             </Box>

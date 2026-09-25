@@ -17,12 +17,14 @@ import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import TouchAppIcon from '@mui/icons-material/TouchApp';
 import WhatshotIcon from '@mui/icons-material/Whatshot';
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
+import BlockIcon from '@mui/icons-material/Block';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 
 interface KanbanColumnConfig {
-  status: LeadStatus;
+  id: string;
+  status: LeadStatus | LeadStatus[];
   title: string;
   icon: React.ReactNode;
   color: string;
@@ -31,53 +33,68 @@ interface KanbanColumnConfig {
 
 const COLUMNS: KanbanColumnConfig[] = [
   {
-    status: 'QUEUED',
-    title: 'В очереди',
+    id: 'queued',
+    status: ['QUEUED', 'PENDING', 'AUDITING', 'AUDITED', 'GENERATING'],
+    title: 'В обработке',
     icon: <PendingActionsIcon sx={{ fontSize: 18 }} />,
     color: '#64748B',
     bgColor: 'rgba(100, 116, 139, 0.08)',
   },
   {
-    status: 'NEEDS_APPROVAL',
+    id: 'needs_approval',
+    status: ['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'],
     title: 'Ожидают ревью',
     icon: <AutoAwesomeIcon sx={{ fontSize: 18 }} />,
     color: '#F59E0B',
     bgColor: 'rgba(245, 158, 11, 0.08)',
   },
   {
-    status: 'SCHEDULED',
+    id: 'scheduled',
+    status: ['SCHEDULED', 'APPROVED'],
     title: 'Запланировано',
     icon: <ScheduleIcon sx={{ fontSize: 18 }} />,
     color: '#6366F1',
     bgColor: 'rgba(99, 102, 241, 0.08)',
   },
   {
-    status: 'SENT',
+    id: 'sent',
+    status: ['SENT', 'DISPATCHED'],
     title: 'Отправлено',
     icon: <SendIcon sx={{ fontSize: 18 }} />,
     color: '#3B82F6',
     bgColor: 'rgba(59, 130, 246, 0.08)',
   },
   {
-    status: 'OPENED',
+    id: 'opened',
+    status: ['OPENED'],
     title: 'Открыто',
     icon: <MarkEmailReadIcon sx={{ fontSize: 18 }} />,
     color: '#8B5CF6',
     bgColor: 'rgba(139, 92, 246, 0.08)',
   },
   {
-    status: 'CLICKED',
+    id: 'clicked',
+    status: ['CLICKED'],
     title: 'Изучает демо',
     icon: <TouchAppIcon sx={{ fontSize: 18 }} />,
     color: '#10B981',
     bgColor: 'rgba(16, 185, 129, 0.08)',
   },
   {
-    status: 'ENGAGED',
+    id: 'engaged',
+    status: ['ENGAGED', 'REPLIED'],
     title: 'Заинтересован (30с+ / CTA)',
     icon: <WhatshotIcon sx={{ fontSize: 18 }} />,
     color: '#EC4899',
     bgColor: 'rgba(236, 72, 153, 0.08)',
+  },
+  {
+    id: 'rejected',
+    status: ['REJECTED', 'UNSUBSCRIBED'],
+    title: 'Отклонено / Отказ',
+    icon: <BlockIcon sx={{ fontSize: 18 }} />,
+    color: '#EF4444',
+    bgColor: 'rgba(239, 68, 68, 0.08)',
   },
 ];
 
@@ -111,11 +128,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
       }}
     >
       {COLUMNS.map((col) => {
-        const columnLeads = leads.filter((l) => l.status === col.status);
+        const columnLeads = leads.filter((l) =>
+          Array.isArray(col.status) ? col.status.includes(l.status) : l.status === col.status,
+        );
 
         return (
           <Box
-            key={col.status}
+            key={col.id}
             sx={{
               width: 320,
               minWidth: 320,
@@ -192,8 +211,11 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         transform: 'translateY(-2px)',
                         boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
                       },
-                      ...(col.status === 'NEEDS_APPROVAL' && {
+                      ...(col.id === 'needs_approval' && {
                         borderLeft: '4px solid #F59E0B',
+                      }),
+                      ...(col.id === 'rejected' && {
+                        borderLeft: '4px solid #EF4444',
                       }),
                     }}
                   >
@@ -307,7 +329,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         })}
                       </Typography>
 
-                      {lead.status === 'NEEDS_APPROVAL' && (
+                      {['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'].includes(lead.status) && (
                         <Button
                           variant="contained"
                           color="warning"
@@ -326,9 +348,9 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         </Button>
                       )}
 
-                      {lead.status === 'QUEUED' && (
+                      {['QUEUED', 'PENDING'].includes(lead.status) && (
                         <Chip
-                          label="В обработке..."
+                          label="В очереди"
                           size="small"
                           sx={{
                             fontSize: '0.7rem',
@@ -338,7 +360,63 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         />
                       )}
 
-                      {lead.previewUrl && lead.status !== 'NEEDS_APPROVAL' && (
+                      {lead.status === 'AUDITING' && (
+                        <Chip
+                          label="🔍 Аудит сайта..."
+                          size="small"
+                          color="info"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.7rem',
+                            height: 20,
+                            fontWeight: 600,
+                          }}
+                        />
+                      )}
+
+                      {lead.status === 'AUDITED' && (
+                        <Chip
+                          label="✓ Аудит готов"
+                          size="small"
+                          color="success"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.7rem',
+                            height: 20,
+                            fontWeight: 600,
+                          }}
+                        />
+                      )}
+
+                      {lead.status === 'GENERATING' && (
+                        <Chip
+                          label="✨ Генерация MVP..."
+                          size="small"
+                          color="warning"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.7rem',
+                            height: 20,
+                            fontWeight: 600,
+                          }}
+                        />
+                      )}
+
+                      {['REJECTED', 'UNSUBSCRIBED'].includes(lead.status) && (
+                        <Chip
+                          label="✕ Отклонено"
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          sx={{
+                            fontSize: '0.7rem',
+                            height: 20,
+                            fontWeight: 600,
+                          }}
+                        />
+                      )}
+
+                      {lead.previewUrl && !['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'].includes(lead.status) && (
                         <Button
                           size="small"
                           variant="outlined"

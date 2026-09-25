@@ -11,6 +11,7 @@ import { storageService } from '../services/storage.service.js';
 import { designCritiqueService } from '../services/design-critique.service.js';
 import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
+import { addAiGenerationJob } from '../queues/ai.queue.js';
 
 export const createAuditWorker = (): Worker => {
   const worker = new Worker<IAuditJobData>(
@@ -108,7 +109,7 @@ export const createAuditWorker = (): Worker => {
         });
 
         // 9. Update Audit document in MongoDB with full metrics, critique, brand tokens, and COMPLETED status
-        await Audit.findOneAndUpdate(
+        const updatedAudit = await Audit.findOneAndUpdate(
           { leadId },
           {
             status: 'COMPLETED',
@@ -145,6 +146,17 @@ export const createAuditWorker = (): Worker => {
         }
 
         await Lead.findByIdAndUpdate(leadId, leadUpdate).exec();
+
+        // 11. Auto-chain to AI Content Generation Queue
+        try {
+          await addAiGenerationJob({
+            leadId,
+            auditId: updatedAudit?._id?.toString() || leadId,
+          });
+          console.log(`[AuditWorker] Dispatched AI generation job for lead ${leadId}`);
+        } catch (chainErr) {
+          console.error(`[AuditWorker] Failed to dispatch AI generation job for lead ${leadId}:`, chainErr);
+        }
 
         console.log(
           `[AuditWorker] Successfully completed audit for lead ${leadId}:\n` +

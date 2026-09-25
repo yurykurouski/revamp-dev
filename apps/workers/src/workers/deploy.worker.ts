@@ -145,6 +145,8 @@ export const createDeployWorker = (): Worker => {
 
       await Lead.findByIdAndUpdate(lead._id, {
         status: 'NEEDS_APPROVAL',
+        previewUrl: fullPreviewUrl,
+        comparisonBannerUrl,
       }).exec();
 
       console.log(

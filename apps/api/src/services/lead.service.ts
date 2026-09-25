@@ -2,6 +2,7 @@ import { URL } from 'url';
 import { CreateLeadDto } from '@revamp/validation';
 import { Lead, ILeadDocument } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
+import { MvpProject } from '../models/MvpProject.model.js';
 import { addAuditJob } from '../queues/audit.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
@@ -94,8 +95,41 @@ export class LeadService {
       Lead.countDocuments(filter).exec(),
     ]);
 
+    let mvpMap = new Map<string, { fullPreviewUrl?: string; comparisonBannerUrl?: string }>();
+    try {
+      const leadIds = leads.map((l: any) => l._id || l.id).filter(Boolean);
+      if (leadIds.length > 0 && MvpProject && typeof MvpProject.find === 'function') {
+        const mvpQuery = MvpProject.find({ leadId: { $in: leadIds } });
+        const mvps = (mvpQuery && typeof mvpQuery.lean === 'function')
+          ? await mvpQuery.lean().exec()
+          : (mvpQuery && typeof mvpQuery.exec === 'function')
+          ? await mvpQuery.exec()
+          : [];
+        if (Array.isArray(mvps)) {
+          mvpMap = new Map(mvps.map((m: any) => [m.leadId?.toString(), m]));
+        }
+      }
+    } catch {
+      // Graceful fallback for mock tests or missing collection
+    }
+
+    const enrichedLeads = leads.map((lead: any) => {
+      const obj = typeof lead.toJSON === 'function' ? lead.toJSON() : { ...lead };
+      const leadIdStr = (lead._id || lead.id)?.toString();
+      const mvp = mvpMap.get(leadIdStr);
+      if (mvp) {
+        if (!obj.previewUrl && mvp.fullPreviewUrl) {
+          obj.previewUrl = mvp.fullPreviewUrl;
+        }
+        if (!obj.comparisonBannerUrl && mvp.comparisonBannerUrl) {
+          obj.comparisonBannerUrl = mvp.comparisonBannerUrl;
+        }
+      }
+      return obj;
+    });
+
     return {
-      leads,
+      leads: enrichedLeads,
       pagination: {
         total,
         page,

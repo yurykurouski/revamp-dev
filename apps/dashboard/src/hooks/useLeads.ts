@@ -40,6 +40,15 @@ export const useAuditQuery = (auditId: string | null) => {
   });
 };
 
+export const useMvpQuery = (leadId: string | null) => {
+  return useQuery({
+    queryKey: ['mvp', leadId],
+    queryFn: () => (leadId ? apiClient.getMvp(leadId) : null),
+    enabled: Boolean(leadId),
+    staleTime: 30000,
+  });
+};
+
 export const useApproveOutreachMutation = () => {
   const queryClient = useQueryClient();
 

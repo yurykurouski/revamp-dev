@@ -98,6 +98,14 @@ const LeadSchema = new Schema<ILeadDocument>(
       type: [String],
       default: [],
     },
+    previewUrl: {
+      type: String,
+      trim: true,
+    },
+    comparisonBannerUrl: {
+      type: String,
+      trim: true,
+    },
   },
   {
     timestamps: true,

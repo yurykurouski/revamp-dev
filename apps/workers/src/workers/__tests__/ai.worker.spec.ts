@@ -7,6 +7,9 @@ import { mvpContentService } from '../../services/mvp-content.service.js';
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../services/mvp-content.service.js');
+vi.mock('../../queues/deploy.queue.js', () => ({
+  addDeployJob: vi.fn().mockResolvedValue({ id: 'mock-deploy-job' }),
+}));
 vi.mock('../../queues/connection.js', () => ({
   redisConnection: {} as any,
 }));
@@ -19,6 +22,9 @@ const mockWorkerInstance = {
 
 vi.mock('bullmq', () => {
   return {
+    Queue: vi.fn().mockImplementation(() => ({
+      add: vi.fn().mockResolvedValue({ id: 'mock-job' }),
+    })),
     Worker: vi.fn().mockImplementation(function (queueName: string, processor: any, opts: any) {
       capturedProcessor = processor;
       return {

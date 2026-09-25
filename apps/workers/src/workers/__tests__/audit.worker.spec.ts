@@ -15,6 +15,9 @@ vi.mock('../../services/browser.service.js');
 vi.mock('../../services/image.service.js');
 vi.mock('../../services/storage.service.js');
 vi.mock('../../services/design-critique.service.js');
+vi.mock('../../queues/ai.queue.js', () => ({
+  addAiGenerationJob: vi.fn().mockResolvedValue({ id: 'mock-ai-job' }),
+}));
 vi.mock('../../queues/connection.js', () => ({
   redisConnection: {} as any,
 }));
@@ -27,6 +30,9 @@ const mockWorkerInstance = {
 
 vi.mock('bullmq', () => {
   return {
+    Queue: vi.fn().mockImplementation(() => ({
+      add: vi.fn().mockResolvedValue({ id: 'mock-job' }),
+    })),
     Worker: vi.fn().mockImplementation(function (queueName: string, processor: any, opts: any) {
       capturedProcessor = processor;
       return {
