@@ -10,6 +10,9 @@ import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
+import { redisConnection } from '../../queues/connection.js';
+import { env } from '../../config/env.js';
+import { LLM_CAPABILITIES_REDIS_KEY } from '@revamp/shared-types';
 
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
@@ -426,6 +429,66 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.status).toBe(400);
     });
 
+    it('should pass the chosen provider and model to the ai-gen job (REV-32)', async () => {
+      mockLeadWithStatus('AUDITED');
+
+      const res = await request(app)
+        .post('/api/v1/mvp/generate')
+        .send({ auditId, provider: 'claude-cli', model: 'opus' });
+
+      expect(res.status).toBe(202);
+      expect(addAiGenerationJob).toHaveBeenCalledWith({
+        leadId,
+        auditId,
+        forceRegenerate: false,
+        previousStatus: 'AUDITED',
+        provider: 'claude-cli',
+        model: 'opus',
+      });
+    });
+
+    it('should pass a provider without a model, leaving the model to the worker (REV-32)', async () => {
+      mockLeadWithStatus('NEEDS_APPROVAL');
+
+      const res = await request(app)
+        .post('/api/v1/mvp/generate')
+        .send({ auditId, forceRegenerate: true, provider: 'anthropic' });
+
+      expect(res.status).toBe(202);
+      expect(addAiGenerationJob).toHaveBeenCalledWith(
+        expect.objectContaining({ provider: 'anthropic', forceRegenerate: true }),
+      );
+      expect(vi.mocked(addAiGenerationJob).mock.calls[0]![0]).not.toHaveProperty('model');
+    });
+
+    it.each([
+      [{ provider: 'llama' }],
+      [{ provider: 'openai', model: 'claude-opus-5' }],
+      [{ provider: 'claude-cli', model: 'gpt-4o' }],
+      [{ model: 'sonnet' }],
+    ])('should return 400 for an unknown provider or a mismatched model: %j (REV-32)', async (choice) => {
+      mockLeadWithStatus('AUDITED');
+
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, ...choice });
+
+      expect(res.status).toBe(400);
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+    });
+
+    it('should reject the dev-only mock provider in production (REV-32)', async () => {
+      mockLeadWithStatus('AUDITED');
+      const previous = env.NODE_ENV;
+      env.NODE_ENV = 'production';
+      try {
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, provider: 'mock' });
+        expect(res.status).toBe(400);
+        expect(res.body.details.code).toBe('LLM_PROVIDER_NOT_ALLOWED');
+        expect(addAiGenerationJob).not.toHaveBeenCalled();
+      } finally {
+        env.NODE_ENV = previous;
+      }
+    });
+
     it('should return 404 when audit is not found', async () => {
       vi.spyOn(Audit, 'findOne').mockReturnValue({
         exec: vi.fn().mockResolvedValue(null),
@@ -445,6 +508,70 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: true });
       expect(res.status).toBe(404);
       expect(addAiGenerationJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/v1/mvp/providers (REV-32)', () => {
+    const capabilities = {
+      checkedAt: '2026-09-26T12:00:00.000Z',
+      defaultProvider: 'claude-cli',
+      defaultModel: 'sonnet',
+      providers: [
+        { id: 'anthropic', available: false, reason: 'missing_api_key' },
+        { id: 'openai', available: true },
+        { id: 'gemini', available: false, reason: 'missing_api_key' },
+        { id: 'claude-cli', available: true },
+        { id: 'mock', available: true },
+      ],
+    };
+
+    it('should return every provider with the worker-reported availability and default', async () => {
+      const get = vi.spyOn(redisConnection, 'get').mockResolvedValue(JSON.stringify(capabilities));
+
+      const res = await request(app).get('/api/v1/mvp/providers');
+
+      expect(res.status).toBe(200);
+      expect(get).toHaveBeenCalledWith(LLM_CAPABILITIES_REDIS_KEY);
+      expect(res.body.data.workersOnline).toBe(true);
+      expect(res.body.data.defaultProvider).toBe('claude-cli');
+      expect(res.body.data.defaultModel).toBe('sonnet');
+      const byId = Object.fromEntries(res.body.data.providers.map((p: any) => [p.id, p]));
+      expect(Object.keys(byId)).toEqual(['anthropic', 'openai', 'gemini', 'claude-cli', 'mock']);
+      expect(byId['anthropic']).toMatchObject({ available: false, reason: 'missing_api_key' });
+      expect(byId['claude-cli']).toMatchObject({ available: true, local: true });
+      expect(byId['claude-cli'].models.map((m: any) => m.id)).toEqual(['sonnet', 'opus', 'haiku']);
+    });
+
+    it('should mark every provider unavailable when no worker has reported', async () => {
+      vi.spyOn(redisConnection, 'get').mockResolvedValue(null);
+
+      const res = await request(app).get('/api/v1/mvp/providers');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.workersOnline).toBe(false);
+      expect(res.body.data.defaultProvider).toBeUndefined();
+      expect(res.body.data.providers.every((p: any) => !p.available && p.reason === 'workers_offline')).toBe(true);
+    });
+
+    it('should still answer when Redis fails', async () => {
+      vi.spyOn(redisConnection, 'get').mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const res = await request(app).get('/api/v1/mvp/providers');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.workersOnline).toBe(false);
+    });
+
+    it('should leave out the dev-only mock provider in production', async () => {
+      vi.spyOn(redisConnection, 'get').mockResolvedValue(JSON.stringify(capabilities));
+      const previous = env.NODE_ENV;
+      env.NODE_ENV = 'production';
+      try {
+        const res = await request(app).get('/api/v1/mvp/providers');
+        expect(res.body.data.providers.map((p: any) => p.id)).not.toContain('mock');
+      } finally {
+        env.NODE_ENV = previous;
+      }
     });
   });
 

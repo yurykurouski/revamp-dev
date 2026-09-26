@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ILeadItem, KpiMetrics } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
-import { LeadStatus } from '@revamp/shared-types';
+import { LeadStatus, LlmProviderId } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
 export const LEADS_QUERY_KEY = ['leads'];
@@ -103,11 +103,28 @@ export interface GenerateMvpVariables {
   leadId?: string;
   /** Replace an existing MVP (REV-31) */
   forceRegenerate?: boolean;
+  /** Provider/model for this run; the server default applies when absent (REV-32) */
+  provider?: LlmProviderId;
+  model?: string;
 }
 
 /** Sends a generate or regenerate request (REV-31); exported for tests */
-export const generateMvpRequest = ({ auditId, leadId, forceRegenerate }: GenerateMvpVariables) =>
-  apiClient.generateMvp(auditId, leadId, { forceRegenerate: forceRegenerate ?? false });
+export const generateMvpRequest = ({ auditId, leadId, forceRegenerate, provider, model }: GenerateMvpVariables) =>
+  apiClient.generateMvp(auditId, leadId, {
+    forceRegenerate: forceRegenerate ?? false,
+    ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
+  });
+
+export const LLM_PROVIDERS_QUERY_KEY = ['llm-providers'] as const;
+
+/** Provider/model options for MVP generation (REV-32); refreshed as the workers report in */
+export const useLlmProvidersQuery = (enabled = true) =>
+  useQuery({
+    queryKey: LLM_PROVIDERS_QUERY_KEY,
+    queryFn: () => apiClient.getLlmProviders(),
+    enabled,
+    staleTime: 30000,
+  });
 
 export const useGenerateMvpMutation = () => {
   const queryClient = useQueryClient();

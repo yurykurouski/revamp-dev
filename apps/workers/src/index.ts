@@ -10,6 +10,7 @@ import { browserService } from './services/browser.service.js';
 import { Lead } from './models/Lead.model.js';
 import { Audit } from './models/Audit.model.js';
 import { addAiGenerationJob } from './queues/ai.queue.js';
+import { startLlmCapabilitiesReporter } from './services/llm-capabilities.js';
 
 export async function recoverStalledAuditedLeads(): Promise<number> {
   try {
@@ -60,12 +61,16 @@ async function startWorkers(): Promise<void> {
 
     console.log('[Workers] All background workers are active and listening.');
 
+    // Tell the API which LLM providers this host can run (REV-32)
+    const stopLlmCapabilitiesReporter = startLlmCapabilitiesReporter(redisConnection);
+
     // Auto-advance any leads that completed audit before auto-chaining was active
     await recoverStalledAuditedLeads();
 
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
       console.log(`[Workers] Received ${signal}. Closing workers gracefully...`);
+      stopLlmCapabilitiesReporter();
       await Promise.all([
         auditWorker.close(),
         aiWorker.close(),

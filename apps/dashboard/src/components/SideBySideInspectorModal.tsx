@@ -43,6 +43,7 @@ import {
   withPreviewVersion,
 } from '../hooks/useLeads.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
+import { MvpSourceChip } from './MvpSourceChip.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
 import { EmailDraftEditor } from './EmailDraftEditor.js';
 import { CompletenessChecklist } from './CompletenessChecklist.js';
@@ -547,6 +548,8 @@ export const SideBySideInspectorModal: React.FC = () => {
                       />
                     </Tooltip>
                   )}
+
+                  <MvpSourceChip mvp={mvp} />
 
                   {currentLead && <RegenerateMvpButton lead={currentLead} variant="button" />}
 

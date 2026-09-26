@@ -32,7 +32,7 @@ export const createDeployWorker = (): Worker => {
   const worker = new Worker<IDeployJobData>(
     QUEUE_NAMES.DEPLOY,
     async (job: Job<IDeployJobData>) => {
-      const { leadId, auditId, forceRegenerate = false } = job.data;
+      const { leadId, auditId, forceRegenerate = false, generationSource } = job.data;
       console.log(
         `[DeployWorker] Deploying MVP static site for lead: ${leadId}, audit: ${auditId}` +
           (forceRegenerate ? ' (regeneration: replacing the existing preview)' : ''),
@@ -123,10 +123,25 @@ export const createDeployWorker = (): Worker => {
 
       // 8. Create or update MvpProject document in MongoDB (one per lead; regeneration updates it)
       const generatedAt = new Date();
+      // Which provider and model wrote this version's copy (REV-32); a run with no operator
+      // choice clears the previous run's choice
+      const sourceUpdate = generationSource
+        ? {
+            provider: generationSource.provider,
+            modelUsed: generationSource.modelUsed,
+            ...(generationSource.requestedProvider
+              ? { requestedProvider: generationSource.requestedProvider, requestedModel: generationSource.requestedModel }
+              : {}),
+          }
+        : {};
       const mvpProject = await MvpProject.findOneAndUpdate(
         { leadId: lead._id },
         {
           $inc: { generationCount: 1 },
+          ...(generationSource && !generationSource.requestedProvider
+            ? { $unset: { requestedProvider: '', requestedModel: '' } }
+            : {}),
+          ...sourceUpdate,
           generatedAt,
           auditId: audit._id,
           leadId: lead._id,

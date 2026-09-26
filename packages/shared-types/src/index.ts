@@ -309,9 +309,131 @@ export interface IMvpProject {
   generationCount?: number;
   /** How much of the original site's key data the MVP kept; recomputed on every deploy (REV-36) */
   completenessReport?: IMvpCompletenessReport;
+  /** Provider that actually wrote the copy, or 'deterministic' when the fallback did (REV-32) */
+  provider?: MvpCopyProvider;
+  /** Model that actually wrote the copy, or 'deterministic-fallback' (REV-32) */
+  modelUsed?: string;
+  /** Provider and model the operator picked for this run, when they picked one (REV-32) */
+  requestedProvider?: LlmProviderId;
+  requestedModel?: string;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
+
+// LLM providers for MVP copy generation (REV-32)
+export type LlmProviderId = 'anthropic' | 'openai' | 'gemini' | 'claude-cli' | 'mock';
+
+/** Who produced a run's copy: an LLM provider or the deterministic fallback */
+export type MvpCopyProvider = LlmProviderId | 'deterministic';
+
+export interface ILlmModelOption {
+  /** Sent to the provider as-is (`claude --model <id>` for the local CLI) */
+  id: string;
+  label: string;
+}
+
+export interface ILlmProviderOption {
+  id: LlmProviderId;
+  label: string;
+  /** Runs on the worker host (Claude Code CLI) instead of a paid HTTP API */
+  local: boolean;
+  /** Offered only outside production */
+  devOnly: boolean;
+  models: ILlmModelOption[];
+  defaultModel: string;
+}
+
+/** Every provider and model the operator can pick; the first model is the provider's default */
+export const LLM_PROVIDER_CATALOG: readonly ILlmProviderOption[] = [
+  {
+    id: 'anthropic',
+    label: 'Anthropic API',
+    local: false,
+    devOnly: false,
+    models: [
+      { id: 'claude-opus-5', label: 'Claude Opus 5' },
+      { id: 'claude-sonnet-5', label: 'Claude Sonnet 5' },
+      { id: 'claude-haiku-4-5', label: 'Claude Haiku 4.5' },
+    ],
+    defaultModel: 'claude-opus-5',
+  },
+  {
+    id: 'openai',
+    label: 'OpenAI API',
+    local: false,
+    devOnly: false,
+    models: [
+      { id: 'gpt-4o', label: 'GPT-4o' },
+      { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
+    ],
+    defaultModel: 'gpt-4o',
+  },
+  {
+    id: 'gemini',
+    label: 'Google Gemini API',
+    local: false,
+    devOnly: false,
+    models: [
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro' },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash' },
+    ],
+    defaultModel: 'gemini-1.5-pro',
+  },
+  {
+    id: 'claude-cli',
+    label: 'Local LLM: Claude Code CLI',
+    local: true,
+    devOnly: false,
+    models: [
+      { id: 'sonnet', label: 'Sonnet' },
+      { id: 'opus', label: 'Opus' },
+      { id: 'haiku', label: 'Haiku' },
+    ],
+    defaultModel: 'sonnet',
+  },
+  {
+    id: 'mock',
+    label: 'Mock (deterministic copy)',
+    local: true,
+    devOnly: true,
+    models: [{ id: 'mock', label: 'Deterministic copy' }],
+    defaultModel: 'mock',
+  },
+];
+
+export const LLM_PROVIDER_IDS = ['anthropic', 'openai', 'gemini', 'claude-cli', 'mock'] as const satisfies readonly LlmProviderId[];
+
+export function findLlmProvider(id: string | undefined): ILlmProviderOption | undefined {
+  return LLM_PROVIDER_CATALOG.find((p) => p.id === id);
+}
+
+/** Why a provider can't be picked right now */
+export type LlmUnavailableReason = 'missing_api_key' | 'cli_not_found' | 'dev_only' | 'workers_offline';
+
+export interface ILlmProviderStatus extends ILlmProviderOption {
+  available: boolean;
+  reason?: LlmUnavailableReason;
+}
+
+/** What the AI worker reports about its host, read by `GET /mvp/providers` */
+export interface ILlmCapabilities {
+  checkedAt: string;
+  /** The env-based default the worker uses when a job names no provider */
+  defaultProvider: LlmProviderId;
+  defaultModel: string;
+  providers: Array<{ id: LlmProviderId; available: boolean; reason?: LlmUnavailableReason }>;
+}
+
+export interface ILlmProvidersResponse {
+  defaultProvider?: LlmProviderId;
+  defaultModel?: string;
+  /** False when no worker has reported in recently; every option is then unavailable */
+  workersOnline: boolean;
+  providers: ILlmProviderStatus[];
+}
+
+/** Redis key the AI worker publishes its LLM capabilities under */
+export const LLM_CAPABILITIES_REDIS_KEY = 'revamp:llm-capabilities';
 
 // 5. Email Campaign Domain Entity
 export interface IEmailMetrics {
@@ -475,6 +597,17 @@ export interface IAiGenerationJobData {
   forceRegenerate?: boolean;
   /** Lead status before the run started; restored if generation fails for good (REV-31) */
   previousStatus?: LeadStatus;
+  /** Operator's provider/model for this run only; the worker's env default applies otherwise (REV-32) */
+  provider?: LlmProviderId;
+  model?: string;
+}
+
+/** Which provider and model produced a run's copy, carried to the MvpProject (REV-32) */
+export interface IMvpGenerationSource {
+  provider: MvpCopyProvider;
+  modelUsed: string;
+  requestedProvider?: LlmProviderId;
+  requestedModel?: string;
 }
 
 export interface IDeployJobData {
@@ -483,6 +616,7 @@ export interface IDeployJobData {
   mvpProjectId?: string;
   forceRegenerate?: boolean;
   previousStatus?: LeadStatus;
+  generationSource?: IMvpGenerationSource;
 }
 
 export interface IEmailDispatchJobData {

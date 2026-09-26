@@ -334,6 +334,41 @@ describe('Dashboard apiClient', () => {
       expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true });
     });
 
+    it('sends the chosen provider and model (REV-32)', async () => {
+      const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await apiClient.generateMvp('audit-1', 'lead-1', { provider: 'claude-cli', model: 'opus' });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        auditId: 'audit-1',
+        forceRegenerate: false,
+        provider: 'claude-cli',
+        model: 'opus',
+      });
+    });
+
+    it('refuses a model the provider does not offer before calling the API (REV-32)', async () => {
+      const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(apiClient.generateMvp('audit-1', 'lead-1', { provider: 'openai', model: 'opus' })).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('loads the provider options (REV-32)', async () => {
+      const data = { workersOnline: true, defaultProvider: 'claude-cli', defaultModel: 'sonnet', providers: [] };
+      const fetchMock = respond(200, { success: true, data });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(apiClient.getLlmProviders()).resolves.toEqual(data);
+      expect(fetchMock.mock.calls[0][0]).toContain('/mvp/providers');
+    });
+
+    it('surfaces a failed provider request (REV-32)', async () => {
+      vi.stubGlobal('fetch', respond(500, { success: false, message: 'boom' }));
+      await expect(apiClient.getLlmProviders()).rejects.toThrow('boom');
+    });
+
     it('surfaces a 409 from the API instead of pretending the job started', async () => {
       vi.stubGlobal(
         'fetch',

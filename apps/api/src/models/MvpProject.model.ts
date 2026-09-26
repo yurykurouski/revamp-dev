@@ -66,6 +66,11 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     completenessReport: {
       type: Schema.Types.Mixed,
     },
+    // Provider and model that wrote the copy, and the operator's choice for the run (REV-32)
+    provider: { type: String },
+    modelUsed: { type: String },
+    requestedProvider: { type: String },
+    requestedModel: { type: String },
   },
   {
     timestamps: true,

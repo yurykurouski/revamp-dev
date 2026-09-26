@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LLM_PROVIDER_IDS, findLlmProvider } from '@revamp/shared-types';
 
 // ==============================================================================
 // In-App Autonomous AI Agents Schemas (from AGENTS.md)
@@ -221,10 +222,34 @@ export type TriggerAuditDto = z.infer<typeof TriggerAuditSchema>;
 /**
  * Schema for POST /api/v1/mvp/generate
  */
-export const GenerateMvpSchema = z.object({
-  auditId: z.string().min(1),
-  forceRegenerate: z.boolean().optional().default(false),
-});
+export const LlmProviderSchema = z.enum(LLM_PROVIDER_IDS);
+
+/**
+ * Provider/model picked by the operator for one MVP run (REV-32). Both are optional; a model
+ * needs its provider and must be one of that provider's models.
+ */
+export const GenerateMvpSchema = z
+  .object({
+    auditId: z.string().min(1),
+    forceRegenerate: z.boolean().optional().default(false),
+    provider: LlmProviderSchema.optional(),
+    model: z.string().trim().min(1).max(100).optional(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.model === undefined) return;
+    if (!value.provider) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['model'], message: 'A model needs a provider' });
+      return;
+    }
+    const provider = findLlmProvider(value.provider);
+    if (!provider?.models.some((m) => m.id === value.model)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['model'],
+        message: `Model "${value.model}" is not available for provider "${value.provider}"`,
+      });
+    }
+  });
 
 export type GenerateMvpDto = z.infer<typeof GenerateMvpSchema>;
 

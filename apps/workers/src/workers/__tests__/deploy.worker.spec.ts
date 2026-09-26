@@ -355,6 +355,55 @@ describe('DeployWorker (@revamp/workers)', () => {
         expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
       );
     });
+
+    const savedUpdate = () => vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]?.[1] as any;
+
+    it('stores the provider and model that wrote the copy, and the operator choice (REV-32)', async () => {
+      setUpDeploy();
+
+      await capturedProcessor!({
+        id: 'job-source',
+        data: {
+          leadId,
+          auditId: 'audit-1',
+          generationSource: {
+            provider: 'deterministic',
+            modelUsed: 'deterministic-fallback',
+            requestedProvider: 'openai',
+            requestedModel: 'gpt-4o',
+          },
+        },
+      });
+
+      expect(savedUpdate()).toMatchObject({
+        provider: 'deterministic',
+        modelUsed: 'deterministic-fallback',
+        requestedProvider: 'openai',
+        requestedModel: 'gpt-4o',
+      });
+      expect(savedUpdate().$unset).toBeUndefined();
+    });
+
+    it('clears an earlier operator choice when the new run used the default (REV-32)', async () => {
+      setUpDeploy();
+
+      await capturedProcessor!({
+        id: 'job-default',
+        data: { leadId, auditId: 'audit-1', generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' } },
+      });
+
+      expect(savedUpdate()).toMatchObject({ provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' });
+      expect(savedUpdate().$unset).toEqual({ requestedProvider: '', requestedModel: '' });
+    });
+
+    it('leaves the source fields alone for jobs queued without one', async () => {
+      setUpDeploy();
+
+      await capturedProcessor!({ id: 'job-legacy', data: { leadId, auditId: 'audit-1' } });
+
+      expect(savedUpdate()).not.toHaveProperty('provider');
+      expect(savedUpdate()).not.toHaveProperty('$unset');
+    });
   });
 
   it('should register a failed handler that resets the lead after the last attempt', () => {

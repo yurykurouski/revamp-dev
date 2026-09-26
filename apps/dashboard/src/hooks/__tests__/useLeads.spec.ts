@@ -17,6 +17,23 @@ describe('MVP regeneration helpers (REV-31)', () => {
     expect(spy).toHaveBeenLastCalledWith('a2', 'l2', { forceRegenerate: false });
   });
 
+  it('generateMvpRequest forwards the provider and model, and never a model alone (REV-32)', async () => {
+    const spy = vi.spyOn(apiClient, 'generateMvp').mockResolvedValue({ success: true, status: 'GENERATING' });
+
+    await generateMvpRequest({ auditId: 'a1', leadId: 'l1', provider: 'gemini', model: 'gemini-1.5-flash' });
+    expect(spy).toHaveBeenLastCalledWith('a1', 'l1', {
+      forceRegenerate: false,
+      provider: 'gemini',
+      model: 'gemini-1.5-flash',
+    });
+
+    await generateMvpRequest({ auditId: 'a1', leadId: 'l1', provider: 'claude-cli' });
+    expect(spy).toHaveBeenLastCalledWith('a1', 'l1', { forceRegenerate: false, provider: 'claude-cli' });
+
+    await generateMvpRequest({ auditId: 'a1', leadId: 'l1', model: 'opus' });
+    expect(spy).toHaveBeenLastCalledWith('a1', 'l1', { forceRegenerate: false });
+  });
+
   it('generateMvpRequest propagates API rejections to the mutation', async () => {
     vi.spyOn(apiClient, 'generateMvp').mockRejectedValue(new Error('conflict'));
     await expect(generateMvpRequest({ auditId: 'a1', forceRegenerate: true })).rejects.toThrow('conflict');

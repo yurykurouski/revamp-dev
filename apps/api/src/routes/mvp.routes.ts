@@ -6,9 +6,22 @@ import { Audit } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
+import { redisConnection } from '../queues/connection.js';
+import { getLlmProviders } from '../services/llm-providers.service.js';
+import { env } from '../config/env.js';
+import { findLlmProvider } from '@revamp/shared-types';
 import mongoose from 'mongoose';
 
 const router = Router();
+
+// GET /mvp/providers: LLM providers/models for MVP generation and whether each can run (REV-32)
+router.get('/providers', async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    res.status(200).json({ success: true, data: await getLlmProviders(redisConnection, env.NODE_ENV) });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // POST /mvp/generate
 router.post(
@@ -16,7 +29,13 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { auditId, forceRegenerate } = req.body;
+      const { auditId, forceRegenerate, provider, model } = req.body;
+
+      if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
+        throw new AppError(`Provider "${provider}" is not available in production`, 400, {
+          code: 'LLM_PROVIDER_NOT_ALLOWED',
+        });
+      }
 
       const isValidId = mongoose.Types.ObjectId.isValid(auditId);
       const audit = await Audit.findOne({
@@ -61,6 +80,7 @@ router.post(
         auditId: audit._id.toString(),
         forceRegenerate: mode === 'regenerate',
         previousStatus,
+        ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
       });
 
       res.status(202).json({

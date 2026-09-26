@@ -3,13 +3,19 @@
  * Claude Code CLI. Callers pass a system and a user prompt and get the model's raw text back;
  * parsing and validating it stays with the caller.
  */
+import { LlmProviderId, findLlmProvider } from '@revamp/shared-types';
 import { env } from '../config/env.js';
 import { ClaudeCliRunner, createClaudeCliRunner } from './claude-cli.js';
 
-export type LlmProvider = 'anthropic' | 'openai' | 'gemini' | 'claude-cli' | 'mock';
+export type LlmProvider = LlmProviderId;
+
+/** Current Anthropic models reject sampling parameters such as temperature (400) */
+const ANTHROPIC_NO_SAMPLING = /^claude-(opus-5|sonnet-5|opus-4-[78]|fable|mythos)/;
 
 export interface LlmClientOptions {
   provider?: LlmProvider;
+  /** Model for the provider; its catalog default (or CLAUDE_CLI_MODEL for the CLI) otherwise (REV-32) */
+  model?: string;
   anthropicApiKey?: string;
   openaiApiKey?: string;
   geminiApiKey?: string;
@@ -27,8 +33,34 @@ export interface LlmCompletionRequest {
   timeoutMs?: number;
 }
 
+/**
+ * The provider a client uses when none is passed: MVP_LLM_PROVIDER, else the first API key set
+ */
+export function resolveDefaultProvider(keys: {
+  anthropicApiKey?: string;
+  openaiApiKey?: string;
+  geminiApiKey?: string;
+} = {
+  anthropicApiKey: env.ANTHROPIC_API_KEY,
+  openaiApiKey: env.OPENAI_API_KEY,
+  geminiApiKey: env.GEMINI_API_KEY,
+}): LlmProvider {
+  if (env.MVP_LLM_PROVIDER) return env.MVP_LLM_PROVIDER;
+  if (keys.anthropicApiKey) return 'anthropic';
+  if (keys.openaiApiKey) return 'openai';
+  if (keys.geminiApiKey) return 'gemini';
+  return 'mock';
+}
+
+/** A provider's default model; the CLI's comes from CLAUDE_CLI_MODEL */
+export function defaultModelFor(provider: LlmProvider): string {
+  if (provider === 'claude-cli') return env.CLAUDE_CLI_MODEL;
+  return findLlmProvider(provider)?.defaultModel ?? 'mock';
+}
+
 export class LlmClient {
   readonly provider: LlmProvider;
+  readonly model: string;
   private readonly anthropicApiKey?: string;
   private readonly openaiApiKey?: string;
   private readonly geminiApiKey?: string;
@@ -48,48 +80,47 @@ export class LlmClient {
         timeoutMs: env.CLAUDE_CLI_TIMEOUT_MS,
       });
 
-    const configuredProvider = options.provider ?? env.MVP_LLM_PROVIDER;
-    if (configuredProvider) {
-      this.provider = configuredProvider;
-    } else if (this.anthropicApiKey) {
-      this.provider = 'anthropic';
-    } else if (this.openaiApiKey) {
-      this.provider = 'openai';
-    } else if (this.geminiApiKey) {
-      this.provider = 'gemini';
-    } else {
-      this.provider = 'mock';
-    }
+    this.provider =
+      options.provider ??
+      resolveDefaultProvider({
+        anthropicApiKey: this.anthropicApiKey,
+        openaiApiKey: this.openaiApiKey,
+        geminiApiKey: this.geminiApiKey,
+      });
+    this.model = options.model ?? defaultModelFor(this.provider);
   }
 
-  /** A real model can be called: the CLI authenticates itself, the APIs need a key */
+  /** A real model can be called: the CLI authenticates itself, each API needs its own key */
   isAvailable(): boolean {
-    if (this.provider === 'mock') return false;
-    if (this.provider === 'claude-cli') return true;
-    return Boolean(this.anthropicApiKey || this.openaiApiKey || this.geminiApiKey);
+    switch (this.provider) {
+      case 'claude-cli':
+        return true;
+      case 'anthropic':
+        return Boolean(this.anthropicApiKey);
+      case 'openai':
+        return Boolean(this.openaiApiKey);
+      case 'gemini':
+        return Boolean(this.geminiApiKey);
+      default:
+        return false;
+    }
   }
 
   /** Name of the model behind the provider, for reports and logs */
   get modelName(): string {
-    switch (this.provider) {
-      case 'anthropic':
-        return 'claude-3-5-sonnet-20241022';
-      case 'openai':
-        return 'gpt-4o';
-      case 'gemini':
-        return 'gemini-1.5-pro';
-      case 'claude-cli':
-        return `claude-cli:${env.CLAUDE_CLI_MODEL}`;
-      default:
-        return 'mock';
-    }
+    if (this.provider === 'claude-cli') return `claude-cli:${this.model}`;
+    return this.provider === 'mock' ? 'mock' : this.model;
   }
 
   async complete(request: LlmCompletionRequest): Promise<string> {
     switch (this.provider) {
       case 'claude-cli':
         // The CLI has no temperature setting
-        return this.claudeCliRunner({ systemPrompt: request.systemPrompt, userPrompt: request.userPrompt });
+        return this.claudeCliRunner({
+          systemPrompt: request.systemPrompt,
+          userPrompt: request.userPrompt,
+          model: this.model,
+        });
       case 'anthropic':
         return this.callAnthropic(request);
       case 'gemini':
@@ -114,9 +145,10 @@ export class LlmClient {
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: request.maxTokens ?? 2000,
-        temperature: request.temperature,
+        model: this.model,
+        // Current models think adaptively by default, and thinking counts against max_tokens
+        max_tokens: request.maxTokens ?? 16000,
+        ...(ANTHROPIC_NO_SAMPLING.test(this.model) ? {} : { temperature: request.temperature }),
         system: request.systemPrompt,
         messages: [{ role: 'user', content: request.userPrompt }],
       }),
@@ -128,8 +160,9 @@ export class LlmClient {
       throw new Error(`Anthropic API error (${response.status}): ${errBody}`);
     }
 
-    const data = (await response.json()) as { content?: Array<{ text?: string }> };
-    return data?.content?.[0]?.text || '';
+    // A thinking block may come before the answer
+    const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
+    return data?.content?.find((block) => block.type === 'text' || (!block.type && block.text))?.text || '';
   }
 
   private async callOpenAi(request: LlmCompletionRequest): Promise<string> {
@@ -140,7 +173,7 @@ export class LlmClient {
         Authorization: `Bearer ${this.openaiApiKey!}`,
       },
       body: JSON.stringify({
-        model: 'gpt-4o',
+        model: this.model,
         max_tokens: request.maxTokens ?? 2000,
         temperature: request.temperature,
         response_format: { type: 'json_object' },
@@ -164,7 +197,7 @@ export class LlmClient {
   }
 
   private async callGemini(request: LlmCompletionRequest): Promise<string> {
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.geminiApiKey!}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent?key=${this.geminiApiKey!}`;
 
     const response = await this.fetcher(url, {
       method: 'POST',

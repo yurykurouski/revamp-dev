@@ -132,7 +132,8 @@ describe('MvpContentService (@revamp/workers)', () => {
     const result = await service.generateContent(sampleInput);
 
     expect(result.aiFallbackUsed).toBe(false);
-    expect(result.modelUsed).toBe('anthropic');
+    expect(result.provider).toBe('anthropic');
+    expect(result.modelUsed).toBe('claude-opus-5');
     expect(result.content.hero.headline).toBe('A healthy, beautiful smile in Saint Petersburg in 1 visit');
     expect(result.content.services).toHaveLength(3);
     expect(mockFetch).toHaveBeenCalledTimes(1);
@@ -194,7 +195,8 @@ describe('MvpContentService (@revamp/workers)', () => {
     const result = await service.generateContent(sampleInput);
 
     expect(result.aiFallbackUsed).toBe(false);
-    expect(result.modelUsed).toBe('openai');
+    expect(result.provider).toBe('openai');
+    expect(result.modelUsed).toBe('gpt-4o');
     expect(result.content.services).toHaveLength(3);
   });
 
@@ -297,7 +299,8 @@ describe('MvpContentService (@revamp/workers)', () => {
       const result = await service.generateContent(sampleInput);
 
       expect(result.aiFallbackUsed).toBe(false);
-      expect(result.modelUsed).toBe('claude-cli');
+      expect(result.provider).toBe('claude-cli');
+      expect(result.modelUsed).toMatch(/^claude-cli:/);
       expect(result.attempts).toBe(1);
       expect(result.content.hero.headline).toBe('Dental implants and whitening at Dent-Prestige');
       expect(runner).toHaveBeenCalledTimes(1);
@@ -319,6 +322,21 @@ describe('MvpContentService (@revamp/workers)', () => {
       expect(result.attempts).toBe(2);
     });
 
+    it('should run the CLI with the model chosen for the job (REV-32)', async () => {
+      const runner = vi.fn().mockResolvedValue(cliCopy);
+      const service = new MvpContentService({ provider: 'claude-cli', model: 'opus', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(runner.mock.calls[0]?.[0].model).toBe('opus');
+      expect(result).toMatchObject({
+        provider: 'claude-cli',
+        modelUsed: 'claude-cli:opus',
+        requestedProvider: 'claude-cli',
+        requestedModel: 'claude-cli:opus',
+      });
+    });
+
     it('should fall back to deterministic copy when every CLI attempt fails', async () => {
       const runner = vi.fn().mockRejectedValue(new Error('Claude CLI exited with code 1: Not logged in'));
       const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
@@ -328,6 +346,9 @@ describe('MvpContentService (@revamp/workers)', () => {
       expect(runner).toHaveBeenCalledTimes(3);
       expect(result.aiFallbackUsed).toBe(true);
       expect(result.modelUsed).toBe('deterministic-fallback');
+      // The chosen provider is kept on record next to the actual one (REV-32)
+      expect(result.provider).toBe('deterministic');
+      expect(result.requestedProvider).toBe('claude-cli');
       expect(result.content.hero.headline).toContain('Dent-Prestige');
     });
 
@@ -627,5 +648,80 @@ describe('MvpContentService (@revamp/workers)', () => {
       expect(clipText('First sentence here. Second sentence is long', 30)).toBe('First sentence here.');
       expect(clipText('one two three four five', 12)).toBe('one two');
     });
+  });
+});
+
+describe('MvpContentService provider/model choice (REV-32)', () => {
+  const input = { businessName: 'Smile Dental', niche: 'dental', city: 'Warsaw' };
+  const copy = JSON.stringify({
+    hero: { badge: 'Warsaw', headline: 'Smile Dental care', subheadline: 'Gentle care.', primaryCtaText: 'Book', secondaryCtaText: 'Call' },
+    services: [
+      { title: 'Implants', description: 'Implants.', lucideIconName: 'smile' },
+      { title: 'Hygiene', description: 'Cleaning.', lucideIconName: 'sparkles' },
+      { title: 'Whitening', description: 'Whiter.', lucideIconName: 'sparkles' },
+    ],
+    trustSignals: [],
+    offerNotice: 'Get in touch',
+  });
+
+  it.each([
+    ['anthropic', 'claude-sonnet-5', { content: [{ type: 'text', text: copy }] }],
+    ['openai', 'gpt-4o-mini', { choices: [{ message: { content: copy } }] }],
+    ['gemini', 'gemini-1.5-flash', { candidates: [{ content: { parts: [{ text: copy }] } }] }],
+  ] as const)('calls %s with the chosen model %s', async (provider, model, body) => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => body });
+    const service = new MvpContentService({
+      provider,
+      model,
+      anthropicApiKey: 'a',
+      openaiApiKey: 'o',
+      geminiApiKey: 'g',
+      customFetcher: fetcher as unknown as typeof fetch,
+    });
+
+    const result = await service.generateContent(input);
+
+    const [url, init] = fetcher.mock.calls[0]!;
+    if (provider === 'gemini') expect(url).toContain(`/models/${model}:`);
+    else expect(JSON.parse(init.body).model).toBe(model);
+    expect(result).toMatchObject({ aiFallbackUsed: false, provider, modelUsed: model, requestedModel: model });
+  });
+
+  it("falls back to deterministic copy, never to another paid provider, when the chosen provider's key is missing", async () => {
+    const fetcher = vi.fn();
+    const service = new MvpContentService({
+      provider: 'openai',
+      model: 'gpt-4o',
+      anthropicApiKey: 'a',
+      customFetcher: fetcher as unknown as typeof fetch,
+    });
+
+    const result = await service.generateContent(input);
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(result).toMatchObject({
+      aiFallbackUsed: true,
+      provider: 'deterministic',
+      modelUsed: 'deterministic-fallback',
+      requestedProvider: 'openai',
+      requestedModel: 'gpt-4o',
+    });
+  });
+
+  it('falls back to deterministic copy after the chosen provider fails every attempt', async () => {
+    const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
+    const service = new MvpContentService({
+      provider: 'anthropic',
+      model: 'claude-haiku-4-5',
+      anthropicApiKey: 'a',
+      openaiApiKey: 'o',
+      customFetcher: fetcher as unknown as typeof fetch,
+    });
+
+    const result = await service.generateContent(input);
+
+    expect(fetcher).toHaveBeenCalledTimes(3);
+    expect(fetcher.mock.calls.every(([url]) => String(url).includes('anthropic.com'))).toBe(true);
+    expect(result).toMatchObject({ provider: 'deterministic', requestedProvider: 'anthropic', requestedModel: 'claude-haiku-4-5' });
   });
 });
