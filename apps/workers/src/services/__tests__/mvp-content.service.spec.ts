@@ -424,6 +424,51 @@ describe('MvpContentService (@revamp/workers)', () => {
       expect(body.system).toContain('Never invent');
     });
 
+    it('should ask the LLM to keep the original site language instead of translating (REV-25)', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
+      const service = new MvpContentService({
+        provider: 'anthropic',
+        anthropicApiKey: 'sk-test',
+        customFetcher: mockFetch as unknown as typeof fetch,
+      });
+
+      await service.generateContent({ ...mallSite, siteContent: { ...mallSite.siteContent!, language: 'pl-PL' } });
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const context = JSON.parse(body.messages[0].content);
+      expect(context.outputLanguage).toBe('Polish (Poland) (pl-PL)');
+      expect(body.system).toContain('outputLanguage');
+      expect(body.system).toContain('Never translate');
+      expect(body.system).not.toContain('Write all copy in English');
+    });
+
+    it('should let the LLM follow the source text when the site declares no valid language (REV-25)', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const unknown = 'the language the original site text is written in (English if it cannot be determined)';
+      expect(service.resolveOutputLanguage(mallSite)).toBe(unknown);
+      expect(service.resolveOutputLanguage({ ...mallSite, siteContent: { ...mallSite.siteContent!, language: '??' } })).toBe(unknown);
+      expect(service.resolveOutputLanguage({ businessName: 'X' })).toBe(unknown);
+    });
+
+    it('should write the deterministic fallback wording in the site language (REV-25)', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const polish = service.generateDeterministicFallback({
+        ...dentalSite,
+        siteContent: { ...dentalSite.siteContent!, language: 'pl' },
+      });
+      expect(polish.hero.primaryCtaText).toBe('Umów wizytę');
+      expect(polish.hero.secondaryCtaText).toBe('Zadzwoń');
+      expect(polish.hero.badge).toBe('★ Ocena 4.9');
+      expect(polish.about?.heading).toBe('O firmie Warsaw Dental Center');
+      expect(polish.services.find((s) => s.title === 'Tooth extraction')?.description).not.toContain(' at ');
+      expect(polish.trustSignals[0]?.label).toBe('Średnia ocena z 312 opinii');
+      expect(polish.offerNotice).toContain('Zadzwoń pod numer');
+
+      const english = service.generateDeterministicFallback(dentalSite);
+      expect(english.hero.primaryCtaText).toBe('Book an appointment');
+      expect(english.about?.heading).toBe('About Warsaw Dental Center');
+    });
+
     it('clipText should cut at sentence or word boundaries', () => {
       expect(clipText('Short text', 50)).toBe('Short text');
       expect(clipText('First sentence here. Second sentence is long', 30)).toBe('First sentence here.');

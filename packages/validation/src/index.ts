@@ -242,6 +242,7 @@ const HttpUrlSchema = z
 
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
+  language: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i).optional(),
   niche: NicheEnumSchema.optional(),
   logoUrl: HttpUrlSchema.optional(),
   monogramSvg: z.string().optional(),

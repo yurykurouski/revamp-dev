@@ -338,6 +338,8 @@ export interface IBentoServiceCard {
 
 export interface IBentoTemplateData {
   businessName: string;
+  /** The original site's BCP 47 language tag ("pl-PL"); drives `<html lang>` and the template UI text (REV-25) */
+  language?: string;
   niche?: NicheType;
   logoUrl?: string;
   monogramSvg?: string;
