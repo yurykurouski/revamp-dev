@@ -223,6 +223,63 @@ export interface IMvpGeneratedContent {
   offerNotice: string;
 }
 
+// MVP completeness check: the generated page compared with the original site's data (REV-36)
+export type CompletenessTier = 'critical' | 'important' | 'informational';
+
+/**
+ * `present` / `missing` / `altered` (found but different) apply to data the original site has;
+ * `not_in_source` means the original site has no such data; `unsourced` flags contact data the
+ * MVP shows that the original site doesn't (possibly made up).
+ */
+export type CompletenessStatus = 'present' | 'missing' | 'altered' | 'not_in_source' | 'unsourced';
+
+export type CompletenessField =
+  | 'businessName'
+  | 'phone'
+  | 'email'
+  | 'address'
+  | 'workingHours'
+  | 'services'
+  | 'socialLinks'
+  | 'logo'
+  | 'images'
+  | 'testimonials'
+  | 'rating'
+  | 'foundingYear';
+
+export interface ICompletenessCheck {
+  field: CompletenessField;
+  tier: CompletenessTier;
+  status: CompletenessStatus;
+  /** The value on the original site */
+  originalValue?: string;
+  /** What the MVP shows for it */
+  mvpValue?: string;
+  /** Extra detail, e.g. which services are missing */
+  note?: string;
+}
+
+export interface IMvpCompletenessReport {
+  /** `unverified` when the comparison itself failed; the checks are then empty */
+  status: 'verified' | 'unverified';
+  /** 0-100, weighted by tier; absent when unverified */
+  score?: number;
+  /** A critical field is missing, altered or unsourced */
+  hasCriticalIssues: boolean;
+  checks: ICompletenessCheck[];
+  checkedAt: string | Date;
+  error?: string;
+}
+
+/** The part of the report the leads list carries for the Kanban card */
+export interface IMvpCompletenessSummary {
+  status: IMvpCompletenessReport['status'];
+  score?: number;
+  hasCriticalIssues: boolean;
+  /** Critical fields that are missing, altered or unsourced */
+  criticalIssues: CompletenessField[];
+}
+
 export interface IMvpProject {
   _id: string;
   auditId: string;
@@ -242,6 +299,8 @@ export interface IMvpProject {
   generatedAt?: string | Date;
   /** Number of generation runs for the lead, the first one included (REV-31) */
   generationCount?: number;
+  /** How much of the original site's key data the MVP kept; recomputed on every deploy (REV-36) */
+  completenessReport?: IMvpCompletenessReport;
   createdAt: string | Date;
   updatedAt: string | Date;
 }

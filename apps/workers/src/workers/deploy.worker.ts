@@ -10,6 +10,7 @@ import { bentoTemplateService } from '../services/template.service.js';
 import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
+import { mvpCompletenessService } from '../services/mvp-completeness.service.js';
 import { handleGenerationFailure } from './generation-failure.js';
 
 function transliterate(str: string): string {
@@ -59,10 +60,17 @@ export const createDeployWorker = (): Worker => {
       const slug = existingProject?.previewSlug || `${rawSlug}-${leadId.toString().slice(-6)}`;
 
       // 2. Render Bento Landing Page HTML
-      const html = bentoTemplateService.renderFromAudit(
-        (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>,
-        (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>,
-        audit.generatedContent,
+      const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>;
+      const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
+      const html = bentoTemplateService.renderFromAudit(leadData, auditData, audit.generatedContent);
+
+      // 2b. Compare the MVP with the original site's key data (REV-36). Advisory only: the check
+      // never throws, and a failed comparison is saved as `unverified`.
+      const completenessReport = mvpCompletenessService.check(html, leadData, auditData);
+      console.log(
+        `[DeployWorker] Completeness: ${completenessReport.status}` +
+          (completenessReport.score !== undefined ? `, score ${completenessReport.score}` : '') +
+          (completenessReport.hasCriticalIssues ? ', critical data missing or changed' : ''),
       );
 
       // 3. Upload static HTML bundle to S3/MinIO demo sandbox
@@ -143,6 +151,7 @@ export const createDeployWorker = (): Worker => {
             accent: audit.extractedBrandTokens?.accentColor || '#5c5bed',
           },
           isPublished: true,
+          completenessReport,
         },
         { upsert: true, new: true },
       ).exec();

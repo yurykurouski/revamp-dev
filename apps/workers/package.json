@@ -17,6 +17,7 @@
     "@revamp/validation": "*",
     "bullmq": "^5.34.0",
     "dotenv": "^16.4.7",
+    "happy-dom": "^20.14.5",
     "ioredis": "^5.4.2",
     "mongoose": "^8.9.0",
     "nodemailer": "^10.0.10",
@@ -27,7 +28,6 @@
   "devDependencies": {
     "@types/node": "^22.10.1",
     "@types/nodemailer": "^8.0.2",
-    "happy-dom": "^20.14.5",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }

@@ -18,6 +18,10 @@ import {
   ImportDiscoverySchema,
   mvpGenerationMode,
   MVP_REGENERATABLE_STATUSES,
+  MvpCompletenessReportSchema,
+  CompletenessCheckSchema,
+  criticalCompletenessIssues,
+  summarizeCompletenessReport,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -142,6 +146,85 @@ describe('Validation Schemas (@revamp/validation)', () => {
       'OPENED', 'CLICKED', 'ENGAGED', 'REPLIED', 'REJECTED', 'UNSUBSCRIBED', '', undefined, null,
     ])('blocks generation for %s', (status) => {
       expect(mvpGenerationMode(status)).toBe('blocked');
+    });
+  });
+
+  describe('MVP completeness report (REV-36)', () => {
+    const validReport = {
+      status: 'verified' as const,
+      score: 80,
+      hasCriticalIssues: true,
+      checkedAt: new Date('2026-09-26T10:00:00Z'),
+      checks: [
+        { field: 'phone', tier: 'critical', status: 'altered', originalValue: '+48 22 555 12 34', mvpValue: '+48 22 999' },
+        { field: 'services', tier: 'important', status: 'present' },
+        { field: 'rating', tier: 'informational', status: 'not_in_source' },
+      ],
+    };
+
+    it('accepts a valid report, with checkedAt as a Date or an ISO string', () => {
+      expect(MvpCompletenessReportSchema.safeParse(validReport).success).toBe(true);
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, checkedAt: '2026-09-26T10:00:00.000Z' }).success).toBe(true);
+    });
+
+    it('accepts an unverified report without a score', () => {
+      const result = MvpCompletenessReportSchema.safeParse({
+        status: 'unverified',
+        hasCriticalIssues: false,
+        checks: [],
+        checkedAt: new Date(),
+        error: 'parser failed',
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('rejects a score outside 0..100', () => {
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, score: 101 }).success).toBe(false);
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, score: -1 }).success).toBe(false);
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, score: 0 }).success).toBe(true);
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, score: 100 }).success).toBe(true);
+    });
+
+    it('rejects unknown fields, tiers and statuses, and over-long values', () => {
+      const check = { field: 'phone', tier: 'critical', status: 'present' };
+      expect(CompletenessCheckSchema.safeParse(check).success).toBe(true);
+      expect(CompletenessCheckSchema.safeParse({ ...check, field: 'fax' }).success).toBe(false);
+      expect(CompletenessCheckSchema.safeParse({ ...check, tier: 'urgent' }).success).toBe(false);
+      expect(CompletenessCheckSchema.safeParse({ ...check, status: 'unknown' }).success).toBe(false);
+      expect(CompletenessCheckSchema.safeParse({ ...check, mvpValue: 'x'.repeat(501) }).success).toBe(false);
+      expect(CompletenessCheckSchema.safeParse({ ...check, mvpValue: 'x'.repeat(500) }).success).toBe(true);
+    });
+
+    it('rejects a report with a missing status or too many checks', () => {
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, status: undefined }).success).toBe(false);
+      const checks = Array.from({ length: 51 }, () => ({ field: 'phone', tier: 'critical', status: 'present' }));
+      expect(MvpCompletenessReportSchema.safeParse({ ...validReport, checks }).success).toBe(false);
+    });
+
+    it('lists critical fields that are missing, altered or unsourced, once each', () => {
+      expect(
+        criticalCompletenessIssues([
+          { field: 'phone', tier: 'critical', status: 'missing' },
+          { field: 'email', tier: 'critical', status: 'present' },
+          { field: 'address', tier: 'critical', status: 'altered' },
+          { field: 'phone', tier: 'critical', status: 'unsourced' },
+          { field: 'address', tier: 'critical', status: 'not_in_source' },
+          { field: 'services', tier: 'important', status: 'missing' },
+        ]),
+      ).toEqual(['phone', 'address']);
+      expect(criticalCompletenessIssues([])).toEqual([]);
+      expect(criticalCompletenessIssues(undefined)).toEqual([]);
+    });
+
+    it('summarizes a report for the leads list', () => {
+      expect(summarizeCompletenessReport(validReport)).toEqual({
+        status: 'verified',
+        score: 80,
+        hasCriticalIssues: true,
+        criticalIssues: ['phone'],
+      });
+      expect(summarizeCompletenessReport(null)).toBeUndefined();
+      expect(summarizeCompletenessReport(undefined)).toBeUndefined();
     });
   });
 

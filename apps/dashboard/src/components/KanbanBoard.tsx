@@ -19,6 +19,7 @@ import WhatshotIcon from '@mui/icons-material/Whatshot';
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import BlockIcon from '@mui/icons-material/Block';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
@@ -29,6 +30,7 @@ import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { formatDate } from '../i18n/languages.js';
 import { isDashboardNiche } from '../i18n/niches.js';
+import { criticalIssueFields } from '../utils/completeness.js';
 
 interface KanbanColumnConfig {
   id: keyof Translation['kanban']['columns'];
@@ -311,6 +313,26 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           label={t('kanban.generationFailed')}
                           size="small"
                           color="error"
+                          variant="outlined"
+                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                        />
+                      </Tooltip>
+                    )}
+
+                    {/* Critical business data the MVP lost or changed (REV-36) */}
+                    {lead.status !== 'GENERATING' && criticalIssueFields(null, lead.completeness).length > 0 && (
+                      <Tooltip
+                        title={t('completeness.kanbanTooltip', {
+                          fields: criticalIssueFields(null, lead.completeness)
+                            .map((field) => t(`completeness.fields.${field}`))
+                            .join(', '),
+                        })}
+                      >
+                        <Chip
+                          icon={<ReportProblemOutlinedIcon sx={{ fontSize: 14 }} />}
+                          label={t('completeness.kanbanChip')}
+                          size="small"
+                          color="warning"
                           variant="outlined"
                           sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
                         />

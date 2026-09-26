@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LeadService } from '../lead.service.js';
 import { Lead } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
+import { MvpProject } from '../../models/MvpProject.model.js';
 import * as auditQueueModule from '../../queues/audit.queue.js';
 import { AppError } from '../../middlewares/errorHandler.js';
 
@@ -156,6 +157,80 @@ describe('LeadService', () => {
           ]),
         }),
       );
+    });
+  });
+
+  describe('getLeads completeness summary (REV-36)', () => {
+    const mockLeadQuery = (leads: unknown[]) => {
+      vi.spyOn(Lead, 'find').mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue(leads),
+      } as any);
+      vi.spyOn(Lead, 'countDocuments').mockReturnValue({ exec: vi.fn().mockResolvedValue(leads.length) } as any);
+    };
+    const mockMvps = (mvps: unknown[]) =>
+      vi.spyOn(MvpProject, 'find').mockReturnValue({
+        lean: () => ({ exec: vi.fn().mockResolvedValue(mvps) }),
+      } as any);
+
+    it('adds the critical issues from the MVP completeness report to each lead', async () => {
+      mockLeadQuery([
+        { _id: 'lead-1', businessName: 'Clinic 1' },
+        { _id: 'lead-2', businessName: 'Clinic 2' },
+        { _id: 'lead-3', businessName: 'Clinic 3' },
+      ]);
+      mockMvps([
+        {
+          leadId: 'lead-1',
+          fullPreviewUrl: 'http://minio/v/1/index.html',
+          completenessReport: {
+            status: 'verified',
+            score: 62,
+            hasCriticalIssues: true,
+            checkedAt: '2026-09-26T10:00:00.000Z',
+            checks: [
+              { field: 'phone', tier: 'critical', status: 'missing' },
+              { field: 'email', tier: 'critical', status: 'present' },
+              { field: 'email', tier: 'critical', status: 'unsourced' },
+              { field: 'services', tier: 'important', status: 'missing' },
+            ],
+          },
+        },
+        {
+          leadId: 'lead-2',
+          fullPreviewUrl: 'http://minio/v/2/index.html',
+          completenessReport: { status: 'unverified', hasCriticalIssues: false, checks: [], checkedAt: '2026-09-26T10:00:00.000Z' },
+        },
+      ]);
+
+      const { leads } = await LeadService.getLeads({});
+
+      expect(leads[0].completeness).toEqual({
+        status: 'verified',
+        score: 62,
+        hasCriticalIssues: true,
+        criticalIssues: ['phone', 'email'],
+      });
+      expect(leads[1].completeness).toEqual({
+        status: 'unverified',
+        score: undefined,
+        hasCriticalIssues: false,
+        criticalIssues: [],
+      });
+      // No MVP yet, or an MVP deployed before the check existed
+      expect(leads[2].completeness).toBeUndefined();
+    });
+
+    it('leaves leads without a summary when the MVP has no report', async () => {
+      mockLeadQuery([{ _id: 'lead-1', businessName: 'Clinic 1' }]);
+      mockMvps([{ leadId: 'lead-1', fullPreviewUrl: 'http://minio/v/1/index.html' }]);
+
+      const { leads } = await LeadService.getLeads({});
+
+      expect(leads[0].completeness).toBeUndefined();
+      expect(leads[0].previewUrl).toBe('http://minio/v/1/index.html');
     });
   });
 

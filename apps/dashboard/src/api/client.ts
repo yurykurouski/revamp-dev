@@ -9,6 +9,8 @@ import {
 import {
   IDiscoveryImportResult,
   IDiscoveryJobStatus,
+  IMvpCompletenessReport,
+  IMvpCompletenessSummary,
   IReverseGeocodeResult,
   LeadStatus,
   NicheType,
@@ -31,6 +33,8 @@ export interface ILeadItem {
   mvpGeneratedAt?: string;
   /** Why the last MVP generation failed, if it did (REV-31) */
   generationError?: string;
+  /** How much of the original site's key data the MVP kept (REV-36) */
+  completeness?: IMvpCompletenessSummary;
   createdAt: string;
 }
 
@@ -212,6 +216,7 @@ export const apiClient = {
             comparisonBannerUrl?: string;
             mvpGeneratedAt?: string;
             generationError?: string;
+            completeness?: IMvpCompletenessSummary;
             createdAt: string;
           }
 
@@ -241,6 +246,7 @@ export const apiClient = {
               comparisonBannerUrl: l.comparisonBannerUrl,
               mvpGeneratedAt: l.mvpGeneratedAt,
               generationError: l.generationError,
+              completeness: l.completeness,
               createdAt: l.createdAt,
             };
           });
@@ -694,6 +700,8 @@ export interface IMvpProjectDetail {
   isPublished?: boolean;
   generatedAt?: string;
   generationCount?: number;
+  /** The MVP compared with the original site's key business data (REV-36) */
+  completenessReport?: IMvpCompletenessReport;
 }
 
 export interface ICriticalFlaw {
