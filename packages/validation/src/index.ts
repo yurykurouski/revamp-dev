@@ -159,6 +159,19 @@ export const StartDiscoverySchema = z
 export type StartDiscoveryDto = z.infer<typeof StartDiscoverySchema>;
 export type StartDiscoveryInput = z.input<typeof StartDiscoverySchema>;
 
+/**
+ * Schema for POST /api/v1/discovery/:jobId/import (REV-29)
+ */
+export const ImportDiscoverySchema = z.object({
+  externalIds: z
+    .array(z.string().min(1).max(200))
+    .min(1)
+    .max(100)
+    .refine((ids) => new Set(ids).size === ids.length, { message: 'externalIds must be unique' }),
+});
+
+export type ImportDiscoveryDto = z.infer<typeof ImportDiscoverySchema>;
+
 /** Query-string coordinate: empty values count as missing rather than coercing to 0 */
 const coordinate = (min: number, max: number) =>
   z.preprocess((val) => (val === '' ? undefined : val), z.coerce.number().min(min).max(max));

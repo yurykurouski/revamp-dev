@@ -1,10 +1,17 @@
 import {
   QuickAddLeadInput,
   QuickAddLeadSchema,
+  ImportDiscoverySchema,
   StartDiscoveryInput,
   StartDiscoverySchema,
 } from '@revamp/validation';
-import { IDiscoveryJobStatus, IReverseGeocodeResult, LeadStatus, NicheType } from '@revamp/shared-types';
+import {
+  IDiscoveryImportResult,
+  IDiscoveryJobStatus,
+  IReverseGeocodeResult,
+  LeadStatus,
+  NicheType,
+} from '@revamp/shared-types';
 
 export interface ILeadItem {
   id: string;
@@ -602,6 +609,18 @@ export const apiClient = {
       headers: { Accept: 'application/json' },
     });
     return readDataOrThrow<IDiscoveryJobStatus>(res);
+  },
+
+  /**
+   * Imports the operator's selection from a finished discovery job as leads (REV-29)
+   */
+  async importDiscoveryCandidates(jobId: string, externalIds: string[]): Promise<IDiscoveryImportResult> {
+    const res = await fetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(ImportDiscoverySchema.parse({ externalIds })),
+    });
+    return readDataOrThrow<IDiscoveryImportResult>(res);
   },
 
   /**

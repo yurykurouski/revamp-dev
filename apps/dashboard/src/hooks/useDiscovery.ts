@@ -1,6 +1,11 @@
-import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { DiscoveryJobState, IDiscoveryJobStatus } from '@revamp/shared-types';
+import {
+  DiscoveryCandidateStatus,
+  DiscoveryJobState,
+  IDiscoveryCandidate,
+  IDiscoveryImportResult,
+  IDiscoveryJobStatus,
+} from '@revamp/shared-types';
 import { StartDiscoveryDto, StartDiscoveryInput, StartDiscoverySchema } from '@revamp/validation';
 import { apiClient } from '../api/client.js';
 import { LEADS_QUERY_KEY } from './useLeads.js';
@@ -95,28 +100,58 @@ export async function detectLocation(
   }
 }
 
+/** Candidate counts per status, in display order */
+export function countCandidates(candidates: IDiscoveryCandidate[]): Record<DiscoveryCandidateStatus, number> {
+  const counts: Record<DiscoveryCandidateStatus, number> = {
+    new: 0,
+    existing_lead: 0,
+    duplicate: 0,
+    no_website: 0,
+    invalid: 0,
+  };
+  for (const candidate of candidates) counts[candidate.status]++;
+  return counts;
+}
+
+/** External ids the operator can still import */
+export function importableIds(candidates: IDiscoveryCandidate[]): string[] {
+  return candidates.filter((c) => c.status === 'new').map((c) => c.externalId);
+}
+
+/** Drops selected ids that are no longer importable (e.g. imported since the last poll) */
+export function pruneSelection(selected: ReadonlySet<string>, candidates: IDiscoveryCandidate[]): Set<string> {
+  const importable = new Set(importableIds(candidates));
+  return new Set([...selected].filter((id) => importable.has(id)));
+}
+
+/** Import outcome for the operator: how many were imported and how many were not */
+export function summarizeImport(result: IDiscoveryImportResult): { imported: number; skipped: number; failed: number } {
+  const failed = result.results.filter((r) => r.outcome === 'failed').length;
+  return { imported: result.imported, failed, skipped: result.results.length - result.imported - failed };
+}
+
 export const useStartDiscoveryMutation = () =>
   useMutation({
     mutationFn: (input: StartDiscoveryInput) => apiClient.startDiscovery(input),
   });
 
-export const useDiscoveryStatusQuery = (jobId: string | null) => {
-  const queryClient = useQueryClient();
-
-  const query = useQuery({
+export const useDiscoveryStatusQuery = (jobId: string | null) =>
+  useQuery({
     queryKey: ['discovery', jobId],
     queryFn: () => apiClient.getDiscoveryStatus(jobId as string),
     enabled: Boolean(jobId),
     refetchInterval: (q) => discoveryRefetchInterval(q.state.data),
   });
 
-  // New leads appear once the job completes
-  const completed = query.data?.state === 'completed';
-  useEffect(() => {
-    if (completed) {
-      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
-    }
-  }, [completed, queryClient]);
+export const useImportDiscoveryMutation = (jobId: string | null) => {
+  const queryClient = useQueryClient();
 
-  return query;
+  return useMutation({
+    mutationFn: (externalIds: string[]) => apiClient.importDiscoveryCandidates(jobId as string, externalIds),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      // Imported rows come back as existing_lead
+      queryClient.invalidateQueries({ queryKey: ['discovery', jobId] });
+    },
+  });
 };

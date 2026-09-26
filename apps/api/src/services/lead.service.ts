@@ -20,6 +20,7 @@ export class LeadService {
    */
   static async createLead(
     dto: CreateLeadDto,
+    options: { tags?: string[] } = {},
   ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string }> {
     let domain: string;
     try {
@@ -40,6 +41,7 @@ export class LeadService {
       contactPhone: dto.contactPhone,
       ownerName: dto.ownerName,
       status: 'QUEUED',
+      ...(options.tags ? { tags: options.tags } : {}),
     });
 
     // 2. Create corresponding Audit record in MongoDB

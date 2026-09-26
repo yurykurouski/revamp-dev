@@ -124,4 +124,45 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
       expect(res.body.message).toBe(message);
     });
   });
+
+  describe('POST /api/v1/discovery/:jobId/import (REV-29)', () => {
+    it('should return 200 with the per-id outcome', async () => {
+      const data = {
+        imported: 1,
+        results: [
+          { externalId: 'node/1', outcome: 'imported', leadId: 'l1' },
+          { externalId: 'node/2', outcome: 'existing_lead', leadId: 'l0' },
+        ],
+      };
+      vi.mocked(DiscoveryService.importCandidates).mockResolvedValue(data as any);
+
+      const res = await request(app).post('/api/v1/discovery/disc-1/import').send({ externalIds: ['node/1', 'node/2'] });
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, message: 'Imported 1 of 2 selected businesses', data });
+      expect(DiscoveryService.importCandidates).toHaveBeenCalledWith('disc-1', { externalIds: ['node/1', 'node/2'] });
+    });
+
+    it.each([
+      [{}, 'missing ids'],
+      [{ externalIds: [] }, 'empty list'],
+      [{ externalIds: ['a', 'a'] }, 'duplicates'],
+      [{ externalIds: Array.from({ length: 101 }, (_, i) => `n/${i}`) }, 'over 100'],
+      [{ externalIds: [''] }, 'empty id'],
+    ])('should return 400 for %j (%s)', async (body) => {
+      const res = await request(app).post('/api/v1/discovery/disc-1/import').send(body);
+      expect(res.status).toBe(400);
+      expect(DiscoveryService.importCandidates).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      [404, 'Discovery job not found'],
+      [409, 'Discovery job has not completed yet'],
+    ])('should pass through %i errors', async (status, message) => {
+      vi.mocked(DiscoveryService.importCandidates).mockRejectedValue(new AppError(message, status));
+      const res = await request(app).post('/api/v1/discovery/disc-1/import').send({ externalIds: ['node/1'] });
+      expect(res.status).toBe(status);
+      expect(res.body.message).toBe(message);
+    });
+  });
 });

@@ -77,6 +77,26 @@ describe('LeadService', () => {
     });
   });
 
+  describe('createLead tags (REV-29)', () => {
+    beforeEach(() => {
+      vi.spyOn(Lead, 'create').mockResolvedValue({ _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' } as any);
+      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: 'audit-1' } as any);
+      vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job-1' } as any);
+    });
+
+    const dto = { businessName: 'A Clinic', originalUrl: 'https://a.lt', contactEmail: 'info@a.lt', niche: 'dental' as const };
+
+    it('should store the given tags', async () => {
+      await LeadService.createLead(dto, { tags: ['discovered', 'source:osm'] });
+      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ tags: ['discovered', 'source:osm'] }));
+    });
+
+    it('should leave tags to the model default when none are given', async () => {
+      await LeadService.createLead(dto);
+      expect(vi.mocked(Lead.create).mock.calls[0]?.[0]).not.toHaveProperty('tags');
+    });
+  });
+
   describe('getLeads', () => {
     it('should return paginated leads with correct metadata', async () => {
       const mockLeads = [{ id: '1', businessName: 'Clinic 1' }];

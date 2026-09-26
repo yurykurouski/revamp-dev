@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ReverseGeocodeQuery } from '@revamp/validation';
+import { ImportDiscoveryDto, ReverseGeocodeQuery } from '@revamp/validation';
 import { DiscoveryService } from '../services/discovery.service.js';
 
 export const startDiscovery = async (req: Request, res: Response, next: NextFunction) => {
@@ -32,6 +32,22 @@ export const reverseGeocode = async (req: Request, res: Response, next: NextFunc
     const result = await DiscoveryService.reverseGeocode(req.query as unknown as ReverseGeocodeQuery);
     res.status(200).json({
       success: true,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const importDiscoveryCandidates = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const result = await DiscoveryService.importCandidates(
+      req.params['jobId'] as string,
+      req.body as ImportDiscoveryDto,
+    );
+    res.status(200).json({
+      success: true,
+      message: `Imported ${result.imported} of ${result.results.length} selected businesses`,
       data: result,
     });
   } catch (error) {

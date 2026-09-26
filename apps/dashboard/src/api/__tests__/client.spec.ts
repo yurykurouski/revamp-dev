@@ -277,6 +277,31 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.reverseGeocode(0, -30)).rejects.toThrow('No place found at these coordinates');
     });
 
+    it('importDiscoveryCandidates should POST the selection and return the outcome (REV-29)', async () => {
+      const data = { imported: 1, results: [{ externalId: 'node/1', outcome: 'imported', leadId: 'l1' }] };
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true, data }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      expect(await apiClient.importDiscoveryCandidates('disc 1', ['node/1'])).toEqual(data);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toMatch(/\/discovery\/disc%201\/import$/);
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ externalIds: ['node/1'] });
+    });
+
+    it('importDiscoveryCandidates should reject an empty selection locally and surface 409s', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(apiClient.importDiscoveryCandidates('d', [])).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonResponse({ success: false, message: 'Discovery job has not completed yet' }, 409)),
+      );
+      await expect(apiClient.importDiscoveryCandidates('d', ['node/1'])).rejects.toThrow('has not completed yet');
+    });
+
     it('getDiscoveryStatus should reject a 200 response without data', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ success: true })));
       await expect(apiClient.getDiscoveryStatus('x')).rejects.toThrow('Malformed server response');
