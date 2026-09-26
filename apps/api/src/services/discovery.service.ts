@@ -1,4 +1,14 @@
-import { ImportDiscoveryDto, ReverseGeocodeQuery, StartDiscoveryDto } from '@revamp/validation';
+import {
+  ImportDiscoveryDto,
+  LEAD_IDENTITY_PROJECTION,
+  LeadIdentity,
+  ReverseGeocodeQuery,
+  StartDiscoveryDto,
+  createLeadMatcher,
+  leadExternalId,
+  leadMatchFilter,
+  leadMatchKeys,
+} from '@revamp/validation';
 import {
   DiscoveryJobState,
   IDiscoveryCandidate,
@@ -16,14 +26,23 @@ import { LeadService } from './lead.service.js';
 /** Must match the workers' EMAIL_GUESSED_TAG: the audit swaps the guessed email for the site's own */
 const EMAIL_GUESSED_TAG = 'email-guessed';
 
-/** Lead ids keyed by domain, for the given domains that are already leads */
-async function findLeadIdsByDomain(domains: string[]): Promise<Map<string, string>> {
-  if (domains.length === 0) return new Map();
-  const leads = (await Lead.find({ domain: { $in: domains } }, { domain: 1 }).lean().exec()) as Array<{
-    _id: unknown;
-    domain?: string;
-  }>;
-  return new Map(leads.filter((l) => l.domain).map((l) => [l.domain as string, String(l._id)]));
+/**
+ * Finds which candidates are already leads, matching on the provider id, domain and phone.
+ * Returns the matching lead id per candidate externalId.
+ */
+async function findExistingLeadIds(candidates: IDiscoveryCandidate[]): Promise<Map<string, string>> {
+  const keyed = candidates.map((c) => ({ externalId: c.externalId, keys: leadMatchKeys(c) }));
+  const filter = leadMatchFilter(keyed.map((k) => k.keys));
+  if (!filter) return new Map();
+
+  const leads = (await Lead.find(filter, LEAD_IDENTITY_PROJECTION).lean().exec()) as LeadIdentity[];
+  const match = createLeadMatcher(leads);
+  const result = new Map<string, string>();
+  for (const { externalId, keys } of keyed) {
+    const leadId = match(keys);
+    if (leadId) result.set(externalId, leadId);
+  }
+  return result;
 }
 
 interface NominatimReverseResponse {
@@ -36,7 +55,7 @@ const SETTLEMENT_KEYS = ['city', 'town', 'village', 'municipality', 'county', 's
 
 export class DiscoveryService {
   /**
-   * Enqueues a maps-provider search; the discovery worker imports results as QUEUED leads
+   * Enqueues a maps-provider search; the operator reviews its results before importing any
    */
   static async startDiscovery(dto: StartDiscoveryDto) {
     const job = await addDiscoveryJob({
@@ -79,15 +98,13 @@ export class DiscoveryService {
     // Jobs from before REV-29 have no candidate list
     if (!result || !Array.isArray(result.candidates)) return result;
 
-    const newDomains = result.candidates.filter((c) => c.status === 'new' && c.domain).map((c) => c.domain as string);
-    const leadIds = await findLeadIdsByDomain(newDomains);
-    return {
-      ...result,
-      candidates: result.candidates.map((c): IDiscoveryCandidate => {
-        const leadId = c.status === 'new' && c.domain ? leadIds.get(c.domain) : undefined;
-        return leadId ? { ...c, status: 'existing_lead', leadId } : c;
-      }),
-    };
+    const leadIds = await findExistingLeadIds(result.candidates.filter((c) => c.status === 'new'));
+    const candidates = result.candidates.map((c): IDiscoveryCandidate => {
+      const leadId = c.status === 'new' ? leadIds.get(c.externalId) : undefined;
+      return leadId ? { ...c, status: 'existing_lead', leadId } : c;
+    });
+    // `counts` stays as the worker recorded it at search time
+    return { ...result, candidates };
   }
 
   /**
@@ -105,8 +122,9 @@ export class DiscoveryService {
 
     const byId = new Map((job.returnvalue?.candidates ?? []).map((c) => [c.externalId, c]));
     const selected = dto.externalIds.map((id) => byId.get(id));
-    const leadIds = await findLeadIdsByDomain(
-      selected.filter((c) => c?.status === 'new' && c.domain).map((c) => c!.domain as string),
+    // Re-check at import time: a lead may have been added since the search
+    const leadIds = await findExistingLeadIds(
+      selected.filter((c): c is IDiscoveryCandidate => c?.status === 'new'),
     );
 
     const results: IDiscoveryImportResult['results'] = [];
@@ -116,7 +134,7 @@ export class DiscoveryService {
         results.push({ externalId, outcome: 'not_found' });
         continue;
       }
-      const existingLeadId = candidate.leadId ?? (candidate.domain ? leadIds.get(candidate.domain) : undefined);
+      const existingLeadId = candidate.leadId ?? leadIds.get(candidate.externalId);
       if (candidate.status === 'existing_lead' || existingLeadId) {
         results.push({ externalId, outcome: 'existing_lead', leadId: existingLeadId });
         continue;
@@ -138,7 +156,7 @@ export class DiscoveryService {
             city: candidate.city ?? job.data.location.slice(0, 100),
             contactPhone: candidate.phone,
           },
-          { tags },
+          { tags, source: candidate.provider, externalId: leadExternalId(candidate.provider, candidate.externalId) },
         );
         results.push({ externalId, outcome: 'imported', leadId: lead._id.toString() });
       } catch (error) {

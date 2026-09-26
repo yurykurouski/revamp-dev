@@ -44,7 +44,12 @@ describe('GooglePlacesProvider', () => {
     );
     const provider = new GooglePlacesProvider({ apiKey: 'key-123', fetchFn });
 
-    const results = await provider.search({ niche: 'dental', location: 'Vilnius', maxResults: 10 });
+    const { businesses: results, nextCursor } = await provider.search({
+      niche: 'dental',
+      location: 'Vilnius',
+      maxResults: 10,
+    });
+    expect(nextCursor).toBeUndefined();
 
     const [url, init] = fetchFn.mock.calls[0];
     expect(url).toBe('https://places.googleapis.com/v1/places:searchText');
@@ -79,34 +84,28 @@ describe('GooglePlacesProvider', () => {
     expect(JSON.parse(fetchFn.mock.calls[1][1].body).textQuery).toBe('bakery in Riga');
   });
 
-  it('should follow nextPageToken until the target is reached and cap at 60', async () => {
+  it('should fetch one page per call, passing the cursor as pageToken and returning the next token', async () => {
     const page = (prefix: string, token?: string) =>
       jsonResponse({
         places: Array.from({ length: 20 }, (_, i) => place(`${prefix}${i}`)),
         ...(token ? { nextPageToken: token } : {}),
       });
-    const fetchFn = vi
-      .fn()
-      .mockResolvedValueOnce(page('p1-', 't1'))
-      .mockResolvedValueOnce(page('p2-', 't2'))
-      .mockResolvedValueOnce(page('p3-', 't3'));
+    const fetchFn = vi.fn().mockResolvedValueOnce(page('p1-', 't1')).mockResolvedValueOnce(page('p2-'));
     const provider = new GooglePlacesProvider({ apiKey: 'k', fetchFn });
+    const params = { niche: 'restaurant' as const, location: 'Warsaw', maxResults: 300 };
 
-    const results = await provider.search({ niche: 'restaurant', location: 'Warsaw', maxResults: 300 });
+    const first = await provider.search(params);
+    expect(first.businesses).toHaveLength(20);
+    expect(first.nextCursor).toBe('t1');
+    // Google's page size tops out at 20 however many results the search wants
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body)).toEqual({ textQuery: 'restaurant in Warsaw', pageSize: 20 });
 
-    expect(fetchFn).toHaveBeenCalledTimes(3);
-    expect(JSON.parse(fetchFn.mock.calls[0][1].body).pageToken).toBeUndefined();
+    const second = await provider.search(params, first.nextCursor);
     expect(JSON.parse(fetchFn.mock.calls[1][1].body).pageToken).toBe('t1');
-    expect(JSON.parse(fetchFn.mock.calls[2][1].body).pageToken).toBe('t2');
-    expect(results).toHaveLength(60);
-  });
-
-  it('should stop paging when no nextPageToken is returned', async () => {
-    const fetchFn = vi.fn().mockResolvedValueOnce(jsonResponse({ places: [place('only')] }));
-    const provider = new GooglePlacesProvider({ apiKey: 'k', fetchFn });
-    const results = await provider.search({ niche: 'fitness', location: 'Minsk', maxResults: 40 });
-    expect(fetchFn).toHaveBeenCalledTimes(1);
-    expect(results).toHaveLength(1);
+    expect(second.businesses[0]?.externalId).toBe('p2-0');
+    // Google stops returning a token once the search is exhausted (at most 60 results)
+    expect(second.nextCursor).toBeUndefined();
+    expect(fetchFn).toHaveBeenCalledTimes(2);
   });
 
   it('should surface HTTP errors with the response detail', async () => {

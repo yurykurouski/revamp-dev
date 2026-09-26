@@ -18,15 +18,19 @@ import {
   Typography,
 } from '@mui/material';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
-import { DiscoveryCandidateStatus, IDiscoveryCandidate, IDiscoveryImportResult } from '@revamp/shared-types';
+import { DiscoveryCandidateStatus, IDiscoveryImportResult, IDiscoveryJobResult } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
 import {
   countCandidates,
+  discoverySearchOutcome,
   importableIds,
   pruneSelection,
   summarizeImport,
   useImportDiscoveryMutation,
+  visibleCandidates,
 } from '../hooks/useDiscovery.js';
+import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
+import { useHitlModalStore } from '../store/useHitlModalStore.js';
 
 const STATUS_ORDER: DiscoveryCandidateStatus[] = ['new', 'existing_lead', 'duplicate', 'no_website', 'invalid'];
 
@@ -40,22 +44,30 @@ const STATUS_CHIP_COLOR = {
 
 interface DiscoveryReviewProps {
   jobId: string;
-  candidates: IDiscoveryCandidate[];
+  result: IDiscoveryJobResult;
+  /** How many new businesses the search asked for */
+  limit: number;
 }
 
 /**
- * Lists every business a discovery search found and imports the operator's selection as leads (REV-29).
+ * Lists the new businesses a discovery search found and imports the operator's selection as leads
+ * (REV-29). Businesses that are already leads are hidden behind a toggle (REV-35).
  */
-export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candidates }) => {
+export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result, limit }) => {
   const { t } = useTranslation();
   const importMutation = useImportDiscoveryMutation(jobId);
+  const closeDiscovery = useDiscoveryStore((s) => s.close);
+  const openLead = useHitlModalStore((s) => s.openModal);
+  const { candidates } = result;
 
   const counts = useMemo(() => countCandidates(candidates), [candidates]);
-  const skippedCount = candidates.length - counts.new;
+  const otherSkippedCount = counts.duplicate + counts.no_website + counts.invalid;
+  const searchOutcome = discoverySearchOutcome(result, limit);
 
   // New businesses start selected; imported ones drop out as polling marks them existing_lead
   const [selected, setSelected] = useState<Set<string>>(() => new Set(importableIds(candidates)));
-  const [showSkipped, setShowSkipped] = useState(counts.new === 0);
+  const [showExisting, setShowExisting] = useState(false);
+  const [showSkipped, setShowSkipped] = useState(false);
   const [lastImport, setLastImport] = useState<IDiscoveryImportResult | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
@@ -63,7 +75,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candida
     setSelected((current) => pruneSelection(current, candidates));
   }, [candidates]);
 
-  const rows = showSkipped ? candidates : candidates.filter((c) => c.status === 'new');
+  const rows = visibleCandidates(candidates, { showExisting, showSkipped });
   const importable = importableIds(candidates);
   const allSelected = importable.length > 0 && importable.every((id) => selected.has(id));
 
@@ -89,6 +101,11 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candida
 
   const summary = lastImport ? summarizeImport(lastImport) : null;
 
+  const handleOpenLead = (leadId: string) => {
+    closeDiscovery();
+    openLead(leadId);
+  };
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
@@ -102,6 +119,28 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candida
           />
         ))}
       </Box>
+
+      {searchOutcome !== 'filled' && (
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          {t(searchOutcome === 'exhausted' ? 'discovery.searchExhausted' : 'discovery.searchCapped', {
+            new: result.counts?.new ?? counts.new,
+            limit,
+          })}
+        </Alert>
+      )}
+
+      {counts.existing_lead > 0 && (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="body2" color="text.secondary">
+            {t('discovery.existingSummary', { existing: counts.existing_lead })}
+          </Typography>
+          <FormControlLabel
+            sx={{ ml: 0 }}
+            control={<Switch size="small" checked={showExisting} onChange={(e) => setShowExisting(e.target.checked)} />}
+            label={<Typography variant="body2">{t('discovery.showExisting')}</Typography>}
+          />
+        </Box>
+      )}
 
       {summary && (
         <Alert severity={summary.failed > 0 ? 'warning' : 'success'} sx={{ borderRadius: 2 }} onClose={() => setLastImport(null)}>
@@ -156,7 +195,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candida
                     key={c.externalId}
                     hover={isNew}
                     onClick={isNew && !importMutation.isPending ? () => toggle(c.externalId) : undefined}
-                    sx={{ cursor: isNew ? 'pointer' : 'default', opacity: isNew ? 1 : 0.6 }}
+                    sx={{ cursor: isNew ? 'pointer' : 'default', opacity: isNew || c.status === 'existing_lead' ? 1 : 0.6 }}
                   >
                     <TableCell padding="checkbox">
                       <Checkbox
@@ -195,6 +234,17 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candida
                         color={STATUS_CHIP_COLOR[c.status]}
                         label={t(`discovery.candidateStatus.${c.status}`)}
                       />
+                      {c.status === 'existing_lead' && c.leadId && (
+                        <Link
+                          component="button"
+                          type="button"
+                          variant="caption"
+                          onClick={() => handleOpenLead(c.leadId as string)}
+                          sx={{ display: 'block', mt: 0.5, fontWeight: 600 }}
+                        >
+                          {t('discovery.openLead')}
+                        </Link>
+                      )}
                     </TableCell>
                   </TableRow>
                 );
@@ -205,10 +255,10 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, candida
       )}
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
-        {skippedCount > 0 && (
+        {otherSkippedCount > 0 && (
           <FormControlLabel
             control={<Switch size="small" checked={showSkipped} onChange={(e) => setShowSkipped(e.target.checked)} />}
-            label={<Typography variant="body2">{t('discovery.showSkipped', { skipped: skippedCount })}</Typography>}
+            label={<Typography variant="body2">{t('discovery.showSkipped', { skipped: otherSkippedCount })}</Typography>}
           />
         )}
         <Box sx={{ flexGrow: 1 }} />

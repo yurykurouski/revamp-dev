@@ -1,5 +1,4 @@
 import {
-  DiscoveryCandidateStatus,
   DiscoveryProvider,
   IDiscoveredBusiness,
   IDiscoveryCandidate,
@@ -7,7 +6,16 @@ import {
   IDiscoveryJobResult,
   NicheType,
 } from '@revamp/shared-types';
-import { DiscoveredBusinessSchema } from '@revamp/validation';
+import {
+  DiscoveredBusinessSchema,
+  LEAD_IDENTITY_PROJECTION,
+  LeadIdentity,
+  countCandidatesByStatus,
+  createLeadMatcher,
+  leadMatchFilter,
+  leadMatchKeys,
+  normalizeDomain,
+} from '@revamp/validation';
 import { env } from '../config/env.js';
 import { Lead } from '../models/Lead.model.js';
 import { OsmDiscoveryProvider } from './osm-discovery.provider.js';
@@ -19,12 +27,23 @@ export interface DiscoverySearchParams {
   niche: NicheType;
   location: string;
   keyword?: string;
-  /** Upper bound on listings to fetch from the provider */
+  /** Upper bound on listings to fetch in one provider request */
   maxResults: number;
 }
 
+export interface DiscoveryPage {
+  businesses: IDiscoveredBusiness[];
+  /** Opaque cursor for the next request; absent when the provider has nothing more for this search */
+  nextCursor?: string;
+}
+
 export interface DiscoveryProviderClient {
-  search(params: DiscoverySearchParams): Promise<IDiscoveredBusiness[]>;
+  search(params: DiscoverySearchParams, cursor?: string): Promise<DiscoveryPage>;
+}
+
+export interface RunDiscoveryOptions {
+  /** Hard cap on provider requests per job, which bounds API cost and fair-use load */
+  maxRequests: number;
 }
 
 // Hosts that are profiles or directories rather than the business's own site
@@ -81,7 +100,8 @@ export function normalizeWebsite(raw?: string): { url: string; domain: string } 
   }
   if (!/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes('.')) return null;
 
-  const domain = parsed.hostname.replace(/^www\./, '').toLowerCase();
+  const domain = normalizeDomain(parsed.hostname);
+  if (!domain) return null;
   const isProfile = NON_AUDITABLE_HOSTS.some((host) => domain === host || domain.endsWith(`.${host}`));
   if (isProfile) return null;
 
@@ -103,25 +123,9 @@ function sanitize(business: IDiscoveredBusiness, website: string): IDiscoveredBu
   };
 }
 
-/**
- * Searches a maps provider and classifies every listing for operator review. Nothing is imported
- * here: the operator picks which `new` businesses become leads (POST /discovery/:jobId/import).
- */
-export async function runDiscovery(
-  data: IDiscoveryJobData,
-  provider: DiscoveryProviderClient = createDiscoveryProvider(data.provider),
-): Promise<IDiscoveryJobResult> {
-  const businesses = await provider.search({
-    niche: data.niche,
-    location: data.location,
-    keyword: data.keyword,
-    // Many listings are skipped as duplicates or lacking a site, so over-fetch
-    maxResults: Math.min(data.limit * 3, 300),
-  });
-
-  // 1. Normalise, validate, and dedupe within the batch, keeping the provider's order
+/** Normalises, validates and classifies listings, deduping by domain against every listing seen so far */
+function classify(businesses: IDiscoveredBusiness[], seenDomains: Set<string>): IDiscoveryCandidate[] {
   const candidates: IDiscoveryCandidate[] = [];
-  const seenDomains = new Set<string>();
   for (const business of businesses) {
     const base = {
       provider: business.provider,
@@ -144,33 +148,75 @@ export async function runDiscovery(
     seenDomains.add(site.domain);
     candidates.push({ ...base, name, phone, email, address, city, website: site.url, domain: site.domain, status });
   }
+  return candidates;
+}
 
-  // 2. Mark domains that are already leads
-  const existing = (await Lead.find({ domain: { $in: [...seenDomains] } }, { domain: 1 })
-    .lean()
-    .exec()) as Array<{ _id: unknown; domain?: string }>;
-  const leadIdByDomain = new Map(existing.map((lead) => [lead.domain, String(lead._id)]));
-  for (const candidate of candidates) {
-    const leadId = candidate.status === 'new' && candidate.domain ? leadIdByDomain.get(candidate.domain) : undefined;
+/** Marks `new` candidates that are already leads, matching on provider id, then domain, then phone */
+async function markExistingLeads(candidates: IDiscoveryCandidate[]): Promise<void> {
+  const fresh = candidates.filter((c) => c.status === 'new').map((c) => ({ candidate: c, keys: leadMatchKeys(c) }));
+  const filter = leadMatchFilter(fresh.map((f) => f.keys));
+  if (!filter) return;
+
+  const leads = (await Lead.find(filter, LEAD_IDENTITY_PROJECTION).lean().exec()) as LeadIdentity[];
+  const match = createLeadMatcher(leads);
+  for (const { candidate, keys } of fresh) {
+    const leadId = match(keys);
     if (leadId) Object.assign(candidate, { status: 'existing_lead', leadId });
   }
+}
 
-  // 3. Offer at most `limit` new businesses; skipped listings are all kept so the operator sees why
+/**
+ * Searches a maps provider and classifies every listing for operator review. Nothing is imported
+ * here: the operator picks which `new` businesses become leads (POST /discovery/:jobId/import).
+ *
+ * Businesses that are already leads don't count toward the limit, so the search keeps paging
+ * through the provider until it has `limit` new ones, the provider runs out, or it hits the
+ * request cap.
+ */
+export async function runDiscovery(
+  data: IDiscoveryJobData,
+  provider: DiscoveryProviderClient = createDiscoveryProvider(data.provider),
+  options: RunDiscoveryOptions = { maxRequests: env.DISCOVERY_MAX_REQUESTS },
+): Promise<IDiscoveryJobResult> {
+  const params: DiscoverySearchParams = {
+    niche: data.niche,
+    location: data.location,
+    keyword: data.keyword,
+    // Many listings are skipped as duplicates or lacking a site, so over-fetch
+    maxResults: Math.min(data.limit * 3, 300),
+  };
+
+  const candidates: IDiscoveryCandidate[] = [];
+  const seenListings = new Set<string>();
+  const seenDomains = new Set<string>();
+  let newCount = 0;
+  let requests = 0;
+  let cursor: string | undefined;
+
+  do {
+    const page = await provider.search(params, cursor);
+    requests++;
+    cursor = page.nextCursor;
+
+    // A wider follow-up request (OSM) returns the earlier listings again
+    const fresh = page.businesses.filter((b) => !seenListings.has(b.externalId));
+    for (const b of fresh) seenListings.add(b.externalId);
+
+    const pageCandidates = classify(fresh, seenDomains);
+    await markExistingLeads(pageCandidates);
+    candidates.push(...pageCandidates);
+    newCount += pageCandidates.filter((c) => c.status === 'new').length;
+  } while (cursor && newCount < data.limit && requests < options.maxRequests);
+
+  // Offer at most `limit` new businesses; skipped listings are all kept so the operator sees why
   let offered = 0;
   const limited = candidates.filter((c) => c.status !== 'new' || ++offered <= data.limit);
 
-  return { found: businesses.length, candidates: limited };
-}
-
-/** Counts candidates per status, for logs and summaries */
-export function countByStatus(candidates: IDiscoveryCandidate[]): Record<DiscoveryCandidateStatus, number> {
-  const counts: Record<DiscoveryCandidateStatus, number> = {
-    new: 0,
-    existing_lead: 0,
-    duplicate: 0,
-    no_website: 0,
-    invalid: 0,
+  return {
+    found: seenListings.size,
+    candidates: limited,
+    counts: countCandidatesByStatus(limited),
+    requests,
+    exhausted: !cursor,
   };
-  for (const candidate of candidates) counts[candidate.status]++;
-  return counts;
 }

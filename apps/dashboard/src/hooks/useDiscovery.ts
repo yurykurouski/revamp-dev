@@ -4,9 +4,15 @@ import {
   DiscoveryJobState,
   IDiscoveryCandidate,
   IDiscoveryImportResult,
+  IDiscoveryJobResult,
   IDiscoveryJobStatus,
 } from '@revamp/shared-types';
-import { StartDiscoveryDto, StartDiscoveryInput, StartDiscoverySchema } from '@revamp/validation';
+import {
+  StartDiscoveryDto,
+  StartDiscoveryInput,
+  StartDiscoverySchema,
+  countCandidatesByStatus,
+} from '@revamp/validation';
 import { apiClient } from '../api/client.js';
 import { LEADS_QUERY_KEY } from './useLeads.js';
 
@@ -102,15 +108,38 @@ export async function detectLocation(
 
 /** Candidate counts per status, in display order */
 export function countCandidates(candidates: IDiscoveryCandidate[]): Record<DiscoveryCandidateStatus, number> {
-  const counts: Record<DiscoveryCandidateStatus, number> = {
-    new: 0,
-    existing_lead: 0,
-    duplicate: 0,
-    no_website: 0,
-    invalid: 0,
-  };
-  for (const candidate of candidates) counts[candidate.status]++;
-  return counts;
+  return countCandidatesByStatus(candidates);
+}
+
+export interface CandidateVisibility {
+  /** Show businesses that are already leads (hidden by default, REV-35) */
+  showExisting: boolean;
+  /** Show listings skipped for other reasons: duplicates, no website, invalid */
+  showSkipped: boolean;
+}
+
+/** Rows for the review table: new businesses always, the rest only when their toggle is on */
+export function visibleCandidates(candidates: IDiscoveryCandidate[], visibility: CandidateVisibility): IDiscoveryCandidate[] {
+  return candidates.filter((c) => {
+    if (c.status === 'new') return true;
+    if (c.status === 'existing_lead') return visibility.showExisting;
+    return visibility.showSkipped;
+  });
+}
+
+export type DiscoverySearchOutcome = 'filled' | 'exhausted' | 'capped';
+
+/**
+ * Whether the search found as many new businesses as asked for, ran out of listings in the area,
+ * or stopped at the request cap. Uses the counts from search time, so importing businesses later
+ * doesn't change it. Jobs from before REV-35 carry no paging info and count as filled.
+ */
+export function discoverySearchOutcome(
+  result: Pick<IDiscoveryJobResult, 'counts' | 'exhausted'>,
+  limit: number,
+): DiscoverySearchOutcome {
+  if (!result.counts || result.exhausted === undefined || result.counts.new >= limit) return 'filled';
+  return result.exhausted ? 'exhausted' : 'capped';
 }
 
 /** External ids the operator can still import */

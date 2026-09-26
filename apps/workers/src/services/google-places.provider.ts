@@ -1,10 +1,9 @@
 import { IDiscoveredBusiness, NicheType } from '@revamp/shared-types';
-import type { DiscoveryProviderClient, DiscoverySearchParams, FetchFn } from './discovery.service.js';
+import type { DiscoveryPage, DiscoveryProviderClient, DiscoverySearchParams, FetchFn } from './discovery.service.js';
 
 const PLACES_SEARCH_URL = 'https://places.googleapis.com/v1/places:searchText';
-// Google caps Text Search at 20 results per page and 60 in total
+// Google caps Text Search at 20 results per page, and stops returning page tokens after 60 in total
 const PAGE_SIZE = 20;
-const MAX_TOTAL = 60;
 
 const FIELD_MASK = [
   'places.id',
@@ -62,47 +61,39 @@ export class GooglePlacesProvider implements DiscoveryProviderClient {
     this.fetchFn = config.fetchFn ?? fetch;
   }
 
-  async search(params: DiscoverySearchParams): Promise<IDiscoveredBusiness[]> {
+  /** Fetches one page of results; `cursor` is the previous page's nextPageToken */
+  async search(params: DiscoverySearchParams, cursor?: string): Promise<DiscoveryPage> {
     if (!this.config.apiKey) {
       throw new Error('GOOGLE_PLACES_API_KEY is not configured');
     }
 
-    const target = Math.min(params.maxResults, MAX_TOTAL);
     const textQuery = `${[params.keyword, GOOGLE_NICHE_QUERIES[params.niche]]
       .filter(Boolean)
       .join(' ')} in ${params.location}`;
 
-    const results: IDiscoveredBusiness[] = [];
-    let pageToken: string | undefined;
-
-    do {
-      const res = await this.fetchFn(PLACES_SEARCH_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': this.config.apiKey,
-          'X-Goog-FieldMask': FIELD_MASK,
-        },
-        body: JSON.stringify({
-          textQuery,
-          pageSize: Math.min(PAGE_SIZE, target - results.length),
-          ...(pageToken ? { pageToken } : {}),
-        }),
-        signal: AbortSignal.timeout(30_000),
-      });
-      if (!res.ok) {
-        const detail = await res.text().catch(() => '');
-        throw new Error(`Google Places request failed with HTTP ${res.status}: ${detail.slice(0, 200)}`);
-      }
-      const body = (await res.json()) as GoogleSearchResponse;
-      for (const place of body.places ?? []) {
-        const business = this.toBusiness(place);
-        if (business) results.push(business);
-      }
-      pageToken = body.nextPageToken;
-    } while (pageToken && results.length < target);
-
-    return results.slice(0, target);
+    const res = await this.fetchFn(PLACES_SEARCH_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': this.config.apiKey,
+        'X-Goog-FieldMask': FIELD_MASK,
+      },
+      body: JSON.stringify({
+        textQuery,
+        pageSize: Math.min(PAGE_SIZE, params.maxResults),
+        ...(cursor ? { pageToken: cursor } : {}),
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '');
+      throw new Error(`Google Places request failed with HTTP ${res.status}: ${detail.slice(0, 200)}`);
+    }
+    const body = (await res.json()) as GoogleSearchResponse;
+    const businesses = (body.places ?? [])
+      .map((place) => this.toBusiness(place))
+      .filter((b): b is IDiscoveredBusiness => b !== null);
+    return { businesses, nextCursor: body.nextPageToken || undefined };
   }
 
   private toBusiness(place: GooglePlace): IDiscoveredBusiness | null {

@@ -98,6 +98,43 @@ describe('LeadService', () => {
     });
   });
 
+  describe('createLead identity (REV-35)', () => {
+    beforeEach(() => {
+      vi.spyOn(Lead, 'create').mockResolvedValue({ _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' } as any);
+      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: 'audit-1' } as any);
+      vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job-1' } as any);
+    });
+
+    const dto = { businessName: 'A Clinic', originalUrl: 'https://a.lt', contactEmail: 'info@a.lt', niche: 'dental' as const };
+
+    it('should store the domain in the same normalised form discovery matches on', async () => {
+      await LeadService.createLead({ ...dto, originalUrl: 'https://WWW.A-Clinic.LT.:8443/contact' });
+      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ domain: 'a-clinic.lt' }));
+    });
+
+    it('should default manual leads to source "manual" with no provider id', async () => {
+      await LeadService.createLead(dto);
+      const created = vi.mocked(Lead.create).mock.calls[0]?.[0] as Record<string, unknown>;
+      expect(created['source']).toBe('manual');
+      expect(created).not.toHaveProperty('externalId');
+    });
+
+    it('should store the discovery source and provider id when given', async () => {
+      await LeadService.createLead(dto, { source: 'google', externalId: 'google:ChIJ123' });
+      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ source: 'google', externalId: 'google:ChIJ123' }));
+    });
+
+    it('should store the E.164 phone next to the phone as entered', async () => {
+      await LeadService.createLead({ ...dto, contactPhone: '+370 (600) 12-345' });
+      expect(Lead.create).toHaveBeenCalledWith(
+        expect.objectContaining({ contactPhone: '+370 (600) 12-345', phoneE164: '+37060012345' }),
+      );
+
+      await LeadService.createLead({ ...dto, contactPhone: '8 600 12345' });
+      expect(vi.mocked(Lead.create).mock.calls[1]?.[0]).toMatchObject({ phoneE164: undefined });
+    });
+  });
+
   describe('getLeads', () => {
     it('should return paginated leads with correct metadata', async () => {
       const mockLeads = [{ id: '1', businessName: 'Clinic 1' }];

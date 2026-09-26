@@ -3,8 +3,7 @@ import { UnrecoverableError } from 'bullmq';
 import { createDiscoveryWorker } from '../discovery.worker.js';
 import { runDiscovery } from '../../services/discovery.service.js';
 
-vi.mock('../../services/discovery.service.js', async (importOriginal) => ({
-  countByStatus: (await importOriginal<typeof import('../../services/discovery.service.js')>()).countByStatus,
+vi.mock('../../services/discovery.service.js', () => ({
   runDiscovery: vi.fn(),
 }));
 vi.mock('../../queues/connection.js', () => ({
@@ -53,12 +52,29 @@ describe('DiscoveryWorker (@revamp/workers)', () => {
         { provider: 'osm' as const, externalId: 'node/1', name: 'A', status: 'new' as const },
         { provider: 'osm' as const, externalId: 'node/2', name: 'B', status: 'no_website' as const },
       ],
+      counts: { new: 1, existing_lead: 0, duplicate: 0, no_website: 1, invalid: 0 },
+      requests: 2,
+      exhausted: true,
     };
     vi.mocked(runDiscovery).mockResolvedValue(summary);
     createDiscoveryWorker();
 
     await expect(capturedProcessor!(job)).resolves.toEqual(summary);
     expect(runDiscovery).toHaveBeenCalledWith(job.data);
+    expect(console.log).toHaveBeenCalledWith(
+      expect.stringMatching(/after 2 request\(s\) \(provider exhausted\): found 2, new 1, .*no website 1/),
+    );
+  });
+
+  it('should count statuses itself when a result has no counts', async () => {
+    vi.mocked(runDiscovery).mockResolvedValue({
+      found: 1,
+      candidates: [{ provider: 'osm', externalId: 'node/1', name: 'A', status: 'existing_lead' }],
+    });
+    createDiscoveryWorker();
+
+    await capturedProcessor!(job);
+    expect(console.log).toHaveBeenCalledWith(expect.stringContaining('already leads 1'));
   });
 
   it.each([

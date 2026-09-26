@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LLM_PROVIDER_IDS, findLlmProvider } from '@revamp/shared-types';
+import { DiscoveryCandidateStatus, LLM_PROVIDER_IDS, findLlmProvider } from '@revamp/shared-types';
 
 // ==============================================================================
 // In-App Autonomous AI Agents Schemas (from AGENTS.md)
@@ -561,3 +561,129 @@ export const MvpTrackEventSchema = z
 
 export type MvpTrackEventDto = z.infer<typeof MvpTrackEventSchema>;
 
+
+// ==============================================================================
+// Lead identity: matching discovered businesses to existing leads (REV-35)
+// ==============================================================================
+
+/**
+ * Canonical domain for a URL or bare host: lowercased, without port, trailing dots or a leading
+ * `www.`. Import, discovery and manual lead creation all store and match on this form.
+ */
+export function normalizeDomain(input?: string | null): string | undefined {
+  let value = input?.trim().toLowerCase();
+  if (!value) return undefined;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//.test(value)) value = `http://${value}`;
+
+  let host: string;
+  try {
+    host = new URL(value).hostname;
+  } catch {
+    return undefined;
+  }
+  host = host.replace(/\.+$/, '').replace(/^www\./, '');
+  return host || undefined;
+}
+
+/**
+ * E.164 form (`+<country><number>`) of a phone written internationally, e.g. `+375 (29) 123-45-67`
+ * or `00375 29 1234567`. National numbers have no country code to go on, so they are not matched.
+ */
+export function normalizePhone(input?: string | null): string | undefined {
+  // Keep the first number of a list and drop any extension
+  let value = input?.split(/[;,/]|\b(?:ext|x)\.?\s*\d/i)[0]?.trim().replace(/^tel:/i, '');
+  if (!value) return undefined;
+  // "+44 (0) 20 ..." carries the national trunk prefix, which E.164 omits
+  value = value.replace(/\(0\)/g, '');
+  if (!value.startsWith('+') && !value.startsWith('00')) return undefined;
+  let digits = value.replace(/\D/g, '');
+  if (value.startsWith('00')) digits = digits.slice(2);
+  if (!/^[1-9]\d{6,14}$/.test(digits)) return undefined;
+  return `+${digits}`;
+}
+
+/** Provider-qualified listing id stored on `Lead.externalId`, e.g. `google:ChIJ...` or `osm:node/123` */
+export function leadExternalId(provider: string, externalId: string): string {
+  return `${provider}:${externalId}`;
+}
+
+/** What a discovered business can be matched on, strongest first */
+export interface LeadMatchKeys {
+  externalId: string;
+  domain?: string;
+  phoneE164?: string;
+}
+
+export function leadMatchKeys(candidate: {
+  provider: string;
+  externalId: string;
+  domain?: string;
+  phone?: string;
+}): LeadMatchKeys {
+  return {
+    externalId: leadExternalId(candidate.provider, candidate.externalId),
+    domain: normalizeDomain(candidate.domain),
+    phoneE164: normalizePhone(candidate.phone),
+  };
+}
+
+/** The lead fields matching reads; project exactly these in the query */
+export interface LeadIdentity {
+  _id: unknown;
+  externalId?: string | null;
+  domain?: string | null;
+  phoneE164?: string | null;
+}
+
+export const LEAD_IDENTITY_PROJECTION = { externalId: 1, domain: 1, phoneE164: 1 } as const;
+
+/** MongoDB filter for leads that could match any of the keys, or null when there is nothing to look up */
+export function leadMatchFilter(keys: LeadMatchKeys[]): Record<string, unknown> | null {
+  const unique = (values: Array<string | undefined>) => [...new Set(values.filter((v): v is string => Boolean(v)))];
+  const clauses = [
+    { field: 'externalId', values: unique(keys.map((k) => k.externalId)) },
+    { field: 'domain', values: unique(keys.map((k) => k.domain)) },
+    { field: 'phoneE164', values: unique(keys.map((k) => k.phoneE164)) },
+  ]
+    .filter((c) => c.values.length > 0)
+    .map((c) => ({ [c.field]: { $in: c.values } }));
+  return clauses.length > 0 ? { $or: clauses } : null;
+}
+
+/**
+ * Returns a lookup from match keys to the id of the lead they belong to: the provider id first,
+ * then the domain, then the phone number.
+ */
+export function createLeadMatcher(leads: LeadIdentity[]): (keys: LeadMatchKeys) => string | undefined {
+  const byField = (field: 'externalId' | 'domain' | 'phoneE164') => {
+    const map = new Map<string, string>();
+    for (const lead of leads) {
+      const value = lead[field];
+      if (value && !map.has(value)) map.set(value, String(lead._id));
+    }
+    return map;
+  };
+  const byExternalId = byField('externalId');
+  const byDomain = byField('domain');
+  const byPhone = byField('phoneE164');
+
+  return (keys) =>
+    byExternalId.get(keys.externalId) ??
+    (keys.domain ? byDomain.get(keys.domain) : undefined) ??
+    (keys.phoneE164 ? byPhone.get(keys.phoneE164) : undefined);
+}
+
+/** Discovery candidates per status, including skipped listings (REV-35) */
+export function countCandidatesByStatus(
+  candidates: Array<{ status: DiscoveryCandidateStatus }>,
+): Record<DiscoveryCandidateStatus, number> {
+  const counts: Record<DiscoveryCandidateStatus, number> = {
+    new: 0,
+    existing_lead: 0,
+    duplicate: 0,
+    no_website: 0,
+    invalid: 0,
+  };
+  for (const candidate of candidates) counts[candidate.status]++;
+  return counts;
+}

@@ -1,5 +1,5 @@
 import { IDiscoveredBusiness, NicheType } from '@revamp/shared-types';
-import type { DiscoveryProviderClient, DiscoverySearchParams, FetchFn } from './discovery.service.js';
+import type { DiscoveryPage, DiscoveryProviderClient, DiscoverySearchParams, FetchFn } from './discovery.service.js';
 
 /** Overpass tag filters per niche; each entry becomes one `nwr[...]` statement */
 export const OSM_NICHE_FILTERS: Record<NicheType, string[]> = {
@@ -22,6 +22,9 @@ export const OSM_NICHE_FILTERS: Record<NicheType, string[]> = {
 // Only listings with a website can be audited, so filter server-side to keep responses small
 const HAS_WEBSITE = '[~"^(website|contact:website|url)$"~"."]';
 const AROUND_RADIUS_METERS = 5000;
+// How far a follow-up request may go: Overpass has no paging, so it asks for more results or a wider circle
+const MAX_OUT = 2000;
+const MAX_AROUND_RADIUS_METERS = 20000;
 const QUERY_TIMEOUT_SECONDS = 90;
 // Client-side ceiling a little above the server-side query timeout
 const REQUEST_TIMEOUT_MS = (QUERY_TIMEOUT_SECONDS + 30) * 1000;
@@ -30,6 +33,14 @@ const REQUEST_TIMEOUT_MS = (QUERY_TIMEOUT_SECONDS + 30) * 1000;
 export interface OsmSearchScope {
   setup: string;
   filter: string;
+  /** Set for around-a-point searches, which a follow-up request can widen */
+  radius?: number;
+}
+
+/** Follow-up request state: how many elements to ask for and, for point locations, the radius */
+interface OsmCursor {
+  out: number;
+  radius: number;
 }
 
 interface NominatimPlace {
@@ -66,20 +77,44 @@ export function escapeOverpassRegex(value: string): string {
   return value.replace(/[\\^$.*+?()[\]{}|"]/g, '\\$&');
 }
 
+function parseCursor(cursor: string): OsmCursor {
+  const parsed = JSON.parse(cursor) as Partial<OsmCursor>;
+  if (!Number.isInteger(parsed.out) || !Number.isInteger(parsed.radius)) {
+    throw new Error(`Invalid OSM discovery cursor: ${cursor}`);
+  }
+  return parsed as OsmCursor;
+}
+
+/**
+ * Next request after one that returned `returned` elements: a truncated result asks for more,
+ * a complete one around a point widens the circle, and a complete area result is the end.
+ */
+export function nextCursor(state: OsmCursor, returned: number, scope: OsmSearchScope): string | undefined {
+  if (returned >= state.out && state.out < MAX_OUT) {
+    return JSON.stringify({ out: Math.min(state.out * 2, MAX_OUT), radius: state.radius });
+  }
+  if (scope.radius !== undefined && state.radius < MAX_AROUND_RADIUS_METERS) {
+    return JSON.stringify({ out: state.out, radius: Math.min(state.radius * 2, MAX_AROUND_RADIUS_METERS) });
+  }
+  return undefined;
+}
+
 /**
  * OpenStreetMap discovery: Nominatim resolves the location, Overpass returns tagged businesses.
  * Data is ODbL-licensed and free to use with attribution.
  */
 export class OsmDiscoveryProvider implements DiscoveryProviderClient {
   private readonly fetchFn: FetchFn;
+  private readonly places = new Map<string, Promise<NominatimPlace>>();
 
   constructor(private readonly config: OsmProviderConfig) {
     this.fetchFn = config.fetchFn ?? fetch;
   }
 
-  async search(params: DiscoverySearchParams): Promise<IDiscoveredBusiness[]> {
-    const scope = await this.resolveLocation(params.location);
-    const query = this.buildQuery(params, scope);
+  async search(params: DiscoverySearchParams, cursor?: string): Promise<DiscoveryPage> {
+    const state = cursor ? parseCursor(cursor) : { out: params.maxResults, radius: AROUND_RADIUS_METERS };
+    const scope = await this.resolveLocation(params.location, state.radius);
+    const query = this.buildQuery({ ...params, maxResults: state.out }, scope);
 
     const res = await this.fetchFn(this.config.overpassUrl, {
       method: 'POST',
@@ -98,13 +133,41 @@ export class OsmDiscoveryProvider implements DiscoveryProviderClient {
     if (body.remark && /error|timed out|out of memory/i.test(body.remark)) {
       throw new Error(`Overpass query failed: ${body.remark.slice(0, 200)}`);
     }
-    return (body.elements ?? [])
+    const elements = body.elements ?? [];
+    const businesses = elements
       .map((el) => this.toBusiness(el))
       .filter((b): b is IDiscoveredBusiness => b !== null);
+    return { businesses, nextCursor: nextCursor(state, elements.length, scope) };
   }
 
   /** Resolves the location to an Overpass area set or, for point results, an around-radius */
-  async resolveLocation(location: string): Promise<OsmSearchScope> {
+  async resolveLocation(location: string, radius = AROUND_RADIUS_METERS): Promise<OsmSearchScope> {
+    const place = await this.lookupPlace(location);
+
+    // Overpass area ids are the OSM id offset by type
+    const areaOffset = place.osm_type === 'relation' ? 3600000000 : place.osm_type === 'way' ? 2400000000 : null;
+    if (areaOffset !== null && place.osm_id) {
+      return { setup: `area(id:${areaOffset + place.osm_id})->.a;\n`, filter: '(area.a)' };
+    }
+    if (place.lat && place.lon) {
+      return { setup: '', filter: `(around:${radius},${place.lat},${place.lon})`, radius };
+    }
+    throw new Error(`Location has no usable geometry: ${location}`);
+  }
+
+  /** Nominatim lookup, once per location for this provider instance (i.e. per discovery job) */
+  private lookupPlace(location: string): Promise<NominatimPlace> {
+    let place = this.places.get(location);
+    if (!place) {
+      place = this.fetchPlace(location);
+      // Don't cache failures, so a retry of the same job asks again
+      place.catch(() => this.places.delete(location));
+      this.places.set(location, place);
+    }
+    return place;
+  }
+
+  private async fetchPlace(location: string): Promise<NominatimPlace> {
     const url = new URL(this.config.nominatimUrl);
     url.searchParams.set('q', location);
     url.searchParams.set('format', 'jsonv2');
@@ -121,16 +184,7 @@ export class OsmDiscoveryProvider implements DiscoveryProviderClient {
     if (!place) {
       throw new Error(`Location not found: ${location}`);
     }
-
-    // Overpass area ids are the OSM id offset by type
-    const areaOffset = place.osm_type === 'relation' ? 3600000000 : place.osm_type === 'way' ? 2400000000 : null;
-    if (areaOffset !== null && place.osm_id) {
-      return { setup: `area(id:${areaOffset + place.osm_id})->.a;\n`, filter: '(area.a)' };
-    }
-    if (place.lat && place.lon) {
-      return { setup: '', filter: `(around:${AROUND_RADIUS_METERS},${place.lat},${place.lon})` };
-    }
-    throw new Error(`Location has no usable geometry: ${location}`);
+    return place;
   }
 
   buildQuery(params: DiscoverySearchParams, scope: OsmSearchScope): string {

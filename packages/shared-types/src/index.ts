@@ -63,6 +63,12 @@ export interface ILead {
   city?: string;
   contactEmail: string;
   contactPhone?: string;
+  /** contactPhone in E.164 form, when it is written internationally; used to match discovered businesses (REV-35) */
+  phoneE164?: string;
+  /** Where the lead came from; absent on leads created before REV-35 */
+  source?: LeadSource;
+  /** Maps listing the lead was imported from, e.g. `google:<place_id>` or `osm:node/123` (REV-35) */
+  externalId?: string;
   ownerName?: string;
   status: LeadStatus;
   totalScore?: number;
@@ -504,6 +510,9 @@ export interface IAuditJobData {
 // Local business discovery from maps providers (REV-26)
 export type DiscoveryProvider = 'osm' | 'google';
 
+/** How a lead entered the system: added by hand or imported from a maps provider */
+export type LeadSource = 'manual' | DiscoveryProvider;
+
 export interface IDiscoveryJobData {
   provider: DiscoveryProvider;
   niche: NicheType;
@@ -544,14 +553,20 @@ export interface IDiscoveryCandidate {
   email?: string;
   address?: string;
   city?: string;
-  /** The lead that already covers this domain (existing_lead only) */
+  /** The lead that already covers this business (existing_lead only) */
   leadId?: string;
 }
 
 export interface IDiscoveryJobResult {
-  /** Listings returned by the provider */
+  /** Distinct listings returned by the provider */
   found: number;
   candidates: IDiscoveryCandidate[];
+  /** Candidates per status at search time, including skipped listings (REV-35); absent on older jobs */
+  counts?: Record<DiscoveryCandidateStatus, number>;
+  /** Provider requests the search made while trying to fill the limit (REV-35) */
+  requests?: number;
+  /** The provider had no more listings for this search, so fewer than `limit` new businesses may be offered (REV-35) */
+  exhausted?: boolean;
 }
 
 export type DiscoveryImportOutcome = 'imported' | 'existing_lead' | 'not_importable' | 'not_found' | 'failed';
