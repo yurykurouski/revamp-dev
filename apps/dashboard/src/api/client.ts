@@ -9,6 +9,9 @@ import {
 import {
   IDiscoveryImportResult,
   IDiscoveryJobStatus,
+  ILlmProvidersResponse,
+  LlmProviderId,
+  MvpCopyProvider,
   IMvpCompletenessReport,
   IMvpCompletenessSummary,
   IReverseGeocodeResult,
@@ -582,16 +585,21 @@ export const apiClient = {
   async generateMvp(
     auditId: string,
     leadId?: string,
-    options: { forceRegenerate?: boolean } = {},
+    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string } = {},
   ): Promise<{ success: boolean; status: LeadStatus }> {
+    // Validated before the request, so an invalid provider/model is an error, not a demo fallback
+    const payload = GenerateMvpSchema.parse({
+      auditId,
+      forceRegenerate: options.forceRegenerate ?? false,
+      provider: options.provider,
+      model: options.model,
+    });
     let res: Response | null = null;
     try {
       res = await fetch(`${API_BASE_URL}/mvp/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(
-          GenerateMvpSchema.parse({ auditId, forceRegenerate: options.forceRegenerate ?? false }),
-        ),
+        body: JSON.stringify(payload),
       });
     } catch {
       // Backend unreachable: fall through to the demo fallback below
@@ -614,6 +622,14 @@ export const apiClient = {
       if (target) target.status = 'GENERATING';
     }
     return { success: true, status: 'GENERATING' };
+  },
+
+  /**
+   * LLM providers/models for MVP generation and which the workers can run right now (REV-32)
+   */
+  async getLlmProviders(): Promise<ILlmProvidersResponse> {
+    const res = await fetch(`${API_BASE_URL}/mvp/providers`, { headers: { Accept: 'application/json' } });
+    return readDataOrThrow<ILlmProvidersResponse>(res);
   },
 
   /**
@@ -702,6 +718,11 @@ export interface IMvpProjectDetail {
   generationCount?: number;
   /** The MVP compared with the original site's key business data (REV-36) */
   completenessReport?: IMvpCompletenessReport;
+  /** Provider and model that wrote the copy, and the operator's choice for the run (REV-32) */
+  provider?: MvpCopyProvider;
+  modelUsed?: string;
+  requestedProvider?: LlmProviderId;
+  requestedModel?: string;
 }
 
 export interface ICriticalFlaw {

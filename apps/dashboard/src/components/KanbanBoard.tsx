@@ -23,8 +23,9 @@ import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
-import { useGenerateMvpMutation, withPreviewVersion } from '../hooks/useLeads.js';
+import { withPreviewVersion } from '../hooks/useLeads.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
+import { GenerateMvpButton } from './GenerateMvpButton.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
@@ -105,7 +106,6 @@ interface KanbanBoardProps {
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
   const { openModal } = useHitlModalStore();
-  const generateMvpMutation = useGenerateMvpMutation();
   const { t } = useTranslation();
   const { language } = useLanguageStore();
 
@@ -402,32 +402,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         />
                       )}
 
-                      {lead.status === 'AUDITED' && (
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          disabled={
-                            generateMvpMutation.isPending &&
-                            generateMvpMutation.variables?.leadId === lead.id
-                          }
-                          startIcon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
-                          onClick={() =>
-                            generateMvpMutation.mutate({
-                              auditId: lead.auditId || lead.id,
-                              leadId: lead.id,
-                            })
-                          }
-                          sx={{
-                            fontSize: '0.72rem',
-                            fontWeight: 700,
-                            py: 0.4,
-                            px: 1.2,
-                          }}
-                        >
-                          {t('kanban.generateMvp')}
-                        </Button>
-                      )}
+                      {lead.status === 'AUDITED' && <GenerateMvpButton lead={lead} />}
 
                       {lead.status === 'GENERATING' && (
                         <Chip

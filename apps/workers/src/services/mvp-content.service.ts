@@ -1,6 +1,6 @@
 import { MvpContentOutputSchema, MvpContentOutput } from '@revamp/validation';
 import { z } from 'zod';
-import { ISiteContent } from '@revamp/shared-types';
+import { ISiteContent, MvpCopyProvider } from '@revamp/shared-types';
 import { getSupportedIconNames } from '../templates/icons.js';
 import { getMvpStrings, languageDisplayName, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { ClaudeCliRunner } from './claude-cli.js';
@@ -27,7 +27,12 @@ export interface GenerateMvpContentInput {
 export interface MvpContentGenerationResult {
   content: MvpContentOutput;
   aiFallbackUsed: boolean;
-  modelUsed?: string;
+  /** Who actually wrote the copy: the chosen provider, or 'deterministic' after a fallback */
+  provider: MvpCopyProvider;
+  modelUsed: string;
+  /** Provider and model this service was set up with, whether or not they produced the copy */
+  requestedProvider: MvpContentProvider;
+  requestedModel: string;
   attempts: number;
 }
 
@@ -35,6 +40,8 @@ export type MvpContentProvider = LlmProvider;
 
 export interface MvpContentServiceOptions {
   provider?: MvpContentProvider;
+  /** One of the provider's catalog models; the provider's default otherwise (REV-32) */
+  model?: string;
   anthropicApiKey?: string;
   openaiApiKey?: string;
   geminiApiKey?: string;
@@ -155,19 +162,30 @@ export class MvpContentService {
     return this.llm.provider;
   }
 
+  /** The fields a result gets when the deterministic fallback wrote the copy */
+  private fallbackSource() {
+    return {
+      provider: 'deterministic' as const,
+      modelUsed: 'deterministic-fallback',
+      requestedProvider: this.provider,
+      requestedModel: this.llm.modelName,
+    };
+  }
+
   /**
    * Generates high-converting Bento landing page copy with Strict Grounding.
    * On failure or missing keys, falls back gracefully with aiFallbackUsed: true.
    */
   async generateContent(input: GenerateMvpContentInput): Promise<MvpContentGenerationResult> {
-    // The local Claude CLI authenticates itself, so it needs no API key
+    // The local Claude CLI authenticates itself, so it needs no API key. A provider without its key
+    // falls back to deterministic copy; it never switches to another paid provider (REV-32).
     if (!this.llm.isAvailable()) {
       console.log('[MvpContentService] No LLM provider configured. Using deterministic grounded copy.');
       const fallback = this.generateDeterministicFallback(input);
       return {
         content: fallback,
         aiFallbackUsed: true,
-        modelUsed: 'deterministic-fallback',
+        ...this.fallbackSource(),
         attempts: 1,
       };
     }
@@ -182,7 +200,7 @@ export class MvpContentService {
 
       try {
         console.log(
-          `[MvpContentService] Attempt ${attempt + 1}/${temperatures.length} using ${this.provider} (temp: ${currentTemp})...`,
+          `[MvpContentService] Attempt ${attempt + 1}/${temperatures.length} using ${this.llm.modelName} (temp: ${currentTemp})...`,
         );
 
         // The CLI has no temperature setting; its retries simply re-run it
@@ -198,7 +216,10 @@ export class MvpContentService {
         return {
           content: groundedContent,
           aiFallbackUsed: false,
-          modelUsed: this.provider,
+          provider: this.provider,
+          modelUsed: this.llm.modelName,
+          requestedProvider: this.provider,
+          requestedModel: this.llm.modelName,
           attempts: attemptsCount,
         };
       } catch (err) {
@@ -216,7 +237,7 @@ export class MvpContentService {
     return {
       content: fallback,
       aiFallbackUsed: true,
-      modelUsed: 'deterministic-fallback',
+      ...this.fallbackSource(),
       attempts: attemptsCount,
     };
   }

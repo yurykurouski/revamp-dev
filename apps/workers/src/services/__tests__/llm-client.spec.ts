@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { LlmClient, extractJsonObject } from '../llm-client.js';
+import { LlmClient, defaultModelFor, extractJsonObject } from '../llm-client.js';
+import { env } from '../../config/env.js';
 
 const okJson = (body: unknown) =>
   vi.fn().mockResolvedValue({ ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) });
@@ -26,27 +27,72 @@ describe('LlmClient (REV-37)', () => {
       expect(new LlmClient({ provider: 'anthropic' }).isAvailable()).toBe(false);
     });
 
+    it("needs the chosen provider's own key, not any key (REV-32)", () => {
+      expect(new LlmClient({ provider: 'openai', anthropicApiKey: 'a' }).isAvailable()).toBe(false);
+      expect(new LlmClient({ provider: 'gemini', openaiApiKey: 'o' }).isAvailable()).toBe(false);
+      expect(new LlmClient({ provider: 'anthropic', anthropicApiKey: 'a' }).isAvailable()).toBe(true);
+    });
+
     it('names the model behind the provider', () => {
       expect(new LlmClient({ provider: 'openai', openaiApiKey: 'o' }).modelName).toBe('gpt-4o');
       expect(new LlmClient({ provider: 'claude-cli' }).modelName).toMatch(/^claude-cli:/);
+    });
+
+    it("defaults to the catalog's first model, and to CLAUDE_CLI_MODEL for the CLI (REV-32)", () => {
+      expect(new LlmClient({ provider: 'anthropic', anthropicApiKey: 'a' }).model).toBe('claude-opus-5');
+      expect(new LlmClient({ provider: 'gemini', geminiApiKey: 'g' }).model).toBe('gemini-1.5-pro');
+      expect(new LlmClient({ provider: 'claude-cli' }).model).toBe(env.CLAUDE_CLI_MODEL);
+      expect(defaultModelFor('mock')).toBe('mock');
+    });
+
+    it('uses the model it is given (REV-32)', () => {
+      expect(new LlmClient({ provider: 'openai', openaiApiKey: 'o', model: 'gpt-4o-mini' }).modelName).toBe('gpt-4o-mini');
+      expect(new LlmClient({ provider: 'claude-cli', model: 'haiku' }).modelName).toBe('claude-cli:haiku');
     });
   });
 
   describe('complete', () => {
     it('calls Anthropic with the system prompt, temperature and token limit', async () => {
-      const fetcher = okJson({ content: [{ text: 'hello' }] });
-      const client = new LlmClient({ provider: 'anthropic', anthropicApiKey: 'key', customFetcher: fetcher as unknown as typeof fetch });
+      const fetcher = okJson({ content: [{ type: 'text', text: 'hello' }] });
+      const client = new LlmClient({
+        provider: 'anthropic',
+        model: 'claude-haiku-4-5',
+        anthropicApiKey: 'key',
+        customFetcher: fetcher as unknown as typeof fetch,
+      });
 
       await expect(client.complete(request)).resolves.toBe('hello');
       const [url, init] = fetcher.mock.calls[0]!;
       expect(url).toBe('https://api.anthropic.com/v1/messages');
       expect(init.headers['x-api-key']).toBe('key');
       expect(JSON.parse(init.body)).toMatchObject({
+        model: 'claude-haiku-4-5',
         system: 'SYSTEM',
         temperature: 0.2,
         max_tokens: 123,
         messages: [{ role: 'user', content: 'USER' }],
       });
+    });
+
+    it('leaves out temperature for Anthropic models that reject it, and skips thinking blocks (REV-32)', async () => {
+      const fetcher = okJson({ content: [{ type: 'thinking', thinking: '' }, { type: 'text', text: 'answer' }] });
+      const client = new LlmClient({ provider: 'anthropic', anthropicApiKey: 'key', customFetcher: fetcher as unknown as typeof fetch });
+
+      await expect(client.complete({ systemPrompt: 'S', userPrompt: 'U', temperature: 0.3 })).resolves.toBe('answer');
+      const body = JSON.parse(fetcher.mock.calls[0]![1].body);
+      expect(body.model).toBe('claude-opus-5');
+      expect(body).not.toHaveProperty('temperature');
+      expect(body.max_tokens).toBe(16000);
+    });
+
+    it('sends the chosen OpenAI and Gemini models (REV-32)', async () => {
+      const openai = okJson({ choices: [{ message: { content: '{}' } }] });
+      await new LlmClient({ provider: 'openai', openaiApiKey: 'k', model: 'gpt-4o-mini', customFetcher: openai as unknown as typeof fetch }).complete(request);
+      expect(JSON.parse(openai.mock.calls[0]![1].body).model).toBe('gpt-4o-mini');
+
+      const gemini = okJson({ candidates: [{ content: { parts: [{ text: '{}' }] } }] });
+      await new LlmClient({ provider: 'gemini', geminiApiKey: 'k', model: 'gemini-1.5-flash', customFetcher: gemini as unknown as typeof fetch }).complete(request);
+      expect(gemini.mock.calls[0]![0]).toContain('/models/gemini-1.5-flash:generateContent');
     });
 
     it('calls OpenAI in JSON mode', async () => {
@@ -77,7 +123,13 @@ describe('LlmClient (REV-37)', () => {
       const client = new LlmClient({ provider: 'claude-cli', claudeCliRunner: runner });
 
       await expect(client.complete(request)).resolves.toBe('cli answer');
-      expect(runner).toHaveBeenCalledWith({ systemPrompt: 'SYSTEM', userPrompt: 'USER' });
+      expect(runner).toHaveBeenCalledWith({ systemPrompt: 'SYSTEM', userPrompt: 'USER', model: env.CLAUDE_CLI_MODEL });
+    });
+
+    it('passes the chosen model to the local Claude CLI (REV-32)', async () => {
+      const runner = vi.fn().mockResolvedValue('cli answer');
+      await new LlmClient({ provider: 'claude-cli', model: 'opus', claudeCliRunner: runner }).complete(request);
+      expect(runner).toHaveBeenCalledWith(expect.objectContaining({ model: 'opus' }));
     });
 
     it('throws with the provider error body on a failed HTTP call', async () => {

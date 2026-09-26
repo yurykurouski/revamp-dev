@@ -1,20 +1,10 @@
 import React, { useState } from 'react';
-import {
-  Alert,
-  Button,
-  Dialog,
-  DialogActions,
-  DialogContent,
-  DialogContentText,
-  DialogTitle,
-  IconButton,
-  Snackbar,
-  Tooltip,
-} from '@mui/material';
+import { Alert, Button, IconButton, Snackbar, Tooltip } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useTranslation } from 'react-i18next';
 import { ILeadItem } from '../api/client.js';
 import { canRegenerateMvp, useGenerateMvpMutation } from '../hooks/useLeads.js';
+import { MvpGenerationChoice, MvpGenerationDialog } from './MvpGenerationDialog.js';
 
 interface RegenerateMvpButtonProps {
   lead: Pick<ILeadItem, 'id' | 'auditId' | 'status' | 'businessName'>;
@@ -25,6 +15,7 @@ interface RegenerateMvpButtonProps {
 /**
  * "Regenerate MVP" with a confirmation step (REV-31). Re-runs copy generation and deploy for a lead
  * that already has an MVP; the lead returns to review, and no outreach is ever sent from here.
+ * The operator picks the provider/model for the new version (REV-32).
  */
 export const RegenerateMvpButton: React.FC<RegenerateMvpButtonProps> = ({ lead, variant = 'icon' }) => {
   const { t } = useTranslation();
@@ -36,10 +27,10 @@ export const RegenerateMvpButton: React.FC<RegenerateMvpButtonProps> = ({ lead, 
 
   const isPending = generateMvpMutation.isPending && generateMvpMutation.variables?.leadId === lead.id;
 
-  const handleConfirm = () => {
+  const handleConfirm = (choice: MvpGenerationChoice) => {
     setConfirmOpen(false);
     generateMvpMutation.mutate(
-      { auditId: lead.auditId || lead.id, leadId: lead.id, forceRegenerate: true },
+      { auditId: lead.auditId || lead.id, leadId: lead.id, forceRegenerate: true, ...choice },
       { onError: (err) => setError(err instanceof Error ? err.message : String(err)) },
     );
   };
@@ -79,25 +70,15 @@ export const RegenerateMvpButton: React.FC<RegenerateMvpButtonProps> = ({ lead, 
         </Button>
       )}
 
-      <Dialog
+      <MvpGenerationDialog
         open={confirmOpen}
+        title={t('regenerate.confirmTitle')}
+        body={t('regenerate.confirmBody', { name: lead.businessName })}
+        confirmLabel={t('regenerate.confirm')}
+        confirmIcon={<RefreshIcon />}
         onClose={() => setConfirmOpen(false)}
-        onClick={(event) => event.stopPropagation()}
-        maxWidth="xs"
-      >
-        <DialogTitle sx={{ fontWeight: 700 }}>{t('regenerate.confirmTitle')}</DialogTitle>
-        <DialogContent>
-          <DialogContentText>{t('regenerate.confirmBody', { name: lead.businessName })}</DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setConfirmOpen(false)} color="inherit">
-            {t('regenerate.cancel')}
-          </Button>
-          <Button onClick={handleConfirm} variant="contained" startIcon={<RefreshIcon />}>
-            {t('regenerate.confirm')}
-          </Button>
-        </DialogActions>
-      </Dialog>
+        onConfirm={handleConfirm}
+      />
 
       <Snackbar
         open={Boolean(error)}

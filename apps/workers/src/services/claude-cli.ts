@@ -4,6 +4,8 @@ import os from 'os';
 export interface ClaudeCliRequest {
   systemPrompt: string;
   userPrompt: string;
+  /** Overrides the runner's model for this call (REV-32) */
+  model?: string;
 }
 
 export interface ClaudeCliOptions {
@@ -63,10 +65,10 @@ export function parseClaudeCliOutput(stdout: string): string {
  * Creates a runner that calls the local Claude Code CLI with the account it is logged into.
  */
 export function createClaudeCliRunner(options: ClaudeCliOptions): ClaudeCliRunner {
-  return ({ systemPrompt, userPrompt }) =>
+  return ({ systemPrompt, userPrompt, model }) =>
     new Promise((resolve, reject) => {
       // A temp cwd keeps the CLI from picking up this repository's CLAUDE.md / AGENTS.md
-      const child = spawn(options.cliPath, buildClaudeCliArgs(systemPrompt, options.model), {
+      const child = spawn(options.cliPath, buildClaudeCliArgs(systemPrompt, model ?? options.model), {
         cwd: os.tmpdir(),
         stdio: ['pipe', 'pipe', 'pipe'],
       });

@@ -130,6 +130,51 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(GenerateMvpSchema.parse({ auditId: 'a', forceRegenerate: true }).forceRegenerate).toBe(true);
       expect(() => GenerateMvpSchema.parse({ auditId: 'a', forceRegenerate: 'true' })).toThrow();
     });
+
+    describe('provider and model (REV-32)', () => {
+      it.each([
+        ['anthropic', 'claude-opus-5'],
+        ['anthropic', 'claude-haiku-4-5'],
+        ['openai', 'gpt-4o-mini'],
+        ['gemini', 'gemini-1.5-pro'],
+        ['claude-cli', 'sonnet'],
+        ['claude-cli', 'opus'],
+        ['claude-cli', 'haiku'],
+        ['mock', 'mock'],
+      ])('accepts %s with its model %s', (provider, model) => {
+        expect(GenerateMvpSchema.parse({ auditId: 'a', provider, model })).toMatchObject({ provider, model });
+      });
+
+      it('keeps both fields optional, and a provider may come without a model', () => {
+        const parsed = GenerateMvpSchema.parse({ auditId: 'a' });
+        expect(parsed.provider).toBeUndefined();
+        expect(parsed.model).toBeUndefined();
+        expect(GenerateMvpSchema.parse({ auditId: 'a', provider: 'openai' }).provider).toBe('openai');
+      });
+
+      it('rejects an unknown provider', () => {
+        expect(() => GenerateMvpSchema.parse({ auditId: 'a', provider: 'llama' })).toThrow();
+        expect(() => GenerateMvpSchema.parse({ auditId: 'a', provider: '' })).toThrow();
+      });
+
+      it.each([
+        ['openai', 'claude-opus-5'],
+        ['claude-cli', 'claude-opus-5'],
+        ['anthropic', 'sonnet'],
+        ['gemini', 'gpt-4o'],
+        ['anthropic', 'claude-3-5-sonnet-20241022'],
+      ])('rejects %s with a model it does not offer (%s)', (provider, model) => {
+        const result = GenerateMvpSchema.safeParse({ auditId: 'a', provider, model });
+        expect(result.success).toBe(false);
+        expect(result.error?.issues[0]?.path).toEqual(['model']);
+      });
+
+      it('rejects a model without a provider, and an empty or over-long model', () => {
+        expect(GenerateMvpSchema.safeParse({ auditId: 'a', model: 'sonnet' }).success).toBe(false);
+        expect(GenerateMvpSchema.safeParse({ auditId: 'a', provider: 'claude-cli', model: '' }).success).toBe(false);
+        expect(GenerateMvpSchema.safeParse({ auditId: 'a', provider: 'claude-cli', model: 'x'.repeat(101) }).success).toBe(false);
+      });
+    });
   });
 
   describe('mvpGenerationMode (REV-31)', () => {

@@ -4,7 +4,7 @@ import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
-import { mvpContentService } from '../services/mvp-content.service.js';
+import { MvpContentService, mvpContentService } from '../services/mvp-content.service.js';
 import { addDeployJob } from '../queues/deploy.queue.js';
 import { handleGenerationFailure } from './generation-failure.js';
 
@@ -12,11 +12,14 @@ export const createAiWorker = (): Worker => {
   const worker = new Worker<IAiGenerationJobData>(
     QUEUE_NAMES.AI_GENERATION,
     async (job: Job<IAiGenerationJobData>) => {
-      const { leadId, auditId, forceRegenerate = false, previousStatus } = job.data;
+      const { leadId, auditId, forceRegenerate = false, previousStatus, provider, model } = job.data;
       console.log(
         `[AiWorker] Processing AI content generation for leadId: ${leadId}, auditId: ${auditId}` +
-          (forceRegenerate ? ' (regenerating: previous copy is discarded)' : ''),
+          (forceRegenerate ? ' (regenerating: previous copy is discarded)' : '') +
+          (provider ? ` with ${provider}${model ? `/${model}` : ''}` : ''),
       );
+      // The operator's provider/model applies to this job only; others keep the env default (REV-32)
+      const contentService = provider ? new MvpContentService({ provider, model }) : mvpContentService;
 
       const lead = await Lead.findById(leadId).exec();
       if (!lead) {
@@ -32,7 +35,7 @@ export const createAiWorker = (): Worker => {
 
       // 2. Synthesize high-converting MVP copy with Strict Grounding. Always a fresh LLM run: the
       // copy stored on the audit is never reused, so a regeneration (REV-31) gets new copy.
-      const generationResult = await mvpContentService.generateContent({
+      const generationResult = await contentService.generateContent({
         businessName: lead.businessName,
         niche: lead.niche,
         city: lead.city,
@@ -68,6 +71,11 @@ export const createAiWorker = (): Worker => {
         auditId: audit?._id?.toString() || auditId,
         forceRegenerate,
         previousStatus,
+        generationSource: {
+          provider: generationResult.provider,
+          modelUsed: generationResult.modelUsed,
+          ...(provider ? { requestedProvider: provider, requestedModel: generationResult.requestedModel } : {}),
+        },
       });
       console.log(`[AiWorker] Dispatched MVP Deploy job for lead ${leadId}`);
 
@@ -81,6 +89,8 @@ export const createAiWorker = (): Worker => {
         auditId: audit?._id?.toString() || auditId,
         content: generationResult.content,
         aiFallbackUsed: generationResult.aiFallbackUsed,
+        provider: generationResult.provider,
+        modelUsed: generationResult.modelUsed,
       };
     },
     {

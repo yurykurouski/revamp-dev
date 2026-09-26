@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createAiWorker } from '../ai.worker.js';
 import { Audit } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
-import { mvpContentService } from '../../services/mvp-content.service.js';
+import { MvpContentService, mvpContentService } from '../../services/mvp-content.service.js';
 import { addDeployJob } from '../../queues/deploy.queue.js';
 
 vi.mock('../../models/Audit.model.js');
@@ -137,7 +137,10 @@ describe('AiWorker (@revamp/workers)', () => {
     vi.mocked(mvpContentService.generateContent).mockResolvedValue({
       content: mockGeneratedContent,
       aiFallbackUsed: false,
-      modelUsed: 'claude-3-5-sonnet',
+      provider: 'anthropic',
+      modelUsed: 'claude-opus-5',
+      requestedProvider: 'anthropic',
+      requestedModel: 'claude-opus-5',
       attempts: 1,
     });
 
@@ -164,6 +167,8 @@ describe('AiWorker (@revamp/workers)', () => {
       auditId: 'audit-456',
       forceRegenerate: false,
       previousStatus: undefined,
+      // No operator choice: only the actual provider/model travels on (REV-32)
+      generationSource: { provider: 'anthropic', modelUsed: 'claude-opus-5' },
     });
 
     // REV-23: generation is grounded in the site's own content and verified contacts
@@ -277,7 +282,10 @@ describe('AiWorker (@revamp/workers)', () => {
     vi.mocked(mvpContentService.generateContent).mockResolvedValue({
       content: mockGeneratedContent,
       aiFallbackUsed: false,
-      modelUsed: 'claude-3-5-sonnet',
+      provider: 'anthropic',
+      modelUsed: 'claude-opus-5',
+      requestedProvider: 'anthropic',
+      requestedModel: 'claude-opus-5',
       attempts: 1,
     });
 
@@ -290,11 +298,14 @@ describe('AiWorker (@revamp/workers)', () => {
 
     // The copy already stored on the audit is never reused
     expect(mvpContentService.generateContent).toHaveBeenCalledTimes(1);
+    // No provider on the job: the env-default singleton is used, no per-job service (REV-32)
+    expect(MvpContentService).not.toHaveBeenCalled();
     expect(addDeployJob).toHaveBeenCalledWith({
       leadId: 'lead-123',
       auditId: 'audit-456',
       forceRegenerate: true,
       previousStatus: 'NEEDS_APPROVAL',
+      generationSource: { provider: 'anthropic', modelUsed: 'claude-opus-5' },
     });
   });
 
@@ -386,7 +397,10 @@ describe('AiWorker (@revamp/workers)', () => {
     vi.mocked(mvpContentService.generateContent).mockResolvedValue({
       content: mockGeneratedContent,
       aiFallbackUsed: false,
-      modelUsed: 'claude-3-5-sonnet',
+      provider: 'anthropic',
+      modelUsed: 'claude-opus-5',
+      requestedProvider: 'anthropic',
+      requestedModel: 'claude-opus-5',
       attempts: 1,
     });
 
@@ -395,6 +409,87 @@ describe('AiWorker (@revamp/workers)', () => {
     await expect(
       capturedProcessor!({ id: 'job-ai-dispatch', data: { leadId: 'lead-123', auditId: 'audit-456' } }),
     ).rejects.toThrow('Redis down');
+  });
+
+  describe('per-job provider and model (REV-32)', () => {
+    const setUpLead = () => {
+      vi.mocked(Lead.findById).mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Smile Dental', niche: 'dental' }),
+      } as any);
+      vi.mocked(Audit.findOne).mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: 'audit-456', leadId: 'lead-123' }),
+      } as any);
+      vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+    };
+
+    it.each([
+      ['anthropic', 'claude-sonnet-5'],
+      ['openai', 'gpt-4o-mini'],
+      ['gemini', 'gemini-1.5-flash'],
+      ['claude-cli', 'opus'],
+    ])('builds a %s/%s content service for that job only', async (provider, model) => {
+      createAiWorker();
+      setUpLead();
+      vi.mocked(MvpContentService).mockClear();
+      vi.mocked(MvpContentService.prototype.generateContent).mockResolvedValue({
+        content: { hero: {}, services: [], trustSignals: [], offerNotice: '' } as any,
+        aiFallbackUsed: false,
+        provider: provider as any,
+        modelUsed: provider === 'claude-cli' ? `claude-cli:${model}` : model,
+        requestedProvider: provider as any,
+        requestedModel: provider === 'claude-cli' ? `claude-cli:${model}` : model,
+        attempts: 1,
+      });
+
+      const result = await capturedProcessor!({
+        id: 'job-ai-choice',
+        data: { leadId: 'lead-123', auditId: 'audit-456', provider, model },
+      });
+
+      expect(MvpContentService).toHaveBeenCalledWith({ provider, model });
+      expect(result.provider).toBe(provider);
+      expect(addDeployJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          generationSource: {
+            provider,
+            modelUsed: provider === 'claude-cli' ? `claude-cli:${model}` : model,
+            requestedProvider: provider,
+            requestedModel: provider === 'claude-cli' ? `claude-cli:${model}` : model,
+          },
+        }),
+      );
+    });
+
+    it('records both the chosen and the actual source when the chosen provider falls back', async () => {
+      createAiWorker();
+      setUpLead();
+      vi.mocked(MvpContentService.prototype.generateContent).mockResolvedValue({
+        content: { hero: {}, services: [], trustSignals: [], offerNotice: '' } as any,
+        aiFallbackUsed: true,
+        provider: 'deterministic',
+        modelUsed: 'deterministic-fallback',
+        requestedProvider: 'openai',
+        requestedModel: 'gpt-4o',
+        attempts: 3,
+      });
+
+      await capturedProcessor!({
+        id: 'job-ai-fallback',
+        data: { leadId: 'lead-123', auditId: 'audit-456', provider: 'openai', model: 'gpt-4o' },
+      });
+
+      expect(addDeployJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          generationSource: {
+            provider: 'deterministic',
+            modelUsed: 'deterministic-fallback',
+            requestedProvider: 'openai',
+            requestedModel: 'gpt-4o',
+          },
+        }),
+      );
+    });
   });
 
   it('should register a failed handler that resets the lead after the last attempt', () => {
