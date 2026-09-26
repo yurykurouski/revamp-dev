@@ -117,6 +117,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         socialLinks: [{ platform: 'telegram', url: 'https://t.me/test' }],
         services: ['General Dentistry'],
       },
+      cookieConsent: { desktop: 'dismissed:cmp:onetrust', mobile: 'dismissed:text' },
     });
 
     vi.mocked(ImageService.compressToWebp)
@@ -230,6 +231,8 @@ describe('AuditWorker (@revamp/workers)', () => {
         a11yScore: 82,
         lcp: 2.1,
         aiFallbackUsed: false,
+        // REV-33: consent handling is stored for debugging
+        cookieBannerHandled: { desktop: 'dismissed:cmp:onetrust', mobile: 'dismissed:text' },
         scores: {
           total: 85,
           design: 75,
