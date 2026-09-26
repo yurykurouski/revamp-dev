@@ -269,6 +269,16 @@ export const be: Translation = {
     confirmBody: 'У MVP адсутнічаюць, змененыя або выдуманыя важныя даныя з зыходнага сайта: {{fields}}. Праверце прэв’ю, перш чым адпраўляць яго ўладальніку бізнесу.',
     confirmApprove: 'Усё роўна адабрыць',
     cancel: 'Скасаваць',
+    judgedByColumn: 'Хто ацаніў',
+    method: {
+      llm: 'Ацэнена ШІ ({{model}}), цытаты правераны кодам',
+      deterministic: 'Праверана кодам',
+    },
+    llmFallback: 'Праверка ШІ не атрымалася, паказаны вынік кода: {{error}}',
+    judgedBy: {
+      llm: 'ШІ',
+      code: 'Код',
+    },
     fields: {
       businessName: 'Назва',
       phone: 'Тэлефон',

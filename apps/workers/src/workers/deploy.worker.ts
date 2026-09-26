@@ -64,11 +64,12 @@ export const createDeployWorker = (): Worker => {
       const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
       const html = bentoTemplateService.renderFromAudit(leadData, auditData, audit.generatedContent);
 
-      // 2b. Compare the MVP with the original site's key data (REV-36). Advisory only: the check
-      // never throws, and a failed comparison is saved as `unverified`.
-      const completenessReport = mvpCompletenessService.check(html, leadData, auditData);
+      // 2b. Compare the MVP with the original site's key data (REV-36): judged by the LLM with its
+      // quotes verified in code when one is configured (REV-37), else by code. Advisory only: it
+      // never throws, falls back to code when the LLM fails, and a failed comparison is `unverified`.
+      const completenessReport = await mvpCompletenessService.assess(html, leadData, auditData);
       console.log(
-        `[DeployWorker] Completeness: ${completenessReport.status}` +
+        `[DeployWorker] Completeness (${completenessReport.method ?? 'n/a'}): ${completenessReport.status}` +
           (completenessReport.score !== undefined ? `, score ${completenessReport.score}` : '') +
           (completenessReport.hasCriticalIssues ? ', critical data missing or changed' : ''),
       );

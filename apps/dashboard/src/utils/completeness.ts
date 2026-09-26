@@ -57,3 +57,15 @@ export function approvalNeedsConfirmation(
 ): boolean {
   return criticalIssueFields(report, summary).length > 0;
 }
+
+/**
+ * How the report was made (REV-37). Reports saved before the LLM check have no method: code made
+ * them. `fallbackError` is set when the LLM was tried and failed, so code's result is shown.
+ */
+export function completenessMethodInfo(
+  report?: IMvpCompletenessReport | null,
+): { method: 'llm' | 'deterministic'; model?: string; fallbackError?: string } | undefined {
+  if (!report || report.status !== 'verified') return undefined;
+  if (report.method === 'llm') return { method: 'llm', model: report.model || '?' };
+  return { method: 'deterministic', fallbackError: report.llmError || undefined };
+}

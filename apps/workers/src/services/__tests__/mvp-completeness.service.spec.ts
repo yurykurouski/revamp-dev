@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { IAudit, ILead, IMvpGeneratedContent } from '@revamp/shared-types';
-import { MvpCompletenessReportSchema } from '@revamp/validation';
+import { CompletenessJudgeOutput, MvpCompletenessReportSchema } from '@revamp/validation';
+import type { CompletenessJudge } from '../mvp-completeness-judge.js';
 import {
   CompletenessSource,
   MvpCompletenessService,
@@ -16,7 +17,8 @@ import {
 } from '../mvp-completeness.service.js';
 import { bentoTemplateService } from '../template.service.js';
 
-const service = new MvpCompletenessService();
+// Code only: the LLM path is tested with a fake judge below
+const service = new MvpCompletenessService({ judge: null });
 
 const emptySource = (overrides: Partial<CompletenessSource> = {}): CompletenessSource => ({
   phones: [],
@@ -344,8 +346,8 @@ describe('MvpCompletenessService (REV-36)', () => {
     it('leaves unset values out of the checks instead of saving them as undefined', () => {
       const report = service.compare(page('<p>hi</p>'), emptySource({ phones: ['+48225551234'] }));
       const phone = checkOf(report, 'phone')!;
-      expect(Object.keys(phone).sort()).toEqual(['field', 'originalValue', 'status', 'tier']);
-      expect(Object.keys(checkOf(report, 'rating')!).sort()).toEqual(['field', 'status', 'tier']);
+      expect(Object.keys(phone).sort()).toEqual(['field', 'judgedBy', 'originalValue', 'status', 'tier']);
+      expect(Object.keys(checkOf(report, 'rating')!).sort()).toEqual(['field', 'judgedBy', 'status', 'tier']);
     });
 
     it('returns a report that passes the shared Zod schema, with long values clipped', () => {
@@ -479,6 +481,246 @@ describe('MvpCompletenessService (REV-36)', () => {
       expect(report).toMatchObject({ status: 'unverified', hasCriticalIssues: false, checks: [], error: 'boom' });
       expect(report.score).toBeUndefined();
       expect(console.error).toHaveBeenCalledWith(expect.stringContaining('boom'));
+    });
+  });
+
+  describe('LLM verdicts verified in code (REV-37)', () => {
+    type Verdict = CompletenessJudgeOutput['fields'][number];
+    const fakeJudge = (answer: Partial<CompletenessJudgeOutput> | Error, available = true) =>
+      ({
+        isAvailable: () => available,
+        modelName: 'fake-model',
+        judge: vi.fn(async () => {
+          if (answer instanceof Error) throw answer;
+          return { fields: [], unsourced: [], ...answer };
+        }),
+      }) as unknown as CompletenessJudge;
+
+    const merge = (html: string, src: CompletenessSource, fields: Verdict[], unsourced: CompletenessJudgeOutput['unsourced'] = []) => {
+      const mvp = service.parseHtml(html);
+      const merged = service.mergeJudgement(service.evaluate(mvp, src), { fields, unsourced }, mvp, src);
+      return service.buildReport(merged, new Date(), { method: 'llm', model: 'fake-model' });
+    };
+
+    it('accepts a service match that text matching misses when the quote is in the MVP', () => {
+      const html = page('<h3>Endodoncja pod mikroskopem</h3><h3>Wybielanie</h3>');
+      const src = emptySource({ services: ['Leczenie kanałowe pod mikroskopem', 'Wybielanie'] });
+      expect(checkOf(service.compare(html, src), 'services')?.mvpValue).toBe('1/2');
+
+      const report = merge(html, src, [
+        {
+          field: 'services',
+          status: 'present',
+          items: [
+            { value: 'Leczenie kanałowe pod mikroskopem', found: true, mvpQuote: 'Endodoncja pod mikroskopem' },
+            { value: 'wybielanie', found: true, mvpQuote: 'Wybielanie' },
+          ],
+        },
+      ]);
+      expect(checkOf(report, 'services')).toMatchObject({ status: 'present', mvpValue: '2/2', judgedBy: 'llm' });
+      expect(report.score).toBe(100);
+    });
+
+    it('does not count a service whose quote is not in the MVP', () => {
+      const html = page('<h3>Wybielanie</h3>');
+      const src = emptySource({ services: ['Implanty', 'Wybielanie'] });
+      const report = merge(html, src, [
+        {
+          field: 'services',
+          status: 'present',
+          items: [{ value: 'Implanty', found: true, mvpQuote: 'Implantologia premium' }],
+        },
+      ]);
+      expect(checkOf(report, 'services')).toMatchObject({ status: 'missing', mvpValue: '1/2', note: 'Missing: Implanty' });
+      expect(report.score).toBe(50);
+    });
+
+    it('accepts reworded working hours with a verified quote', () => {
+      const html = page('<p>Open Monday to Friday, nine to six</p>');
+      const src = emptySource({ workingHours: 'Mon-Fri 9:00-18:00' });
+      expect(checkOf(service.compare(html, src), 'workingHours')?.status).toBe('missing');
+
+      const report = merge(html, src, [
+        { field: 'workingHours', status: 'present', mvpQuote: 'Monday to Friday, nine to six', reason: 'Same hours in words' },
+      ]);
+      expect(checkOf(report, 'workingHours')).toMatchObject({
+        status: 'present',
+        judgedBy: 'llm',
+        mvpValue: 'Monday to Friday, nine to six',
+        note: 'Same hours in words',
+      });
+    });
+
+    it('falls back to code when the quote is invented', () => {
+      const html = page('<p>Hello</p>');
+      const report = merge(html, emptySource({ address: 'Lenina 5, Minsk' }), [
+        { field: 'address', status: 'present', mvpQuote: 'Lenina 5, Minsk' },
+      ]);
+      expect(checkOf(report, 'address')).toMatchObject({
+        status: 'missing',
+        judgedBy: 'code',
+        note: expect.stringContaining('quote is not in the MVP'),
+      });
+      expect(report.hasCriticalIssues).toBe(true);
+    });
+
+    it('rejects a phone judged present when the MVP shows a different number', () => {
+      const html = page('<a href="tel:+48229999999">+48 22 999 99 99</a>');
+      const report = merge(html, emptySource({ phones: ['+48 22 555 12 34'] }), [
+        { field: 'phone', status: 'present', mvpQuote: '+48 22 999 99 99' },
+      ]);
+      expect(checkOf(report, 'phone')).toMatchObject({ status: 'altered', judgedBy: 'code' });
+      expect(checkOf(report, 'phone', 'unsourced')).toBeDefined();
+    });
+
+    it('downgrades a matching phone without a tel: link to altered', () => {
+      const html = page('<p>Call (22) 555-12-34</p>');
+      const report = merge(html, emptySource({ phones: ['+48225551234'] }), [
+        { field: 'phone', status: 'present', mvpQuote: '(22) 555-12-34' },
+      ]);
+      expect(checkOf(report, 'phone')).toMatchObject({ status: 'altered', judgedBy: 'llm', note: expect.stringContaining('tel:') });
+    });
+
+    it('accepts a matching, linked email and rejects a different one', () => {
+      const src = emptySource({ emails: ['info@smile.pl'] });
+      const linked = merge(page('<a href="mailto:info@smile.pl">Write: INFO@smile.pl</a>'), src, [
+        { field: 'email', status: 'present', mvpQuote: 'Write: INFO@smile.pl' },
+      ]);
+      expect(checkOf(linked, 'email')).toMatchObject({ status: 'present', judgedBy: 'llm' });
+
+      const other = merge(page('<a href="mailto:office@smile.pl">office@smile.pl</a>'), src, [
+        { field: 'email', status: 'present', mvpQuote: 'office@smile.pl' },
+      ]);
+      expect(checkOf(other, 'email')).toMatchObject({ status: 'altered', judgedBy: 'code' });
+
+      const unlinked = merge(page('<p>info@smile.pl</p>'), src, [{ field: 'email', status: 'present', mvpQuote: 'info@smile.pl' }]);
+      expect(checkOf(unlinked, 'email')).toMatchObject({ status: 'altered', note: expect.stringContaining('mailto:') });
+    });
+
+    it('never lets "missing" override a match code has evidence for', () => {
+      const html = page('<a href="tel:+48225551234">+48 22 555 12 34</a>');
+      const report = merge(html, emptySource({ phones: ['+48225551234'] }), [{ field: 'phone', status: 'missing' }]);
+      expect(checkOf(report, 'phone')).toMatchObject({ status: 'present', judgedBy: 'code', note: expect.stringContaining('code found it') });
+    });
+
+    it('records the LLM as the judge when it agrees a field is missing', () => {
+      const report = merge(page('<p>Hi</p>'), emptySource({ foundingYear: 2005 }), [
+        { field: 'foundingYear', status: 'missing', reason: 'No year shown' },
+      ]);
+      expect(checkOf(report, 'foundingYear')).toMatchObject({ status: 'missing', judgedBy: 'llm', note: 'No year shown' });
+    });
+
+    it('keeps code verdicts for fields the LLM skipped, and not_in_source always from code', () => {
+      const report = merge(page('<h1>Smile</h1>'), emptySource({ businessName: 'Smile' }), [
+        { field: 'rating', status: 'present', mvpQuote: 'Smile' },
+      ]);
+      expect(checkOf(report, 'businessName')).toMatchObject({ status: 'present', judgedBy: 'code', note: expect.stringContaining('No LLM verdict') });
+      expect(checkOf(report, 'rating')).toMatchObject({ status: 'not_in_source', judgedBy: 'code' });
+    });
+
+    it('requires a social link to be quoted as one of the MVP links', () => {
+      const src = emptySource({ socialLinks: [{ platform: 'facebook', url: 'https://facebook.com/smile.dental' }] });
+      const asText = merge(page('<p>Find us on facebook</p>'), src, [
+        { field: 'socialLinks', status: 'present', items: [{ value: 'https://facebook.com/smile.dental', found: true, mvpQuote: 'facebook' }] },
+      ]);
+      expect(checkOf(asText, 'socialLinks')?.status).toBe('missing');
+
+      const asLink = merge(page('<a href="https://fb.com/smile.dental">fb</a>'), src, [
+        { field: 'socialLinks', status: 'present', items: [{ value: 'https://facebook.com/smile.dental', found: true, mvpQuote: 'https://fb.com/smile.dental' }] },
+      ]);
+      expect(checkOf(asLink, 'socialLinks')).toMatchObject({ status: 'present', judgedBy: 'llm' });
+    });
+
+    it('adds made-up contact data the LLM finds, only when quoted and not in the source', () => {
+      const html = page('<p>Hotline 800 123 456 789 or visit Fake Street 12. Old number 22 555 12 34.</p>');
+      const src = emptySource({ phones: ['+48 22 555 12 34'], sourceText: 'Office: Real Street 1' });
+      const report = merge(html, src, [], [
+        { field: 'address', mvpQuote: 'Fake Street 12' },
+        { field: 'phone', mvpQuote: '22 555 12 34' },
+        { field: 'email', mvpQuote: 'ghost@nowhere.io' },
+      ]);
+      const unsourced = report.checks.filter((c) => c.status === 'unsourced');
+      expect(unsourced).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ field: 'address', mvpValue: 'Fake Street 12', judgedBy: 'llm' }),
+          expect.objectContaining({ field: 'phone', mvpValue: '800 123 456 789', judgedBy: 'code' }),
+        ]),
+      );
+      // The source's own number and a quote that isn't in the MVP are dropped
+      expect(unsourced.some((c) => c.mvpValue === '22 555 12 34')).toBe(false);
+      expect(unsourced.some((c) => c.mvpValue === 'ghost@nowhere.io')).toBe(false);
+    });
+
+    it('does not duplicate made-up data that code already found', () => {
+      const html = page('<a href="tel:+48111222333">+48 111 222 333</a>');
+      const report = merge(html, emptySource(), [], [{ field: 'phone', mvpQuote: '+48 111 222 333' }]);
+      expect(report.checks.filter((c) => c.status === 'unsourced')).toHaveLength(1);
+    });
+
+    it('counts images and testimonials as present when any is reused, even if the LLM says altered', () => {
+      const html = page('<img src="https://smile.pl/a.jpg">');
+      const report = merge(html, emptySource({ images: ['https://smile.pl/a.jpg', 'https://smile.pl/b.jpg'] }), [
+        { field: 'images', status: 'altered', mvpQuote: 'https://smile.pl/a.jpg', reason: 'One of two reused' },
+      ]);
+      expect(checkOf(report, 'images')).toMatchObject({ status: 'present', judgedBy: 'llm' });
+    });
+
+    it('computes the score in code from the verified statuses', () => {
+      const html = page('<h1>Smile</h1><p>Open Mon-Fri</p>');
+      const src = emptySource({ businessName: 'Smile', workingHours: 'Monday to Friday' });
+      const report = merge(html, src, [
+        { field: 'businessName', status: 'present', mvpQuote: 'Smile' },
+        { field: 'workingHours', status: 'altered', mvpQuote: 'Open Mon-Fri' },
+      ]);
+      // name 3/3 + hours 2 * 0.5 = 4 of 5
+      expect(report.score).toBe(80);
+      expect(MvpCompletenessReportSchema.parse(report)).toBeDefined();
+    });
+
+    describe('assess', () => {
+      const lead = { _id: 'lead-1', businessName: 'Smile', contactPhone: '+48 22 555 12 34' };
+      const html = page('<h1>Smile</h1><a href="tel:+48225551234">+48 22 555 12 34</a>');
+
+      it('uses the LLM verdicts and records the method and model', async () => {
+        const judge = fakeJudge({
+          fields: [
+            { field: 'businessName', status: 'present', mvpQuote: 'Smile' },
+            { field: 'phone', status: 'present', mvpQuote: '+48 22 555 12 34' },
+          ],
+        });
+        const report = await new MvpCompletenessService({ judge }).assess(html, lead, null);
+        expect(report).toMatchObject({ status: 'verified', method: 'llm', model: 'fake-model', score: 100 });
+        expect(report.checks.filter((c) => c.judgedBy === 'llm').map((c) => c.field).sort()).toEqual(['businessName', 'phone']);
+        // Only the fields the source has are sent to the LLM
+        expect(vi.mocked(judge.judge).mock.calls[0]![0].map((f) => f.field)).toEqual(['businessName', 'phone']);
+      });
+
+      it('falls back to code when the LLM fails', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const report = await new MvpCompletenessService({ judge: fakeJudge(new Error('LLM timed out after 90000 ms')) }).assess(html, lead, null);
+        expect(report).toMatchObject({ status: 'verified', method: 'deterministic', llmError: 'LLM timed out after 90000 ms', score: 100 });
+        expect(report.model).toBeUndefined();
+        expect(report.checks.every((c) => c.judgedBy === 'code')).toBe(true);
+      });
+
+      it('uses code only when no provider is configured or the LLM check is turned off', async () => {
+        const unavailable = fakeJudge({}, false);
+        const report = await new MvpCompletenessService({ judge: unavailable }).assess(html, lead, null);
+        expect(report).toMatchObject({ method: 'deterministic' });
+        expect(report.llmError).toBeUndefined();
+        expect(unavailable.judge).not.toHaveBeenCalled();
+
+        expect((await new MvpCompletenessService({ judge: null }).assess(html, lead, null)).method).toBe('deterministic');
+      });
+
+      it('is unverified, never thrown, when even the code comparison fails', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const svc = new MvpCompletenessService({ judge: fakeJudge({}) });
+        vi.spyOn(svc, 'evaluate').mockImplementation(() => {
+          throw new Error('boom');
+        });
+        await expect(svc.assess(html, lead, null)).resolves.toMatchObject({ status: 'unverified', error: 'boom' });
+      });
     });
   });
 });

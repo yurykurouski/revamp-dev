@@ -22,6 +22,7 @@ import {
   CompletenessCheckSchema,
   criticalCompletenessIssues,
   summarizeCompletenessReport,
+  CompletenessJudgeOutputSchema,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -225,6 +226,48 @@ describe('Validation Schemas (@revamp/validation)', () => {
       });
       expect(summarizeCompletenessReport(null)).toBeUndefined();
       expect(summarizeCompletenessReport(undefined)).toBeUndefined();
+    });
+  });
+
+  describe('CompletenessJudgeOutputSchema (REV-37)', () => {
+    it('accepts verdicts with quotes, per-item results and made-up contact data', () => {
+      const result = CompletenessJudgeOutputSchema.safeParse({
+        fields: [
+          { field: 'phone', status: 'present', mvpQuote: '+48 22 555 12 34', reason: 'same number' },
+          { field: 'services', status: 'missing', items: [{ value: 'Implants', found: true, mvpQuote: 'Implantology' }] },
+        ],
+        unsourced: [{ field: 'email', mvpQuote: 'x@y.pl' }],
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it('defaults the made-up list and drops entries without a quote', () => {
+      expect(CompletenessJudgeOutputSchema.parse({ fields: [] }).unsourced).toEqual([]);
+      expect(
+        CompletenessJudgeOutputSchema.parse({ fields: [], unsourced: [{ field: 'phone', mvpQuote: ' ' }, { field: 'phone', mvpQuote: null }] })
+          .unsourced,
+      ).toEqual([]);
+    });
+
+    it('turns empty or null quotes and reasons into absent values', () => {
+      const parsed = CompletenessJudgeOutputSchema.parse({
+        fields: [{ field: 'email', status: 'missing', mvpQuote: '', reason: null }],
+      });
+      expect(parsed.fields[0]).toEqual({ field: 'email', status: 'missing' });
+    });
+
+    it('rejects unknown fields and statuses, not_in_source verdicts and over-long quotes', () => {
+      const parse = (field: object) => CompletenessJudgeOutputSchema.safeParse({ fields: [field] }).success;
+      expect(parse({ field: 'fax', status: 'present' })).toBe(false);
+      expect(parse({ field: 'phone', status: 'unsourced' })).toBe(false);
+      expect(parse({ field: 'phone', status: 'not_in_source' })).toBe(false);
+      expect(parse({ field: 'phone', status: 'present', mvpQuote: 'x'.repeat(301) })).toBe(false);
+      expect(parse({ field: 'phone', status: 'present', mvpQuote: 'x'.repeat(300) })).toBe(true);
+      expect(CompletenessJudgeOutputSchema.safeParse({ fields: [], unsourced: [{ field: 'website', mvpQuote: 'x' }] }).success).toBe(false);
+    });
+
+    it('rejects a report without a fields list', () => {
+      expect(CompletenessJudgeOutputSchema.safeParse({ unsourced: [] }).success).toBe(false);
     });
   });
 

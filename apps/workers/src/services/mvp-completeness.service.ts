@@ -1,9 +1,11 @@
 /**
- * MVP completeness check (REV-36).
+ * MVP completeness check (REV-36, REV-37).
  *
  * Compares the rendered MVP HTML with the business data extracted from the original site during
- * the audit (contacts, services, testimonials, ...). Deterministic DOM parsing only: no LLM, no
- * new crawl. The report is advisory; it never approves, blocks or dispatches anything.
+ * the audit (contacts, services, testimonials, ...), without a new crawl. Code parses the DOM and
+ * judges every field. When an LLM is configured it judges the fields too (REV-37): each of its
+ * verdicts must quote the MVP, and code verifies the quote before accepting it. The score is always
+ * computed in code. The report is advisory; it never approves, blocks or dispatches anything.
  */
 import { Window } from 'happy-dom';
 import {
@@ -17,7 +19,13 @@ import {
   ISiteContent,
   ISocialLink,
 } from '@revamp/shared-types';
-import { MvpCompletenessReportSchema, criticalCompletenessIssues } from '@revamp/validation';
+import {
+  CompletenessJudgeOutput,
+  MvpCompletenessReportSchema,
+  criticalCompletenessIssues,
+} from '@revamp/validation';
+import { env } from '../config/env.js';
+import { CompletenessJudge, JudgeSourceField } from './mvp-completeness-judge.js';
 
 /** The original site's data the MVP is checked against */
 export interface CompletenessSource {
@@ -53,9 +61,16 @@ export interface ParsedMvp {
 }
 
 /** A check and the credit (0..1) it earns towards the score */
-interface CheckResult {
+export interface CheckResult {
   check: ICompletenessCheck;
   credit: number;
+  /** Per-item outcome for services and social links */
+  items?: Array<{ value: string; found: boolean }>;
+}
+
+export interface MvpCompletenessServiceOptions {
+  /** The LLM judge; null for the code-only comparison */
+  judge?: CompletenessJudge | null;
 }
 
 const TIER_WEIGHT: Record<CompletenessTier, number> = { critical: 3, important: 2, informational: 1 };
@@ -243,6 +258,17 @@ function uniqueBy<T>(values: T[], key: (v: T) => string | undefined): T[] {
 }
 
 export class MvpCompletenessService {
+  private readonly judge: CompletenessJudge | null;
+
+  constructor(options: MvpCompletenessServiceOptions = {}) {
+    this.judge =
+      options.judge !== undefined
+        ? options.judge
+        : env.MVP_COMPLETENESS_LLM
+          ? new CompletenessJudge({ timeoutMs: env.MVP_COMPLETENESS_LLM_TIMEOUT_MS })
+          : null;
+  }
+
   /**
    * Parses the generated HTML into the parts the checks look at. Scripts are never run.
    */
@@ -346,11 +372,15 @@ export class MvpCompletenessService {
   }
 
   /**
-   * Compares the MVP with the source data and scores the result.
+   * The code-only comparison, scored.
    */
   compare(html: string, source: CompletenessSource, checkedAt: Date = new Date()): IMvpCompletenessReport {
-    const mvp = this.parseHtml(html);
-    const results: CheckResult[] = [
+    return this.buildReport(this.evaluate(this.parseHtml(html), source), checkedAt, { method: 'deterministic' });
+  }
+
+  /** Code's verdict for every field, plus the contact data the source doesn't have */
+  evaluate(mvp: ParsedMvp, source: CompletenessSource): CheckResult[] {
+    return [
       this.checkBusinessName(mvp, source),
       this.checkPhone(mvp, source),
       this.checkEmail(mvp, source),
@@ -365,7 +395,14 @@ export class MvpCompletenessService {
       this.checkFoundingYear(mvp, source),
       ...this.findUnsourced(mvp, source),
     ];
+  }
 
+  /** Scores the results in code (tier-weighted) and assembles the report */
+  buildReport(
+    results: CheckResult[],
+    checkedAt: Date,
+    meta: Pick<IMvpCompletenessReport, 'method' | 'model' | 'llmError'>,
+  ): IMvpCompletenessReport {
     let weight = 0;
     let earned = 0;
     for (const { check, credit } of results) {
@@ -376,7 +413,12 @@ export class MvpCompletenessService {
 
     // Unset values are left out rather than saved as null in the Mixed field
     const checks = results.map(({ check }) => {
-      const clipped: ICompletenessCheck = { field: check.field, tier: check.tier, status: check.status };
+      const clipped: ICompletenessCheck = {
+        field: check.field,
+        tier: check.tier,
+        status: check.status,
+        judgedBy: check.judgedBy ?? 'code',
+      };
       const originalValue = clip(check.originalValue);
       const mvpValue = clip(check.mvpValue);
       const note = clip(check.note);
@@ -386,34 +428,84 @@ export class MvpCompletenessService {
       return clipped;
     });
 
-    return {
+    const report: IMvpCompletenessReport = {
       status: 'verified',
       score: weight === 0 ? 100 : Math.round((earned / weight) * 100),
       hasCriticalIssues: criticalCompletenessIssues(checks).length > 0,
       checks,
       checkedAt,
+      method: meta.method,
+    };
+    if (meta.model) report.model = meta.model;
+    if (meta.llmError) report.llmError = clip(meta.llmError);
+    return report;
+  }
+
+  /**
+   * The step the deploy worker runs (REV-37): the LLM judges the fields when one is configured,
+   * otherwise (or when it fails) code does. Never throws: if even the code comparison fails, the
+   * report is `unverified`, so the check can't fail the generation job.
+   */
+  async assess(html: string, lead: Partial<ILead>, audit?: Partial<IAudit> | null): Promise<IMvpCompletenessReport> {
+    const checkedAt = new Date();
+    let mvp: ParsedMvp;
+    let source: CompletenessSource;
+    let codeResults: CheckResult[];
+    try {
+      mvp = this.parseHtml(html);
+      source = this.buildSource(lead, audit);
+      codeResults = this.evaluate(mvp, source);
+    } catch (error) {
+      return this.unverified(error, lead, checkedAt);
+    }
+
+    const codeOnly = (llmError?: string) => {
+      try {
+        return this.validate(this.buildReport(codeResults, checkedAt, { method: 'deterministic', llmError }));
+      } catch (error) {
+        return this.unverified(error, lead, checkedAt);
+      }
+    };
+
+    if (!this.judge?.isAvailable()) return codeOnly();
+
+    try {
+      const judgement = await this.judge.judge(this.judgeSource(codeResults, source), mvp);
+      const merged = this.mergeJudgement(codeResults, judgement, mvp, source);
+      return this.validate(this.buildReport(merged, checkedAt, { method: 'llm', model: this.judge.modelName }));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[MvpCompleteness] LLM comparison failed for lead ${lead._id ?? '?'}, using code only: ${message}`);
+      return codeOnly(message);
+    }
+  }
+
+  private validate(report: IMvpCompletenessReport): IMvpCompletenessReport {
+    return MvpCompletenessReportSchema.parse(report) as IMvpCompletenessReport;
+  }
+
+  private unverified(error: unknown, lead: Partial<ILead>, checkedAt: Date): IMvpCompletenessReport {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`[MvpCompleteness] Check failed for lead ${lead._id ?? '?'}: ${message}`);
+    return {
+      status: 'unverified',
+      hasCriticalIssues: false,
+      checks: [],
+      checkedAt,
+      error: message.slice(0, MAX_VALUE_LENGTH),
     };
   }
 
   /**
-   * The step the deploy worker runs: never throws. A failure in the comparison is logged and
-   * reported as `unverified`, so it can't fail the generation job.
+   * The code-only check: never throws. A failure in the comparison is logged and reported as
+   * `unverified`.
    */
   check(html: string, lead: Partial<ILead>, audit?: Partial<IAudit> | null): IMvpCompletenessReport {
     const checkedAt = new Date();
     try {
-      const report = this.compare(html, this.buildSource(lead, audit), checkedAt);
-      return MvpCompletenessReportSchema.parse(report) as IMvpCompletenessReport;
+      return this.validate(this.compare(html, this.buildSource(lead, audit), checkedAt));
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.error(`[MvpCompleteness] Check failed for lead ${lead._id ?? '?'}: ${message}`);
-      return {
-        status: 'unverified',
-        hasCriticalIssues: false,
-        checks: [],
-        checkedAt,
-        error: message.slice(0, MAX_VALUE_LENGTH),
-      };
+      return this.unverified(error, lead, checkedAt);
     }
   }
 
@@ -569,7 +661,10 @@ export class MvpCompletenessService {
       note: missing.length ? `Missing: ${missing.join(', ')}` : undefined,
     };
     const status = missing.length === 0 ? 'present' : 'missing';
-    return this.result('services', 'important', status, values, foundCount / source.services.length);
+    return {
+      ...this.result('services', 'important', status, values, foundCount / source.services.length),
+      items: source.services.map((value) => ({ value, found: !missing.includes(value) })),
+    };
   }
 
   private checkSocialLinks(mvp: ParsedMvp, source: CompletenessSource) {
@@ -577,17 +672,20 @@ export class MvpCompletenessService {
     const mvpLinks = new Set(mvp.links.map(normalizeUrl));
     const missing = source.socialLinks.filter((l) => !mvpLinks.has(normalizeUrl(l.url)));
     const foundCount = source.socialLinks.length - missing.length;
-    return this.result(
-      'socialLinks',
-      'important',
-      missing.length === 0 ? 'present' : 'missing',
-      {
-        originalValue: source.socialLinks.map((l) => l.url).join(', '),
-        mvpValue: `${foundCount}/${source.socialLinks.length}`,
-        note: missing.length ? `Missing: ${missing.map((l) => l.platform || l.url).join(', ')}` : undefined,
-      },
-      foundCount / source.socialLinks.length,
-    );
+    return {
+      ...this.result(
+        'socialLinks',
+        'important',
+        missing.length === 0 ? 'present' : 'missing',
+        {
+          originalValue: source.socialLinks.map((l) => l.url).join(', '),
+          mvpValue: `${foundCount}/${source.socialLinks.length}`,
+          note: missing.length ? `Missing: ${missing.map((l) => l.platform || l.url).join(', ')}` : undefined,
+        },
+        foundCount / source.socialLinks.length,
+      ),
+      items: source.socialLinks.map((l) => ({ value: l.url, found: !missing.includes(l) })),
+    };
   }
 
   private checkLogo(mvp: ParsedMvp, source: CompletenessSource) {
@@ -654,37 +752,228 @@ export class MvpCompletenessService {
       [...mvp.telLinks.map((h) => h.replace(/^tel:/i, '')), ...extractPhones(mvp.text)],
       (p) => normalizePhone(p)?.replace(/\D/g, '').slice(-9),
     );
-    const sourcedPhone = (phone: string) =>
-      source.phones.some((s) => phonesMatch(s, phone)) || Boolean(findPhoneInText(phone, source.sourceText));
     for (const phone of phones) {
-      if (!sourcedPhone(phone)) {
+      if (!this.isSourcedPhone(phone, source)) {
         results.push(this.result('phone', 'critical', 'unsourced', { mvpValue: phone, note: 'Not on the original site' }));
       }
     }
 
-    const sourceEmails = new Set(
-      [...source.emails, ...(source.sourceText.match(EMAIL_IN_TEXT) || [])].map((e) => normalizeEmail(e)),
-    );
     const emails = uniqueBy(
       [...mvp.mailtoLinks, ...(mvp.text.match(EMAIL_IN_TEXT) || [])].map(normalizeEmail).filter((e): e is string => Boolean(e)),
       (e) => e,
     );
     for (const email of emails) {
-      if (!sourceEmails.has(email)) {
+      if (!this.isSourcedEmail(email, source)) {
         results.push(this.result('email', 'critical', 'unsourced', { mvpValue: email, note: 'Not on the original site' }));
       }
     }
 
     for (const block of mvp.addressBlocks) {
-      const sourced =
-        (source.address && tokenCoverage(source.address, block, ADDRESS_STOPWORDS) >= 0.5) ||
-        tokenCoverage(block, source.sourceText, ADDRESS_STOPWORDS) >= TOKEN_MATCH_THRESHOLD;
-      if (!sourced && /\d/.test(block)) {
+      if (!this.isSourcedAddress(block, source) && /\d/.test(block)) {
         results.push(this.result('address', 'critical', 'unsourced', { mvpValue: block, note: 'Not on the original site' }));
       }
     }
 
     return results;
+  }
+
+  /** The number is the source's, or appears anywhere in the original site's text */
+  isSourcedPhone(phone: string, source: CompletenessSource): boolean {
+    return source.phones.some((s) => phonesMatch(s, phone)) || Boolean(findPhoneInText(phone, source.sourceText));
+  }
+
+  isSourcedEmail(email: string, source: CompletenessSource): boolean {
+    const normalized = normalizeEmail(email);
+    if (!normalized) return false;
+    return [...source.emails, ...(source.sourceText.match(EMAIL_IN_TEXT) || [])].some((e) => normalizeEmail(e) === normalized);
+  }
+
+  isSourcedAddress(address: string, source: CompletenessSource): boolean {
+    return (
+      (Boolean(source.address) && tokenCoverage(source.address!, address, ADDRESS_STOPWORDS) >= 0.5) ||
+      tokenCoverage(address, source.sourceText, ADDRESS_STOPWORDS) >= TOKEN_MATCH_THRESHOLD
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // LLM verdicts, verified in code (REV-37)
+  // ---------------------------------------------------------------------------
+
+  /** The fields the original site has, as the LLM judge sees them */
+  judgeSource(codeResults: CheckResult[], source: CompletenessSource): JudgeSourceField[] {
+    const judged = new Set(
+      codeResults.filter((r) => r.check.status !== 'not_in_source' && r.check.status !== 'unsourced').map((r) => r.check.field),
+    );
+    const fields: JudgeSourceField[] = [
+      { field: 'businessName', value: source.businessName },
+      { field: 'phone', value: source.phones.join(', ') },
+      { field: 'email', value: source.emails.join(', ') },
+      { field: 'address', value: source.address },
+      { field: 'workingHours', value: source.workingHours },
+      { field: 'services', items: source.services },
+      { field: 'socialLinks', items: source.socialLinks.map((l) => l.url) },
+      { field: 'logo', value: source.logoUrl },
+      { field: 'images', items: source.images },
+      { field: 'testimonials', items: source.testimonials },
+      {
+        field: 'rating',
+        value: source.rating
+          ? `${source.rating.value}${source.rating.count !== undefined ? ` (${source.rating.count} reviews)` : ''}`
+          : undefined,
+      },
+      { field: 'foundingYear', value: source.foundingYear ? String(source.foundingYear) : undefined },
+    ];
+    return fields.filter((f) => judged.has(f.field));
+  }
+
+  /** The quote appears in the MVP: its visible text, a link or an image URL (case and spacing aside) */
+  quoteInMvp(quote: string | undefined, mvp: ParsedMvp): boolean {
+    const squash = (value: string) => value.replace(/\s+/g, ' ').trim().toLowerCase();
+    const q = squash((quote || '').replace(/…$/, ''));
+    if (q.length < 2) return false;
+    if (squash(mvp.text).includes(q)) return true;
+    return [...mvp.telLinks, ...mvp.mailtoLinks, ...mvp.links, ...mvp.imageSources].some((h) => squash(h).includes(q));
+  }
+
+  /**
+   * Combines the LLM's verdicts with code's. A verdict is accepted only when code can verify it:
+   * - a "present" or "altered" verdict needs a quote that really is in the MVP;
+   * - a phone or email judged "present" must match the source value after normalizing, and be linked;
+   * - "missing" never overrides a match code has evidence for;
+   * - `not_in_source` and the score stay with code.
+   * Contact data the LLM calls made up is kept only when its quote is in the MVP and code can't find
+   * it in the source; code's own findings are always kept.
+   */
+  mergeJudgement(
+    codeResults: CheckResult[],
+    judgement: CompletenessJudgeOutput,
+    mvp: ParsedMvp,
+    source: CompletenessSource,
+  ): CheckResult[] {
+    const merged = codeResults
+      .filter((r) => r.check.status !== 'unsourced')
+      .map((r) => {
+        if (r.check.status === 'not_in_source') return r;
+        const verdict = judgement.fields.find((f) => f.field === r.check.field);
+        if (!verdict) return this.keepCode(r, 'No LLM verdict');
+        if (r.items) return this.mergeItems(r, verdict, mvp);
+        return this.mergeField(r, verdict, mvp, source);
+      });
+
+    const unsourced = codeResults.filter((r) => r.check.status === 'unsourced');
+    const key = (field: string, value: string) =>
+      `${field}:${field === 'phone' ? (normalizePhone(value)?.replace(/\D/g, '').slice(-9) ?? value) : field === 'email' ? normalizeEmail(value) : normalizeText(value)}`;
+    const seen = new Set(unsourced.map((r) => key(r.check.field, r.check.mvpValue || '')));
+
+    for (const item of judgement.unsourced) {
+      if (!this.quoteInMvp(item.mvpQuote, mvp)) continue;
+      const sourced =
+        item.field === 'phone'
+          ? this.isSourcedPhone(item.mvpQuote, source) || !normalizePhone(item.mvpQuote)
+          : item.field === 'email'
+            ? this.isSourcedEmail(item.mvpQuote.match(EMAIL_IN_TEXT)?.[0] || '', source) || !EMAIL_IN_TEXT.test(item.mvpQuote)
+            : this.isSourcedAddress(item.mvpQuote, source);
+      EMAIL_IN_TEXT.lastIndex = 0;
+      const k = key(item.field, item.mvpQuote);
+      if (sourced || seen.has(k)) continue;
+      seen.add(k);
+      unsourced.push(
+        this.judged(this.result(item.field, 'critical', 'unsourced', { mvpValue: item.mvpQuote, note: 'Not on the original site' })),
+      );
+    }
+
+    return [...merged, ...unsourced];
+  }
+
+  private judged(result: CheckResult): CheckResult {
+    return { ...result, check: { ...result.check, judgedBy: 'llm' } };
+  }
+
+  private keepCode(result: CheckResult, reason: string): CheckResult {
+    const note = [result.check.note, `LLM verdict not used: ${reason}`].filter(Boolean).join('. ');
+    return { ...result, check: { ...result.check, note, judgedBy: 'code' } };
+  }
+
+  private mergeField(
+    code: CheckResult,
+    verdict: CompletenessJudgeOutput['fields'][number],
+    mvp: ParsedMvp,
+    source: CompletenessSource,
+  ): CheckResult {
+    const { field, tier, originalValue } = code.check;
+
+    if (verdict.status === 'missing') {
+      // Code found evidence in the MVP: an absence claim can't override it
+      if (code.check.status !== 'missing') return this.keepCode(code, 'the LLM said missing, but code found it');
+      return this.judged(this.result(field, tier, 'missing', { originalValue, note: verdict.reason }));
+    }
+
+    if (!this.quoteInMvp(verdict.mvpQuote, mvp)) return this.keepCode(code, 'its quote is not in the MVP');
+    const quote = verdict.mvpQuote!;
+
+    if (verdict.status === 'present' && field === 'phone') {
+      if (!source.phones.some((p) => phonesMatch(p, quote))) return this.keepCode(code, 'its number differs from the source');
+      if (!mvp.telLinks.some((h) => source.phones.some((p) => phonesMatch(p, h.replace(/^tel:/i, ''))))) {
+        return this.judged(
+          this.result(field, tier, 'altered', { originalValue, mvpValue: quote, note: 'Shown as text but not as a tel: link' }),
+        );
+      }
+    }
+    if (verdict.status === 'present' && field === 'email') {
+      const shown = normalizeEmail(quote.match(EMAIL_IN_TEXT)?.[0]);
+      EMAIL_IN_TEXT.lastIndex = 0;
+      if (!shown || !source.emails.some((e) => normalizeEmail(e) === shown)) {
+        return this.keepCode(code, 'its address differs from the source');
+      }
+      if (!mvp.mailtoLinks.some((h) => normalizeEmail(h) === shown)) {
+        return this.judged(
+          this.result(field, tier, 'altered', { originalValue, mvpValue: quote, note: 'Shown as text but not as a mailto: link' }),
+        );
+      }
+    }
+
+    // Reusing any image or testimonial counts, as in the code check; a verified quote proves one is
+    const status = (field === 'images' || field === 'testimonials') && verdict.status === 'altered' ? 'present' : verdict.status;
+    return this.judged(this.result(field, tier, status, { originalValue, mvpValue: quote, note: verdict.reason }));
+  }
+
+  /** Services and social links: an item counts as found when code found it or the LLM quoted it */
+  private mergeItems(code: CheckResult, verdict: CompletenessJudgeOutput['fields'][number], mvp: ParsedMvp): CheckResult {
+    const { field, tier, originalValue } = code.check;
+    const sameItem = (a: string, b: string) =>
+      field === 'socialLinks'
+        ? normalizeUrl(a) === normalizeUrl(b) || a.trim() === b.trim()
+        : normalizeText(a) === normalizeText(b) || bigramSimilarity(a, b) >= 0.9;
+    const items = code.items!.map((item) => {
+      if (item.found) return item;
+      const llmItem = verdict.items?.find((v) => sameItem(v.value, item.value));
+      // A social link must be quoted as one of the MVP's links, not just as text
+      const verified =
+        llmItem?.found &&
+        (field === 'socialLinks'
+          ? mvp.links.some((l) => l.trim() === llmItem.mvpQuote?.trim())
+          : this.quoteInMvp(llmItem.mvpQuote, mvp));
+      return { value: item.value, found: Boolean(verified) };
+    });
+
+    const missing = items.filter((i) => !i.found).map((i) => i.value);
+    const foundCount = items.length - missing.length;
+    return {
+      ...this.judged(
+        this.result(
+          field,
+          tier,
+          missing.length === 0 ? 'present' : 'missing',
+          {
+            originalValue,
+            mvpValue: `${foundCount}/${items.length}`,
+            note: missing.length ? `Missing: ${missing.join(', ')}` : verdict.reason,
+          },
+          items.length ? foundCount / items.length : 0,
+        ),
+      ),
+      items,
+    };
   }
 }
 

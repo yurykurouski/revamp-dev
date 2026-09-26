@@ -270,6 +270,16 @@ export const en = {
     confirmBody: 'The MVP is missing, changed or made up critical data from the original site: {{fields}}. Check the preview before sending it to the business owner.',
     confirmApprove: 'Approve anyway',
     cancel: 'Cancel',
+    judgedByColumn: 'Judged by',
+    method: {
+      llm: 'Judged by AI ({{model}}), quotes verified in code',
+      deterministic: 'Checked by code',
+    },
+    llmFallback: 'The AI check failed, so this is the code result: {{error}}',
+    judgedBy: {
+      llm: 'AI',
+      code: 'Code',
+    },
     fields: {
       businessName: 'Business name',
       phone: 'Phone',

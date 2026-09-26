@@ -1,10 +1,10 @@
 import { MvpContentOutputSchema, MvpContentOutput } from '@revamp/validation';
 import { z } from 'zod';
 import { ISiteContent } from '@revamp/shared-types';
-import { env } from '../config/env.js';
 import { getSupportedIconNames } from '../templates/icons.js';
 import { getMvpStrings, languageDisplayName, sanitizeLanguageTag } from '../templates/mvp-locale.js';
-import { ClaudeCliRunner, createClaudeCliRunner } from './claude-cli.js';
+import { ClaudeCliRunner } from './claude-cli.js';
+import { LlmClient, LlmProvider, extractJsonObject } from './llm-client.js';
 
 export interface GenerateMvpContentInput {
   businessName: string;
@@ -31,7 +31,7 @@ export interface MvpContentGenerationResult {
   attempts: number;
 }
 
-export type MvpContentProvider = 'anthropic' | 'openai' | 'gemini' | 'claude-cli' | 'mock';
+export type MvpContentProvider = LlmProvider;
 
 export interface MvpContentServiceOptions {
   provider?: MvpContentProvider;
@@ -145,38 +145,14 @@ export function clipToSchemaLimits(value: unknown, schema: z.ZodTypeAny): unknow
 }
 
 export class MvpContentService {
-  private provider: MvpContentProvider;
-  private anthropicApiKey?: string;
-  private openaiApiKey?: string;
-  private geminiApiKey?: string;
-  private fetcher: typeof fetch;
-  private claudeCliRunner: ClaudeCliRunner;
+  private llm: LlmClient;
 
   constructor(options: MvpContentServiceOptions = {}) {
-    this.anthropicApiKey = options.anthropicApiKey ?? env.ANTHROPIC_API_KEY;
-    this.openaiApiKey = options.openaiApiKey ?? env.OPENAI_API_KEY;
-    this.geminiApiKey = options.geminiApiKey ?? env.GEMINI_API_KEY;
-    this.fetcher = options.customFetcher ?? fetch;
-    this.claudeCliRunner =
-      options.claudeCliRunner ??
-      createClaudeCliRunner({
-        cliPath: env.CLAUDE_CLI_PATH,
-        model: env.CLAUDE_CLI_MODEL,
-        timeoutMs: env.CLAUDE_CLI_TIMEOUT_MS,
-      });
+    this.llm = new LlmClient(options);
+  }
 
-    const configuredProvider = options.provider ?? env.MVP_LLM_PROVIDER;
-    if (configuredProvider) {
-      this.provider = configuredProvider;
-    } else if (this.anthropicApiKey) {
-      this.provider = 'anthropic';
-    } else if (this.openaiApiKey) {
-      this.provider = 'openai';
-    } else if (this.geminiApiKey) {
-      this.provider = 'gemini';
-    } else {
-      this.provider = 'mock';
-    }
+  private get provider(): MvpContentProvider {
+    return this.llm.provider;
   }
 
   /**
@@ -185,10 +161,7 @@ export class MvpContentService {
    */
   async generateContent(input: GenerateMvpContentInput): Promise<MvpContentGenerationResult> {
     // The local Claude CLI authenticates itself, so it needs no API key
-    if (
-      this.provider === 'mock' ||
-      (this.provider !== 'claude-cli' && !this.anthropicApiKey && !this.openaiApiKey && !this.geminiApiKey)
-    ) {
+    if (!this.llm.isAvailable()) {
       console.log('[MvpContentService] No LLM provider configured. Using deterministic grounded copy.');
       const fallback = this.generateDeterministicFallback(input);
       return {
@@ -212,20 +185,12 @@ export class MvpContentService {
           `[MvpContentService] Attempt ${attempt + 1}/${temperatures.length} using ${this.provider} (temp: ${currentTemp})...`,
         );
 
-        let rawResponse: string;
-        if (this.provider === 'claude-cli') {
-          // The CLI has no temperature setting; retries simply re-run it
-          rawResponse = await this.claudeCliRunner({
-            systemPrompt: MVP_CONTENT_SYSTEM_PROMPT,
-            userPrompt: this.buildUserPrompt(input),
-          });
-        } else if (this.provider === 'anthropic') {
-          rawResponse = await this.callAnthropic(input, currentTemp);
-        } else if (this.provider === 'gemini') {
-          rawResponse = await this.callGemini(input, currentTemp);
-        } else {
-          rawResponse = await this.callOpenAi(input, currentTemp);
-        }
+        // The CLI has no temperature setting; its retries simply re-run it
+        const rawResponse = await this.llm.complete({
+          systemPrompt: MVP_CONTENT_SYSTEM_PROMPT,
+          userPrompt: this.buildUserPrompt(input),
+          temperature: currentTemp,
+        });
 
         const parsedContent = this.extractAndValidateJson(rawResponse);
         const groundedContent = this.enforceStrictGrounding(parsedContent, input);
@@ -558,13 +523,7 @@ export class MvpContentService {
   }
 
   private extractAndValidateJson(rawText: string): MvpContentOutput {
-    const clean = rawText.trim();
-    const jsonMatch = clean.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error('LLM response did not contain a valid JSON object.');
-    }
-
-    const parsed = JSON.parse(jsonMatch[0]);
+    const parsed = extractJsonObject(rawText);
     return MvpContentOutputSchema.parse(clipToSchemaLimits(parsed, MvpContentOutputSchema));
   }
 
@@ -603,100 +562,6 @@ export class MvpContentService {
       null,
       2,
     );
-  }
-
-  private async callAnthropic(input: GenerateMvpContentInput, temperature: number): Promise<string> {
-    const userPrompt = this.buildUserPrompt(input);
-    const response = await this.fetcher('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': this.anthropicApiKey!,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model: 'claude-3-5-sonnet-20241022',
-        max_tokens: 2000,
-        temperature,
-        system: MVP_CONTENT_SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: userPrompt }],
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(`Anthropic API error (${response.status}): ${errBody}`);
-    }
-
-    const data = (await response.json()) as { content?: Array<{ text?: string }> };
-    return data?.content?.[0]?.text || '';
-  }
-
-  private async callOpenAi(input: GenerateMvpContentInput, temperature: number): Promise<string> {
-    const userPrompt = this.buildUserPrompt(input);
-    const response = await this.fetcher('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.openaiApiKey!}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o',
-        max_tokens: 2000,
-        temperature,
-        response_format: { type: 'json_object' },
-        messages: [
-          { role: 'system', content: MVP_CONTENT_SYSTEM_PROMPT },
-          { role: 'user', content: userPrompt },
-        ],
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(`OpenAI API error (${response.status}): ${errBody}`);
-    }
-
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
-    };
-    return data?.choices?.[0]?.message?.content || '';
-  }
-
-  private async callGemini(input: GenerateMvpContentInput, temperature: number): Promise<string> {
-    const userPrompt = this.buildUserPrompt(input);
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key=${this.geminiApiKey!}`;
-
-    const response = await this.fetcher(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [
-          {
-            parts: [
-              { text: `${MVP_CONTENT_SYSTEM_PROMPT}\n\nContext:\n${userPrompt}` },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature,
-          maxOutputTokens: 2000,
-          responseMimeType: 'application/json',
-        },
-      }),
-    });
-
-    if (!response.ok) {
-      const errBody = await response.text();
-      throw new Error(`Gemini API error (${response.status}): ${errBody}`);
-    }
-
-    const data = (await response.json()) as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
   }
 }
 

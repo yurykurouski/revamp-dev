@@ -31,6 +31,13 @@ export const EnvSchema = z.object({
   CLAUDE_CLI_PATH: z.string().default('claude'),
   CLAUDE_CLI_MODEL: z.string().default('sonnet'),
   CLAUDE_CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
+  // MVP completeness check (REV-37): let the configured LLM judge the fields, verified in code.
+  // "false" / "0" keeps the code-only comparison. (z.coerce.boolean would read "false" as true.)
+  MVP_COMPLETENESS_LLM: z.preprocess(
+    (v) => (typeof v === 'string' ? !['false', '0', 'no', 'off', ''].includes(v.trim().toLowerCase()) : v),
+    z.boolean().default(true),
+  ),
+  MVP_COMPLETENESS_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
   EMAIL_PROVIDER: z.enum(['mock', 'resend', 'sendgrid', 'smtp']).default('mock'),
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),

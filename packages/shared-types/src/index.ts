@@ -257,6 +257,8 @@ export interface ICompletenessCheck {
   mvpValue?: string;
   /** Extra detail, e.g. which services are missing */
   note?: string;
+  /** Who decided the status: the LLM (its quote verified in code) or code alone (REV-37) */
+  judgedBy?: 'llm' | 'code';
 }
 
 export interface IMvpCompletenessReport {
@@ -269,6 +271,12 @@ export interface IMvpCompletenessReport {
   checks: ICompletenessCheck[];
   checkedAt: string | Date;
   error?: string;
+  /** `llm` when an LLM judged the fields, `deterministic` for the code-only comparison (REV-37) */
+  method?: 'llm' | 'deterministic';
+  /** The model that judged the fields, when method is `llm` */
+  model?: string;
+  /** Why the LLM comparison fell back to code, when it did */
+  llmError?: string;
 }
 
 /** The part of the report the leads list carries for the Kanban card */
