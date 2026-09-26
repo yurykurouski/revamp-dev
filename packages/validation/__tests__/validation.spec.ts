@@ -374,6 +374,24 @@ describe('Validation Schemas (@revamp/validation)', () => {
       ).toThrow();
     });
 
+    it('should accept BCP 47 site language tags and reject malformed ones (REV-25)', () => {
+      const base = {
+        businessName: 'Galeria Bemowo',
+        palette: { primary: '#9a7d42', secondary: '#1e293b', accent: '#9a7d42' },
+        contacts: {},
+        hero: { headline: 'Zakupy', subheadline: 'Galeria handlowa' },
+        services: [{ title: 'Sklepy', description: 'Sklepy i usługi' }],
+      };
+
+      for (const language of ['pl', 'pl-PL', 'sr-Latn-RS', 'fil']) {
+        expect(BentoTemplateDataSchema.parse({ ...base, language }).language).toBe(language);
+      }
+      expect(BentoTemplateDataSchema.parse(base).language).toBeUndefined();
+      for (const language of ['', 'p', 'pl_PL', 'pl-', 'polish', 'pl"><script>']) {
+        expect(() => BentoTemplateDataSchema.parse({ ...base, language })).toThrow();
+      }
+    });
+
     it('should reject invalid hex color in palette', () => {
       const invalid = {
         businessName: 'Auto Fix',

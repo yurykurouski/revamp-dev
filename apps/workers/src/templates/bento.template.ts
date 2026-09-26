@@ -1,5 +1,6 @@
 import { IBentoTemplateData } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
+import { getMvpStrings } from './mvp-locale.js';
 
 /**
  * Converts Hex color string (#RRGGBB or #RGB) to "R, G, B" triplet.
@@ -23,6 +24,13 @@ function hexToRgb(hex: string): string {
 }
 
 /**
+ * Serialises a value for an inline <script>, so text cannot close the script element.
+ */
+function scriptJson(value: unknown): string {
+  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+}
+
+/**
  * Escape HTML special characters for strict security and valid markup.
  */
 function escapeHtml(str: string | undefined | null): string {
@@ -40,6 +48,8 @@ function escapeHtml(str: string | undefined | null): string {
  */
 export function generateBentoHtml(data: IBentoTemplateData): string {
   const businessName = escapeHtml(data.businessName);
+  const language = data.language || 'en';
+  const t = getMvpStrings(language);
   const primaryColor = data.palette?.primary || '#5c5bed';
   const secondaryColor = data.palette?.secondary || '#b8c4fe';
   const accentColor = data.palette?.accent || '#5c5bed';
@@ -59,8 +69,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const heroBadge = escapeHtml(data.hero.badge);
   const heroHeadline = escapeHtml(data.hero.headline);
   const heroSubheadline = escapeHtml(data.hero.subheadline);
-  const primaryCtaText = escapeHtml(data.hero.primaryCtaText || 'Send a request');
-  const secondaryCtaText = escapeHtml(data.hero.secondaryCtaText || (phone ? 'Call us' : 'Contact us'));
+  const primaryCtaText = escapeHtml(data.hero.primaryCtaText || t.sendRequest);
+  const secondaryCtaText = escapeHtml(data.hero.secondaryCtaText || (phone ? t.callUs : t.contactUs));
   const secondaryCtaHref = phone ? `tel:${phoneClean}` : email ? `mailto:${escapeHtml(email)}` : '#booking';
 
   const services = data.services || [];
@@ -68,7 +78,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const reviews = data.reviews || [];
   const gallery = (data.gallery || []).filter((src) => src !== data.heroImageUrl).slice(0, 6);
   const socialLinks = data.socialLinks || [];
-  const servicesHeading = escapeHtml(data.servicesHeading || `What ${data.businessName} offers`);
+  const servicesHeading = escapeHtml(data.servicesHeading || t.servicesHeading(data.businessName));
   const footerTagline = escapeHtml(data.footerTagline || data.hero.subheadline);
 
   // Logo or Monogram rendering
@@ -115,7 +125,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
           <h3 class="bento-card-title">${escapeHtml(service.title)}</h3>
           <p class="bento-card-desc">${escapeHtml(service.description)}</p>
           <a href="#booking" class="bento-card-link">
-            <span>Choose service</span>
+            <span>${escapeHtml(t.chooseService)}</span>
             ${getLucideIconSvg('arrow-right', { size: 16 })}
           </a>
         </div>
@@ -152,7 +162,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
               <div class="review-avatar">${escapeHtml(rev.author.charAt(0))}</div>
               <div>
                 <div class="review-author-name">${escapeHtml(rev.author)}</div>
-                <div class="review-source">${escapeHtml(rev.source || 'Website')} ${rev.date ? `• ${escapeHtml(rev.date)}` : ''}</div>
+                <div class="review-source">${escapeHtml(!rev.source || rev.source === 'Website' ? t.reviewSourceWebsite : rev.source)} ${rev.date ? `• ${escapeHtml(rev.date)}` : ''}</div>
               </div>
             </div>
             <div class="review-stars">${starRating}</div>
@@ -169,7 +179,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     <section class="about-section" id="about">
       <div class="container about-grid">
         <div>
-          <span class="section-tag">About</span>
+          <span class="section-tag">${escapeHtml(t.aboutTag)}</span>
           <h2 class="section-title">${escapeHtml(data.about.heading)}</h2>
           <p class="about-body">${escapeHtml(data.about.body)}</p>
         </div>
@@ -209,7 +219,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     .join('\n');
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${escapeHtml(language)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -1087,14 +1097,14 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       <div class="header-actions">
         ${
           phone
-            ? `<a href="tel:${phoneClean}" class="call-btn" aria-label="Call us">
+            ? `<a href="tel:${phoneClean}" class="call-btn" aria-label="${escapeHtml(t.callUs)}">
           ${getLucideIconSvg('phone', { size: 18 })}
           <span>${escapeHtml(phone)}</span>
         </a>`
             : ''
         }
         <a href="#booking" class="header-booking-btn">
-          <span>Book now</span>
+          <span>${escapeHtml(t.bookNow)}</span>
         </a>
       </div>
     </div>
@@ -1137,7 +1147,7 @@ ${aboutHtml}
     ${services.length ? `<section class="bento-section" id="services">
       <div class="container">
         <div class="section-header">
-          <span class="section-tag">Services</span>
+          <span class="section-tag">${escapeHtml(t.servicesTag)}</span>
           <h2 class="section-title">${servicesHeading}</h2>
         </div>
 
@@ -1151,8 +1161,8 @@ ${galleryHtml}
     ${reviews.length ? `<section class="reviews-section" id="reviews">
       <div class="container">
         <div class="section-header">
-          <span class="section-tag">Reviews</span>
-          <h2 class="section-title">What customers say about ${businessName}</h2>
+          <span class="section-tag">${escapeHtml(t.reviewsTag)}</span>
+          <h2 class="section-title">${escapeHtml(t.reviewsHeading(data.businessName))}</h2>
         </div>
 
         <div class="reviews-grid">
@@ -1166,67 +1176,67 @@ ${galleryHtml}
       <div class="container">
         <div class="booking-wrapper">
           <div class="section-header" style="margin-bottom: 2rem;">
-            <span class="section-tag">Get in touch</span>
+            <span class="section-tag">${escapeHtml(t.getInTouchTag)}</span>
             <h2 class="section-title" style="font-size: 1.75rem;">${primaryCtaText}</h2>
             <p class="section-desc">
-              Leave your details and ${businessName} will get back to you.
+              ${escapeHtml(t.bookingDescription(data.businessName))}
             </p>
           </div>
 
           <form id="lead-booking-form" class="booking-form" novalidate>
             <div class="form-group">
-              <label for="lead-name" class="form-label">Your name *</label>
+              <label for="lead-name" class="form-label">${escapeHtml(t.nameLabel)}</label>
               <input 
                 type="text" 
                 id="lead-name" 
                 name="name" 
                 class="form-input" 
-                placeholder="John Smith" 
+                placeholder="${escapeHtml(t.namePlaceholder)}" 
                 required 
                 autocomplete="name"
               />
             </div>
 
             <div class="form-group">
-              <label for="lead-phone" class="form-label">Phone number *</label>
+              <label for="lead-phone" class="form-label">${escapeHtml(t.phoneLabel)}</label>
               <input 
                 type="tel" 
                 id="lead-phone" 
                 name="phone" 
                 class="form-input" 
-                placeholder="Your phone number" 
+                placeholder="${escapeHtml(t.phonePlaceholder)}" 
                 required 
                 autocomplete="tel"
               />
             </div>
 
             <div class="form-group">
-              <label for="lead-service" class="form-label">Service of interest</label>
+              <label for="lead-service" class="form-label">${escapeHtml(t.serviceLabel)}</label>
               <select id="lead-service" name="service" class="form-select">
-                <option value="Consultation">General consultation</option>
+                <option value="${escapeHtml(t.generalConsultation)}">${escapeHtml(t.generalConsultation)}</option>
                 ${serviceSelectOptions}
               </select>
             </div>
 
             <div class="form-group">
-              <label for="lead-notes" class="form-label">Comments or requests</label>
+              <label for="lead-notes" class="form-label">${escapeHtml(t.notesLabel)}</label>
               <textarea 
                 id="lead-notes" 
                 name="notes" 
                 class="form-textarea" 
-                placeholder="Add details or your preferred visit time..."
+                placeholder="${escapeHtml(t.notesPlaceholder)}"
               ></textarea>
             </div>
 
             <div class="form-checkbox-container">
               <input type="checkbox" id="policy-consent" class="form-checkbox" checked required />
               <label for="policy-consent" class="checkbox-label">
-                I consent to the processing of my personal data and agree to the privacy policy.
+                ${escapeHtml(t.consent)}
               </label>
             </div>
 
             <button type="submit" id="booking-submit-btn" class="form-submit-btn">
-              <span>Book now</span>
+              <span>${escapeHtml(t.bookNow)}</span>
               ${getLucideIconSvg('send', { size: 18 })}
             </button>
           </form>
@@ -1236,12 +1246,12 @@ ${galleryHtml}
             <div class="success-icon-badge">
               ${getLucideIconSvg('check-circle', { size: 36 })}
             </div>
-            <h3 class="success-title">Thank you for reaching out!</h3>
+            <h3 class="success-title">${escapeHtml(t.successTitle)}</h3>
             <p class="success-desc" id="success-client-info">
-              Your request has been received. Our specialist will contact you shortly.
+              ${escapeHtml(t.successDescription)}
             </p>
             <button type="button" id="reset-form-btn" class="btn-secondary" style="margin-inline: auto;">
-              Send another request
+              ${escapeHtml(t.sendAnother)}
             </button>
           </div>
         </div>
@@ -1259,12 +1269,12 @@ ${galleryHtml}
           ${socialHtml}
           <a href="#booking" class="revamp-badge">
             ${getLucideIconSvg('sparkles', { size: 14 })}
-            <span>Prototype built by the Revamp platform</span>
+            <span>${escapeHtml(t.builtBy)}</span>
           </a>
         </div>
 
         <div>
-          <div class="footer-col-title">Contacts</div>
+          <div class="footer-col-title">${escapeHtml(t.contactsTitle)}</div>
           <ul class="footer-contact-list">
             ${phone ? `<li class="footer-contact-item">
               ${getLucideIconSvg('phone', { size: 18 })}
@@ -1278,12 +1288,12 @@ ${galleryHtml}
               ${getLucideIconSvg('map-pin', { size: 18 })}
               <a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(address)}</a>
             </li>` : ''}
-            ${!phone && !email && !address ? `<li class="footer-contact-item"><a href="#booking">Send us a request</a></li>` : ''}
+            ${!phone && !email && !address ? `<li class="footer-contact-item"><a href="#booking">${escapeHtml(t.sendUsRequest)}</a></li>` : ''}
           </ul>
         </div>
 
         ${workingHours ? `<div>
-          <div class="footer-col-title">Opening hours</div>
+          <div class="footer-col-title">${escapeHtml(t.openingHoursTitle)}</div>
           <ul class="footer-contact-list">
             <li class="footer-contact-item">
               ${getLucideIconSvg('clock', { size: 18 })}
@@ -1294,8 +1304,8 @@ ${galleryHtml}
       </div>
 
       <div class="footer-bottom">
-        <div>© ${new Date().getFullYear()} ${businessName}. All rights reserved.</div>
-        <div>Redesign concept based on the original website</div>
+        <div>© ${new Date().getFullYear()} ${businessName}. ${escapeHtml(t.rightsReserved)}</div>
+        <div>${escapeHtml(t.redesignConcept)}</div>
       </div>
     </div>
   </footer>
@@ -1308,6 +1318,7 @@ ${galleryHtml}
       const submitBtn = document.getElementById('booking-submit-btn');
       const resetBtn = document.getElementById('reset-form-btn');
       const clientInfo = document.getElementById('success-client-info');
+      const i18n = ${scriptJson({ bookNow: t.bookNow, sending: t.sending, successDetail: t.successDetail, fallbackService: t.generalConsultation })};
 
       if (!form || !successBlock) return;
 
@@ -1335,14 +1346,18 @@ ${galleryHtml}
 
         // Simulate instant submission with responsive feedback
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span>Sending...</span>';
+        submitBtn.innerHTML = '<span></span>';
+        submitBtn.firstChild.textContent = i18n.sending;
 
         setTimeout(function() {
           form.style.display = 'none';
           successBlock.style.display = 'block';
 
           if (clientInfo) {
-            clientInfo.textContent = 'Thank you, ' + nameVal + '! Your request for "' + (serviceSelect ? serviceSelect.value : 'Consultation') + '" has been received. We will call you back at ' + phoneVal + ' shortly.';
+            clientInfo.textContent = i18n.successDetail
+              .replace('{name}', nameVal)
+              .replace('{service}', serviceSelect ? serviceSelect.value : i18n.fallbackService)
+              .replace('{phone}', phoneVal);
           }
 
           // Dispatch telemetry Beacon if tracking token is provided
@@ -1373,7 +1388,8 @@ ${galleryHtml}
         resetBtn.addEventListener('click', function() {
           form.reset();
           submitBtn.disabled = false;
-          submitBtn.innerHTML = '<span>Book now</span>';
+          submitBtn.innerHTML = '<span></span>';
+          submitBtn.firstChild.textContent = i18n.bookNow;
           successBlock.style.display = 'none';
           form.style.display = 'block';
         });

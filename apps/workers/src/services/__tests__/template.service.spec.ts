@@ -249,6 +249,79 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     expect(html).toContain('class="bento-grid"');
   });
 
+  describe('MVP language (REV-25)', () => {
+    it('declares the site language and localises the template chrome', () => {
+      const html = bentoTemplateService.render({ ...sampleTemplateData, language: 'pl' });
+      expect(html).toContain('<html lang="pl">');
+      expect(html).toContain('Godziny otwarcia');
+      expect(html).toContain('Wszelkie prawa zastrzeżone.');
+      expect(html).toContain('<span>Umów się</span>');
+      expect(html).not.toContain('Opening hours');
+      expect(html).not.toContain('Book now');
+    });
+
+    it('keeps English chrome but the real lang attribute for languages without a dictionary', () => {
+      const html = bentoTemplateService.render({ ...sampleTemplateData, language: 'de' });
+      expect(html).toContain('<html lang="de">');
+      expect(html).toContain('Opening hours');
+    });
+
+    it('keeps the full site language tag and still localises by its primary subtag', () => {
+      const html = bentoTemplateService.render({ ...sampleTemplateData, language: 'ru-BY' });
+      expect(html).toContain('<html lang="ru-BY">');
+      expect(html).toContain('Часы работы');
+    });
+
+    it('normalises underscores and drops malformed site language tags when rendering from an audit', () => {
+      const site = { headings: [], paragraphs: [], serviceItems: [], navItems: [], testimonials: [], images: [] };
+      const lead = { businessName: 'Galeria Bemowo' };
+      expect(bentoTemplateService.renderFromAudit(lead, { extractedContent: { ...site, language: 'en_GB' } })).toContain(
+        '<html lang="en-GB">',
+      );
+      expect(
+        bentoTemplateService.renderFromAudit(lead, { extractedContent: { ...site, language: 'pl"><script>' } }),
+      ).toContain('<html lang="en">');
+    });
+
+    it('defaults to English when no language is given', () => {
+      const html = bentoTemplateService.render(sampleTemplateData);
+      expect(html).toContain('<html lang="en">');
+      expect(html).toContain('Book now');
+    });
+
+    it('rejects a malformed language code', () => {
+      expect(() => bentoTemplateService.render({ ...sampleTemplateData, language: '"><script>' })).toThrow();
+    });
+
+    it('passes the localised confirmation text to the client script safely', () => {
+      const html = bentoTemplateService.render({ ...sampleTemplateData, language: 'ru' });
+      expect(html).toContain('"successDetail":"Спасибо, {name}!');
+      expect(html).not.toContain("'Thank you, ' + nameVal");
+    });
+
+    it('renders an MVP from an audit in the original site language', () => {
+      const html = bentoTemplateService.renderFromAudit(
+        { businessName: 'Galeria Bemowo', niche: 'other' },
+        {
+          extractedContent: {
+            language: 'pl-PL',
+            h1: 'Wyjątkowe miejsce na zakupy',
+            headings: [],
+            paragraphs: [],
+            serviceItems: [{ title: 'Sklepy' }],
+            navItems: [],
+            testimonials: [{ text: 'Świetne miejsce na zakupy!' }],
+            images: [],
+          },
+        },
+      );
+      expect(html).toContain('<html lang="pl-PL">');
+      expect(html).toContain('Sklepy — Galeria Bemowo.');
+      expect(html).toContain('>Klient</div>');
+      expect(html).toContain('Strona');
+    });
+  });
+
   describe('renderFromAudit grounding (REV-23)', () => {
     const baseTokens = {
       primaryColor: '#9a7d42',

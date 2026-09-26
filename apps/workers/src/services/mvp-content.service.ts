@@ -2,6 +2,7 @@ import { MvpContentOutputSchema, MvpContentOutput } from '@revamp/validation';
 import { ISiteContent } from '@revamp/shared-types';
 import { env } from '../config/env.js';
 import { getSupportedIconNames } from '../templates/icons.js';
+import { getMvpStrings, languageDisplayName, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 
 export interface GenerateMvpContentInput {
   businessName: string;
@@ -44,10 +45,12 @@ FUNDAMENTAL GROUNDING RULES:
 - Never output phone numbers, email addresses or street addresses; they are rendered separately from verified data.
 - Use the business's own specifics (its name, what it actually offers, its wording and its selling points) so the copy could not belong to any other business.
 - trustSignals: include at most 3, and only metrics whose numbers literally appear in the context (e.g. a rating or a founding year). Return an empty array when there are none.
-- If the source text is in another language, translate the meaning faithfully.
+
+Language:
+- Write all copy in the language named in "outputLanguage" - the original site's own language. Never translate the copy into English or any other language.
+- Keep the business's own terms, service names and proper nouns exactly as the original site spells them.
 
 Style requirements:
-- Write all copy in English.
 - hero.headline: customer benefit + what makes this business specific (up to 90 characters).
 - hero.subheadline: how the business solves the customer's problem, based on its own description (up to 180 characters).
 - about: a heading (up to 80 characters) and 2-4 sentences (up to 700 characters) retelling the business's own story and strengths.
@@ -68,26 +71,6 @@ const GENERIC_PAGE_TITLES =
 /** Headings that label a page section rather than state anything about the business */
 const GENERIC_SECTION_TITLES =
   /^(opening hours|contact( us)?|our services|services|about( us)?|newsletter|subscribe|follow us|godziny otwarcia|kontakt|nasze usługi|usługi|o nas|zapisz się|bądź na bieżąco|часы работы|контакты|услуги|о нас)!?$/i;
-
-const NICHE_LABELS: Record<string, string> = {
-  dental: 'Dental care',
-  auto: 'Auto service',
-  legal: 'Legal services',
-  beauty: 'Beauty & care',
-  restaurant: 'Restaurant',
-  fitness: 'Fitness',
-  other: 'Local business',
-};
-
-const NICHE_PRIMARY_CTA: Record<string, string> = {
-  dental: 'Book an appointment',
-  auto: 'Book a service',
-  legal: 'Get a consultation',
-  beauty: 'Book a visit',
-  restaurant: 'Reserve a table',
-  fitness: 'Start training',
-  other: 'Send a request',
-};
 
 /** Keyword → Lucide icon, used to pick grounded icons for extracted services */
 const ICON_KEYWORDS: Array<[RegExp, string]> = [
@@ -279,8 +262,9 @@ export class MvpContentService {
    * produce the same MVP, and no facts are invented.
    */
   public generateDeterministicFallback(input: GenerateMvpContentInput): MvpContentOutput {
-    const businessName = input.businessName || 'Our business';
-    const niche = input.niche || 'other';
+    const t = this.strings(input);
+    const businessName = input.businessName || t.ourBusiness;
+    const niche = this.nicheKey(input);
     const site = input.siteContent;
 
     return {
@@ -288,16 +272,16 @@ export class MvpContentService {
         badge: clipText(this.buildBadge(input), 40),
         headline: clipText(this.buildHeadline(input), 90),
         subheadline: clipText(this.buildSubheadline(input), 180),
-        primaryCtaText: NICHE_PRIMARY_CTA[niche] || NICHE_PRIMARY_CTA['other']!,
-        secondaryCtaText: input.contacts?.phone ? 'Call us' : input.contacts?.email ? 'Email us' : 'Contact us',
+        primaryCtaText: t.nicheCta[niche],
+        secondaryCtaText: input.contacts?.phone ? t.callUs : input.contacts?.email ? t.emailUs : t.contactUs,
       },
       about: this.buildAbout(input),
-      servicesHeading: clipText(`What ${businessName} offers`, 80),
+      servicesHeading: clipText(t.servicesHeading(businessName), 80),
       services: this.buildGroundedServices(input).slice(0, 6).length
         ? this.buildGroundedServices(input).slice(0, 6)
         : [
             {
-              title: clipText(NICHE_LABELS[niche] || NICHE_LABELS['other']!, 50),
+              title: clipText(t.nicheLabels[niche], 50),
               description: clipText(site?.metaDescription || site?.paragraphs[0] || businessName, 120),
               lucideIconName: this.normalizeIcon(undefined, `${niche} ${businessName}`),
             },
@@ -305,8 +289,8 @@ export class MvpContentService {
       trustSignals: this.buildGroundedTrustSignals(input),
       offerNotice: clipText(
         input.contacts?.phone
-          ? `Call ${input.contacts.phone} or send a request online`
-          : 'Send a request online and we will get back to you',
+          ? t.offerCall(input.contacts.phone)
+          : t.offerOnline,
         100,
       ),
     };
@@ -329,21 +313,22 @@ export class MvpContentService {
   /** Subheadline: meta description or the site's first descriptive paragraph */
   private buildSubheadline(input: GenerateMvpContentInput): string {
     const site = input.siteContent;
-    const niche = NICHE_LABELS[input.niche || 'other'] || NICHE_LABELS['other']!;
+    const t = this.strings(input);
     return (
       site?.metaDescription ||
       site?.paragraphs[0] ||
-      `${niche} by ${input.businessName}${input.city ? ` in ${input.city}` : ''}.`
+      t.nicheBy(t.nicheLabels[this.nicheKey(input)], input.businessName, input.city)
     );
   }
 
   /** Badge: the strongest real fact available (rating, founding year, city) */
   private buildBadge(input: GenerateMvpContentInput): string {
     const site = input.siteContent;
-    if (site?.rating) return `★ ${site.rating.value} rating`;
-    if (site?.foundingYear) return `Since ${site.foundingYear}`;
+    const t = this.strings(input);
+    if (site?.rating) return t.ratingBadge(site.rating.value);
+    if (site?.foundingYear) return t.since(site.foundingYear);
     if (input.city) return `📍 ${input.city}`;
-    return NICHE_LABELS[input.niche || 'other'] || NICHE_LABELS['other']!;
+    return t.nicheLabels[this.nicheKey(input)];
   }
 
   /** About section from the site's own paragraphs */
@@ -356,7 +341,7 @@ export class MvpContentService {
       body = `${body} ${p}`.trim();
     }
     return {
-      heading: clipText(`About ${input.businessName}`, 80),
+      heading: clipText(this.strings(input).aboutHeading(input.businessName), 80),
       body: body || clipText(paragraphs[0]!, 700),
     };
   }
@@ -382,7 +367,7 @@ export class MvpContentService {
     return items.slice(0, 6).map((item) => {
       const title = clipText(this.toTitleCase(item.title), 50);
       const description =
-        item.description || this.findParagraphMentioning(item.title, site?.paragraphs || []) || `${title} at ${input.businessName}.`;
+        item.description || this.findParagraphMentioning(item.title, site?.paragraphs || []) || this.strings(input).serviceAt(title, input.businessName);
       return {
         title,
         description: clipText(description, 120),
@@ -395,20 +380,41 @@ export class MvpContentService {
   /** Trust signals only from verifiable data: structured rating and founding year */
   private buildGroundedTrustSignals(input: GenerateMvpContentInput) {
     const site = input.siteContent;
+    const t = this.strings(input);
     const signals: Array<{ metric: string; label: string }> = [];
     if (site?.rating) {
       signals.push({
         metric: `${site.rating.value} ★`,
-        label: site.rating.count ? `Average rating from ${site.rating.count} reviews` : 'Average customer rating',
+        label: site.rating.count ? t.averageRatingFrom(site.rating.count) : t.averageRating,
       });
     }
     if (site?.foundingYear) {
-      signals.push({ metric: `Since ${site.foundingYear}`, label: `Serving customers for ${new Date().getFullYear() - site.foundingYear}+ years` });
+      signals.push({ metric: t.since(site.foundingYear), label: t.servingFor(new Date().getFullYear() - site.foundingYear) });
     }
     if ((site?.testimonials.length || 0) >= 2) {
-      signals.push({ metric: `${site!.testimonials.length}`, label: 'Customer testimonials on our site' });
+      signals.push({ metric: `${site!.testimonials.length}`, label: t.testimonialsOnSite });
     }
     return signals.slice(0, 3);
+  }
+
+  /** Fixed wording of the deterministic copy, in the original site's language (REV-25) */
+  private strings(input: GenerateMvpContentInput) {
+    return getMvpStrings(input.siteContent?.language);
+  }
+
+  private nicheKey(input: GenerateMvpContentInput): keyof ReturnType<typeof getMvpStrings>['nicheLabels'] {
+    const niche = input.niche || 'other';
+    return niche in this.strings(input).nicheLabels ? (niche as 'other') : 'other';
+  }
+
+  /**
+   * Language instruction for the LLM: the original site's declared language, or - when the
+   * site declares none - whatever language its text is written in.
+   */
+  public resolveOutputLanguage(input: GenerateMvpContentInput): string {
+    const tag = sanitizeLanguageTag(input.siteContent?.language);
+    if (!tag) return 'the language the original site text is written in (English if it cannot be determined)';
+    return `${languageDisplayName(tag)} (${tag})`;
   }
 
   /** All source text a grounded metric may cite */
@@ -519,6 +525,7 @@ export class MvpContentService {
     return JSON.stringify(
       {
         businessName: input.businessName,
+        outputLanguage: this.resolveOutputLanguage(input),
         niche: input.niche || 'other',
         city: input.city || 'Not specified',
         originalUrl: input.originalUrl || '',
