@@ -130,6 +130,7 @@ Every bug fix and every new feature MUST have its own Linear ticket and MUST go 
    * `npm test` (0 failures)
    * `npm run build` (full production build)
    * For behavior changes, also run the app (API, workers, dashboard) and check the change end to end.
+   * Before committing, verify the change in Chrome: open the running dashboard, go through the affected flow, and confirm it behaves as expected with no new console errors.
    If any gate fails, fix it before opening the PR. Never open or merge a PR with failing gates.
 4. **PR.** Push the branch and open a PR with `gh pr create`.
    * Title in the same format as the commit (e.g. `fix(REV-<n>): ...`).
@@ -149,6 +150,7 @@ Report the ticket and PR links to the user at each hand-off point.
 * [ ] TypeScript compilation passes without errors: `npm run build` or `npm run typecheck`.
 * [ ] Linter passes with no warnings: `npm run lint`.
 * [ ] **Automated tests pass with full coverage:** `npm test` runs cleanly with 0 failures and covers all added/modified functionality.
+* [ ] **Verified in Chrome:** the change was checked in the running app in Chrome (e.g. via Claude in Chrome) before committing — the affected flow works end to end and the browser console shows no new errors.
 * [ ] All public API endpoints validate request payloads via Zod schemas from `packages/validation`.
 * [ ] Heavy or asynchronous operations are dispatched through BullMQ queues.
 * [ ] External resources (Playwright browser contexts, Redis/Mongo connections) are cleanly closed and managed.
