@@ -22,6 +22,8 @@ export const lt: Translation = {
   },
   sidebar: {
     leads: 'Klientai ir srautas',
+    collapse: 'Sutraukti meniu',
+    expand: 'Išskleisti meniu',
   },
   niches: {
     dental: 'Odontologija',

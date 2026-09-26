@@ -23,6 +23,8 @@ export const en = {
   },
   sidebar: {
     leads: 'Leads & Pipeline',
+    collapse: 'Collapse menu',
+    expand: 'Expand menu',
   },
   niches: {
     dental: 'Dental',
