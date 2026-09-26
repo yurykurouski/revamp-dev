@@ -49,7 +49,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
         <PaletteIcon sx={{ fontSize: 18, color: 'primary.main' }} />
         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }}>
-          Палитра бренда:
+          Brand palette:
         </Typography>
       </Box>
 
@@ -97,7 +97,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
             cursor: 'pointer',
             backgroundColor: 'transparent',
           }}
-          title="Выбрать свой HEX цвет"
+          title="Pick a custom HEX color"
         />
         <Typography
           variant="caption"
@@ -114,7 +114,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
 
       {/* Reset button if changed */}
       {originalPrimary && originalPrimary.toLowerCase() !== currentPrimary.toLowerCase() && (
-        <Tooltip title={`Вернуть исходный цвет (${originalPrimary})`}>
+        <Tooltip title={`Restore original color (${originalPrimary})`}>
           <Button
             size="small"
             variant="text"
@@ -123,7 +123,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
             onClick={onReset}
             sx={{ fontSize: '0.75rem', py: 0.2, px: 1, color: 'text.secondary' }}
           >
-            Сбросить
+            Reset
           </Button>
         </Tooltip>
       )}

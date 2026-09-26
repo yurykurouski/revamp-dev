@@ -20,11 +20,11 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 const DRAWER_WIDTH = 240;
 
 const menuItems = [
-  { text: 'Лиды и пайплайн', icon: <DashboardIcon />, active: true },
-  { text: 'Аудиты сайтов', icon: <AssessmentIcon /> },
-  { text: 'Аутрич (HITL)', icon: <MarkEmailReadIcon />, badge: '3' },
-  { text: 'Аналитика', icon: <BarChartIcon /> },
-  { text: 'Настройки', icon: <SettingsIcon /> },
+  { text: 'Leads & Pipeline', icon: <DashboardIcon />, active: true },
+  { text: 'Site Audits', icon: <AssessmentIcon /> },
+  { text: 'Outreach (HITL)', icon: <MarkEmailReadIcon />, badge: '3' },
+  { text: 'Analytics', icon: <BarChartIcon /> },
+  { text: 'Settings', icon: <SettingsIcon /> },
 ];
 
 export const Sidebar: React.FC = () => {

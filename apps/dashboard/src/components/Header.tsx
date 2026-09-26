@@ -49,7 +49,7 @@ export const Header: React.FC = () => {
         {/* Left branding / title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary' }}>
-            Воронка лидов
+            Lead Pipeline
           </Typography>
           <Chip
             icon={<BoltIcon sx={{ fontSize: 16 }} />}
@@ -86,22 +86,22 @@ export const Header: React.FC = () => {
               },
             }}
           >
-            <ToggleButton value="kanban" aria-label="Kanban-доска">
-              <Tooltip title="Канбан-доска">
+            <ToggleButton value="kanban" aria-label="Kanban board">
+              <Tooltip title="Kanban board">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <ViewKanbanIcon sx={{ fontSize: 18 }} />
                   <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'inline' } }}>
-                    Канбан
+                    Kanban
                   </Typography>
                 </Box>
               </Tooltip>
             </ToggleButton>
-            <ToggleButton value="table" aria-label="Таблица лидов">
-              <Tooltip title="Таблица лидов (DataGrid)">
+            <ToggleButton value="table" aria-label="Leads table">
+              <Tooltip title="Leads table (DataGrid)">
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <TableRowsIcon sx={{ fontSize: 18 }} />
                   <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'inline' } }}>
-                    Таблица
+                    Table
                   </Typography>
                 </Box>
               </Tooltip>
@@ -116,11 +116,11 @@ export const Header: React.FC = () => {
             onClick={openAddModal}
             sx={{ px: 2, py: 0.9, fontWeight: 600 }}
           >
-            Новый сайт на аудит
+            New site audit
           </Button>
 
           {/* Dark / Light Mode Toggle */}
-          <Tooltip title={mode === 'dark' ? 'Переключить на светлую тему' : 'Переключить на темную тему'}>
+          <Tooltip title={mode === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>
             <IconButton onClick={toggleTheme} color="inherit" sx={{ p: 1 }}>
               {mode === 'dark' ? (
                 <LightModeIcon sx={{ color: '#F59E0B', fontSize: 22 }} />
@@ -146,7 +146,7 @@ export const Header: React.FC = () => {
             </Avatar>
             <Box sx={{ display: { xs: 'none', md: 'block' } }}>
               <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', lineHeight: 1.2 }}>
-                Оператор
+                Operator
               </Typography>
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
                 HITL Reviewer

@@ -46,7 +46,7 @@ export class BentoTemplateService {
     audit?: Partial<IAudit>,
     generatedContent?: Partial<IMvpGeneratedContent>,
   ): string {
-    const businessName = lead.businessName || 'Сервисный Центр';
+    const businessName = lead.businessName || 'Service Center';
     const primaryColor = audit?.extractedBrandTokens?.primaryColor || '#5c5bed';
     const secondaryColor = audit?.extractedBrandTokens?.secondaryColor || '#b8c4fe';
     const accentColor = audit?.extractedBrandTokens?.accentColor || '#5c5bed';
@@ -58,32 +58,32 @@ export class BentoTemplateService {
         title: s.title,
         description: s.description,
         lucideIconName: s.lucideIconName,
-        badge: idx === 0 ? 'Хит' : undefined,
+        badge: idx === 0 ? 'Top pick' : undefined,
         highlight: idx === 0,
       }));
     } else {
       services = [
         {
-          title: 'Комплексный осмотр и диагностика',
-          description: 'Детальная экспертная проверка на профессиональном сертифицированном оборудовании.',
+          title: 'Full inspection & diagnostics',
+          description: 'Detailed expert inspection using professional certified equipment.',
           lucideIconName: 'activity',
-          badge: 'Рекомендуем',
+          badge: 'Recommended',
           highlight: true,
         },
         {
-          title: 'Профессиональное обслуживание',
-          description: 'Все виды регламентных работ с соблюдением стандартов качества и регламентов производителя.',
+          title: 'Professional service',
+          description: 'All scheduled maintenance, done to quality standards and manufacturer specs.',
           lucideIconName: 'wrench',
         },
         {
-          title: 'Гарантийная защита',
-          description: 'Официальная гарантия на все выполненные работы и установленные оригинальные детали.',
+          title: 'Warranty protection',
+          description: 'Official warranty on all completed work and genuine installed parts.',
           lucideIconName: 'shield-check',
-          badge: 'Гарантия',
+          badge: 'Warranty',
         },
         {
-          title: 'Персональная консультация',
-          description: 'Бесплатный расчет сметы и подробный план работ от ведущего специалиста за 15 минут.',
+          title: 'Personal consultation',
+          description: 'Free estimate and a detailed work plan from a senior specialist in 15 minutes.',
           lucideIconName: 'phone',
         },
       ];
@@ -94,9 +94,9 @@ export class BentoTemplateService {
       generatedContent?.trustSignals && generatedContent.trustSignals.length > 0
         ? generatedContent.trustSignals
         : [
-            { metric: '4.9 ★', label: 'Рейтинг на Яндекс и Google Картах' },
-            { metric: '10+ лет', label: 'Успешной работы и довольных клиентов' },
-            { metric: '100%', label: 'Честная фиксированная смета без доплат' },
+            { metric: '4.9 ★', label: 'Rating on Google Maps' },
+            { metric: '10+ yrs', label: 'Of successful work and happy clients' },
+            { metric: '100%', label: 'Honest fixed quote, no extra charges' },
           ];
 
     const templateData: IBentoTemplateData = {
@@ -114,15 +114,15 @@ export class BentoTemplateService {
         city: lead.city,
       },
       hero: {
-        badge: generatedContent?.hero?.badge || '✨ Специальное предложение',
+        badge: generatedContent?.hero?.badge || '✨ Special offer',
         headline:
           generatedContent?.hero?.headline ||
-          `Профессиональные услуги «${businessName}» с гарантией результата`,
+          `Professional services by ${businessName}, with guaranteed results`,
         subheadline:
           generatedContent?.hero?.subheadline ||
-          `Индивидуальный подход, сертифицированные мастера и прозрачные фиксированные цены в ${lead.city || 'вашем городе'}.`,
-        primaryCtaText: generatedContent?.hero?.primaryCtaText || 'Записаться онлайн',
-        secondaryCtaText: generatedContent?.hero?.secondaryCtaText || 'Позвонить нам',
+          `A personal approach, certified specialists and transparent fixed prices in ${lead.city || 'your city'}.`,
+        primaryCtaText: generatedContent?.hero?.primaryCtaText || 'Book online',
+        secondaryCtaText: generatedContent?.hero?.secondaryCtaText || 'Call us',
       },
       services,
       trustSignals,

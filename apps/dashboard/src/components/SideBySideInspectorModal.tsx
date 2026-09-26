@@ -173,7 +173,7 @@ export const SideBySideInspectorModal: React.FC = () => {
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                {currentLead?.businessName || 'Инспектор сайта'}
+                {currentLead?.businessName || 'Site inspector'}
               </Typography>
               {currentLead?.niche && (
                 <Chip
@@ -185,12 +185,12 @@ export const SideBySideInspectorModal: React.FC = () => {
               )}
               {currentLead?.city && (
                 <Typography variant="caption" color="text.secondary">
-                  г. {currentLead.city}
+                  {currentLead.city}
                 </Typography>
               )}
             </Box>
             <Typography variant="caption" color="text.secondary">
-              Оригинал: {currentLead?.originalUrl || currentLead?.domain}
+              Original: {currentLead?.originalUrl || currentLead?.domain}
             </Typography>
           </Box>
         </Box>
@@ -215,13 +215,13 @@ export const SideBySideInspectorModal: React.FC = () => {
             <Tab
               icon={<VisibilityIcon sx={{ fontSize: 18 }} />}
               iconPosition="start"
-              label="Инспектор сайта (Split View)"
+              label="Site inspector (split view)"
               value="inspector"
             />
             <Tab
               icon={<MailOutlineIcon sx={{ fontSize: 18 }} />}
               iconPosition="start"
-              label="Черновик письма & Аппрув (HITL Gate)"
+              label="Email draft & approval (HITL gate)"
               value="email_editor"
             />
           </Tabs>
@@ -231,7 +231,7 @@ export const SideBySideInspectorModal: React.FC = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', gap: 1 }}>
             <Chip
-              label={`Исходный скоринг: ${currentLead?.totalScore ?? 42}/100`}
+              label={`Original score: ${currentLead?.totalScore ?? 42}/100`}
               size="small"
               sx={{
                 backgroundColor: 'error.light',
@@ -251,7 +251,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               }}
             />
           </Box>
-          <Tooltip title="Закрыть инспектор">
+          <Tooltip title="Close inspector">
             <IconButton onClick={closeModal} size="small" sx={{ p: 1 }}>
               <CloseIcon />
             </IconButton>
@@ -289,7 +289,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               {/* Header with Screenshot Mode Tabs */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                  🔍 Исходный сайт & Дефекты
+                  🔍 Original site & issues
                 </Typography>
 
                 <Tabs
@@ -306,8 +306,8 @@ export const SideBySideInspectorModal: React.FC = () => {
                     },
                   }}
                 >
-                  <Tab label="Десктоп (1440px)" value="desktop" />
-                  <Tab label="Мобильный (375px)" value="mobile" />
+                  <Tab label="Desktop (1440px)" value="desktop" />
+                  <Tab label="Mobile (375px)" value="mobile" />
                 </Tabs>
               </Box>
 
@@ -317,7 +317,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   <SpeedIcon sx={{ color: '#EF4444', fontSize: 24 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      LCP (Скорость)
+                      LCP (speed)
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#EF4444' }}>
                       {audit?.lcpSeconds ? `${audit.lcpSeconds.toFixed(1)}s` : '3.4s'}
@@ -329,10 +329,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                   <AccessibilityNewIcon sx={{ color: '#F59E0B', fontSize: 24 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      a11y Ошибки
+                      a11y issues
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#F59E0B' }}>
-                      {audit?.a11yViolationsCount ?? 14} нарушений
+                      {audit?.a11yViolationsCount ?? 14} violations
                     </Typography>
                   </Box>
                 </Card>
@@ -341,7 +341,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   <SmartphoneIcon sx={{ color: '#6366F1', fontSize: 24 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      Мобильность
+                      Mobile-friendliness
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#6366F1' }}>
                       {audit?.mobileFriendlinessRating ?? 45}/100
@@ -414,7 +414,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ErrorOutlineIcon sx={{ color: '#EF4444', fontSize: 18 }} />
-                  3 Критических недостатка (Design Critique Agent)
+                  3 critical flaws (Design Critique Agent)
                 </Typography>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -431,10 +431,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                         {idx + 1}. {flaw.title}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                        <strong>Влияние:</strong> {flaw.impact}
+                        <strong>Impact:</strong> {flaw.impact}
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'primary.main', display: 'block' }}>
-                        <strong>Решение:</strong> {flaw.recommendation}
+                        <strong>Fix:</strong> {flaw.recommendation}
                       </Typography>
                     </Card>
                   ))}
@@ -445,7 +445,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 18 }} />
-                  Быстрые победы нового прототипа (Quick Wins)
+                  Quick wins in the new prototype
                 </Typography>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
@@ -489,7 +489,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    Интерактивный MVP:
+                    Interactive MVP:
                   </Typography>
 
                   {/* Device Breakpoint Switcher */}
@@ -532,7 +532,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   />
 
                   {previewUrl ? (
-                    <Tooltip title="Открыть сайт прототипа в отдельной вкладке">
+                    <Tooltip title="Open the prototype in a new tab">
                       <IconButton
                         size="small"
                         href={previewUrl}
@@ -545,7 +545,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       </IconButton>
                     </Tooltip>
                   ) : (
-                    <Tooltip title="Прототип формируется...">
+                    <Tooltip title="Prototype is being built...">
                       <span>
                         <IconButton size="small" disabled sx={{ p: 0.8 }}>
                           <OpenInNewIcon sx={{ fontSize: 18 }} />
@@ -663,10 +663,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                     >
                       <CircularProgress size={40} />
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        Генерация и деплой интерактивного MVP...
+                        Generating and deploying the interactive MVP...
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        Фоновый воркер компилирует Bento-верстку и загружает бандл в изолированное хранилище MinIO.
+                        A background worker is compiling the Bento layout and uploading the bundle to isolated MinIO storage.
                       </Typography>
                     </Box>
                   )}
@@ -707,14 +707,14 @@ export const SideBySideInspectorModal: React.FC = () => {
         }}
       >
         <Typography variant="caption" color="text.secondary">
-          🔒 Режим «Human-In-The-Loop»: аутрич заблокирован до явного подтверждения оператора
+          🔒 Human-in-the-loop mode: outreach is blocked until the operator explicitly approves
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 1.5 }}>
           {activeTab === 'inspector' ? (
             <>
               <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
-                Закрыть инспектор
+                Close inspector
               </Button>
               <Button
                 variant="contained"
@@ -723,7 +723,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                 onClick={() => setActiveTab('email_editor')}
                 sx={{ px: 2.5, fontWeight: 700 }}
               >
-                Перейти к аппруву и отправке
+                Go to approval & sending
               </Button>
             </>
           ) : (
@@ -734,10 +734,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                 color="inherit"
                 sx={{ fontWeight: 600 }}
               >
-                Назад к инспектору сайта
+                Back to site inspector
               </Button>
               <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
-                Закрыть
+                Close
               </Button>
             </>
           )}

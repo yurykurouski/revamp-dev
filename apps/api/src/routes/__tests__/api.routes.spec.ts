@@ -272,13 +272,13 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app)
         .post(`/api/v1/outreach/${leadId}/reject`)
         .send({
-          reason: 'Нецелевой бизнес',
+          reason: 'Off-target business',
         });
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('REJECTED');
-      expect(res.body.data.reason).toBe('Нецелевой бизнес');
+      expect(res.body.data.reason).toBe('Off-target business');
       expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
         leadId,
         { $set: { status: 'REJECTED' } },

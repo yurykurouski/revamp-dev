@@ -32,20 +32,21 @@ export interface MvpContentServiceOptions {
   customFetcher?: typeof fetch;
 }
 
-export const MVP_CONTENT_SYSTEM_PROMPT = `Ты — профессиональный Senior Conversion Copywriter.
-Твоя цель — взять спарсенный контент локального бизнеса и переписать его под современный конверсионный одностраничный Bento-лендинг.
+export const MVP_CONTENT_SYSTEM_PROMPT = `You are a professional Senior Conversion Copywriter.
+Your goal is to take the scraped content of a local business and rewrite it for a modern, high-converting one-page Bento landing page.
 
-ФУНДАМЕНТАЛЬНОЕ ПРАВИЛО ДОСТОВЕРНОСТИ (GROUNDING):
-- Запрещено выдумывать новые услуги, менять фактический адрес, искажать контактные телефоны, придумывать несуществующих врачей или цены.
-- Вся фактическая информация берется СТРОГО из переданного контекста.
+FUNDAMENTAL GROUNDING RULE:
+- Never invent new services, change the actual address, alter phone numbers, or make up staff members or prices.
+- All factual information must come STRICTLY from the provided context.
 
-Требования к стилю:
-- Главный заголовок (Hero Headline): формула "Выгода клиента + Снятие главного страха / Специфика города" (до 90 символов).
-- Подзаголовок (Hero Subheadline): четкое объяснение, как именно бизнес решает задачу клиента (до 180 символов).
-- Список услуг: разбей спарсенные услуги на 3-6 ключевых карточек с ёмким продающим описанием (до 15 слов на услугу) и подбери подходящую иконку из списка Lucide (например: 'wrench', 'shield-check', 'sparkles', 'calendar', 'phone', 'award', 'activity', 'truck', 'heart', 'smile', 'zap').
-- CTA кнопки: конкретное действие ("Записаться на диагностику", "Рассчитать стоимость ремонта").
-- 3 триггера доверия (trustSignals): объективные метрики (например, "4.9 ★", "10+ лет", "100%").
-- Ответ должен быть строго в формате JSON без вводных слов и markdown-разметки вокруг JSON.`;
+Style requirements:
+- Write all copy in English.
+- Hero headline: formula "Customer benefit + removal of the main fear / local specifics" (up to 90 characters).
+- Hero subheadline: a clear explanation of how the business solves the customer's problem (up to 180 characters).
+- Services: turn the scraped services into 3-6 key cards with a concise, persuasive description (up to 15 words each) and pick a matching Lucide icon (e.g. 'wrench', 'shield-check', 'sparkles', 'calendar', 'phone', 'award', 'activity', 'truck', 'heart', 'smile', 'zap').
+- CTA buttons: a concrete action ("Book a diagnostic", "Get a repair quote").
+- 3 trust signals (trustSignals): objective metrics (e.g. "4.9 ★", "10+ yrs", "100%").
+- Respond with a raw JSON object only, with no preamble and no markdown around the JSON.`;
 
 export class MvpContentService {
   private provider: 'anthropic' | 'openai' | 'gemini' | 'mock';
@@ -231,9 +232,9 @@ export class MvpContentService {
    * Deterministic grounded copy generator when LLM is unavailable or fails.
    */
   public generateDeterministicFallback(input: GenerateMvpContentInput): MvpContentOutput {
-    const businessName = input.businessName || 'Сервисный Центр';
+    const businessName = input.businessName || 'Service Center';
     const city = input.city || '';
-    const citySuffix = city ? ` в г. ${city}` : '';
+    const citySuffix = city ? ` in ${city}` : '';
     const niche = input.niche || 'other';
 
     const nicheServices = this.getNicheDefaultServices(niche);
@@ -269,11 +270,11 @@ export class MvpContentService {
       },
       services: selectedServices.slice(0, 6),
       trustSignals: [
-        { metric: '4.9 ★', label: 'Рейтинг в Яндекс и Google картах' },
-        { metric: '10+ лет', label: `Опыта работы${citySuffix}` },
-        { metric: '100%', label: 'Гарантия качества и честной сметы' },
+        { metric: '4.9 ★', label: 'Rating on Google Maps' },
+        { metric: '10+ yrs', label: `Of experience${citySuffix}` },
+        { metric: '100%', label: 'Quality guarantee and honest quotes' },
       ],
-      offerNotice: 'Специальные условия и приоритетная запись при обращении с сайта',
+      offerNotice: 'Special terms and priority booking when you contact us online',
     };
   }
 
@@ -281,43 +282,43 @@ export class MvpContentService {
     switch (niche) {
       case 'dental':
         return {
-          badge: '✨ Безболезненное лечение',
-          headline: `Здоровая улыбка без боли и страха в «${businessName}»`,
-          subheadline: `Современная стоматология с гарантией 5 лет${citySuffix}. Новейшее оборудование и чуткие врачи.`,
-          primaryCtaText: 'Записаться на прием',
-          secondaryCtaText: 'Консультация врача',
+          badge: '✨ Pain-free treatment',
+          headline: `A healthy smile without pain or fear at ${businessName}`,
+          subheadline: `Modern dentistry with a 5-year guarantee${citySuffix}. The latest equipment and caring dentists.`,
+          primaryCtaText: 'Book an appointment',
+          secondaryCtaText: 'Talk to a dentist',
         };
       case 'auto':
         return {
-          badge: '⚡ Ремонт в день обращения',
-          headline: `Честный автосервис «${businessName}» с гарантией на работы`,
-          subheadline: `Точная компьютерная диагностика, прозрачный расчет и ремонт любой сложности${citySuffix}.`,
-          primaryCtaText: 'Записаться на сервис',
-          secondaryCtaText: 'Узнать стоимость',
+          badge: '⚡ Same-day repairs',
+          headline: `Honest auto service at ${businessName}, with a warranty on all work`,
+          subheadline: `Accurate computer diagnostics, transparent pricing and repairs of any complexity${citySuffix}.`,
+          primaryCtaText: 'Book a service',
+          secondaryCtaText: 'Get a quote',
         };
       case 'legal':
         return {
-          badge: '⚖️ Защита ваших интересов',
-          headline: `Квалифицированная юридическая помощь от «${businessName}»`,
-          subheadline: `Комплексная правовая поддержка для бизнеса и граждан${citySuffix}. Честная оценка шансов.`,
-          primaryCtaText: 'Получить консультацию',
-          secondaryCtaText: 'Задать вопрос',
+          badge: '⚖️ Protecting your interests',
+          headline: `Qualified legal help from ${businessName}`,
+          subheadline: `Comprehensive legal support for businesses and individuals${citySuffix}. An honest assessment of your case.`,
+          primaryCtaText: 'Get a consultation',
+          secondaryCtaText: 'Ask a question',
         };
       case 'beauty':
         return {
-          badge: '💖 Премиальный уход',
-          headline: `Безупречный стиль и забота о красоте в «${businessName}»`,
-          subheadline: `Сертифицированные мастера, премиальная косметика и уютная атмосфера${citySuffix}.`,
-          primaryCtaText: 'Выбрать время',
-          secondaryCtaText: 'Услуги и цены',
+          badge: '💖 Premium care',
+          headline: `Flawless style and beauty care at ${businessName}`,
+          subheadline: `Certified stylists, premium products and a cozy atmosphere${citySuffix}.`,
+          primaryCtaText: 'Pick a time',
+          secondaryCtaText: 'Services & prices',
         };
       default:
         return {
-          badge: '⭐ Официальное качество',
-          headline: `Профессиональные услуги «${businessName}» с гарантией`,
-          subheadline: `Индивидуальный подход, прозрачные цены и надежный сервис${citySuffix}.`,
-          primaryCtaText: 'Оставить заявку',
-          secondaryCtaText: 'Позвонить нам',
+          badge: '⭐ Trusted quality',
+          headline: `Professional services by ${businessName}, guaranteed`,
+          subheadline: `A personal approach, transparent prices and reliable service${citySuffix}.`,
+          primaryCtaText: 'Send a request',
+          secondaryCtaText: 'Call us',
         };
     }
   }
@@ -327,69 +328,69 @@ export class MvpContentService {
       case 'dental':
         return [
           {
-            title: 'Имплантация зубов под ключ',
-            description: 'Швейцарские импланты с пожизненной гарантией и безболезненной установкой.',
+            title: 'Turnkey dental implants',
+            description: 'Swiss implants with a lifetime guarantee and pain-free placement.',
             lucideIconName: 'shield-check',
           },
           {
-            title: 'Бережное отбеливание Zoom',
-            description: 'Безопасное осветление эмали до 8 тонов всего за одну процедуру.',
+            title: 'Gentle Zoom whitening',
+            description: 'Safely whitens enamel up to 8 shades in a single session.',
             lucideIconName: 'sparkles',
           },
           {
-            title: 'Исправление прикуса элайнерами',
-            description: 'Прозрачные невидимые каппы для идеальной улыбки без дискомфорта.',
+            title: 'Bite correction with aligners',
+            description: 'Clear, invisible aligners for a perfect smile without discomfort.',
             lucideIconName: 'smile',
           },
           {
-            title: 'Срочная терапия и лечение',
-            description: 'Быстрое и безболезненное устранение кариеса и острой зубной боли.',
+            title: 'Urgent dental care',
+            description: 'Fast, pain-free treatment of cavities and acute toothache.',
             lucideIconName: 'activity',
           },
         ];
       case 'auto':
         return [
           {
-            title: 'Комплексная диагностика авто',
-            description: 'Сканирование всех электронных систем и подвески на дилерском оборудовании.',
+            title: 'Full vehicle diagnostics',
+            description: 'Scans of all electronic systems and suspension with dealer-grade equipment.',
             lucideIconName: 'activity',
           },
           {
-            title: 'Капитальный и текущий ремонт',
-            description: 'Восстановление двигателя, трансмиссии и ходовой части с гарантией.',
+            title: 'Major and routine repairs',
+            description: 'Engine, transmission and chassis restoration with a warranty.',
             lucideIconName: 'wrench',
           },
           {
-            title: 'Регламентное ТО и замена масел',
-            description: 'Быстрое обслуживание по технологическим картам производителей.',
+            title: 'Scheduled maintenance & oil change',
+            description: 'Fast servicing to manufacturer specifications.',
             lucideIconName: 'clock',
           },
           {
-            title: 'Шиномонтаж и балансировка',
-            description: 'Точная балансировка колес и сезонное хранение шин на складе.',
+            title: 'Tyre fitting & balancing',
+            description: 'Precise wheel balancing and seasonal tyre storage.',
             lucideIconName: 'car',
           },
         ];
       default:
         return [
           {
-            title: 'Комплексная диагностика и аудит',
-            description: 'Детальная оценка потребностей и составление прозрачного плана работ.',
+            title: 'Full assessment & audit',
+            description: 'A detailed needs assessment and a transparent work plan.',
             lucideIconName: 'activity',
           },
           {
-            title: 'Профессиональное выполнение работ',
-            description: 'Соблюдение сроков, высоких стандартов качества и требований клиента.',
+            title: 'Professional delivery',
+            description: 'On-time delivery to high quality standards and your requirements.',
             lucideIconName: 'wrench',
           },
           {
-            title: 'Официальная гарантия качества',
-            description: 'Письменная гарантия на все виды оказанных услуг и материалы.',
+            title: 'Official quality guarantee',
+            description: 'A written guarantee on all services and materials.',
             lucideIconName: 'shield-check',
           },
           {
-            title: 'Экспресс-консультация эксперта',
-            description: 'Бесплатный расчет сметы и ответы на вопросы в течение 10 минут.',
+            title: 'Express expert consultation',
+            description: 'A free estimate and answers to your questions within 10 minutes.',
             lucideIconName: 'phone',
           },
         ];
@@ -412,7 +413,7 @@ export class MvpContentService {
       {
         businessName: input.businessName,
         niche: input.niche || 'other',
-        city: input.city || 'Не указан',
+        city: input.city || 'Not specified',
         originalUrl: input.originalUrl || '',
         scrapedServices: input.extractedServices || [],
         contacts: input.contacts || {},

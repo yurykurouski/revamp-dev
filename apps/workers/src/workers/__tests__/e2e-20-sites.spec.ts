@@ -35,10 +35,10 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-01-dental',
     url: 'https://dental-smile-care.com',
-    businessName: 'Клиника Дента Смайл',
+    businessName: 'Denta Smile Clinic',
     niche: 'dental',
-    city: 'Москва',
-    ownerName: 'Иван Сергеевич',
+    city: 'Moscow',
+    ownerName: 'John Smith',
     contactPhone: '+7 (495) 123-45-67',
     contactEmail: 'reception@dental-smile-care.com',
     rawPageHeight: 1200,
@@ -56,9 +56,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-03-dental',
     url: 'https://nordic-dental.org',
-    businessName: 'Нордик Дентал Групп',
+    businessName: 'Nordic Dental Group',
     niche: 'dental',
-    city: 'Санкт-Петербург',
+    city: 'Saint Petersburg',
     contactPhone: '8-812-777-88-99',
     contactEmail: 'nordic@spb-dental.org',
     edgeCaseType: 'slow_network',
@@ -69,7 +69,7 @@ const DATASET_20_SITES: TestSiteConfig[] = [
     url: 'https://elite-dent.io',
     businessName: 'Elite Dent Premium',
     niche: 'dental',
-    city: 'Алматы',
+    city: 'Almaty',
     // Plain text phone/email in footer without tel: or mailto:
     contactPhone: '77273334455',
     contactEmail: 'info@elite-dent.io',
@@ -79,9 +79,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-05-dental',
     url: 'https://family-teeth.net',
-    businessName: 'Семейная Стоматология Здоровье',
+    businessName: 'Health Family Dentistry',
     niche: 'dental',
-    city: 'Минск',
+    city: 'Minsk',
     contactPhone: '+375 17 222-33-44',
     contactEmail: 'family@teeth.by',
     rawPageHeight: 1400,
@@ -101,11 +101,11 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-07-auto',
     url: 'https://motor-master-garage.co',
-    businessName: 'Автосервис Мотор Мастер',
+    businessName: 'Motor Master Auto Service',
     niche: 'auto',
-    city: 'Казань',
+    city: 'Kazan',
     // Phone with internal extension syntax
-    contactPhone: '+7 (843) 555-11-22 доб. 102',
+    contactPhone: '+7 (843) 555-11-22 ext. 102',
     contactEmail: 'master@motor-kzn.ru',
     edgeCaseType: 'nested_contacts',
     rawPageHeight: 2100,
@@ -123,9 +123,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-09-auto',
     url: 'https://speedy-brakes.io',
-    businessName: 'Экспресс Тормоза & Подвеска',
+    businessName: 'Express Brakes & Suspension',
     niche: 'auto',
-    city: 'Екатеринбург',
+    city: 'Yekaterinburg',
     contactPhone: '+7 (343) 234-56-78',
     contactEmail: 'brakes@speedy.ru',
     rawPageHeight: 1300,
@@ -158,9 +158,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-12-legal',
     url: 'https://sterling-law-group.co',
-    businessName: 'Адвокатское Бюро Стерлинг',
+    businessName: 'Sterling Law Office',
     niche: 'legal',
-    city: 'Москва',
+    city: 'Moscow',
     contactPhone: '+7 (495) 999-00-11',
     contactEmail: 'partners@sterling-law.ru',
     rawPageHeight: 1600,
@@ -179,9 +179,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-14-legal',
     url: 'https://summit-legal.io',
-    businessName: 'Центр Банкротства Саммит',
+    businessName: 'Summit Bankruptcy Center',
     niche: 'legal',
-    city: 'Новосибирск',
+    city: 'Novosibirsk',
     contactPhone: '+7 (383) 310-20-30',
     contactEmail: 'help@summit-legal.ru',
     rawPageHeight: 2000,
@@ -189,9 +189,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-15-legal',
     url: 'https://justice-advocates.net',
-    businessName: 'Юридическая Служба Юстиция',
+    businessName: 'Justitia Legal Services',
     niche: 'legal',
-    city: 'Нижний Новгород',
+    city: 'Nizhny Novgorod',
     contactPhone: '+7 (831) 412-34-56',
     contactEmail: 'justice@law-nn.ru',
     edgeCaseType: 'nested_contacts',
@@ -212,9 +212,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-17-beauty',
     url: 'https://radiance-beauty-spa.co',
-    businessName: 'СПА-Салон Сияние',
+    businessName: 'Radiance Spa Salon',
     niche: 'beauty',
-    city: 'Сочи',
+    city: 'Sochi',
     contactPhone: '+7 (862) 250-60-70',
     contactEmail: 'spa@radiance-sochi.ru',
     rawPageHeight: 1600,
@@ -234,7 +234,7 @@ const DATASET_20_SITES: TestSiteConfig[] = [
     url: 'https://velvet-salon.io',
     businessName: 'Velvet Beauty Studio',
     niche: 'beauty',
-    city: 'Тбилиси',
+    city: 'Tbilisi',
     contactPhone: '+995 32 200 3000',
     contactEmail: 'info@velvet-salon.ge',
     rawPageHeight: 1900,
@@ -242,9 +242,9 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   {
     id: 'site-20-edge-failure',
     url: 'https://broken-unreachable-domain.invalid',
-    businessName: 'Недостижимый Ресурс DNS',
+    businessName: 'Unreachable DNS Resource',
     niche: 'other',
-    city: 'Неизвестно',
+    city: 'Unknown',
     simulatedError: true,
     edgeCaseType: 'unreachable',
   },
@@ -335,10 +335,10 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
           logoUrl: undefined, // test SVG monogram fallback
           phone: site.contactPhone,
           email: site.contactEmail,
-          address: `${site.city}, Центральная ул., д. 1`,
-          workingHours: 'Пн-Пт: 09:00 - 20:00',
+          address: `1 Central St, ${site.city}`,
+          workingHours: 'Mon-Fri: 09:00 - 20:00',
           socialLinks: [{ platform: 'telegram', url: 'https://t.me/revamp_demo' }],
-          services: [`Консультация в нише ${site.niche}`, `Комплексный сервис ${site.businessName}`],
+          services: [`${site.niche} consultation`, `Full service by ${site.businessName}`],
         };
 
         const brandResult = BrandExtractorService.processBrandData(rawBrandData, site.businessName);
@@ -432,8 +432,8 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
 
         const emailResult = await emailService.sendEmail({
           to: brandResult.contacts.email || 'info@revamp-demo.com',
-          subject: `Концепция обновления сайта для ${site.businessName}`,
-          html: `<p>Здравствуйте! Посмотрите интерактивный прототип: <a href="${clickUrl}">Демо</a></p>${trackingPixelHtml}`,
+          subject: `Website redesign concept for ${site.businessName}`,
+          html: `<p>Hello! Take a look at the interactive prototype: <a href="${clickUrl}">Demo</a></p>${trackingPixelHtml}`,
           trackingToken,
         });
 

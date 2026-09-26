@@ -263,7 +263,7 @@ describe('Validation Schemas (@revamp/validation)', () => {
   describe('BentoTemplateDataSchema (REV-11)', () => {
     it('should validate a complete BentoTemplateData payload', () => {
       const data = {
-        businessName: 'Стоматология Улыбка',
+        businessName: 'Smile Dental',
         niche: 'dental',
         palette: {
           primary: '#5c5bed',
@@ -273,46 +273,46 @@ describe('Validation Schemas (@revamp/validation)', () => {
         contacts: {
           phone: '+7 (812) 123-45-67',
           email: 'info@smiledental.ru',
-          address: 'Невский проспект, 100',
-          city: 'Санкт-Петербург',
+          address: '100 Nevsky Avenue',
+          city: 'Saint Petersburg',
         },
         hero: {
-          badge: '✨ Акция месяца',
-          headline: 'Идеальная улыбка без боли и переплат',
-          subheadline: 'Современные технологии и безболезненное лечение с гарантией 5 лет.',
-          primaryCtaText: 'Записаться онлайн',
-          secondaryCtaText: 'Позвонить',
+          badge: '✨ Deal of the month',
+          headline: 'A perfect smile without pain or overpaying',
+          subheadline: 'Modern technology and pain-free treatment with a 5-year guarantee.',
+          primaryCtaText: 'Book online',
+          secondaryCtaText: 'Call us',
         },
         services: [
           {
-            title: 'Имплантация зубов',
-            description: 'Швейцарские импланты с пожизненной гарантией от ведущих хирургов.',
+            title: 'Dental implants',
+            description: 'Swiss implants with a lifetime guarantee from leading surgeons.',
             lucideIconName: 'shield-check',
-            badge: 'Хит',
+            badge: 'Top pick',
             highlight: true,
           },
           {
-            title: 'Отбеливание Zoom 4',
-            description: 'Осветление эмали до 8 тонов всего за один визит.',
+            title: 'Zoom 4 whitening',
+            description: 'Whitens enamel up to 8 shades in a single visit.',
             lucideIconName: 'sparkles',
           },
         ],
         trustSignals: [
-          { metric: '4.9 ★', label: 'Рейтинг в Яндекс Картах' },
-          { metric: '15 лет', label: 'Безупречной репутации' },
+          { metric: '4.9 ★', label: 'Rating on Google Maps' },
+          { metric: '15 yrs', label: 'Of flawless reputation' },
         ],
         reviews: [
           {
-            author: 'Мария П.',
+            author: 'Maria P.',
             rating: 5,
-            comment: 'Отличная клиника, вежливые врачи!',
-            source: 'Яндекс Карты',
+            comment: 'Great clinic, friendly doctors!',
+            source: 'Google Maps',
           },
         ],
       };
 
       const parsed = BentoTemplateDataSchema.parse(data);
-      expect(parsed.businessName).toBe('Стоматология Улыбка');
+      expect(parsed.businessName).toBe('Smile Dental');
       expect(parsed.palette.primary).toBe('#5c5bed');
       expect(parsed.services).toHaveLength(2);
       expect(parsed.reviews).toHaveLength(1);

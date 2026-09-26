@@ -20,9 +20,9 @@ describe('EmailService & Providers (@revamp/workers)', () => {
     it('should successfully send email and record sent message in mock provider', async () => {
       const result = await service.sendEmail({
         to: 'director@listonosz.site',
-        subject: 'Аудит и обновленная версия сайта Listonosz',
-        html: '<p>Здравствуйте! Мы подготовили для вас прототип.</p>',
-        text: 'Здравствуйте! Мы подготовили для вас прототип.',
+        subject: 'Audit and an updated version of the Listonosz website',
+        html: '<p>Hello! We prepared a prototype for you.</p>',
+        text: 'Hello! We prepared a prototype for you.',
         trackingToken: 'token-abc-123',
       });
 
@@ -33,7 +33,7 @@ describe('EmailService & Providers (@revamp/workers)', () => {
 
       const sent = mockProvider.sentMessages[0]!;
       expect(sent.to).toBe('director@listonosz.site');
-      expect(sent.subject).toBe('Аудит и обновленная версия сайта Listonosz');
+      expect(sent.subject).toBe('Audit and an updated version of the Listonosz website');
 
       // Verify RFC 8058 & RFC 2369 compliance headers
       expect(sent.headers).toBeDefined();
@@ -42,7 +42,7 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       expect(sent.headers!['List-Unsubscribe-Post']).toBe('List-Unsubscribe=One-Click');
 
       // Verify HTML 1-click unsubscribe footer
-      expect(sent.html).toContain('Отписаться от рассылки в 1 клик');
+      expect(sent.html).toContain('Unsubscribe in one click');
       expect(sent.html).toContain('/track/unsubscribe/token-abc-123');
 
       // Verify 1x1 tracking pixel injection (REV-18)
@@ -50,14 +50,14 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       expect(sent.html).toContain('width="1" height="1"');
 
       // Verify plain text 1-click unsubscribe footer
-      expect(sent.text).toContain('Отписаться от рассылки в 1 клик:');
+      expect(sent.text).toContain('Unsubscribe in one click:');
       expect(sent.text).toContain('/track/unsubscribe/token-abc-123');
     });
 
     it('should not duplicate unsubscribe footer if it is already present in HTML and text', async () => {
       const customUnsubscribe = 'http://localhost:4000/api/v1/track/unsubscribe/token-xyz';
-      const existingHtml = `<p>Текст письма</p><a href="${customUnsubscribe}">Отписаться</a><img src="http://localhost:4000/api/v1/track/open/token-xyz.gif" width="1" height="1" style="display:none;" alt="" />`;
-      const existingText = `Текст письма. Отписка: ${customUnsubscribe}`;
+      const existingHtml = `<p>Email text</p><a href="${customUnsubscribe}">Unsubscribe</a><img src="http://localhost:4000/api/v1/track/open/token-xyz.gif" width="1" height="1" style="display:none;" alt="" />`;
+      const existingText = `Email text. Unsubscribe: ${customUnsubscribe}`;
 
       await service.sendEmail({
         to: 'user@example.com',
@@ -85,8 +85,8 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       const res = await resend.send({
         to: 'client@company.com',
         from: 'Revamp <outreach@revampdemo.com>',
-        subject: 'Новый сайт для вашей компании',
-        html: '<h1>Заголовок</h1>',
+        subject: 'A new website for your company',
+        html: '<h1>Heading</h1>',
         trackingToken: 'resend-tok',
         headers: { 'List-Unsubscribe': '<https://test/unsub>' },
       });
@@ -146,9 +146,9 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       const res = await sendGrid.send({
         to: 'ceo@enterprise.ru',
         from: 'Revamp Sales <sales@revampdemo.com>',
-        subject: 'Предложение по редизайну',
-        html: '<p>HTML контент</p>',
-        text: 'Text контент',
+        subject: 'Redesign proposal',
+        html: '<p>HTML content</p>',
+        text: 'Text content',
         trackingToken: 'sg-tok',
       });
 

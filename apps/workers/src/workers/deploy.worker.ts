@@ -118,15 +118,15 @@ export const createDeployWorker = (): Worker => {
           comparisonBannerUrl,
           generatedContent: audit.generatedContent || {
             hero: {
-              badge: '✨ Официальное качество',
-              headline: `Профессиональные услуги «${lead.businessName}»`,
-              subheadline: `Качественный сервис и гарантия результата.`,
-              primaryCtaText: 'Записаться онлайн',
-              secondaryCtaText: 'Позвонить',
+              badge: '✨ Trusted quality',
+              headline: `Professional services by ${lead.businessName}`,
+              subheadline: `Quality service with guaranteed results.`,
+              primaryCtaText: 'Book online',
+              secondaryCtaText: 'Call us',
             },
             services: [],
             trustSignals: [],
-            offerNotice: 'Специальные условия',
+            offerNotice: 'Special offer',
           },
           colorPalette: {
             primary: audit.extractedBrandTokens?.primaryColor || '#5c5bed',

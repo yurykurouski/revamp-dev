@@ -94,13 +94,13 @@ export const createEmailWorker = (): Worker => {
       const trackingToken = campaign?.trackingToken || crypto.randomUUID().replace(/-/g, '');
       const subject =
         campaign?.subject ||
-        `3 точки роста в конверсии сайта «${lead.businessName}» (и интерактивный прототип)`;
+        `3 ways to lift conversions on the ${lead.businessName} website (plus an interactive prototype)`;
       const bodyHtml =
         campaign?.bodyHtml ||
-        `<p>Здравствуйте! Мы подготовили интерактивную концепцию обновления сайта для компании «${lead.businessName}».</p>`;
+        `<p>Hello! We prepared an interactive website redesign concept for ${lead.businessName}.</p>`;
       const bodyPlainText =
         campaign?.bodyPlainText ||
-        `Здравствуйте! Мы подготовили интерактивную концепцию обновления сайта для компании «${lead.businessName}».`;
+        `Hello! We prepared an interactive website redesign concept for ${lead.businessName}.`;
 
       // 6. Dispatch Email via Provider with Compliance Headers
       console.log(`[EmailWorker] Dispatching email to ${recipientEmail} via ${emailService.getProvider().name}...`);

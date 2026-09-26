@@ -77,7 +77,7 @@ describe('ImageService', () => {
     const bannerBuffer = await ImageService.createComparisonBanner({
       originalMobileBuffer: oldMobile,
       newMvpMobileBuffer: newMobile,
-      businessName: 'Стоматология Престиж',
+      businessName: 'Prestige Dental',
       oldLcpSeconds: 4.8,
       oldA11yViolationsCount: 16,
       newScore: 96,

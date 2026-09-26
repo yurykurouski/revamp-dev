@@ -54,9 +54,9 @@ describe('AiWorker (@revamp/workers)', () => {
 
     const mockLead = {
       _id: 'lead-123',
-      businessName: 'Стоматология Улыбка',
+      businessName: 'Smile Dental',
       niche: 'dental',
-      city: 'Санкт-Петербург',
+      city: 'Saint Petersburg',
       originalUrl: 'https://smile.spb.ru',
       contactPhone: '+7 812 000 11 22',
       contactEmail: 'info@smile.spb.ru',
@@ -65,41 +65,41 @@ describe('AiWorker (@revamp/workers)', () => {
     const mockAudit = {
       _id: 'audit-456',
       leadId: 'lead-123',
-      extractedServices: ['Имплантация', 'Отбеливание'],
+      extractedServices: ['Implants', 'Whitening'],
       aiFallbackUsed: false,
     };
 
     const mockGeneratedContent = {
       hero: {
-        badge: '✨ Акция',
-        headline: 'Здоровые зубы без боли в Санкт-Петербурге',
-        subheadline: 'Премиум качество с гарантией 5 лет.',
-        primaryCtaText: 'Записаться',
-        secondaryCtaText: 'Позвонить',
+        badge: '✨ Special',
+        headline: 'Healthy teeth without pain in Saint Petersburg',
+        subheadline: 'Premium quality with a 5-year guarantee.',
+        primaryCtaText: 'Book now',
+        secondaryCtaText: 'Call us',
       },
       services: [
         {
-          title: 'Имплантация зубов',
-          description: 'Пожизненная гарантия на импланты',
+          title: 'Dental implants',
+          description: 'Lifetime guarantee on implants',
           lucideIconName: 'shield-check',
         },
         {
-          title: 'Отбеливание',
-          description: 'Безопасное осветление эмали',
+          title: 'Whitening',
+          description: 'Safe enamel whitening',
           lucideIconName: 'sparkles',
         },
         {
-          title: 'Терапия',
-          description: 'Лечение кариеса под микроскопом',
+          title: 'Therapy',
+          description: 'Microscope-assisted cavity treatment',
           lucideIconName: 'activity',
         },
       ],
       trustSignals: [
-        { metric: '4.9 ★', label: 'В Яндекс Картах' },
-        { metric: '10 лет', label: 'Опыта' },
-        { metric: '100%', label: 'Гарантия' },
+        { metric: '4.9 ★', label: 'On Google Maps' },
+        { metric: '10 yrs', label: 'Of experience' },
+        { metric: '100%', label: 'Guarantee' },
       ],
-      offerNotice: 'Бесплатная консультация',
+      offerNotice: 'Free consultation',
     };
 
     vi.mocked(Lead.findById).mockReturnValue({

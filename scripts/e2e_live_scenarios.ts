@@ -244,9 +244,9 @@ async function main() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         approvedBy: 'automated-verifier',
-        subject: 'Live Automated Verification: 3 точки роста вашего сайта',
-        preheader: 'Интерактивный MVP прототип',
-        body: '<p>Здравствуйте! Это тест верификации живой системы.</p>',
+        subject: 'Live Automated Verification: 3 growth points for your website',
+        preheader: 'Interactive MVP prototype',
+        body: '<p>Hello! This is a live system verification test.</p>',
       }),
     });
     if (!res.ok) {

@@ -44,11 +44,11 @@ export const initialMockLeads: ILeadItem[] = [
   },
   {
     id: 'lead-dental-002',
-    businessName: 'Стоматология «Дента Люкс»',
+    businessName: 'Denta Lux Dental Clinic',
     domain: 'dental-lux-spb.ru',
     originalUrl: 'https://dental-lux-spb.ru',
     niche: 'dental',
-    city: 'Санкт-Петербург',
+    city: 'Saint Petersburg',
     phone: '+7 (812) 555-01-99',
     totalScore: 42,
     status: 'NEEDS_APPROVAL',
@@ -59,11 +59,11 @@ export const initialMockLeads: ILeadItem[] = [
   },
   {
     id: 'lead-auto-003',
-    businessName: 'Автосервис «Мотор Экспресс»',
+    businessName: 'Motor Express Auto Service',
     domain: 'motor-express-auto.ru',
     originalUrl: 'https://motor-express-auto.ru',
     niche: 'auto',
-    city: 'Москва',
+    city: 'Moscow',
     phone: '+7 (495) 777-22-33',
     totalScore: 36,
     status: 'QUEUED',
@@ -72,11 +72,11 @@ export const initialMockLeads: ILeadItem[] = [
   },
   {
     id: 'lead-legal-004',
-    businessName: 'Юридическое бюро «Щит и Закон»',
+    businessName: 'Shield & Law Legal Bureau',
     domain: 'shield-legal.ru',
     originalUrl: 'https://shield-legal.ru',
     niche: 'legal',
-    city: 'Казань',
+    city: 'Kazan',
     phone: '+7 (843) 200-11-44',
     totalScore: 58,
     status: 'SCHEDULED',
@@ -86,11 +86,11 @@ export const initialMockLeads: ILeadItem[] = [
   },
   {
     id: 'lead-beauty-005',
-    businessName: 'Клиника косметологии «Эстетик»',
+    businessName: 'Estetik Cosmetology Clinic',
     domain: 'estetik-clinic.ru',
     originalUrl: 'https://estetik-clinic.ru',
     niche: 'beauty',
-    city: 'Екатеринбург',
+    city: 'Yekaterinburg',
     phone: '+7 (343) 310-88-00',
     totalScore: 64,
     status: 'SENT',
@@ -100,11 +100,11 @@ export const initialMockLeads: ILeadItem[] = [
   },
   {
     id: 'lead-rest-006',
-    businessName: 'Ресторан «Панорама Гриль»',
+    businessName: 'Panorama Grill Restaurant',
     domain: 'panoramagrill.ru',
     originalUrl: 'https://panoramagrill.ru',
     niche: 'restaurant',
-    city: 'Сочи',
+    city: 'Sochi',
     phone: '+7 (862) 220-40-50',
     totalScore: 71,
     status: 'CLICKED',
@@ -114,11 +114,11 @@ export const initialMockLeads: ILeadItem[] = [
   },
   {
     id: 'lead-fit-007',
-    businessName: 'Фитнес-клуб «Титан Атлетик»',
+    businessName: 'Titan Athletic Fitness Club',
     domain: 'titan-athletic.ru',
     originalUrl: 'https://titan-athletic.ru',
     niche: 'fitness',
-    city: 'Новосибирск',
+    city: 'Novosibirsk',
     phone: '+7 (383) 299-10-20',
     totalScore: 52,
     status: 'OPENED',
@@ -209,7 +209,7 @@ export const apiClient = {
 
             return {
               id: l._id || l.id || `lead-${Math.random()}`,
-              businessName: l.businessName || domain || 'Бизнес',
+              businessName: l.businessName || domain || 'Business',
               domain,
               originalUrl: rawUrl,
               niche: l.niche || 'other',
@@ -278,10 +278,10 @@ export const apiClient = {
     }
 
     const domain = new URL(targetUrl).hostname.replace(/^www\./, '');
-    const capitalizedDomain = domain.split('.')[0] ?? 'Сайт';
+    const capitalizedDomain = domain.split('.')[0] ?? 'Website';
     const businessName =
       validated.businessName ||
-      `Бизнес «${capitalizedDomain.charAt(0).toUpperCase() + capitalizedDomain.slice(1)}»`;
+      capitalizedDomain.charAt(0).toUpperCase() + capitalizedDomain.slice(1);
     const fallbackDomain = domain.includes('.') ? domain : `${domain}.com`;
     const contactEmail = validated.contactEmail || `info@${fallbackDomain}`;
 
@@ -395,25 +395,25 @@ export const apiClient = {
       mobileFriendlinessRating: 45,
       criticalFlaws: [
         {
-          title: 'Отсутствует заметная кнопка целевого действия (CTA) на первом экране',
-          impact: 'Пользователи не понимают следующий шаг, что снижает конверсию на 40-50%',
-          recommendation: 'Добавить контрастную кнопку «Заказать доставку» вверху страницы',
+          title: 'No prominent call-to-action (CTA) button above the fold',
+          impact: 'Visitors do not see the next step, which cuts conversion by 40-50%',
+          recommendation: 'Add a high-contrast "Order delivery" button at the top of the page',
         },
         {
-          title: 'Низкая контрастность текста на темном фоне (WCAG 2.1 AA)',
-          impact: 'Текст сложно читать при дневном свете, пользователи закрывают сайт',
-          recommendation: 'Увеличить контраст шрифтов до 4.5:1 и применить современную светлую Bento-сетку',
+          title: 'Low text contrast on dark background (WCAG 2.1 AA)',
+          impact: 'Text is hard to read in daylight, so visitors leave the site',
+          recommendation: 'Raise text contrast to 4.5:1 and use a modern light Bento grid',
         },
         {
-          title: 'Медленная отрисовка контента LCP (3.4 сек)',
-          impact: 'Каждая секунда задержки увеличивает отток мобильного трафика на 10-20%',
-          recommendation: 'Оптимизировать ресурсы, сократить скрипты и отдавать чистый быстрый HTML',
+          title: 'Slow Largest Contentful Paint (LCP 3.4s)',
+          impact: 'Every second of delay increases mobile bounce by 10-20%',
+          recommendation: 'Optimize assets, trim scripts and serve lean, fast HTML',
         },
       ],
       quickWins: [
-        'Клик для звонка в один тап (кнопка в шапке)',
-        'Интерактивная форма быстрой заявки с авто-валидацией',
-        'Бейджи доверия с рейтингом 4.9 и опытом на рынке',
+        'One-tap click-to-call button in the header',
+        'Interactive quick-request form with auto-validation',
+        'Trust badges with rating and years in business',
       ],
       colorPalette: {
         primary: '#5c5bed',

@@ -4,7 +4,7 @@ import { IBentoTemplateData, ILead, IAudit } from '@revamp/shared-types';
 
 describe('BentoTemplateService (@revamp/workers)', () => {
   const sampleTemplateData: IBentoTemplateData = {
-    businessName: 'Стоматология Дент-Престиж',
+    businessName: 'Dent-Prestige Dental',
     niche: 'dental',
     palette: {
       primary: '#5c5bed',
@@ -14,53 +14,53 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     contacts: {
       phone: '+7 (812) 345-67-89',
       email: 'dent@dentprestige.ru',
-      address: 'Лиговский проспект, 45',
-      workingHours: 'Пн-Сб: 08:00 - 21:00',
-      city: 'Санкт-Петербург',
+      address: '45 Ligovsky Avenue',
+      workingHours: 'Mon-Sat: 08:00 - 21:00',
+      city: 'Saint Petersburg',
     },
     hero: {
-      badge: '✨ Специальное предложение месяца',
-      headline: 'Красивая и здоровая улыбка за 1 визит в Дент-Престиж',
-      subheadline: 'Безболезненное лечение по международным стандартам с гарантией 5 лет.',
-      primaryCtaText: 'Записаться на прием',
-      secondaryCtaText: 'Позвонить в клинику',
+      badge: '✨ Special offer of the month',
+      headline: 'A beautiful, healthy smile in 1 visit at Dent-Prestige',
+      subheadline: 'Pain-free treatment to international standards with a 5-year guarantee.',
+      primaryCtaText: 'Book an appointment',
+      secondaryCtaText: 'Call the clinic',
     },
     services: [
       {
-        title: 'Имплантация зубов',
-        description: 'Премиальные швейцарские импланты под ключ с пожизненной гарантией.',
+        title: 'Dental implants',
+        description: 'Premium turnkey Swiss implants with a lifetime guarantee.',
         lucideIconName: 'shield-check',
-        badge: 'Хит',
+        badge: 'Top pick',
         highlight: true,
       },
       {
-        title: 'Лазерное отбеливание',
-        description: 'Безопасное осветление эмали до 8 тонов за 45 минут.',
+        title: 'Laser whitening',
+        description: 'Safely whitens enamel up to 8 shades in 45 minutes.',
         lucideIconName: 'sparkles',
       },
       {
-        title: 'Исправление прикуса',
-        description: 'Элайнеры и современные брекет-системы для идеальной улыбки.',
+        title: 'Bite correction',
+        description: 'Aligners and modern braces for a perfect smile.',
         lucideIconName: 'smile',
       },
       {
-        title: 'Срочная терапия и диагностика',
-        description: 'Быстрое устранение острой боли и точная 3D-томография.',
+        title: 'Urgent care & diagnostics',
+        description: 'Fast relief of acute pain and precise 3D imaging.',
         lucideIconName: 'activity',
       },
     ],
     trustSignals: [
-      { metric: '4.9 ★', label: 'Рейтинг в Яндекс и Google Картах' },
-      { metric: '14 лет', label: 'Успешной практики в Санкт-Петербурге' },
-      { metric: '8,000+', label: 'Довольных здоровых пациентов' },
+      { metric: '4.9 ★', label: 'Rating on Google Maps' },
+      { metric: '14 yrs', label: 'Of practice in Saint Petersburg' },
+      { metric: '8,000+', label: 'Happy, healthy patients' },
     ],
     reviews: [
       {
-        author: 'Ольга Васильева',
+        author: 'Olivia Wilson',
         rating: 5,
-        comment: 'Очень профессиональный подход! Лечение прошло абсолютно безболезненно.',
-        date: 'Вчера',
-        source: 'Яндекс Карты',
+        comment: 'A very professional approach! The treatment was completely painless.',
+        date: 'Yesterday',
+        source: 'Google Maps',
       },
     ],
     trackingToken: 'track_token_abc123',
@@ -70,7 +70,7 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     const html = bentoTemplateService.render(sampleTemplateData);
 
     expect(html).toContain('<!DOCTYPE html>');
-    expect(html).toContain('<html lang="ru">');
+    expect(html).toContain('<html lang="en">');
     expect(html).toContain('<meta name="viewport" content="width=device-width, initial-scale=1.0">');
     expect(html).toContain('</html>');
   });
@@ -98,7 +98,7 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     const html = bentoTemplateService.render(sampleTemplateData);
 
     expect(html).toContain('class="site-header"');
-    expect(html).toContain('Дент-Престиж');
+    expect(html).toContain('Dent-Prestige');
     expect(html).toContain('href="tel:+78123456789"');
     expect(html).toContain('href="#booking"');
   });
@@ -107,20 +107,20 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     const html = bentoTemplateService.render(sampleTemplateData);
 
     expect(html).toContain('class="hero-section"');
-    expect(html).toContain('Специальное предложение месяца');
-    expect(html).toContain('Красивая и здоровая улыбка за 1 визит в Дент-Престиж');
-    expect(html).toContain('Записаться на прием');
-    expect(html).toContain('Позвонить в клинику');
+    expect(html).toContain('Special offer of the month');
+    expect(html).toContain('A beautiful, healthy smile in 1 visit at Dent-Prestige');
+    expect(html).toContain('Book an appointment');
+    expect(html).toContain('Call the clinic');
     expect(html).toContain('4.9 ★');
-    expect(html).toContain('14 лет');
+    expect(html).toContain('14 yrs');
   });
 
   it('should render Module 3: Bento Services Grid with Lucide SVG icons', () => {
     const html = bentoTemplateService.render(sampleTemplateData);
 
     expect(html).toContain('class="bento-grid"');
-    expect(html).toContain('Имплантация зубов');
-    expect(html).toContain('Лазерное отбеливание');
+    expect(html).toContain('Dental implants');
+    expect(html).toContain('Laser whitening');
     expect(html).toContain('bento-card-large');
     expect(html).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
   });
@@ -129,9 +129,9 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     const html = bentoTemplateService.render(sampleTemplateData);
 
     expect(html).toContain('class="reviews-section"');
-    expect(html).toContain('Ольга Васильева');
-    expect(html).toContain('Яндекс Карты');
-    expect(html).toContain('Лечение прошло абсолютно безболезненно');
+    expect(html).toContain('Olivia Wilson');
+    expect(html).toContain('Google Maps');
+    expect(html).toContain('The treatment was completely painless');
   });
 
   it('should render Module 5: Interactive Booking Form with accessible inputs and success state', () => {
@@ -143,7 +143,7 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     expect(html).toContain('id="lead-service"');
     expect(html).toContain('id="booking-submit-btn"');
     expect(html).toContain('id="booking-success-message"');
-    expect(html).toContain('Спасибо за обращение!');
+    expect(html).toContain('Thank you for reaching out!');
     expect(html).toContain('track_token_abc123'); // Telemetry token in client script
   });
 
@@ -151,9 +151,9 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     const html = bentoTemplateService.render(sampleTemplateData);
 
     expect(html).toContain('class="site-footer"');
-    expect(html).toContain('Лиговский проспект, 45');
-    expect(html).toContain('Пн-Сб: 08:00 - 21:00');
-    expect(html).toContain('Прототип создан платформой Revamp');
+    expect(html).toContain('45 Ligovsky Avenue');
+    expect(html).toContain('Mon-Sat: 08:00 - 21:00');
+    expect(html).toContain('Prototype built by the Revamp platform');
   });
 
   it('should render monogram fallback when no logoUrl is provided', () => {

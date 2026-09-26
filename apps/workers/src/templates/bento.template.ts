@@ -41,25 +41,25 @@ function escapeHtml(str: string | undefined | null): string {
 function getDefaultReviews(businessName: string): IBentoReviewItem[] {
   return [
     {
-      author: 'Алексей Михайлов',
+      author: 'Alex Mitchell',
       rating: 5,
-      comment: `Отличный сервис! Обратился в «${businessName}» по рекомендации. Все сделали быстро, прозрачно и без скрытых переплат. Рекомендую!`,
-      date: '3 дня назад',
-      source: 'Яндекс Карты',
+      comment: `Great service! I came to ${businessName} on a recommendation. Everything was fast, transparent and with no hidden costs. Highly recommend!`,
+      date: '3 days ago',
+      source: 'Yandex Maps',
     },
     {
-      author: 'Екатерина Смирнова',
+      author: 'Kate Smith',
       rating: 5,
-      comment: 'Очень вежливый персонал и высокое качество работы. Приятно удивили пунктуальность и внимательное отношение к деталям.',
-      date: '1 неделю назад',
-      source: 'Google Карты',
+      comment: 'Very polite staff and high-quality work. Pleasantly surprised by their punctuality and attention to detail.',
+      date: '1 week ago',
+      source: 'Google Maps',
     },
     {
-      author: 'Дмитрий Ковалев',
+      author: 'Daniel Cooper',
       rating: 5,
-      comment: 'Настоящие профессионалы своего дела. Сразу видно опыт и честный подход к клиенту. Обязательно обращусь снова.',
-      date: '2 недели назад',
-      source: '2ГИС',
+      comment: 'True professionals. You can tell they are experienced and honest with clients. I will definitely come back.',
+      date: '2 weeks ago',
+      source: '2GIS',
     },
   ];
 }
@@ -69,9 +69,9 @@ function getDefaultReviews(businessName: string): IBentoReviewItem[] {
  */
 function getDefaultTrustSignals(): Array<{ metric: string; label: string }> {
   return [
-    { metric: '4.9 ★', label: 'Рейтинг в картах на основе 150+ отзывов' },
-    { metric: '10+ лет', label: 'Опыт работы и сертифицированные мастера' },
-    { metric: '100%', label: 'Гарантия на все виды работ и прозрачный расчет' },
+    { metric: '4.9 ★', label: 'Map rating based on 150+ reviews' },
+    { metric: '10+ yrs', label: 'Of experience and certified specialists' },
+    { metric: '100%', label: 'Guarantee on all work and transparent pricing' },
   ];
 }
 
@@ -89,37 +89,37 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const phone = data.contacts?.phone || '+7 (812) 000-00-00';
   const phoneClean = phone.replace(/[^+\d]/g, '');
   const email = data.contacts?.email || `info@${data.businessName.toLowerCase().replace(/\s+/g, '')}.ru`;
-  const address = data.contacts?.address || (data.contacts?.city ? `г. ${data.contacts.city}` : 'Санкт-Петербург');
-  const workingHours = data.contacts?.workingHours || 'Пн–Вс: 09:00 – 21:00 (Без выходных)';
+  const address = data.contacts?.address || (data.contacts?.city ? data.contacts.city : 'Saint Petersburg');
+  const workingHours = data.contacts?.workingHours || 'Mon–Sun: 09:00 – 21:00 (open daily)';
 
-  const heroBadge = escapeHtml(data.hero.badge || '✨ Специальное предложение');
+  const heroBadge = escapeHtml(data.hero.badge || '✨ Special offer');
   const heroHeadline = escapeHtml(data.hero.headline);
   const heroSubheadline = escapeHtml(data.hero.subheadline);
-  const primaryCtaText = escapeHtml(data.hero.primaryCtaText || 'Записаться онлайн');
-  const secondaryCtaText = escapeHtml(data.hero.secondaryCtaText || 'Позвонить');
+  const primaryCtaText = escapeHtml(data.hero.primaryCtaText || 'Book online');
+  const secondaryCtaText = escapeHtml(data.hero.secondaryCtaText || 'Call us');
 
   const services: IBentoServiceCard[] = data.services && data.services.length > 0 ? data.services : [
     {
-      title: 'Комплексная диагностика',
-      description: 'Точная оценка и выявление всех скрытых дефектов на сертифицированном оборудовании.',
+      title: 'Full diagnostics',
+      description: 'Accurate assessment that finds every hidden issue using certified equipment.',
       lucideIconName: 'activity',
-      badge: 'Популярно',
+      badge: 'Popular',
       highlight: true,
     },
     {
-      title: 'Оперативный ремонт',
-      description: 'Устранение неисправностей любой сложности с гарантией результата в согласованные сроки.',
+      title: 'Fast repairs',
+      description: 'Fixes of any complexity with guaranteed results, on the agreed schedule.',
       lucideIconName: 'wrench',
     },
     {
-      title: 'Гарантийное обслуживание',
-      description: 'Официальная гарантия на все выполненные работы и оригинальные комплектующие.',
+      title: 'Warranty service',
+      description: 'Official warranty on all work and genuine parts.',
       lucideIconName: 'shield-check',
-      badge: 'Гарантия 1 год',
+      badge: '1-year warranty',
     },
     {
-      title: 'Экспресс-консультация',
-      description: 'Бесплатный расчет стоимости и экспертная консультация специалиста за 10 минут.',
+      title: 'Express consultation',
+      description: 'Free cost estimate and expert advice within 10 minutes.',
       lucideIconName: 'phone',
     },
   ];
@@ -171,7 +171,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
           <h3 class="bento-card-title">${escapeHtml(service.title)}</h3>
           <p class="bento-card-desc">${escapeHtml(service.description)}</p>
           <a href="#booking" class="bento-card-link">
-            <span>Выбрать услугу</span>
+            <span>Choose service</span>
             ${getLucideIconSvg('arrow-right', { size: 16 })}
           </a>
         </div>
@@ -206,7 +206,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
               <div class="review-avatar">${escapeHtml(rev.author.charAt(0))}</div>
               <div>
                 <div class="review-author-name">${escapeHtml(rev.author)}</div>
-                <div class="review-source">${escapeHtml(rev.source || 'Проверенный отзыв')} ${rev.date ? `• ${escapeHtml(rev.date)}` : ''}</div>
+                <div class="review-source">${escapeHtml(rev.source || 'Verified review')} ${rev.date ? `• ${escapeHtml(rev.date)}` : ''}</div>
               </div>
             </div>
             <div class="review-stars">${starRating}</div>
@@ -223,11 +223,11 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     .join('\n');
 
   return `<!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${businessName} — Официальный сайт и запись</title>
+  <title>${businessName} — Official website & booking</title>
   <meta name="description" content="${heroHeadline}. ${heroSubheadline}">
   
   <style>
@@ -1041,12 +1041,12 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       </a>
 
       <div class="header-actions">
-        <a href="tel:${phoneClean}" class="call-btn" aria-label="Позвонить нам">
+        <a href="tel:${phoneClean}" class="call-btn" aria-label="Call us">
           ${getLucideIconSvg('phone', { size: 18 })}
           <span>${escapeHtml(phone)}</span>
         </a>
         <a href="#booking" class="header-booking-btn">
-          <span>Записаться</span>
+          <span>Book now</span>
         </a>
       </div>
     </div>
@@ -1091,10 +1091,10 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     <section class="bento-section" id="services">
       <div class="container">
         <div class="section-header">
-          <span class="section-tag">Наши услуги</span>
-          <h2 class="section-title">Качественные решения для любых задач</h2>
+          <span class="section-tag">Our services</span>
+          <h2 class="section-title">Quality solutions for every need</h2>
           <p class="section-desc">
-            Прозрачные фиксированные цены, официальная гарантия и индивидуальный подход к каждому клиенту.
+            Transparent fixed prices, an official guarantee and a personal approach to every client.
           </p>
         </div>
 
@@ -1108,10 +1108,10 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     <section class="reviews-section" id="reviews">
       <div class="container">
         <div class="section-header">
-          <span class="section-tag">Отзывы клиентов</span>
-          <h2 class="section-title">Нам доверяют сотни клиентов</h2>
+          <span class="section-tag">Client reviews</span>
+          <h2 class="section-title">Trusted by hundreds of clients</h2>
           <p class="section-desc">
-            Честные отзывы и оценки на Яндекс Картах, Google Maps и 2ГИС.
+            Honest reviews and ratings on Google Maps and other directories.
           </p>
         </div>
 
@@ -1126,29 +1126,29 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       <div class="container">
         <div class="booking-wrapper">
           <div class="section-header" style="margin-bottom: 2rem;">
-            <span class="section-tag">Онлайн запись</span>
-            <h2 class="section-title" style="font-size: 1.75rem;">Запишитесь на консультацию</h2>
+            <span class="section-tag">Online booking</span>
+            <h2 class="section-title" style="font-size: 1.75rem;">Book a consultation</h2>
             <p class="section-desc">
-              Оставьте заявку сейчас — мы перезвоним в течение 10 минут и подберем удобное время.
+              Leave a request now and we will call you back to find a convenient time.
             </p>
           </div>
 
           <form id="lead-booking-form" class="booking-form" novalidate>
             <div class="form-group">
-              <label for="lead-name" class="form-label">Ваше имя *</label>
+              <label for="lead-name" class="form-label">Your name *</label>
               <input 
                 type="text" 
                 id="lead-name" 
                 name="name" 
                 class="form-input" 
-                placeholder="Иван Иванов" 
+                placeholder="John Smith" 
                 required 
                 autocomplete="name"
               />
             </div>
 
             <div class="form-group">
-              <label for="lead-phone" class="form-label">Контактный телефон *</label>
+              <label for="lead-phone" class="form-label">Phone number *</label>
               <input 
                 type="tel" 
                 id="lead-phone" 
@@ -1161,32 +1161,32 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
             </div>
 
             <div class="form-group">
-              <label for="lead-service" class="form-label">Интересующая услуга</label>
+              <label for="lead-service" class="form-label">Service of interest</label>
               <select id="lead-service" name="service" class="form-select">
-                <option value="Консультация">Общая консультация</option>
+                <option value="Consultation">General consultation</option>
                 ${serviceSelectOptions}
               </select>
             </div>
 
             <div class="form-group">
-              <label for="lead-notes" class="form-label">Комментарий или пожелания</label>
+              <label for="lead-notes" class="form-label">Comments or requests</label>
               <textarea 
                 id="lead-notes" 
                 name="notes" 
                 class="form-textarea" 
-                placeholder="Укажите подробности или желаемое время визита..."
+                placeholder="Add details or your preferred visit time..."
               ></textarea>
             </div>
 
             <div class="form-checkbox-container">
               <input type="checkbox" id="policy-consent" class="form-checkbox" checked required />
               <label for="policy-consent" class="checkbox-label">
-                Я даю согласие на обработку персональных данных и соглашаюсь с политикой конфиденциальности.
+                I consent to the processing of my personal data and agree to the privacy policy.
               </label>
             </div>
 
             <button type="submit" id="booking-submit-btn" class="form-submit-btn">
-              <span>Записаться прямо сейчас</span>
+              <span>Book now</span>
               ${getLucideIconSvg('send', { size: 18 })}
             </button>
           </form>
@@ -1196,12 +1196,12 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
             <div class="success-icon-badge">
               ${getLucideIconSvg('check-circle', { size: 36 })}
             </div>
-            <h3 class="success-title">Спасибо за обращение!</h3>
+            <h3 class="success-title">Thank you for reaching out!</h3>
             <p class="success-desc" id="success-client-info">
-              Ваша заявка успешно принята. Наш специалист свяжется с вами в течение 10 минут.
+              Your request has been received. Our specialist will contact you shortly.
             </p>
             <button type="button" id="reset-form-btn" class="btn-secondary" style="margin-inline: auto;">
-              Отправить еще одну заявку
+              Send another request
             </button>
           </div>
         </div>
@@ -1216,16 +1216,16 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
         <div>
           <div class="footer-brand-title">${businessName}</div>
           <p class="footer-desc">
-            Современный сервис, опытные специалисты и надежное качество. Мы ценим доверие каждого клиента.
+            Modern service, experienced specialists and reliable quality. We value the trust of every client.
           </p>
           <a href="#booking" class="revamp-badge">
             ${getLucideIconSvg('sparkles', { size: 14 })}
-            <span>Прототип создан платформой Revamp</span>
+            <span>Prototype built by the Revamp platform</span>
           </a>
         </div>
 
         <div>
-          <div class="footer-col-title">Контакты</div>
+          <div class="footer-col-title">Contacts</div>
           <ul class="footer-contact-list">
             <li class="footer-contact-item">
               ${getLucideIconSvg('phone', { size: 18 })}
@@ -1243,7 +1243,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
         </div>
 
         <div>
-          <div class="footer-col-title">Режим работы</div>
+          <div class="footer-col-title">Opening hours</div>
           <ul class="footer-contact-list">
             <li class="footer-contact-item">
               ${getLucideIconSvg('clock', { size: 18 })}
@@ -1251,15 +1251,15 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
             </li>
             <li class="footer-contact-item">
               ${getLucideIconSvg('shield-check', { size: 18 })}
-              <span>Официальная гарантия</span>
+              <span>Official guarantee</span>
             </li>
           </ul>
         </div>
       </div>
 
       <div class="footer-bottom">
-        <div>© ${new Date().getFullYear()} ${businessName}. Все права защищены.</div>
-        <div>Современный адаптивный веб-стандарт</div>
+        <div>© ${new Date().getFullYear()} ${businessName}. All rights reserved.</div>
+        <div>Modern responsive web standard</div>
       </div>
     </div>
   </footer>
@@ -1299,14 +1299,14 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
 
         // Simulate instant submission with responsive feedback
         submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span>Отправка...</span>';
+        submitBtn.innerHTML = '<span>Sending...</span>';
 
         setTimeout(function() {
           form.style.display = 'none';
           successBlock.style.display = 'block';
 
           if (clientInfo) {
-            clientInfo.textContent = 'Спасибо, ' + nameVal + '! Ваша заявка на «' + (serviceSelect ? serviceSelect.value : 'Консультация') + '» принята. Мы перезвоним вам по номеру ' + phoneVal + ' в течение 10 минут.';
+            clientInfo.textContent = 'Thank you, ' + nameVal + '! Your request for "' + (serviceSelect ? serviceSelect.value : 'Consultation') + '" has been received. We will call you back at ' + phoneVal + ' shortly.';
           }
 
           // Dispatch telemetry Beacon if tracking token is provided
@@ -1337,7 +1337,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
         resetBtn.addEventListener('click', function() {
           form.reset();
           submitBtn.disabled = false;
-          submitBtn.innerHTML = '<span>Записаться прямо сейчас</span>';
+          submitBtn.innerHTML = '<span>Book now</span>';
           successBlock.style.display = 'none';
           form.style.display = 'block';
         });

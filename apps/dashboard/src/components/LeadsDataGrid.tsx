@@ -15,30 +15,30 @@ const STATUS_CONFIG: Partial<
     { label: string; color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' }
   >
 > = {
-  QUEUED: { label: 'В очереди', color: 'default' },
-  AUDITING: { label: 'Аудит...', color: 'info' },
-  AUDITED: { label: 'Аудит готов', color: 'info' },
-  GENERATING: { label: 'Генерация...', color: 'primary' },
-  NEEDS_APPROVAL: { label: 'Ожидает ревью', color: 'warning' },
-  APPROVED: { label: 'Одобрен', color: 'primary' },
-  SCHEDULED: { label: 'Запланирован', color: 'primary' },
-  DISPATCHED: { label: 'Отправляется', color: 'info' },
-  SENT: { label: 'Отправлен', color: 'info' },
-  OPENED: { label: 'Открыт', color: 'secondary' },
-  CLICKED: { label: 'Клик по ссылке', color: 'success' },
-  ENGAGED: { label: 'Заинтересован (30с+ / CTA)', color: 'secondary' },
-  REPLIED: { label: 'Ответил', color: 'success' },
-  REJECTED: { label: 'Отказ', color: 'error' },
+  QUEUED: { label: 'Queued', color: 'default' },
+  AUDITING: { label: 'Auditing...', color: 'info' },
+  AUDITED: { label: 'Audited', color: 'info' },
+  GENERATING: { label: 'Generating...', color: 'primary' },
+  NEEDS_APPROVAL: { label: 'Awaiting review', color: 'warning' },
+  APPROVED: { label: 'Approved', color: 'primary' },
+  SCHEDULED: { label: 'Scheduled', color: 'primary' },
+  DISPATCHED: { label: 'Dispatching', color: 'info' },
+  SENT: { label: 'Sent', color: 'info' },
+  OPENED: { label: 'Opened', color: 'secondary' },
+  CLICKED: { label: 'Link clicked', color: 'success' },
+  ENGAGED: { label: 'Engaged (30s+ / CTA)', color: 'secondary' },
+  REPLIED: { label: 'Replied', color: 'success' },
+  REJECTED: { label: 'Rejected', color: 'error' },
 };
 
 const NICHE_LABELS: Record<string, string> = {
-  dental: '🦷 Стоматология',
-  auto: '🚗 Автосервис',
-  legal: '⚖️ Юристы',
-  beauty: '💇 Салон красоты',
-  restaurant: '🍽️ Ресторан',
-  fitness: '🏋️ Фитнес',
-  other: '📦 Бизнес',
+  dental: '🦷 Dental',
+  auto: '🚗 Auto repair',
+  legal: '⚖️ Legal',
+  beauty: '💇 Beauty salon',
+  restaurant: '🍽️ Restaurant',
+  fitness: '🏋️ Fitness',
+  other: '📦 Business',
 };
 
 interface LeadsDataGridProps {
@@ -53,7 +53,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
   const columns: GridColDef<ILeadItem>[] = [
     {
       field: 'businessName',
-      headerName: 'Компания и сайт',
+      headerName: 'Company & website',
       flex: 1.5,
       minWidth: 240,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
@@ -65,7 +65,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {params.row.domain}
             </Typography>
-            <Tooltip title="Открыть оригинальный сайт">
+            <Tooltip title="Open original website">
               <IconButton
                 size="small"
                 href={params.row.originalUrl}
@@ -82,7 +82,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'niche',
-      headerName: 'Ниша',
+      headerName: 'Niche',
       width: 160,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Chip
@@ -95,7 +95,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'status',
-      headerName: 'Статус воронки',
+      headerName: 'Pipeline status',
       width: 170,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
         const conf = STATUS_CONFIG[params.row.status] || {
@@ -114,7 +114,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'totalScore',
-      headerName: 'Скоринг',
+      headerName: 'Score',
       width: 110,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
         const score = params.row.totalScore;
@@ -142,7 +142,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'city',
-      headerName: 'Город',
+      headerName: 'City',
       width: 140,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Typography variant="body2" color="text.secondary">
@@ -152,11 +152,11 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'createdAt',
-      headerName: 'Дата добавления',
+      headerName: 'Date added',
       width: 140,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Typography variant="body2" color="text.secondary">
-          {new Date(params.row.createdAt).toLocaleDateString('ru-RU', {
+          {new Date(params.row.createdAt).toLocaleDateString('en-GB', {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -166,7 +166,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'actions',
-      headerName: 'Действия',
+      headerName: 'Actions',
       width: 180,
       sortable: false,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
@@ -188,7 +188,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                   color: '#000000',
                 }}
               >
-                HITL Ревью
+                HITL Review
               </Button>
             ) : params.row.previewUrl ? (
               <Button
@@ -201,11 +201,11 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                 rel="noopener noreferrer"
                 sx={{ fontSize: '0.75rem', py: 0.4, px: 1.2 }}
               >
-                Демо MVP
+                MVP demo
               </Button>
             ) : (
               <Typography variant="caption" color="text.secondary">
-                Обработка...
+                Processing...
               </Typography>
             )}
           </Box>

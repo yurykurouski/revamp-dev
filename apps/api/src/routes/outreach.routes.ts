@@ -74,10 +74,10 @@ router.post(
       const trackingToken = crypto.randomUUID().replace(/-/g, '');
       const subject =
         req.body.subject ||
-        `3 точки роста в конверсии сайта «${lead.businessName || 'Вашей компании'}» (и интерактивный прототип)`;
+        `3 ways to lift conversions on the ${lead.businessName || 'your company'} website (plus an interactive prototype)`;
       const bodyHtml =
         req.body.body ||
-        `<p>Здравствуйте! Мы подготовили интерактивную концепцию обновления сайта для компании «${lead.businessName || 'Вашей компании'}».</p>`;
+        `<p>Hello! We prepared an interactive website redesign concept for ${lead.businessName || 'your company'}.</p>`;
 
       const campaign = await EmailCampaign.findOneAndUpdate(
         { leadId: lead._id },
@@ -87,7 +87,7 @@ router.post(
           senderEmail: env.EMAIL_FROM,
           recipientEmail: lead.contactEmail || 'lead@example.com',
           subject,
-          previewText: req.body.preheader || 'Новая мобильная концепция',
+          previewText: req.body.preheader || 'A new mobile concept',
           bodyHtml,
           trackingToken,
           requiresManualReview: false,
