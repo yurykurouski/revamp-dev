@@ -113,6 +113,34 @@ When the `linear` MCP server is available in the agent environment:
 * Query task requirements before starting work using `get_issue` (ID: `REV-<number>`).
 * Verify acceptance criteria against both the issue description and [`milestones.md`](file:///Users/yurykurouski/code/ehu/Revamp-docs/milestones.md) before considering a task finished.
 
+### 4.3. Mandatory Ticket Pipeline for Bug Fixes and New Features
+Every bug fix and every new feature MUST have its own Linear ticket and MUST go through the full pipeline below: **ticket → code → testing → PR → merge → close ticket**. No step may be skipped, and no code for a bug or feature may reach `main` without a ticket.
+
+1. **Ticket.** Before writing any code, create a ticket in team **REV**, project **Revamp** (`save_issue`), or reuse an existing one if it already covers the work.
+   * Title: a short, specific summary in English.
+   * Description: `## Problem` (observed vs. expected, root cause when known), `## Expected`, and `## Acceptance criteria` as a checklist.
+   * Label `Bug` for bug fixes or `Feature` for new features. Assign to the requesting user. Set priority.
+   * One ticket per bug or feature. When the user reports several issues at once, create a separate ticket for each.
+   * Move the ticket to **In Progress** when work starts.
+2. **Code.** Create a branch from an up-to-date `main` following §4.1 (`ymorpheus/rev-<number>-<short-description>`). Commit with the ticket key (`fix(REV-<n>): ...` / `feat(REV-<n>): ...`). Keep each branch scoped to its ticket; changes unrelated to the ticket go in their own ticket.
+3. **Testing.** Add or update Vitest tests per §3.2.5, then run every gate locally. The repository has no CI, so this local run is the gate:
+   * `npm run build:packages` (the apps typecheck against the packages' compiled `dist`)
+   * `npm run typecheck`
+   * `npm run lint` (0 errors, no new warnings)
+   * `npm test` (0 failures)
+   * `npm run build` (full production build)
+   * For behavior changes, also run the app (API, workers, dashboard) and check the change end to end.
+   If any gate fails, fix it before opening the PR. Never open or merge a PR with failing gates.
+4. **PR.** Push the branch and open a PR with `gh pr create`.
+   * Title in the same format as the commit (e.g. `fix(REV-<n>): ...`).
+   * The body starts with `Fixes [REV-<n>](<ticket url>)` and has `## Problem`, `## Changes`, and `## Verification` sections. Verification lists the exact commands run and their results.
+   * Attach the PR link to the ticket (`save_issue` → `links`) and move the ticket to **In Review**.
+   * When a PR depends on another open PR, stack it on that branch and state the merge order in the body.
+5. **Merge.** Before merging, pull the latest `main` into the branch (or rebase onto it) and re-run all testing gates from step 3 on the result. Merge only when every gate passes (`gh pr merge --merge`). Merge stacked PRs in order, retargeting each to `main` (`gh pr edit <n> --base main`) before merging it. After merging, pull `main` and run `npm test` once more.
+6. **Close.** Once the PR is merged and `main` is green, move the ticket to **Done**. If the work is abandoned instead, close the PR and move the ticket to **Canceled** with a comment explaining why.
+
+Report the ticket and PR links to the user at each hand-off point.
+
 ---
 
 ## 5. Pre-Commit Checklist (Definition of Done)
