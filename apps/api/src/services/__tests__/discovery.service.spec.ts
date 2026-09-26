@@ -76,4 +76,75 @@ describe('DiscoveryService (API)', () => {
     const failed = await DiscoveryService.getDiscoveryStatus('disc-10');
     expect(failed).toMatchObject({ state: 'failed', error: 'GOOGLE_PLACES_API_KEY is not configured' });
   });
+
+  describe('reverseGeocode (REV-28)', () => {
+    const jsonResponse = (body: unknown, status = 200) =>
+      ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
+
+    it('should query Nominatim at city level with the language and User-Agent', async () => {
+      const fetchFn = vi.fn().mockResolvedValue(
+        jsonResponse({ address: { city: 'Вільня', country: 'Літва', road: 'Gedimino pr.' } }),
+      );
+
+      const result = await DiscoveryService.reverseGeocode({ lat: 54.6872, lng: 25.2797, lang: 'be' }, fetchFn);
+
+      expect(result).toEqual({ location: 'Вільня, Літва', city: 'Вільня', country: 'Літва' });
+      const [url, init] = fetchFn.mock.calls[0];
+      const parsed = new URL(url);
+      expect(parsed.searchParams.get('lat')).toBe('54.6872');
+      expect(parsed.searchParams.get('lon')).toBe('25.2797');
+      expect(parsed.searchParams.get('zoom')).toBe('10');
+      expect(parsed.searchParams.get('format')).toBe('jsonv2');
+      expect(parsed.searchParams.get('accept-language')).toBe('be');
+      expect(init.headers['User-Agent']).toMatch(/RevampBot/);
+    });
+
+    it('should omit accept-language when no language is given', async () => {
+      const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ address: { city: 'Riga', country: 'Latvia' } }));
+      await DiscoveryService.reverseGeocode({ lat: 56.9, lng: 24.1 }, fetchFn);
+      expect(new URL(fetchFn.mock.calls[0][0]).searchParams.has('accept-language')).toBe(false);
+    });
+
+    it('should fall back from city to town, village and larger areas', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ address: { town: 'Trakai', country: 'Lithuania' } }))
+        .mockResolvedValueOnce(jsonResponse({ address: { village: 'Rudamina', county: 'Vilnius County', country: 'Lithuania' } }))
+        .mockResolvedValueOnce(jsonResponse({ address: { state: 'Podlaskie', country: 'Poland' } }))
+        .mockResolvedValueOnce(jsonResponse({ address: { country: 'Poland' } }));
+
+      expect((await DiscoveryService.reverseGeocode({ lat: 1, lng: 1 }, fetchFn)).location).toBe('Trakai, Lithuania');
+      expect((await DiscoveryService.reverseGeocode({ lat: 1, lng: 1 }, fetchFn)).location).toBe('Rudamina, Lithuania');
+      expect((await DiscoveryService.reverseGeocode({ lat: 1, lng: 1 }, fetchFn)).location).toBe('Podlaskie, Poland');
+      expect(await DiscoveryService.reverseGeocode({ lat: 1, lng: 1 }, fetchFn)).toEqual({
+        location: 'Poland',
+        city: undefined,
+        country: 'Poland',
+      });
+    });
+
+    it('should throw 404 when Nominatim finds nothing', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({ error: 'Unable to geocode' }))
+        .mockResolvedValueOnce(jsonResponse({ address: { road: 'Somewhere' } }));
+      for (let i = 0; i < 2; i++) {
+        const error = await DiscoveryService.reverseGeocode({ lat: 0, lng: -30 }, fetchFn).catch((e) => e);
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(404);
+      }
+    });
+
+    it('should throw 502 on HTTP errors and network failures', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({}, 503))
+        .mockRejectedValueOnce(new TypeError('fetch failed'));
+      for (let i = 0; i < 2; i++) {
+        const error = await DiscoveryService.reverseGeocode({ lat: 1, lng: 1 }, fetchFn).catch((e) => e);
+        expect(error).toBeInstanceOf(AppError);
+        expect(error.statusCode).toBe(502);
+      }
+    });
+  });
 });

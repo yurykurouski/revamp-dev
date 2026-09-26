@@ -1,9 +1,12 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { apiClient } from '../../api/client.js';
 import {
   DISCOVERY_POLL_INTERVAL_MS,
   discoveryRefetchInterval,
   discoveryStateBucket,
+  detectLocation,
   isDiscoveryFinished,
+  LocationDetectError,
   validateDiscoveryForm,
 } from '../useDiscovery.js';
 
@@ -54,6 +57,61 @@ describe('discovery hook helpers (REV-27)', () => {
       [{ niche: 'dental' as const, location: 'Riga', provider: 'bing' as never }, 'discovery.errors.invalid'],
     ])('should map %j to %s', (input, errorKey) => {
       expect(validateDiscoveryForm(input)).toEqual({ success: false, errorKey });
+    });
+  });
+
+  describe('detectLocation (REV-28)', () => {
+    const position = { coords: { latitude: 54.6872, longitude: 25.2797 } } as GeolocationPosition;
+    const geoResolving = {
+      getCurrentPosition: vi.fn((ok: PositionCallback, _fail?: PositionErrorCallback | null, _options?: PositionOptions) =>
+        ok(position),
+      ),
+    };
+    const geoFailing = (code: number) => ({
+      getCurrentPosition: vi.fn((_ok: PositionCallback, fail?: PositionErrorCallback | null) =>
+        fail?.({ code, message: 'x' } as GeolocationPositionError),
+      ),
+    });
+    const errorKeyOf = (promise: Promise<unknown>) =>
+      promise.then(
+        () => null,
+        (e) => (e instanceof LocationDetectError ? e.errorKey : e),
+      );
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('should reverse-geocode the position in the UI language with a coarse, cached fix', async () => {
+      const spy = vi
+        .spyOn(apiClient, 'reverseGeocode')
+        .mockResolvedValue({ location: 'Вільня, Літва', city: 'Вільня', country: 'Літва' });
+
+      await expect(detectLocation('be', geoResolving)).resolves.toBe('Вільня, Літва');
+      expect(spy).toHaveBeenCalledWith(54.6872, 25.2797, 'be');
+      const options = geoResolving.getCurrentPosition.mock.calls[0]?.[2];
+      expect(options).toMatchObject({ enableHighAccuracy: false, timeout: 10000 });
+      expect(options?.maximumAge).toBeGreaterThan(0);
+    });
+
+    it('should report a browser without geolocation', async () => {
+      expect(await errorKeyOf(detectLocation('en', undefined))).toBe('discovery.errors.geoUnsupported');
+    });
+
+    it.each([
+      [1, 'discovery.errors.geoDenied'],
+      [2, 'discovery.errors.geoUnavailable'],
+      [3, 'discovery.errors.geoTimeout'],
+      [99, 'discovery.errors.geoUnavailable'],
+    ])('should map geolocation error code %i to %s', async (code, key) => {
+      const spy = vi.spyOn(apiClient, 'reverseGeocode');
+      expect(await errorKeyOf(detectLocation('en', geoFailing(code)))).toBe(key);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('should report a failed place lookup', async () => {
+      vi.spyOn(apiClient, 'reverseGeocode').mockRejectedValue(new Error('No place found at these coordinates'));
+      expect(await errorKeyOf(detectLocation('en', geoResolving))).toBe('discovery.errors.geoLookupFailed');
     });
   });
 });

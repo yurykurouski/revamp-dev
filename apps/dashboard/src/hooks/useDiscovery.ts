@@ -48,6 +48,53 @@ export function validateDiscoveryForm(
   return { success: false, errorKey };
 }
 
+export type LocationDetectErrorKey =
+  | 'discovery.errors.geoUnsupported'
+  | 'discovery.errors.geoDenied'
+  | 'discovery.errors.geoUnavailable'
+  | 'discovery.errors.geoTimeout'
+  | 'discovery.errors.geoLookupFailed';
+
+export class LocationDetectError extends Error {
+  constructor(public readonly errorKey: LocationDetectErrorKey) {
+    super(errorKey);
+    this.name = 'LocationDetectError';
+  }
+}
+
+// GeolocationPositionError codes
+const GEO_ERROR_KEYS: Record<number, LocationDetectErrorKey> = {
+  1: 'discovery.errors.geoDenied',
+  2: 'discovery.errors.geoUnavailable',
+  3: 'discovery.errors.geoTimeout',
+};
+
+/**
+ * Asks the browser for the operator's position and resolves it to a place name for the location field.
+ * City-level accuracy is enough, so a cached coarse fix is accepted.
+ */
+export async function detectLocation(
+  lang: string | undefined,
+  geolocation: Pick<Geolocation, 'getCurrentPosition'> | undefined = globalThis.navigator?.geolocation,
+): Promise<string> {
+  if (!geolocation) throw new LocationDetectError('discovery.errors.geoUnsupported');
+
+  const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+    geolocation.getCurrentPosition(
+      resolve,
+      (error) => reject(new LocationDetectError(GEO_ERROR_KEYS[error.code] ?? 'discovery.errors.geoUnavailable')),
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 10 * 60_000 },
+    );
+  });
+
+  try {
+    const place = await apiClient.reverseGeocode(position.coords.latitude, position.coords.longitude, lang);
+    return place.location;
+  } catch {
+    throw new LocationDetectError('discovery.errors.geoLookupFailed');
+  }
+}
+
 export const useStartDiscoveryMutation = () =>
   useMutation({
     mutationFn: (input: StartDiscoveryInput) => apiClient.startDiscovery(input),

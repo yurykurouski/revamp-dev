@@ -253,6 +253,30 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.getDiscoveryStatus('x')).rejects.toThrow('Server error (502)');
     });
 
+    it('reverseGeocode should pass coordinates and language and return the place (REV-28)', async () => {
+      const place = { location: 'Warszawa, Polska', city: 'Warszawa', country: 'Polska' };
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true, data: place }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      expect(await apiClient.reverseGeocode(52.2297, 21.0122, 'pl')).toEqual(place);
+      const url = new URL(fetchMock.mock.calls[0][0]);
+      expect(url.pathname).toMatch(/\/discovery\/reverse-geocode$/);
+      expect(url.searchParams.get('lat')).toBe('52.2297');
+      expect(url.searchParams.get('lng')).toBe('21.0122');
+      expect(url.searchParams.get('lang')).toBe('pl');
+
+      await apiClient.reverseGeocode(1, 2);
+      expect(new URL(fetchMock.mock.calls[1][0]).searchParams.has('lang')).toBe(false);
+    });
+
+    it('reverseGeocode should surface a 404 message', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonResponse({ success: false, message: 'No place found at these coordinates' }, 404)),
+      );
+      await expect(apiClient.reverseGeocode(0, -30)).rejects.toThrow('No place found at these coordinates');
+    });
+
     it('getDiscoveryStatus should reject a 200 response without data', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ success: true })));
       await expect(apiClient.getDiscoveryStatus('x')).rejects.toThrow('Malformed server response');

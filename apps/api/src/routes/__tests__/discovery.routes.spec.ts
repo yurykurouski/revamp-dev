@@ -84,4 +84,44 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
       expect(res.body.success).toBe(false);
     });
   });
+
+  describe('GET /api/v1/discovery/reverse-geocode (REV-28)', () => {
+    it('should return 200 with the place and pass coerced coordinates', async () => {
+      vi.mocked(DiscoveryService.reverseGeocode).mockResolvedValue({
+        location: 'Vilnius, Lithuania',
+        city: 'Vilnius',
+        country: 'Lithuania',
+      });
+
+      const res = await request(app).get('/api/v1/discovery/reverse-geocode?lat=54.68&lng=25.28&lang=en');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({
+        success: true,
+        data: { location: 'Vilnius, Lithuania', city: 'Vilnius', country: 'Lithuania' },
+      });
+      expect(DiscoveryService.reverseGeocode).toHaveBeenCalledWith({ lat: 54.68, lng: 25.28, lang: 'en' });
+      // Not swallowed by the /:jobId route
+      expect(DiscoveryService.getDiscoveryStatus).not.toHaveBeenCalled();
+    });
+
+    it.each(['lat=91&lng=0', 'lng=10', 'lat=abc&lng=1', 'lat=1&lng=1&lang=bad!'])(
+      'should return 400 for %s',
+      async (query) => {
+        const res = await request(app).get(`/api/v1/discovery/reverse-geocode?${query}`);
+        expect(res.status).toBe(400);
+        expect(DiscoveryService.reverseGeocode).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each([
+      [404, 'No place found at these coordinates'],
+      [502, 'Reverse geocoding service is unavailable'],
+    ])('should pass through %i errors', async (status, message) => {
+      vi.mocked(DiscoveryService.reverseGeocode).mockRejectedValue(new AppError(message, status));
+      const res = await request(app).get('/api/v1/discovery/reverse-geocode?lat=1&lng=1');
+      expect(res.status).toBe(status);
+      expect(res.body.message).toBe(message);
+    });
+  });
 });
