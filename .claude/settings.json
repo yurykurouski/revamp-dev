@@ -1,5 +1,8 @@
 {
   "enabledPlugins": {
     "engineering-skills@claude-code-skills": true
+  },
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
   }
 }
