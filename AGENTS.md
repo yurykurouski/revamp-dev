@@ -114,7 +114,7 @@ When the `linear` MCP server is available in the agent environment:
 * Verify acceptance criteria against both the issue description and [`milestones.md`](file:///Users/yurykurouski/code/ehu/Revamp-docs/milestones.md) before considering a task finished.
 
 ### 4.3. Mandatory Ticket Pipeline for Bug Fixes and New Features
-Every bug fix and every new feature MUST have its own Linear ticket and MUST go through the full pipeline below: **ticket → code → testing → PR → merge → close ticket**. No step may be skipped, and no code for a bug or feature may reach `main` without a ticket.
+Every bug fix and every new feature MUST have its own Linear ticket and MUST go through the full pipeline below: **ticket → code → testing → PR → merge → docs → close ticket**. No step may be skipped, and no code for a bug or feature may reach `main` without a ticket.
 
 1. **Ticket.** Before writing any code, create a ticket in team **REV**, project **Revamp** (`save_issue`), or reuse an existing one if it already covers the work.
    * Title: a short, specific summary in English.
@@ -138,7 +138,13 @@ Every bug fix and every new feature MUST have its own Linear ticket and MUST go 
    * Attach the PR link to the ticket (`save_issue` → `links`) and move the ticket to **In Review**.
    * When a PR depends on another open PR, stack it on that branch and state the merge order in the body.
 5. **Merge.** Before merging, pull the latest `main` into the branch (or rebase onto it) and re-run all testing gates from step 3 on the result. Merge only when every gate passes (`gh pr merge --merge`). Merge stacked PRs in order, retargeting each to `main` (`gh pr edit <n> --base main`) before merging it. After merging, pull `main` and run `npm test` once more.
-6. **Close.** Once the PR is merged and `main` is green, move the ticket to **Done**. If the work is abandoned instead, close the PR and move the ticket to **Canceled** with a comment explaining why.
+6. **Docs.** After every implemented ticket, bring the documentation up to date so it matches the code on `main`. Check each place the change touches and update it in the same pass:
+   * `README.md` in this repository (setup, scripts, environment variables, features, directory layout).
+   * `AGENTS.md` in this repository (directory structure, gates, conventions) when the change affects how agents should work.
+   * The docs repository `../Revamp-docs` ([revamp-docs](https://github.com/yurykurouski/revamp-docs)): `spec.md` (statuses, endpoints, DTOs, validation rules), `blueprint.md` (queues, schemas, diagrams, storage), `milestones.md` (tick the DoD items the ticket completes), `AGENTS.md` (agent prompts and schemas), and `research.md` when a decision changed.
+   * `.env.example` when environment variables were added, renamed, or removed.
+   Changes inside this repository go in the ticket's PR. Changes to `../Revamp-docs` are committed there with the ticket key (`docs(REV-<n>): ...`) and pushed, and the commit link is added to the ticket. If nothing needed updating, say so in a ticket comment. A ticket is not done until its docs are current.
+7. **Close.** Once the PR is merged, `main` is green, and the docs are updated, move the ticket to **Done**. If the work is abandoned instead, close the PR and move the ticket to **Canceled** with a comment explaining why.
 
 Report the ticket and PR links to the user at each hand-off point.
 
@@ -155,3 +161,4 @@ Report the ticket and PR links to the user at each hand-off point.
 * [ ] Heavy or asynchronous operations are dispatched through BullMQ queues.
 * [ ] External resources (Playwright browser contexts, Redis/Mongo connections) are cleanly closed and managed.
 * [ ] The Human-In-The-Loop constraint is strictly preserved.
+* [ ] **Docs up to date:** `README.md`, `AGENTS.md`, `.env.example`, and the relevant files in `../Revamp-docs` reflect the change (§4.3 step 6).
