@@ -1,4 +1,5 @@
 import { MvpContentOutputSchema, MvpContentOutput } from '@revamp/validation';
+import { z } from 'zod';
 import { ISiteContent } from '@revamp/shared-types';
 import { env } from '../config/env.js';
 import { getSupportedIconNames } from '../templates/icons.js';
@@ -56,11 +57,16 @@ Language:
 - Keep the business's own terms, service names and proper nouns exactly as the original site spells them.
 
 Style requirements:
+- hero.badge: a short label for the business, e.g. its location or specialty (up to 40 characters).
 - hero.headline: customer benefit + what makes this business specific (up to 90 characters).
 - hero.subheadline: how the business solves the customer's problem, based on its own description (up to 180 characters).
 - about: a heading (up to 80 characters) and 2-4 sentences (up to 700 characters) retelling the business's own story and strengths.
-- services: 1-6 cards built from the services the site lists, each with a concise, persuasive description (up to 15 words) and a matching Lucide icon (e.g. 'wrench', 'shield-check', 'sparkles', 'calendar', 'phone', 'award', 'activity', 'truck', 'heart', 'smile', 'zap', 'car', 'clock', 'star', 'stethoscope').
-- CTA buttons: a concrete action that fits this business.
+- servicesHeading: a heading for the services section (up to 80 characters).
+- services: 1-6 cards built from the services the site lists, each with a title (up to 50 characters), a concise, persuasive description (up to 15 words) and a matching Lucide icon (e.g. 'wrench', 'shield-check', 'sparkles', 'calendar', 'phone', 'award', 'activity', 'truck', 'heart', 'smile', 'zap', 'car', 'clock', 'star', 'stethoscope').
+- trustSignals: metric up to 20 characters, label up to 50 characters.
+- CTA buttons (primaryCtaText, secondaryCtaText): a concrete action that fits this business (up to 35 characters each).
+- offerNotice: one short line inviting the customer to get in touch (up to 100 characters).
+- Every length limit is a hard maximum; stay well under it.
 
 Respond with a raw JSON object only, with no preamble and no markdown, in exactly this shape:
 {"hero":{"badge":string,"headline":string,"subheadline":string,"primaryCtaText":string,"secondaryCtaText":string},"about":{"heading":string,"body":string},"servicesHeading":string,"services":[{"title":string,"description":string,"lucideIconName":string}],"trustSignals":[{"metric":string,"label":string}],"offerNotice":string}`;
@@ -112,6 +118,30 @@ export function clipText(text: string, maxLength: number): string {
   if (sentenceEnd >= maxLength * 0.5) return slice.slice(0, sentenceEnd + 1);
   const wordEnd = slice.lastIndexOf(' ');
   return (wordEnd > 0 ? slice.slice(0, wordEnd) : slice).replace(/[\s,;:–—-]+$/, '');
+}
+
+/**
+ * Clips every string in an LLM response to the max length its Zod schema allows, so a single
+ * over-long field does not reject an otherwise valid answer. Structure is left to Zod (REV-34).
+ */
+export function clipToSchemaLimits(value: unknown, schema: z.ZodTypeAny): unknown {
+  if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
+    return clipToSchemaLimits(value, schema.unwrap());
+  }
+  if (schema instanceof z.ZodString) {
+    const max = schema.maxLength;
+    return typeof value === 'string' && max !== null && value.length > max ? clipText(value, max) : value;
+  }
+  if (schema instanceof z.ZodArray) {
+    return Array.isArray(value) ? value.map((item) => clipToSchemaLimits(item, schema.element)) : value;
+  }
+  if (schema instanceof z.ZodObject && value && typeof value === 'object' && !Array.isArray(value)) {
+    const shape = schema.shape as Record<string, z.ZodTypeAny>;
+    return Object.fromEntries(
+      Object.entries(value).map(([key, field]) => [key, shape[key] ? clipToSchemaLimits(field, shape[key]) : field]),
+    );
+  }
+  return value;
 }
 
 export class MvpContentService {
@@ -535,7 +565,7 @@ export class MvpContentService {
     }
 
     const parsed = JSON.parse(jsonMatch[0]);
-    return MvpContentOutputSchema.parse(parsed);
+    return MvpContentOutputSchema.parse(clipToSchemaLimits(parsed, MvpContentOutputSchema));
   }
 
   /**
