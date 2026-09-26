@@ -269,6 +269,16 @@ export const pl: Translation = {
     confirmBody: 'W MVP brakuje kluczowych danych z oryginalnej strony albo są one zmienione lub wymyślone: {{fields}}. Sprawdź podgląd przed wysłaniem go właścicielowi firmy.',
     confirmApprove: 'Zatwierdź mimo to',
     cancel: 'Anuluj',
+    judgedByColumn: 'Ocenił',
+    method: {
+      llm: 'Ocenione przez AI ({{model}}), cytaty sprawdzone w kodzie',
+      deterministic: 'Sprawdzone przez kod',
+    },
+    llmFallback: 'Kontrola AI nie powiodła się, pokazano wynik kodu: {{error}}',
+    judgedBy: {
+      llm: 'AI',
+      code: 'Kod',
+    },
     fields: {
       businessName: 'Nazwa firmy',
       phone: 'Telefon',

@@ -269,6 +269,16 @@ export const lt: Translation = {
     confirmBody: 'MVP trūksta svarbių duomenų iš originalios svetainės arba jie pakeisti ar išgalvoti: {{fields}}. Prieš siųsdami įmonės savininkui peržiūrėkite demonstraciją.',
     confirmApprove: 'Vis tiek patvirtinti',
     cancel: 'Atšaukti',
+    judgedByColumn: 'Įvertino',
+    method: {
+      llm: 'Įvertino DI ({{model}}), citatos patikrintos kodu',
+      deterministic: 'Patikrinta kodu',
+    },
+    llmFallback: 'DI patikra nepavyko, rodomas kodo rezultatas: {{error}}',
+    judgedBy: {
+      llm: 'DI',
+      code: 'Kodas',
+    },
     fields: {
       businessName: 'Įmonės pavadinimas',
       phone: 'Telefonas',

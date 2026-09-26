@@ -3,6 +3,7 @@ import type { ICompletenessCheck, IMvpCompletenessReport, IMvpCompletenessSummar
 import {
   COMPLETENESS_STATUS_COLOR,
   approvalNeedsConfirmation,
+  completenessMethodInfo,
   criticalIssueFields,
   sortCompletenessChecks,
 } from '../completeness.js';
@@ -100,5 +101,31 @@ describe('MVP completeness in the dashboard (REV-36)', () => {
     expect(COMPLETENESS_STATUS_COLOR.unsourced).toBe('error');
     expect(COMPLETENESS_STATUS_COLOR.altered).toBe('warning');
     expect(COMPLETENESS_STATUS_COLOR.not_in_source).toBe('default');
+  });
+
+  describe('completenessMethodInfo (REV-37)', () => {
+    it('reports an LLM-judged report with its model', () => {
+      expect(completenessMethodInfo({ ...report([]), method: 'llm', model: 'claude-cli:sonnet' })).toEqual({
+        method: 'llm',
+        model: 'claude-cli:sonnet',
+      });
+    });
+
+    it('reports a code-only report, with the LLM error when it fell back', () => {
+      expect(completenessMethodInfo({ ...report([]), method: 'deterministic' })).toEqual({ method: 'deterministic' });
+      expect(completenessMethodInfo({ ...report([]), method: 'deterministic', llmError: 'timed out' })).toEqual({
+        method: 'deterministic',
+        fallbackError: 'timed out',
+      });
+    });
+
+    it('treats reports saved before the LLM check as code-only', () => {
+      expect(completenessMethodInfo(report([]))).toEqual({ method: 'deterministic' });
+    });
+
+    it('has nothing to say for unverified or absent reports', () => {
+      expect(completenessMethodInfo(report([], 'unverified'))).toBeUndefined();
+      expect(completenessMethodInfo(undefined)).toBeUndefined();
+    });
   });
 });

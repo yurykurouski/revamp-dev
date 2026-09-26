@@ -16,7 +16,12 @@ import type { IMvpCompletenessReport } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { formatDate } from '../i18n/languages.js';
-import { COMPLETENESS_STATUS_COLOR, criticalIssueFields, sortCompletenessChecks } from '../utils/completeness.js';
+import {
+  COMPLETENESS_STATUS_COLOR,
+  completenessMethodInfo,
+  criticalIssueFields,
+  sortCompletenessChecks,
+} from '../utils/completeness.js';
 
 interface CompletenessChecklistProps {
   report?: IMvpCompletenessReport | null;
@@ -66,11 +71,28 @@ export const CompletenessChecklist: React.FC<CompletenessChecklistProps> = ({ re
   }
 
   const criticalFields = criticalIssueFields(report);
+  const methodInfo = completenessMethodInfo(report);
   const fieldLabel = (field: string) => t(`completeness.fields.${field}` as 'completeness.fields.phone');
 
   return (
     <Card sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5, flexShrink: 0 }}>
       {header}
+
+      {/* Who judged the fields (REV-37) */}
+      {methodInfo && (
+        <Tooltip title={methodInfo.fallbackError ? t('completeness.llmFallback', { error: methodInfo.fallbackError }) : ''}>
+          <Typography
+            variant="caption"
+            color={methodInfo.fallbackError ? 'warning.main' : 'text.secondary'}
+            sx={{ mt: -0.5 }}
+          >
+            {methodInfo.method === 'llm'
+              ? t('completeness.method.llm', { model: methodInfo.model })
+              : t('completeness.method.deterministic')}
+            {methodInfo.fallbackError ? ' ⚠' : ''}
+          </Typography>
+        </Tooltip>
+      )}
 
       {criticalFields.length > 0 ? (
         <Alert severity="error">
@@ -103,7 +125,15 @@ export const CompletenessChecklist: React.FC<CompletenessChecklistProps> = ({ re
               <TableCell sx={{ wordBreak: 'break-word', maxWidth: 160 }}>{check.originalValue || '—'}</TableCell>
               <TableCell sx={{ wordBreak: 'break-word', maxWidth: 160 }}>{check.mvpValue || '—'}</TableCell>
               <TableCell>
-                <Tooltip title={check.note || ''}>
+                <Tooltip
+                  title={[
+                    check.note,
+                    check.judgedBy &&
+                      `${t('completeness.judgedByColumn')}: ${t(`completeness.judgedBy.${check.judgedBy}`)}`,
+                  ]
+                    .filter(Boolean)
+                    .join(' · ')}
+                >
                   <Chip
                     label={t(`completeness.statuses.${check.status}`)}
                     color={COMPLETENESS_STATUS_COLOR[check.status]}
@@ -112,6 +142,11 @@ export const CompletenessChecklist: React.FC<CompletenessChecklistProps> = ({ re
                     sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
                   />
                 </Tooltip>
+                {check.judgedBy && (
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.6rem', mt: 0.3 }}>
+                    {t(`completeness.judgedBy.${check.judgedBy}`)}
+                  </Typography>
+                )}
               </TableCell>
             </TableRow>
           ))}

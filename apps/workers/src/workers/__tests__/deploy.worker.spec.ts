@@ -291,13 +291,15 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     it('checks the rendered HTML and saves the report on the MvpProject before the lead moves to NEEDS_APPROVAL', async () => {
       setUpDeploy();
-      const checkSpy = vi.spyOn(mvpCompletenessService, 'check');
+      const checkSpy = vi.spyOn(mvpCompletenessService, 'assess');
 
       await capturedProcessor!({ id: 'job-completeness', data: { leadId, auditId: 'audit-1' } });
 
       expect(checkSpy).toHaveBeenCalledWith(mvpHtml, expect.objectContaining({ _id: leadId }), expect.objectContaining({ _id: 'audit-1' }));
       const report = savedReport();
       expect(report.status).toBe('verified');
+      // Tests run without an LLM provider, so code judges every field
+      expect(report.method).toBe('deterministic');
       expect(report.checks).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ field: 'phone', status: 'present' }),
@@ -337,7 +339,7 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     it('saves an unverified report and still deploys when the comparison fails', async () => {
       setUpDeploy();
-      vi.spyOn(mvpCompletenessService, 'compare').mockImplementation(() => {
+      vi.spyOn(mvpCompletenessService, 'evaluate').mockImplementation(() => {
         throw new Error('parser exploded');
       });
       vi.spyOn(console, 'error').mockImplementation(() => undefined);

@@ -277,6 +277,7 @@ export const CompletenessCheckSchema = z.object({
   originalValue: z.string().max(500).optional(),
   mvpValue: z.string().max(500).optional(),
   note: z.string().max(500).optional(),
+  judgedBy: z.enum(['llm', 'code']).optional(),
 });
 
 export const MvpCompletenessReportSchema = z.object({
@@ -286,7 +287,61 @@ export const MvpCompletenessReportSchema = z.object({
   checks: z.array(CompletenessCheckSchema).max(50),
   checkedAt: z.union([z.string(), z.date()]),
   error: z.string().max(500).optional(),
+  method: z.enum(['llm', 'deterministic']).optional(),
+  model: z.string().max(100).optional(),
+  llmError: z.string().max(500).optional(),
 });
+
+/**
+ * What the LLM completeness judge returns (REV-37). Every verdict that claims the MVP shows
+ * something carries a verbatim quote from the MVP, which code verifies before accepting it.
+ * The LLM never scores: the score is computed in code.
+ */
+/** Models often send "" or null for "no quote": that means absent, not an invalid answer */
+const optionalJudgeText = (max: number) =>
+  z.preprocess(
+    (v) => (v === null || (typeof v === 'string' && v.trim() === '') ? undefined : v),
+    z.string().trim().max(max).optional(),
+  );
+
+export const CompletenessJudgeOutputSchema = z.object({
+  fields: z
+    .array(
+      z.object({
+        field: CompletenessFieldSchema,
+        status: z.enum(['present', 'missing', 'altered']),
+        mvpQuote: optionalJudgeText(300),
+        reason: optionalJudgeText(300),
+        /** Services and social links are judged one by one */
+        items: z
+          .array(
+            z.object({
+              value: z.string().min(1).max(300),
+              found: z.boolean(),
+              mvpQuote: optionalJudgeText(300),
+            }),
+          )
+          .max(20)
+          .optional(),
+      }),
+    )
+    .max(20),
+  // Entries without a quote can't be verified, so they're dropped rather than failing the answer
+  unsourced: z
+    .array(
+      z.object({
+        field: z.enum(['phone', 'email', 'address']),
+        mvpQuote: optionalJudgeText(300),
+      }),
+    )
+    .max(20)
+    .default([])
+    .transform((items) =>
+      items.filter((i): i is { field: 'phone' | 'email' | 'address'; mvpQuote: string } => Boolean(i.mvpQuote)),
+    ),
+});
+
+export type CompletenessJudgeOutput = z.infer<typeof CompletenessJudgeOutputSchema>;
 
 export type CompletenessCheckDto = z.infer<typeof CompletenessCheckSchema>;
 export type MvpCompletenessReportDto = z.infer<typeof MvpCompletenessReportSchema>;

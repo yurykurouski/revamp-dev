@@ -269,6 +269,16 @@ export const ru: Translation = {
     confirmBody: 'В MVP отсутствуют, изменены или выдуманы важные данные с исходного сайта: {{fields}}. Проверьте превью, прежде чем отправлять его владельцу бизнеса.',
     confirmApprove: 'Всё равно одобрить',
     cancel: 'Отмена',
+    judgedByColumn: 'Кто оценил',
+    method: {
+      llm: 'Оценено ИИ ({{model}}), цитаты проверены кодом',
+      deterministic: 'Проверено кодом',
+    },
+    llmFallback: 'Проверка ИИ не удалась, показан результат кода: {{error}}',
+    judgedBy: {
+      llm: 'ИИ',
+      code: 'Код',
+    },
     fields: {
       businessName: 'Название',
       phone: 'Телефон',
