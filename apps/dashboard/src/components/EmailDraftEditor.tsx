@@ -22,6 +22,8 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { ILeadItem, IAuditDetail } from '../api/client.js';
+import { useTranslation } from 'react-i18next';
+import type { Translation } from '../i18n/locales/en.js';
 
 interface EmailDraftEditorProps {
   lead: ILeadItem;
@@ -32,13 +34,13 @@ interface EmailDraftEditorProps {
   isActionLoading?: boolean;
 }
 
-const TEMPLATE_VARIABLES = [
-  { tag: '{{businessName}}', label: 'Company' },
-  { tag: '{{city}}', label: 'City' },
-  { tag: '{{demoUrl}}', label: 'Demo link' },
-  { tag: '{{score}}', label: 'Score' },
-  { tag: '{{lcpSeconds}}', label: 'LCP speed' },
-  { tag: '{{criticalFlaws}}', label: 'Issues' },
+const TEMPLATE_VARIABLES: Array<keyof Translation['email']['variables']> = [
+  'businessName',
+  'city',
+  'demoUrl',
+  'score',
+  'lcpSeconds',
+  'criticalFlaws',
 ];
 
 export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
@@ -49,6 +51,8 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
   onReject,
   isActionLoading = false,
 }) => {
+  const { t } = useTranslation();
+  // The draft itself is outreach copy for the business owner, so it is not tied to the operator's UI language
   const defaultSubject = `A new mobile website for ${lead.businessName} (higher conversion, faster LCP)`;
   const defaultPreheader = `We built an interactive prototype on a modern Bento stack${lead.city ? ` for ${lead.city}` : ''}`;
   const defaultBody = `Hello,
@@ -73,7 +77,7 @@ Best regards, the Revamp SaaS team`;
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testEmail, setTestEmail] = useState('operator@revamp.io');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('Off-target niche / site closed');
+  const [rejectReason, setRejectReason] = useState(() => t('email.defaultRejectReason'));
   const [successAlert, setSuccessAlert] = useState<string | null>(null);
 
   // Substitute variables for preview
@@ -99,13 +103,13 @@ Best regards, the Revamp SaaS team`;
 
   const handleApproveSubmit = async () => {
     await onApprove({ subject, preheader, body });
-    setSuccessAlert('Lead approved and moved to SCHEDULED!');
+    setSuccessAlert(t('email.approved'));
   };
 
   const handleSendTestSubmit = async () => {
     await onSendTest(testEmail);
     setTestDialogOpen(false);
-    setSuccessAlert(`Test email sent to ${testEmail}`);
+    setSuccessAlert(t('email.testSent', { email: testEmail }));
   };
 
   const handleRejectSubmit = async () => {
@@ -152,39 +156,39 @@ Best regards, the Revamp SaaS team`;
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <MailOutlineIcon color="primary" />
-            Email editor (Outreach Personalizer)
+            {t('email.editorTitle')}
           </Typography>
 
           <TextField
-            label="Subject"
+            label={t('email.subject')}
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             fullWidth
             size="small"
             required
-            helperText="A short, catchy subject line that mentions the business"
+            helperText={t('email.subjectHelper')}
           />
 
           <TextField
-            label="Preheader (preview text)"
+            label={t('email.preheader')}
             value={preheader}
             onChange={(e) => setPreheader(e.target.value)}
             fullWidth
             size="small"
-            helperText="Shown next to the subject in the inbox list"
+            helperText={t('email.preheaderHelper')}
           />
 
           {/* Template variable pills */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-              Insert variable:
+              {t('email.insertVariable')}
             </Typography>
-            {TEMPLATE_VARIABLES.map((v) => (
+            {TEMPLATE_VARIABLES.map((variable) => (
               <Chip
-                key={v.tag}
-                label={v.label}
+                key={variable}
+                label={t(`email.variables.${variable}`)}
                 size="small"
-                onClick={() => handleInsertTag(v.tag)}
+                onClick={() => handleInsertTag(`{{${variable}}}`)}
                 clickable
                 sx={{
                   fontSize: '0.75rem',
@@ -196,7 +200,7 @@ Best regards, the Revamp SaaS team`;
           </Box>
 
           <TextField
-            label="Email body"
+            label={t('email.body')}
             value={body}
             onChange={(e) => setBody(e.target.value)}
             multiline
@@ -216,7 +220,7 @@ Best regards, the Revamp SaaS team`;
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <VisibilityIcon color="action" />
-            Recipient inbox preview
+            {t('email.previewTitle')}
           </Typography>
 
           {/* Email client shell */}
@@ -269,13 +273,13 @@ Best regards, the Revamp SaaS team`;
                       Revamp SaaS &lt;outreach@revampdemo.com&gt;
                     </Typography>
                     <Typography variant="caption" sx={{ color: '#64748B' }}>
-                      To: {lead.phone || 'Business owner'} &lt;info@{lead.domain}&gt;
+                      {t('email.to')} {lead.phone || t('email.businessOwner')} &lt;info@{lead.domain}&gt;
                     </Typography>
                   </Box>
                 </Box>
 
                 <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Just now
+                  {t('email.justNow')}
                 </Typography>
               </Box>
             </Box>
@@ -298,12 +302,12 @@ Best regards, the Revamp SaaS team`;
               {lead.comparisonBannerUrl && (
                 <Box sx={{ my: 1 }}>
                   <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, mb: 0.5, display: 'block' }}>
-                    📎 Attachment: Before / After comparison (1200x630)
+                    {t('email.attachment')}
                   </Typography>
                   <Box
                     component="img"
                     src={lead.comparisonBannerUrl}
-                    alt="Comparison Collage"
+                    alt={t('email.comparisonAlt')}
                     sx={{
                       width: '100%',
                       maxHeight: 180,
@@ -336,7 +340,7 @@ Best regards, the Revamp SaaS team`;
                     },
                   }}
                 >
-                  View the interactive prototype
+                  {t('email.viewPrototype')}
                 </Button>
               </Box>
             </CardContent>
@@ -362,7 +366,7 @@ Best regards, the Revamp SaaS team`;
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Chip
             icon={<CheckCircleOutlineIcon sx={{ fontSize: 16 }} />}
-            label="Shortcut: Cmd + Enter"
+            label={t('email.shortcut')}
             size="small"
             variant="outlined"
             sx={{ fontWeight: 600, color: 'text.secondary' }}
@@ -378,7 +382,7 @@ Best regards, the Revamp SaaS team`;
             disabled={isActionLoading}
             sx={{ fontWeight: 600 }}
           >
-            Reject lead
+            {t('email.reject')}
           </Button>
 
           <Button
@@ -389,7 +393,7 @@ Best regards, the Revamp SaaS team`;
             disabled={isActionLoading}
             sx={{ fontWeight: 600 }}
           >
-            Send a test to myself
+            {t('email.sendTestToMe')}
           </Button>
 
           <Button
@@ -406,20 +410,20 @@ Best regards, the Revamp SaaS team`;
             disabled={isActionLoading}
             sx={{ px: 3, py: 1, fontWeight: 700 }}
           >
-            Approve & send (HITL)
+            {t('email.approve')}
           </Button>
         </Box>
       </Box>
 
       {/* Test Email Dialog */}
       <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)}>
-        <DialogTitle sx={{ fontWeight: 700 }}>Send test email</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>{t('email.testDialogTitle')}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            The email will be sent to your work address for a final layout check before the real send.
+            {t('email.testDialogBody')}
           </Typography>
           <TextField
-            label="Recipient email"
+            label={t('email.recipient')}
             value={testEmail}
             onChange={(e) => setTestEmail(e.target.value)}
             fullWidth
@@ -429,23 +433,23 @@ Best regards, the Revamp SaaS team`;
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTestDialogOpen(false)} color="inherit">
-            Cancel
+            {t('email.cancel')}
           </Button>
           <Button onClick={handleSendTestSubmit} variant="contained" color="primary">
-            Send test
+            {t('email.sendTest')}
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Reject Lead Dialog */}
       <Dialog open={rejectDialogOpen} onClose={() => setRejectDialogOpen(false)}>
-        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>Reject lead</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>{t('email.rejectDialogTitle')}</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Give a reason. The lead will be archived as REJECTED and no outreach will be sent.
+            {t('email.rejectDialogBody')}
           </Typography>
           <TextField
-            label="Rejection reason"
+            label={t('email.rejectReason')}
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             fullWidth
@@ -455,10 +459,10 @@ Best regards, the Revamp SaaS team`;
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setRejectDialogOpen(false)} color="inherit">
-            Cancel
+            {t('email.cancel')}
           </Button>
           <Button onClick={handleRejectSubmit} variant="contained" color="error">
-            Confirm rejection
+            {t('email.confirmReject')}
           </Button>
         </DialogActions>
       </Dialog>

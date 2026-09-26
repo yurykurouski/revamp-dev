@@ -1,6 +1,18 @@
 import { createTheme, Theme } from '@mui/material/styles';
+import { beBY, enUS, plPL, ruRU } from '@mui/material/locale';
+import { beBY as gridBeBY, enUS as gridEnUS, plPL as gridPlPL, ruRU as gridRuRU } from '@mui/x-data-grid/locales';
+import type { AppLanguage } from '../i18n/languages.js';
 
-export const getTheme = (mode: 'light' | 'dark' = 'light'): Theme => {
+// MUI ships no Lithuanian locale, so its built-in component texts stay English there
+const MUI_LOCALES: Record<AppLanguage, [typeof enUS, typeof gridEnUS]> = {
+  en: [enUS, gridEnUS],
+  ru: [ruRU, gridRuRU],
+  be: [beBY, gridBeBY],
+  pl: [plPL, gridPlPL],
+  lt: [enUS, gridEnUS],
+};
+
+export const getTheme = (mode: 'light' | 'dark' = 'light', language: AppLanguage = 'en'): Theme => {
   const isDark = mode === 'dark';
 
   return createTheme({
@@ -121,7 +133,7 @@ export const getTheme = (mode: 'light' | 'dark' = 'light'): Theme => {
         },
       },
     },
-  });
+  }, ...MUI_LOCALES[language]);
 };
 
 export const theme = getTheme('light');

@@ -23,20 +23,13 @@ import { NicheType } from '@revamp/shared-types';
 import { QuickAddLeadSchema } from '@revamp/validation';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useCreateLeadMutation } from '../hooks/useLeads.js';
-
-const NICHES: { value: NicheType; label: string }[] = [
-  { value: 'dental', label: '🦷 Dental' },
-  { value: 'auto', label: '🚗 Auto repair & service' },
-  { value: 'legal', label: '⚖️ Legal services' },
-  { value: 'beauty', label: '💇 Beauty salons & spa' },
-  { value: 'restaurant', label: '🍽️ Restaurants & catering' },
-  { value: 'fitness', label: '🏋️ Fitness & gyms' },
-  { value: 'other', label: '📦 Other local business' },
-];
+import { useTranslation } from 'react-i18next';
+import { NICHES, NICHE_EMOJI } from '../i18n/niches.js';
 
 export const AddLeadModal: React.FC = () => {
   const { isAddModalOpen, closeAddModal } = useLeadFilterStore();
   const createLeadMutation = useCreateLeadMutation();
+  const { t } = useTranslation();
 
   const [url, setUrl] = useState('');
   const [niche, setNiche] = useState<NicheType>('other');
@@ -70,7 +63,7 @@ export const AddLeadModal: React.FC = () => {
 
     const validation = QuickAddLeadSchema.safeParse(payload);
     if (!validation.success) {
-      const errorMsg = validation.error.issues[0]?.message || 'Invalid site parameters';
+      const errorMsg = validation.error.issues[0]?.message || t('addLead.invalid');
       setFormError(errorMsg);
       return;
     }
@@ -79,7 +72,7 @@ export const AddLeadModal: React.FC = () => {
       await createLeadMutation.mutateAsync(validation.data);
       handleClose();
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : 'Failed to submit to the server');
+      setFormError(err instanceof Error ? err.message : t('addLead.submitFailed'));
     }
   };
 
@@ -111,10 +104,10 @@ export const AddLeadModal: React.FC = () => {
           </Box>
           <Box>
             <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
-              Add a site to audit
+              {t('addLead.title')}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Runs the Playwright crawler, Vision LLM critique and Bento MVP build automatically
+              {t('addLead.subtitle')}
             </Typography>
           </Box>
         </DialogTitle>
@@ -128,7 +121,7 @@ export const AddLeadModal: React.FC = () => {
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 1 }}>
             <TextField
-              label="Business website URL"
+              label={t('addLead.urlLabel')}
               placeholder="https://example.com"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -143,27 +136,27 @@ export const AddLeadModal: React.FC = () => {
                   </InputAdornment>
                 ),
               }}
-              helperText="Any HTTP/HTTPS link to a real small-business website"
+              helperText={t('addLead.urlHelper')}
             />
 
             <FormControl fullWidth disabled={createLeadMutation.isPending}>
-              <InputLabel id="add-niche-select-label">Industry (niche)</InputLabel>
+              <InputLabel id="add-niche-select-label">{t('addLead.nicheLabel')}</InputLabel>
               <Select
                 labelId="add-niche-select-label"
-                label="Industry (niche)"
+                label={t('addLead.nicheLabel')}
                 value={niche}
                 onChange={(e) => setNiche(e.target.value as NicheType)}
               >
                 {NICHES.map((n) => (
-                  <MenuItem key={n.value} value={n.value}>
-                    {n.label}
+                  <MenuItem key={n} value={n}>
+                    {NICHE_EMOJI[n]} {t(`nichesDetailed.${n}`)}
                   </MenuItem>
                 ))}
               </Select>
             </FormControl>
 
             <TextField
-              label="Owner / operator email (optional)"
+              label={t('addLead.emailLabel')}
               placeholder="contact@business.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -176,7 +169,7 @@ export const AddLeadModal: React.FC = () => {
                   </InputAdornment>
                 ),
               }}
-              helperText="If empty, the crawler extracts the email from the site automatically"
+              helperText={t('addLead.emailHelper')}
             />
           </Box>
         </DialogContent>
@@ -188,7 +181,7 @@ export const AddLeadModal: React.FC = () => {
             disabled={createLeadMutation.isPending}
             sx={{ fontWeight: 600 }}
           >
-            Cancel
+            {t('addLead.cancel')}
           </Button>
           <Button
             type="submit"
@@ -204,7 +197,7 @@ export const AddLeadModal: React.FC = () => {
             }
             sx={{ px: 2.5, py: 1, fontWeight: 700 }}
           >
-            {createLeadMutation.isPending ? 'Starting audit...' : 'Start audit'}
+            {createLeadMutation.isPending ? t('addLead.starting') : t('addLead.start')}
           </Button>
         </DialogActions>
       </form>

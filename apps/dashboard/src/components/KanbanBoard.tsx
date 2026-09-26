@@ -22,11 +22,15 @@ import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { useGenerateMvpMutation } from '../hooks/useLeads.js';
+import { useTranslation } from 'react-i18next';
+import type { Translation } from '../i18n/locales/en.js';
+import { useLanguageStore } from '../store/useLanguageStore.js';
+import { formatDate } from '../i18n/languages.js';
+import { isDashboardNiche } from '../i18n/niches.js';
 
 interface KanbanColumnConfig {
-  id: string;
+  id: keyof Translation['kanban']['columns'];
   status: LeadStatus | LeadStatus[];
-  title: string;
   icon: React.ReactNode;
   color: string;
   bgColor: string;
@@ -36,7 +40,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'queued',
     status: ['QUEUED', 'PENDING', 'AUDITING', 'AUDITED', 'GENERATING'],
-    title: 'Processing',
     icon: <PendingActionsIcon sx={{ fontSize: 18 }} />,
     color: '#64748B',
     bgColor: 'rgba(100, 116, 139, 0.08)',
@@ -44,7 +47,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'needs_approval',
     status: ['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'],
-    title: 'Awaiting review',
     icon: <AutoAwesomeIcon sx={{ fontSize: 18 }} />,
     color: '#F59E0B',
     bgColor: 'rgba(245, 158, 11, 0.08)',
@@ -52,7 +54,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'scheduled',
     status: ['SCHEDULED', 'APPROVED'],
-    title: 'Scheduled',
     icon: <ScheduleIcon sx={{ fontSize: 18 }} />,
     color: '#6366F1',
     bgColor: 'rgba(99, 102, 241, 0.08)',
@@ -60,7 +61,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'sent',
     status: ['SENT', 'DISPATCHED'],
-    title: 'Sent',
     icon: <SendIcon sx={{ fontSize: 18 }} />,
     color: '#3B82F6',
     bgColor: 'rgba(59, 130, 246, 0.08)',
@@ -68,7 +68,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'opened',
     status: ['OPENED'],
-    title: 'Opened',
     icon: <MarkEmailReadIcon sx={{ fontSize: 18 }} />,
     color: '#8B5CF6',
     bgColor: 'rgba(139, 92, 246, 0.08)',
@@ -76,7 +75,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'clicked',
     status: ['CLICKED'],
-    title: 'Viewing demo',
     icon: <TouchAppIcon sx={{ fontSize: 18 }} />,
     color: '#10B981',
     bgColor: 'rgba(16, 185, 129, 0.08)',
@@ -84,7 +82,6 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'engaged',
     status: ['ENGAGED', 'REPLIED'],
-    title: 'Engaged (30s+ / CTA)',
     icon: <WhatshotIcon sx={{ fontSize: 18 }} />,
     color: '#EC4899',
     bgColor: 'rgba(236, 72, 153, 0.08)',
@@ -92,22 +89,11 @@ const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'rejected',
     status: ['REJECTED', 'UNSUBSCRIBED'],
-    title: 'Rejected',
     icon: <BlockIcon sx={{ fontSize: 18 }} />,
     color: '#EF4444',
     bgColor: 'rgba(239, 68, 68, 0.08)',
   },
 ];
-
-const NICHE_LABELS: Record<string, string> = {
-  dental: 'Dental',
-  auto: 'Auto repair',
-  legal: 'Legal',
-  beauty: 'Beauty salon',
-  restaurant: 'Restaurant',
-  fitness: 'Fitness',
-  other: 'Business',
-};
 
 interface KanbanBoardProps {
   leads: ILeadItem[];
@@ -116,6 +102,8 @@ interface KanbanBoardProps {
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
   const { openModal } = useHitlModalStore();
   const generateMvpMutation = useGenerateMvpMutation();
+  const { t } = useTranslation();
+  const { language } = useLanguageStore();
 
   return (
     <Box
@@ -167,7 +155,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                   {col.icon}
                 </Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                  {col.title}
+                  {t(`kanban.columns.${col.id}`)}
                 </Typography>
               </Box>
               <Chip
@@ -197,7 +185,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                     borderRadius: 2,
                   }}
                 >
-                  No leads in this status
+                  {t('kanban.empty')}
                 </Box>
               ) : (
                 columnLeads.map((lead) => (
@@ -241,7 +229,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           >
                             {lead.domain}
                           </Typography>
-                          <Tooltip title="Open website">
+                          <Tooltip title={t('kanban.openWebsite')}>
                             <IconButton
                               size="small"
                               href={lead.originalUrl}
@@ -283,7 +271,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                     {/* Metadata chips */}
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                       <Chip
-                        label={NICHE_LABELS[lead.niche] || lead.niche}
+                        label={isDashboardNiche(lead.niche) ? t(`niches.${lead.niche}`) : lead.niche}
                         size="small"
                         variant="outlined"
                         sx={{ fontSize: '0.72rem', height: 20 }}
@@ -301,7 +289,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       <Box
                         component="img"
                         src={lead.comparisonBannerUrl}
-                        alt="Comparison Banner"
+                        alt={t('kanban.comparisonBanner')}
                         sx={{
                           width: '100%',
                           height: 70,
@@ -325,7 +313,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       }}
                     >
                       <Typography variant="caption" color="text.secondary">
-                        {new Date(lead.createdAt).toLocaleDateString('en-GB', {
+                        {formatDate(lead.createdAt, language, {
                           day: 'numeric',
                           month: 'short',
                         })}
@@ -346,13 +334,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                             color: '#000000',
                           }}
                         >
-                          HITL Review
+                          {t('kanban.hitlReview')}
                         </Button>
                       )}
 
                       {['QUEUED', 'PENDING'].includes(lead.status) && (
                         <Chip
-                          label="Queued"
+                          label={t('kanban.queued')}
                           size="small"
                           sx={{
                             fontSize: '0.7rem',
@@ -364,7 +352,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
 
                       {lead.status === 'AUDITING' && (
                         <Chip
-                          label="🔍 Auditing site..."
+                          label={t('kanban.auditing')}
                           size="small"
                           color="info"
                           variant="outlined"
@@ -399,13 +387,13 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                             px: 1.2,
                           }}
                         >
-                          Generate MVP
+                          {t('kanban.generateMvp')}
                         </Button>
                       )}
 
                       {lead.status === 'GENERATING' && (
                         <Chip
-                          label="✨ Generating MVP..."
+                          label={t('kanban.generating')}
                           size="small"
                           color="warning"
                           variant="outlined"
@@ -419,7 +407,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
 
                       {['REJECTED', 'UNSUBSCRIBED'].includes(lead.status) && (
                         <Chip
-                          label="✕ Rejected"
+                          label={t('kanban.rejected')}
                           size="small"
                           color="error"
                           variant="outlined"
@@ -441,7 +429,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           rel="noopener noreferrer"
                           sx={{ fontSize: '0.75rem', py: 0.3, px: 1 }}
                         >
-                          Open MVP
+                          {t('kanban.openMvp')}
                         </Button>
                       )}
                     </Box>

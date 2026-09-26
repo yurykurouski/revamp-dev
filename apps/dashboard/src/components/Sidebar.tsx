@@ -16,18 +16,22 @@ import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import BarChartIcon from '@mui/icons-material/BarChart';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import { useTranslation } from 'react-i18next';
+import type { Translation } from '../i18n/locales/en.js';
 
 const DRAWER_WIDTH = 240;
 
-const menuItems = [
-  { text: 'Leads & Pipeline', icon: <DashboardIcon />, active: true },
-  { text: 'Site Audits', icon: <AssessmentIcon /> },
-  { text: 'Outreach (HITL)', icon: <MarkEmailReadIcon />, badge: '3' },
-  { text: 'Analytics', icon: <BarChartIcon /> },
-  { text: 'Settings', icon: <SettingsIcon /> },
+const menuItems: Array<{ key: keyof Translation['sidebar']; icon: React.ReactNode; active?: boolean; badge?: string }> = [
+  { key: 'leads', icon: <DashboardIcon />, active: true },
+  { key: 'audits', icon: <AssessmentIcon /> },
+  { key: 'outreach', icon: <MarkEmailReadIcon />, badge: '3' },
+  { key: 'analytics', icon: <BarChartIcon /> },
+  { key: 'settings', icon: <SettingsIcon /> },
 ];
 
 export const Sidebar: React.FC = () => {
+  const { t } = useTranslation();
+
   return (
     <Drawer
       variant="permanent"
@@ -64,7 +68,7 @@ export const Sidebar: React.FC = () => {
 
       <List sx={{ px: 1.5 }}>
         {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+          <ListItem key={item.key} disablePadding sx={{ mb: 0.5 }}>
             <ListItemButton
               sx={{
                 borderRadius: '8px',
@@ -85,7 +89,7 @@ export const Sidebar: React.FC = () => {
                 {item.icon}
               </ListItemIcon>
               <ListItemText
-                primary={item.text}
+                primary={t(`sidebar.${item.key}`)}
                 primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: item.active ? 600 : 500 }}
               />
               {item.badge && (
