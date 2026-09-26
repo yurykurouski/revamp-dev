@@ -259,7 +259,7 @@ describe('Zustand Dashboard Stores', () => {
 
   describe('useDiscoveryStore (REV-27)', () => {
     beforeEach(() => {
-      useDiscoveryStore.setState({ isOpen: false, activeJobId: null });
+      useDiscoveryStore.setState({ isOpen: false, activeJobId: null, resultsSeen: false });
     });
 
     it('should start closed with no active job', () => {
@@ -289,6 +289,27 @@ describe('Zustand Dashboard Stores', () => {
       useDiscoveryStore.getState().startNewSearch();
       expect(useDiscoveryStore.getState().activeJobId).toBeNull();
       expect(useDiscoveryStore.getState().isOpen).toBe(true);
+    });
+
+    it('should track whether the operator has seen the finished job (REV-40)', () => {
+      expect(useDiscoveryStore.getState().resultsSeen).toBe(false);
+      useDiscoveryStore.getState().setActiveJob('disc-7');
+      useDiscoveryStore.getState().markResultsSeen();
+      expect(useDiscoveryStore.getState().resultsSeen).toBe(true);
+      // Closing the modal keeps the job and the seen flag
+      useDiscoveryStore.getState().close();
+      expect(useDiscoveryStore.getState()).toMatchObject({ activeJobId: 'disc-7', resultsSeen: true });
+    });
+
+    it('should reset the seen flag for a new job and on a new search (REV-40)', () => {
+      useDiscoveryStore.getState().setActiveJob('disc-7');
+      useDiscoveryStore.getState().markResultsSeen();
+      useDiscoveryStore.getState().setActiveJob('disc-8');
+      expect(useDiscoveryStore.getState().resultsSeen).toBe(false);
+
+      useDiscoveryStore.getState().markResultsSeen();
+      useDiscoveryStore.getState().startNewSearch();
+      expect(useDiscoveryStore.getState()).toMatchObject({ activeJobId: null, resultsSeen: false });
     });
   });
 });
