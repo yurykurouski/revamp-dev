@@ -43,6 +43,8 @@ import {
 } from '../hooks/useLeads.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
 import { EmailDraftEditor } from './EmailDraftEditor.js';
+import { useTranslation } from 'react-i18next';
+import { isDashboardNiche } from '../i18n/niches.js';
 
 export const SideBySideInspectorModal: React.FC = () => {
   const {
@@ -59,6 +61,7 @@ export const SideBySideInspectorModal: React.FC = () => {
   } = useHitlModalStore();
 
   const { data: leadsData } = useLeadsQuery();
+  const { t } = useTranslation();
   const currentLead = leadsData?.leads.find((l) => l.id === selectedLeadId);
 
   const { data: audit, isLoading: isAuditLoading } = useAuditQuery(selectedAuditId);
@@ -173,14 +176,14 @@ export const SideBySideInspectorModal: React.FC = () => {
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
-                {currentLead?.businessName || 'Site inspector'}
+                {currentLead?.businessName || t('inspector.fallbackTitle')}
               </Typography>
               {currentLead?.niche && (
                 <Chip
-                  label={currentLead.niche}
+                  label={isDashboardNiche(currentLead.niche) ? t(`niches.${currentLead.niche}`) : currentLead.niche}
                   size="small"
                   variant="outlined"
-                  sx={{ textTransform: 'capitalize', fontWeight: 600 }}
+                  sx={{ fontWeight: 600 }}
                 />
               )}
               {currentLead?.city && (
@@ -190,7 +193,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               )}
             </Box>
             <Typography variant="caption" color="text.secondary">
-              Original: {currentLead?.originalUrl || currentLead?.domain}
+              {t('inspector.original', { url: currentLead?.originalUrl || currentLead?.domain })}
             </Typography>
           </Box>
         </Box>
@@ -215,13 +218,13 @@ export const SideBySideInspectorModal: React.FC = () => {
             <Tab
               icon={<VisibilityIcon sx={{ fontSize: 18 }} />}
               iconPosition="start"
-              label="Site inspector (split view)"
+              label={t('inspector.tabInspector')}
               value="inspector"
             />
             <Tab
               icon={<MailOutlineIcon sx={{ fontSize: 18 }} />}
               iconPosition="start"
-              label="Email draft & approval (HITL gate)"
+              label={t('inspector.tabEmail')}
               value="email_editor"
             />
           </Tabs>
@@ -231,7 +234,7 @@ export const SideBySideInspectorModal: React.FC = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', gap: 1 }}>
             <Chip
-              label={`Original score: ${currentLead?.totalScore ?? 42}/100`}
+              label={t('inspector.originalScore', { score: currentLead?.totalScore ?? 42 })}
               size="small"
               sx={{
                 backgroundColor: 'error.light',
@@ -242,7 +245,7 @@ export const SideBySideInspectorModal: React.FC = () => {
             <ArrowForwardIcon sx={{ color: 'text.secondary', fontSize: 16 }} />
             <Chip
               icon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
-              label="Bento MVP: 96/100"
+              label={t('inspector.mvpScore', { score: 96 })}
               size="small"
               sx={{
                 backgroundColor: 'success.light',
@@ -251,7 +254,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               }}
             />
           </Box>
-          <Tooltip title="Close inspector">
+          <Tooltip title={t('inspector.close')}>
             <IconButton onClick={closeModal} size="small" sx={{ p: 1 }}>
               <CloseIcon />
             </IconButton>
@@ -289,7 +292,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               {/* Header with Screenshot Mode Tabs */}
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Typography variant="subtitle1" sx={{ fontWeight: 700, color: 'text.primary' }}>
-                  🔍 Original site & issues
+                  {t('inspector.originalAndIssues')}
                 </Typography>
 
                 <Tabs
@@ -306,8 +309,8 @@ export const SideBySideInspectorModal: React.FC = () => {
                     },
                   }}
                 >
-                  <Tab label="Desktop (1440px)" value="desktop" />
-                  <Tab label="Mobile (375px)" value="mobile" />
+                  <Tab label={t('inspector.desktop')} value="desktop" />
+                  <Tab label={t('inspector.mobile')} value="mobile" />
                 </Tabs>
               </Box>
 
@@ -317,10 +320,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                   <SpeedIcon sx={{ color: '#EF4444', fontSize: 24 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      LCP (speed)
+                      {t('inspector.lcp')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#EF4444' }}>
-                      {audit?.lcpSeconds ? `${audit.lcpSeconds.toFixed(1)}s` : '3.4s'}
+                      {t('inspector.seconds', { value: audit?.lcpSeconds ? audit.lcpSeconds.toFixed(1) : '3.4' })}
                     </Typography>
                   </Box>
                 </Card>
@@ -329,10 +332,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                   <AccessibilityNewIcon sx={{ color: '#F59E0B', fontSize: 24 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      a11y issues
+                      {t('inspector.a11yIssues')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#F59E0B' }}>
-                      {audit?.a11yViolationsCount ?? 14} violations
+                      {t('inspector.violations', { count: audit?.a11yViolationsCount ?? 14 })}
                     </Typography>
                   </Box>
                 </Card>
@@ -341,7 +344,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   <SmartphoneIcon sx={{ color: '#6366F1', fontSize: 24 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      Mobile-friendliness
+                      {t('inspector.mobileFriendliness')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#6366F1' }}>
                       {audit?.mobileFriendlinessRating ?? 45}/100
@@ -354,7 +357,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               <Box>
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
                   <Typography variant="caption" color="text.secondary">
-                    {isFullPageScreenshot ? 'Full-page capture · scroll to view the whole site' : 'First screen only'}
+                    {isFullPageScreenshot ? t('inspector.fullPage') : t('inspector.firstScreen')}
                   </Typography>
                   <Button
                     size="small"
@@ -364,7 +367,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                     endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
                     sx={{ fontSize: '0.75rem', textTransform: 'none', fontWeight: 600 }}
                   >
-                    Open full size
+                    {t('inspector.openFullSize')}
                   </Button>
                 </Box>
                 <Box
@@ -393,7 +396,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                     <Box
                       component="img"
                       src={originalScreenshotUrl}
-                      alt={`Original website ${originalScreenTab} ${isFullPageScreenshot ? 'full-page ' : ''}screenshot`}
+                      alt={t('inspector.screenshotAlt', { device: t(`inspector.${originalScreenTab}`) })}
                       loading="lazy"
                       sx={{
                         width: '100%',
@@ -414,7 +417,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <ErrorOutlineIcon sx={{ color: '#EF4444', fontSize: 18 }} />
-                  3 critical flaws (Design Critique Agent)
+                  {t('inspector.criticalFlaws')}
                 </Typography>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -431,10 +434,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                         {idx + 1}. {flaw.title}
                       </Typography>
                       <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
-                        <strong>Impact:</strong> {flaw.impact}
+                        <strong>{t('inspector.impact')}</strong> {flaw.impact}
                       </Typography>
                       <Typography variant="caption" sx={{ color: 'primary.main', display: 'block' }}>
-                        <strong>Fix:</strong> {flaw.recommendation}
+                        <strong>{t('inspector.fix')}</strong> {flaw.recommendation}
                       </Typography>
                     </Card>
                   ))}
@@ -445,7 +448,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
                   <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 18 }} />
-                  Quick wins in the new prototype
+                  {t('inspector.quickWins')}
                 </Typography>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
@@ -489,7 +492,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                   <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
-                    Interactive MVP:
+                    {t('inspector.interactiveMvp')}
                   </Typography>
 
                   {/* Device Breakpoint Switcher */}
@@ -500,7 +503,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       startIcon={<SmartphoneIcon sx={{ fontSize: 16 }} />}
                       sx={{ px: 1.5 }}
                     >
-                      Mobile (375px)
+                      {t('inspector.bpMobile')}
                     </Button>
                     <Button
                       variant={activeBreakpoint === 'tablet' ? 'contained' : 'outlined'}
@@ -508,7 +511,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       startIcon={<TabletMacIcon sx={{ fontSize: 16 }} />}
                       sx={{ px: 1.5 }}
                     >
-                      Tablet (768px)
+                      {t('inspector.bpTablet')}
                     </Button>
                     <Button
                       variant={activeBreakpoint === 'desktop' ? 'contained' : 'outlined'}
@@ -516,7 +519,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       startIcon={<LaptopIcon sx={{ fontSize: 16 }} />}
                       sx={{ px: 1.5 }}
                     >
-                      Desktop (100%)
+                      {t('inspector.bpDesktop')}
                     </Button>
                   </ButtonGroup>
                 </Box>
@@ -524,7 +527,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                   <Chip
                     icon={<SecurityIcon sx={{ fontSize: 14 }} />}
-                    label="Sandbox Active"
+                    label={t('inspector.sandbox')}
                     size="small"
                     color="success"
                     variant="outlined"
@@ -532,7 +535,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   />
 
                   {previewUrl ? (
-                    <Tooltip title="Open the prototype in a new tab">
+                    <Tooltip title={t('inspector.openPrototype')}>
                       <IconButton
                         size="small"
                         href={previewUrl}
@@ -545,7 +548,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       </IconButton>
                     </Tooltip>
                   ) : (
-                    <Tooltip title="Prototype is being built...">
+                    <Tooltip title={t('inspector.building')}>
                       <span>
                         <IconButton size="small" disabled sx={{ p: 0.8 }}>
                           <OpenInNewIcon sx={{ fontSize: 18 }} />
@@ -638,7 +641,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                     <iframe
                       ref={iframeRef}
                       src={previewUrl}
-                      title="MVP Interactive Sandbox Preview"
+                      title={t('inspector.iframeTitle')}
                       sandbox="allow-scripts allow-same-origin"
                       style={{
                         width: '100%',
@@ -663,10 +666,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                     >
                       <CircularProgress size={40} />
                       <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                        Generating and deploying the interactive MVP...
+                        {t('inspector.generatingTitle')}
                       </Typography>
                       <Typography variant="caption" color="text.secondary">
-                        A background worker is compiling the Bento layout and uploading the bundle to isolated MinIO storage.
+                        {t('inspector.generatingBody')}
                       </Typography>
                     </Box>
                   )}
@@ -707,14 +710,14 @@ export const SideBySideInspectorModal: React.FC = () => {
         }}
       >
         <Typography variant="caption" color="text.secondary">
-          🔒 Human-in-the-loop mode: outreach is blocked until the operator explicitly approves
+          {t('inspector.hitlNotice')}
         </Typography>
 
         <Box sx={{ display: 'flex', gap: 1.5 }}>
           {activeTab === 'inspector' ? (
             <>
               <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
-                Close inspector
+                {t('inspector.close')}
               </Button>
               <Button
                 variant="contained"
@@ -723,7 +726,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                 onClick={() => setActiveTab('email_editor')}
                 sx={{ px: 2.5, fontWeight: 700 }}
               >
-                Go to approval & sending
+                {t('inspector.goToApproval')}
               </Button>
             </>
           ) : (
@@ -734,10 +737,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                 color="inherit"
                 sx={{ fontWeight: 600 }}
               >
-                Back to site inspector
+                {t('inspector.backToInspector')}
               </Button>
               <Button onClick={closeModal} color="inherit" sx={{ fontWeight: 600 }}>
-                Close
+                {t('inspector.closeButton')}
               </Button>
             </>
           )}

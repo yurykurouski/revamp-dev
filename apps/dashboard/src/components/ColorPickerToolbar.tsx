@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import { useTranslation } from 'react-i18next';
 
 const COLOR_PRESETS = [
   { name: 'Indigo', hex: '#4F46E5' },
@@ -17,7 +18,7 @@ const COLOR_PRESETS = [
   { name: 'Rose', hex: '#E11D48' },
   { name: 'Blue', hex: '#2563EB' },
   { name: 'Slate', hex: '#334155' },
-];
+] as const;
 
 interface ColorPickerToolbarProps {
   currentPrimary: string;
@@ -32,6 +33,8 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
   onColorChange,
   onReset,
 }) => {
+  const { t } = useTranslation();
+
   return (
     <Box
       sx={{
@@ -49,7 +52,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
         <PaletteIcon sx={{ fontSize: 18, color: 'primary.main' }} />
         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.primary' }}>
-          Brand palette:
+          {t('colorPicker.brandPalette')}
         </Typography>
       </Box>
 
@@ -58,7 +61,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
         {COLOR_PRESETS.map((preset) => {
           const isSelected = currentPrimary.toLowerCase() === preset.hex.toLowerCase();
           return (
-            <Tooltip key={preset.hex} title={preset.name}>
+            <Tooltip key={preset.hex} title={t(`colorPicker.presets.${preset.name}`)}>
               <Box
                 onClick={() => onColorChange(preset.hex)}
                 sx={{
@@ -97,7 +100,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
             cursor: 'pointer',
             backgroundColor: 'transparent',
           }}
-          title="Pick a custom HEX color"
+          title={t('colorPicker.custom')}
         />
         <Typography
           variant="caption"
@@ -114,7 +117,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
 
       {/* Reset button if changed */}
       {originalPrimary && originalPrimary.toLowerCase() !== currentPrimary.toLowerCase() && (
-        <Tooltip title={`Restore original color (${originalPrimary})`}>
+        <Tooltip title={t('colorPicker.restore', { color: originalPrimary })}>
           <Button
             size="small"
             variant="text"
@@ -123,7 +126,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
             onClick={onReset}
             sx={{ fontSize: '0.75rem', py: 0.2, px: 1, color: 'text.secondary' }}
           >
-            Reset
+            {t('colorPicker.reset')}
           </Button>
         </Tooltip>
       )}

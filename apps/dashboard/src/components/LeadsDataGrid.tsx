@@ -8,38 +8,34 @@ import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
+import { useTranslation } from 'react-i18next';
+import type { Translation } from '../i18n/locales/en.js';
+import { useLanguageStore } from '../store/useLanguageStore.js';
+import { formatDate } from '../i18n/languages.js';
+import { NICHE_EMOJI, isDashboardNiche } from '../i18n/niches.js';
 
-const STATUS_CONFIG: Partial<
-  Record<
-    LeadStatus,
-    { label: string; color: 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' }
-  >
-> = {
-  QUEUED: { label: 'Queued', color: 'default' },
-  AUDITING: { label: 'Auditing...', color: 'info' },
-  AUDITED: { label: 'Audited', color: 'info' },
-  GENERATING: { label: 'Generating...', color: 'primary' },
-  NEEDS_APPROVAL: { label: 'Awaiting review', color: 'warning' },
-  APPROVED: { label: 'Approved', color: 'primary' },
-  SCHEDULED: { label: 'Scheduled', color: 'primary' },
-  DISPATCHED: { label: 'Dispatching', color: 'info' },
-  SENT: { label: 'Sent', color: 'info' },
-  OPENED: { label: 'Opened', color: 'secondary' },
-  CLICKED: { label: 'Link clicked', color: 'success' },
-  ENGAGED: { label: 'Engaged (30s+ / CTA)', color: 'secondary' },
-  REPLIED: { label: 'Replied', color: 'success' },
-  REJECTED: { label: 'Rejected', color: 'error' },
+type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+const STATUS_COLORS: Record<keyof Translation['statuses'], ChipColor> = {
+  QUEUED: 'default',
+  AUDITING: 'info',
+  AUDITED: 'info',
+  GENERATING: 'primary',
+  NEEDS_APPROVAL: 'warning',
+  APPROVED: 'primary',
+  SCHEDULED: 'primary',
+  DISPATCHED: 'info',
+  SENT: 'info',
+  OPENED: 'secondary',
+  CLICKED: 'success',
+  ENGAGED: 'secondary',
+  REPLIED: 'success',
+  REJECTED: 'error',
 };
 
-const NICHE_LABELS: Record<string, string> = {
-  dental: '🦷 Dental',
-  auto: '🚗 Auto repair',
-  legal: '⚖️ Legal',
-  beauty: '💇 Beauty salon',
-  restaurant: '🍽️ Restaurant',
-  fitness: '🏋️ Fitness',
-  other: '📦 Business',
-};
+function isLabelledStatus(status: LeadStatus): status is keyof typeof STATUS_COLORS {
+  return Object.prototype.hasOwnProperty.call(STATUS_COLORS, status);
+}
 
 interface LeadsDataGridProps {
   leads: ILeadItem[];
@@ -49,11 +45,13 @@ interface LeadsDataGridProps {
 export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }) => {
   const { openModal } = useHitlModalStore();
   const { page, pageSize, setPage, setPageSize } = useLeadFilterStore();
+  const { t } = useTranslation();
+  const { language } = useLanguageStore();
 
   const columns: GridColDef<ILeadItem>[] = [
     {
       field: 'businessName',
-      headerName: 'Company & website',
+      headerName: t('grid.company'),
       flex: 1.5,
       minWidth: 240,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
@@ -65,7 +63,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
               {params.row.domain}
             </Typography>
-            <Tooltip title="Open original website">
+            <Tooltip title={t('grid.openOriginal')}>
               <IconButton
                 size="small"
                 href={params.row.originalUrl}
@@ -82,11 +80,15 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'niche',
-      headerName: 'Niche',
+      headerName: t('grid.niche'),
       width: 160,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Chip
-          label={NICHE_LABELS[params.row.niche] || params.row.niche}
+          label={
+            isDashboardNiche(params.row.niche)
+              ? `${NICHE_EMOJI[params.row.niche]} ${t(`niches.${params.row.niche}`)}`
+              : params.row.niche
+          }
           size="small"
           variant="outlined"
           sx={{ fontWeight: 500, fontSize: '0.75rem' }}
@@ -95,13 +97,13 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'status',
-      headerName: 'Pipeline status',
+      headerName: t('grid.status'),
       width: 170,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
-        const conf = STATUS_CONFIG[params.row.status] || {
-          label: params.row.status,
-          color: 'default',
-        };
+        const status = params.row.status;
+        const conf = isLabelledStatus(status)
+          ? { label: t(`statuses.${status}`), color: STATUS_COLORS[status] }
+          : { label: status, color: 'default' as const };
         return (
           <Chip
             label={conf.label}
@@ -114,7 +116,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'totalScore',
-      headerName: 'Score',
+      headerName: t('grid.score'),
       width: 110,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
         const score = params.row.totalScore;
@@ -142,7 +144,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'city',
-      headerName: 'City',
+      headerName: t('grid.city'),
       width: 140,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Typography variant="body2" color="text.secondary">
@@ -152,11 +154,11 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'createdAt',
-      headerName: 'Date added',
+      headerName: t('grid.dateAdded'),
       width: 140,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Typography variant="body2" color="text.secondary">
-          {new Date(params.row.createdAt).toLocaleDateString('en-GB', {
+          {formatDate(params.row.createdAt, language, {
             day: '2-digit',
             month: '2-digit',
             year: 'numeric',
@@ -166,7 +168,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     },
     {
       field: 'actions',
-      headerName: 'Actions',
+      headerName: t('grid.actions'),
       width: 180,
       sortable: false,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
@@ -188,7 +190,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                   color: '#000000',
                 }}
               >
-                HITL Review
+                {t('grid.hitlReview')}
               </Button>
             ) : params.row.previewUrl ? (
               <Button
@@ -201,11 +203,11 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                 rel="noopener noreferrer"
                 sx={{ fontSize: '0.75rem', py: 0.4, px: 1.2 }}
               >
-                MVP demo
+                {t('grid.mvpDemo')}
               </Button>
             ) : (
               <Typography variant="caption" color="text.secondary">
-                Processing...
+                {t('grid.processing')}
               </Typography>
             )}
           </Box>

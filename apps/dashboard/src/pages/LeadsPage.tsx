@@ -27,6 +27,8 @@ import { LeadsDataGrid } from '../components/LeadsDataGrid.js';
 import { AddLeadModal } from '../components/AddLeadModal.js';
 import { SideBySideInspectorModal } from '../components/SideBySideInspectorModal.js';
 import { LeadStatus, NicheType } from '@revamp/shared-types';
+import { useTranslation } from 'react-i18next';
+import { NICHES, NICHE_EMOJI } from '../i18n/niches.js';
 
 export const LeadsPage: React.FC = () => {
   const {
@@ -41,6 +43,7 @@ export const LeadsPage: React.FC = () => {
   } = useLeadFilterStore();
 
   const { data, isLoading, isError } = useLeadsQuery();
+  const { t } = useTranslation();
 
   const leads = data?.leads ?? [];
   const kpi = data?.kpi ?? {
@@ -60,7 +63,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Total leads in pipeline
+                  {t('leadsPage.totalLeads')}
                 </Typography>
                 <CheckCircleOutlineIcon sx={{ color: 'primary.main', fontSize: 22 }} />
               </Box>
@@ -76,7 +79,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Awaiting approval (HITL)
+                  {t('leadsPage.awaitingApproval')}
                 </Typography>
                 <PendingActionsIcon sx={{ color: '#F59E0B', fontSize: 22 }} />
               </Box>
@@ -92,7 +95,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Emails sent
+                  {t('leadsPage.emailsSent')}
                 </Typography>
                 <SendIcon sx={{ color: '#10B981', fontSize: 22 }} />
               </Box>
@@ -108,7 +111,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Viewed demo (Engaged)
+                  {t('leadsPage.engaged')}
                 </Typography>
                 <VisibilityIcon sx={{ color: '#06B6D4', fontSize: 22 }} />
               </Box>
@@ -124,7 +127,7 @@ export const LeadsPage: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
-            placeholder="Search by website, name or city..."
+            placeholder={t('leadsPage.searchPlaceholder')}
             size="small"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -139,39 +142,37 @@ export const LeadsPage: React.FC = () => {
           />
 
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 } }}>
-            <InputLabel id="status-select-label">Pipeline status</InputLabel>
+            <InputLabel id="status-select-label">{t('leadsPage.statusLabel')}</InputLabel>
             <Select
               labelId="status-select-label"
-              label="Pipeline status"
+              label={t('leadsPage.statusLabel')}
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value as LeadStatus | 'ALL')}
             >
-              <MenuItem value="ALL">All statuses</MenuItem>
-              <MenuItem value="QUEUED">Queued</MenuItem>
-              <MenuItem value="NEEDS_APPROVAL">Awaiting review</MenuItem>
-              <MenuItem value="SCHEDULED">Scheduled</MenuItem>
-              <MenuItem value="SENT">Sent</MenuItem>
-              <MenuItem value="OPENED">Opened</MenuItem>
-              <MenuItem value="CLICKED">Viewing demo</MenuItem>
+              <MenuItem value="ALL">{t('leadsPage.allStatuses')}</MenuItem>
+              <MenuItem value="QUEUED">{t('statuses.QUEUED')}</MenuItem>
+              <MenuItem value="NEEDS_APPROVAL">{t('statuses.NEEDS_APPROVAL')}</MenuItem>
+              <MenuItem value="SCHEDULED">{t('statuses.SCHEDULED')}</MenuItem>
+              <MenuItem value="SENT">{t('statuses.SENT')}</MenuItem>
+              <MenuItem value="OPENED">{t('statuses.OPENED')}</MenuItem>
+              <MenuItem value="CLICKED">{t('leadsPage.viewingDemo')}</MenuItem>
             </Select>
           </FormControl>
 
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 190 } }}>
-            <InputLabel id="niche-select-label">Business niche</InputLabel>
+            <InputLabel id="niche-select-label">{t('leadsPage.nicheLabel')}</InputLabel>
             <Select
               labelId="niche-select-label"
-              label="Business niche"
+              label={t('leadsPage.nicheLabel')}
               value={selectedNiche}
               onChange={(e) => setSelectedNiche(e.target.value as NicheType | 'ALL')}
             >
-              <MenuItem value="ALL">All niches</MenuItem>
-              <MenuItem value="dental">🦷 Dental</MenuItem>
-              <MenuItem value="auto">🚗 Auto repair</MenuItem>
-              <MenuItem value="legal">⚖️ Legal</MenuItem>
-              <MenuItem value="beauty">💇 Beauty salons</MenuItem>
-              <MenuItem value="restaurant">🍽️ Restaurants</MenuItem>
-              <MenuItem value="fitness">🏋️ Fitness</MenuItem>
-              <MenuItem value="other">📦 Other business</MenuItem>
+              <MenuItem value="ALL">{t('nichesPlural.all')}</MenuItem>
+              {NICHES.map((niche) => (
+                <MenuItem key={niche} value={niche}>
+                  {NICHE_EMOJI[niche]} {t(`nichesPlural.${niche}`)}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
 
@@ -184,14 +185,14 @@ export const LeadsPage: React.FC = () => {
               onClick={resetFilters}
               sx={{ color: 'text.secondary' }}
             >
-              Reset
+              {t('leadsPage.reset')}
             </Button>
           )}
 
           <Box sx={{ flexGrow: 1 }} />
 
           <Typography variant="body2" color="text.secondary">
-            Found: <strong>{leads.length}</strong>
+            {t('leadsPage.found')} <strong>{leads.length}</strong>
           </Typography>
         </CardContent>
       </Card>
@@ -203,7 +204,7 @@ export const LeadsPage: React.FC = () => {
         </Box>
       ) : isError ? (
         <Box sx={{ textAlign: 'center', py: 6, color: 'error.main' }}>
-          <Typography variant="h6">Failed to load leads</Typography>
+          <Typography variant="h6">{t('leadsPage.loadFailed')}</Typography>
         </Box>
       ) : viewMode === 'kanban' ? (
         <KanbanBoard leads={leads} />

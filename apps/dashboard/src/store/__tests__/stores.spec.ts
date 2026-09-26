@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useLeadFilterStore } from '../useLeadFilterStore.js';
 import { useHitlModalStore, BREAKPOINT_WIDTHS } from '../useHitlModalStore.js';
 import { useThemeStore } from '../useThemeStore.js';
+import { useLanguageStore, LANGUAGE_STORAGE_KEY } from '../useLanguageStore.js';
 
 describe('Zustand Dashboard Stores', () => {
   describe('useLeadFilterStore', () => {
@@ -162,6 +163,64 @@ describe('Zustand Dashboard Stores', () => {
 
       useThemeStore.getState().setTheme('light');
       expect(useThemeStore.getState().mode).toBe('light');
+    });
+  });
+
+  describe('useLanguageStore (REV-24)', () => {
+    let storage: Map<string, string>;
+
+    beforeEach(() => {
+      storage = new Map();
+      vi.stubGlobal('localStorage', {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => void storage.set(key, value),
+      });
+    });
+
+    afterEach(() => {
+      useLanguageStore.getState().setLanguage('en');
+      vi.unstubAllGlobals();
+      vi.resetModules();
+    });
+
+    it('should switch and persist the interface language', () => {
+      useLanguageStore.getState().setLanguage('lt');
+      expect(useLanguageStore.getState().language).toBe('lt');
+      expect(storage.get(LANGUAGE_STORAGE_KEY)).toBe('lt');
+
+      useLanguageStore.getState().setLanguage('ru');
+      expect(useLanguageStore.getState().language).toBe('ru');
+      expect(storage.get(LANGUAGE_STORAGE_KEY)).toBe('ru');
+    });
+
+    it('should restore the saved language on startup', async () => {
+      storage.set(LANGUAGE_STORAGE_KEY, 'be');
+      vi.resetModules();
+      const { useLanguageStore: fresh } = await import('../useLanguageStore.js');
+      expect(fresh.getState().language).toBe('be');
+    });
+
+    it('should detect the browser language when nothing is saved', async () => {
+      vi.stubGlobal('navigator', { languages: ['de-DE', 'pl-PL'], language: 'de-DE' });
+      vi.resetModules();
+      const { useLanguageStore: fresh } = await import('../useLanguageStore.js');
+      expect(fresh.getState().language).toBe('pl');
+    });
+
+    it('should fall back to English when storage is unavailable', async () => {
+      vi.stubGlobal('localStorage', {
+        getItem: () => {
+          throw new Error('denied');
+        },
+        setItem: () => {
+          throw new Error('denied');
+        },
+      });
+      vi.resetModules();
+      const { useLanguageStore: fresh } = await import('../useLanguageStore.js');
+      expect(fresh.getState().language).toBe('en');
+      fresh.getState().setLanguage('pl');
+      expect(fresh.getState().language).toBe('pl');
     });
   });
 });
