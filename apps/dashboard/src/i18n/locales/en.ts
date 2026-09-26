@@ -23,10 +23,6 @@ export const en = {
   },
   sidebar: {
     leads: 'Leads & Pipeline',
-    audits: 'Site Audits',
-    outreach: 'Outreach (HITL)',
-    analytics: 'Analytics',
-    settings: 'Settings',
   },
   niches: {
     dental: 'Dental',

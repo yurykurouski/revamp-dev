@@ -8,28 +8,26 @@ import {
   ListItemIcon,
   ListItemText,
   Typography,
-  Chip,
 } from '@mui/material';
 import DashboardIcon from '@mui/icons-material/Dashboard';
-import AssessmentIcon from '@mui/icons-material/Assessment';
-import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
-import BarChartIcon from '@mui/icons-material/BarChart';
-import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 
 const DRAWER_WIDTH = 240;
 
-const menuItems: Array<{ key: keyof Translation['sidebar']; icon: React.ReactNode; active?: boolean; badge?: string }> = [
-  { key: 'leads', icon: <DashboardIcon />, active: true },
-  { key: 'audits', icon: <AssessmentIcon /> },
-  { key: 'outreach', icon: <MarkEmailReadIcon />, badge: '3' },
-  { key: 'analytics', icon: <BarChartIcon /> },
-  { key: 'settings', icon: <SettingsIcon /> },
+/** Views the dashboard can show; add one here only once its page exists */
+export type DashboardView = keyof Translation['sidebar'];
+
+export const NAV_ITEMS: Array<{ view: DashboardView; icon: React.ReactNode }> = [
+  { view: 'leads', icon: <DashboardIcon /> },
 ];
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  activeView: DashboardView;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ activeView }) => {
   const { t } = useTranslation();
 
   return (
@@ -67,47 +65,38 @@ export const Sidebar: React.FC = () => {
       </Box>
 
       <List sx={{ px: 1.5 }}>
-        {menuItems.map((item) => (
-          <ListItem key={item.key} disablePadding sx={{ mb: 0.5 }}>
-            <ListItemButton
-              sx={{
-                borderRadius: '8px',
-                backgroundColor: item.active ? 'rgba(79, 70, 229, 0.2)' : 'transparent',
-                color: item.active ? '#818CF8' : '#94A3B8',
-                '&:hover': {
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  color: '#FFFFFF',
-                },
-              }}
-            >
-              <ListItemIcon
+        {NAV_ITEMS.map((item) => {
+          const active = item.view === activeView;
+          return (
+            <ListItem key={item.view} disablePadding sx={{ mb: 0.5 }}>
+              <ListItemButton
+                aria-current={active ? 'page' : undefined}
                 sx={{
-                  color: item.active ? '#818CF8' : '#94A3B8',
-                  minWidth: 40,
+                  borderRadius: '8px',
+                  backgroundColor: active ? 'rgba(79, 70, 229, 0.2)' : 'transparent',
+                  color: active ? '#818CF8' : '#94A3B8',
+                  '&:hover': {
+                    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                    color: '#FFFFFF',
+                  },
                 }}
               >
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText
-                primary={t(`sidebar.${item.key}`)}
-                primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: item.active ? 600 : 500 }}
-              />
-              {item.badge && (
-                <Chip
-                  label={item.badge}
-                  size="small"
+                <ListItemIcon
                   sx={{
-                    height: 20,
-                    fontSize: '0.75rem',
-                    backgroundColor: '#F59E0B',
-                    color: '#000000',
-                    fontWeight: 700,
+                    color: active ? '#818CF8' : '#94A3B8',
+                    minWidth: 40,
                   }}
+                >
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText
+                  primary={t(`sidebar.${item.view}`)}
+                  primaryTypographyProps={{ fontSize: '0.875rem', fontWeight: active ? 600 : 500 }}
                 />
-              )}
-            </ListItemButton>
-          </ListItem>
-        ))}
+              </ListItemButton>
+            </ListItem>
+          );
+        })}
       </List>
     </Drawer>
   );

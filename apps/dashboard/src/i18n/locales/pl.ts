@@ -22,10 +22,6 @@ export const pl: Translation = {
   },
   sidebar: {
     leads: 'Leady i lejek',
-    audits: 'Audyty stron',
-    outreach: 'Wysyłka (HITL)',
-    analytics: 'Analityka',
-    settings: 'Ustawienia',
   },
   niches: {
     dental: 'Stomatologia',

@@ -22,10 +22,6 @@ export const lt: Translation = {
   },
   sidebar: {
     leads: 'Klientai ir srautas',
-    audits: 'Svetainių auditai',
-    outreach: 'Siuntimas (HITL)',
-    analytics: 'Analitika',
-    settings: 'Nustatymai',
   },
   niches: {
     dental: 'Odontologija',
