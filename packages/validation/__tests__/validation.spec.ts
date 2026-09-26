@@ -12,6 +12,8 @@ import {
   EmailDraftOutputSchema,
   BentoTemplateDataSchema,
   MvpTrackEventSchema,
+  StartDiscoverySchema,
+  DiscoveredBusinessSchema,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -519,6 +521,77 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => MvpTrackEventSchema.parse(invalid)).toThrow();
     });
   });
+
+  describe('StartDiscoverySchema', () => {
+    it('should apply defaults for provider and limit', () => {
+      const result = StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Vilnius' });
+      expect(result.success).toBe(true);
+      if (result.success) {
+        expect(result.data.provider).toBe('osm');
+        expect(result.data.limit).toBe(20);
+      }
+    });
+
+    it('should coerce a numeric string limit and trim location', () => {
+      const result = StartDiscoverySchema.parse({
+        provider: 'google',
+        niche: 'auto',
+        location: '  Warsaw  ',
+        limit: '50',
+      });
+      expect(result.limit).toBe(50);
+      expect(result.location).toBe('Warsaw');
+    });
+
+    it('should enforce limit boundaries 1..100', () => {
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', limit: 1 }).success).toBe(true);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', limit: 100 }).success).toBe(true);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', limit: 0 }).success).toBe(false);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', limit: 101 }).success).toBe(false);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', limit: 2.5 }).success).toBe(false);
+    });
+
+    it('should reject unknown providers and too-short locations', () => {
+      expect(StartDiscoverySchema.safeParse({ provider: 'bing', niche: 'dental', location: 'Riga' }).success).toBe(false);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'R' }).success).toBe(false);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental' }).success).toBe(false);
+    });
+
+    it('should require a keyword when niche is other', () => {
+      const missing = StartDiscoverySchema.safeParse({ niche: 'other', location: 'Minsk' });
+      expect(missing.success).toBe(false);
+      if (!missing.success) {
+        expect(missing.error.issues[0]?.path).toEqual(['keyword']);
+      }
+      expect(StartDiscoverySchema.safeParse({ location: 'Minsk', keyword: 'bakery' }).success).toBe(true);
+    });
+  });
+
+  describe('DiscoveredBusinessSchema', () => {
+    const base = { provider: 'osm', externalId: 'node/1', name: 'Smile Dental' };
+
+    it('should accept a minimal and a full listing', () => {
+      expect(DiscoveredBusinessSchema.safeParse(base).success).toBe(true);
+      expect(
+        DiscoveredBusinessSchema.safeParse({
+          ...base,
+          website: 'https://smile.lt/',
+          phone: '+370 600 00000',
+          email: 'hello@smile.lt',
+          address: 'Gedimino pr. 1, Vilnius',
+          city: 'Vilnius',
+          lat: 54.68,
+          lng: 25.28,
+        }).success,
+      ).toBe(true);
+    });
+
+    it('should reject non-http websites, bad emails, long phones, and out-of-range coordinates', () => {
+      expect(DiscoveredBusinessSchema.safeParse({ ...base, website: 'javascript:alert(1)' }).success).toBe(false);
+      expect(DiscoveredBusinessSchema.safeParse({ ...base, email: 'not-an-email' }).success).toBe(false);
+      expect(DiscoveredBusinessSchema.safeParse({ ...base, phone: '1'.repeat(31) }).success).toBe(false);
+      expect(DiscoveredBusinessSchema.safeParse({ ...base, lat: 91 }).success).toBe(false);
+      expect(DiscoveredBusinessSchema.safeParse({ ...base, name: 'A' }).success).toBe(false);
+    });
+  });
 });
-
-

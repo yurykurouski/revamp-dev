@@ -5,6 +5,7 @@ import auditRoutes from './audit.routes.js';
 import mvpRoutes from './mvp.routes.js';
 import outreachRoutes from './outreach.routes.js';
 import trackRoutes from './track.routes.js';
+import discoveryRoutes from './discovery.routes.js';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/audits', auditRoutes);
 router.use('/mvp', mvpRoutes);
 router.use('/outreach', outreachRoutes);
 router.use('/track', trackRoutes);
+router.use('/discovery', discoveryRoutes);
 
 export default router;

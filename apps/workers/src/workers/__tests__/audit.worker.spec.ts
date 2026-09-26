@@ -271,6 +271,8 @@ describe('AuditWorker (@revamp/workers)', () => {
     );
     // The street address is not written into the lead's city (REV-23)
     expect(vi.mocked(Lead.findByIdAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['city'])).toBe(false);
+    // A lead with an operator-supplied email keeps it (REV-26)
+    expect(vi.mocked(Lead.findByIdAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['contactEmail'])).toBe(false);
 
     // Analytics token usage event logging
     expect(AnalyticsEvent.create).toHaveBeenCalledWith(
@@ -298,6 +300,76 @@ describe('AuditWorker (@revamp/workers)', () => {
         aiFallbackUsed: false,
         extractedBrandTokens: expect.any(Object),
         contacts: expect.objectContaining({ phone: '+1 555-1234' }),
+      }),
+    );
+  });
+
+  it('should replace a guessed email on discovered leads with the email found on the site (REV-26)', async () => {
+    createAuditWorker();
+
+    vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+      exec: vi.fn().mockResolvedValue({
+        businessName: 'Found Clinic',
+        contactEmail: 'info@found-clinic.lt',
+        tags: ['discovered', 'source:osm', 'email-guessed'],
+      }),
+    } as any);
+    vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+    vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+      desktopBuffer: Buffer.from('d'),
+      mobileBuffer: Buffer.from('m'),
+      desktopFullBuffer: Buffer.from('df'),
+      mobileFullBuffer: Buffer.from('mf'),
+      a11yResult: {
+        a11yScore: 80,
+        summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
+        rawViolations: [],
+      },
+      vitalsResult: {
+        lcpSeconds: 2,
+        lighthouseMetrics: { lcp: 2000, cls: 0.01 },
+        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        performanceScore: 90,
+        standardsScore: 100,
+      },
+      rawBrandData: {
+        colors: ['rgb(79, 70, 229)'],
+        fontFamilies: ['Inter'],
+        email: 'reception@found-clinic.lt',
+        socialLinks: [],
+        services: [],
+      },
+    } as any);
+    vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+    vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+    vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+    vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+      critique: {
+        visualHierarchyRating: 60,
+        mobileFriendlinessRating: 60,
+        primaryCtaFound: false,
+        datedDesignFactors: [],
+        criticalFlaws: [
+          { title: 'F1', impact: 'I1', recommendation: 'R1' },
+          { title: 'F2', impact: 'I2', recommendation: 'R2' },
+          { title: 'F3', impact: 'I3', recommendation: 'R3' },
+        ],
+        quickWins: ['W1', 'W2', 'W3'],
+      },
+      aiFallbackUsed: true,
+      modelUsed: 'fallback',
+      attempts: 1,
+    } as any);
+
+    await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
+
+    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+      'lead-disc',
+      expect.objectContaining({
+        status: 'AUDITED',
+        contactEmail: 'reception@found-clinic.lt',
+        $pull: { tags: 'email-guessed' },
       }),
     );
   });

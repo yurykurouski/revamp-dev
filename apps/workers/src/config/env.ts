@@ -31,6 +31,12 @@ const EnvSchema = z.object({
   SMTP_PORT: z.coerce.number().optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
+  // Local business discovery (REV-26)
+  GOOGLE_PLACES_API_KEY: z.string().optional(),
+  OVERPASS_URL: z.string().url().default('https://overpass-api.de/api/interpreter'),
+  NOMINATIM_URL: z.string().url().default('https://nominatim.openstreetmap.org/search'),
+  // Nominatim and Overpass usage policies require an identifying User-Agent
+  DISCOVERY_USER_AGENT: z.string().default('RevampBot/0.1 (+https://revampdemo.com)'),
 });
 
 export const env = EnvSchema.parse(process.env);

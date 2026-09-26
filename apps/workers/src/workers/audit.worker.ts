@@ -12,6 +12,7 @@ import { designCritiqueService } from '../services/design-critique.service.js';
 import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
+import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
 const LATEST_AUDIT = { sort: { createdAt: -1 } } as const;
@@ -155,6 +156,11 @@ export const createAuditWorker = (): Worker => {
         };
         if (!existingLead?.contactPhone && brandResult.contacts.phone) {
           leadUpdate['contactPhone'] = brandResult.contacts.phone;
+        }
+        // Discovered leads start with an info@<domain> guess; prefer the email published on the site
+        if (existingLead?.tags?.includes(EMAIL_GUESSED_TAG) && brandResult.contacts.email) {
+          leadUpdate['contactEmail'] = brandResult.contacts.email;
+          leadUpdate['$pull'] = { tags: EMAIL_GUESSED_TAG };
         }
         // The full street address is persisted on the Audit (extractedContacts), not as the lead's city
 
