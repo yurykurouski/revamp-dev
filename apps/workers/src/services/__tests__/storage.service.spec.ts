@@ -49,6 +49,18 @@ describe('StorageService', () => {
     expect(mockS3Send).toHaveBeenCalledTimes(2);
   });
 
+  it('should upload full-page screenshots under {type}-full.webp keys (REV-21)', async () => {
+    mockS3Send.mockResolvedValue({});
+    const service = new StorageService(mockS3Client as any, 'test-bucket');
+    const buffer = Buffer.from('full-page');
+
+    const desktopFull = await service.uploadScreenshot('lead-xyz', 'desktop-full', buffer);
+    const mobileFull = await service.uploadScreenshot('lead-xyz', 'mobile-full', buffer);
+
+    expect(desktopFull).toContain('test-bucket/screenshots/lead-xyz/desktop-full.webp');
+    expect(mobileFull).toContain('test-bucket/screenshots/lead-xyz/mobile-full.webp');
+  });
+
   it('should check bucket existence and create it if not found', async () => {
     // 1st call fails (HeadBucket), 2nd call succeeds (CreateBucket)
     mockS3Send

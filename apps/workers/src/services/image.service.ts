@@ -15,6 +15,9 @@ export interface ComparisonBannerInput {
   newScore?: number;
 }
 
+/** Maximum width/height supported by the WebP format */
+export const WEBP_MAX_DIMENSION = 16383;
+
 export class ImageService {
   /**
    * Compresses an image buffer into modern WebP format with optional maxDimension cap (e.g. 1024px)
@@ -42,6 +45,36 @@ export class ImageService {
         effort: 4,
       })
       .toBuffer();
+  }
+
+  /**
+   * Compresses a tall full-page screenshot to WebP, keeping it readable:
+   * only the width is capped, and the height is clamped to the WebP maximum (16383px)
+   * by cropping from the top, so the page is never squashed.
+   */
+  static async compressFullPageToWebp(
+    inputBuffer: Buffer,
+    options: { quality?: number; maxWidth?: number } = {},
+  ): Promise<Buffer> {
+    const quality = options.quality ?? 75;
+    const maxWidth = options.maxWidth ?? 1440;
+
+    const resized = await sharp(inputBuffer, { limitInputPixels: false })
+      .resize({ width: maxWidth, withoutEnlargement: true })
+      .png()
+      .toBuffer({ resolveWithObject: true });
+
+    let pipeline = sharp(resized.data, { limitInputPixels: false });
+    if (resized.info.height > WEBP_MAX_DIMENSION) {
+      pipeline = pipeline.extract({
+        left: 0,
+        top: 0,
+        width: resized.info.width,
+        height: WEBP_MAX_DIMENSION,
+      });
+    }
+
+    return pipeline.webp({ quality, effort: 4 }).toBuffer();
   }
 
   /**

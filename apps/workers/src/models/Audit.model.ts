@@ -88,6 +88,8 @@ const AuditSchema = new Schema<IAuditDocument>(
     screenshotUrls: {
       desktopOriginal: { type: String, default: '' },
       mobileOriginal: { type: String, default: '' },
+      desktopFull: { type: String },
+      mobileFull: { type: String },
       comparisonBanner: { type: String },
     },
     desktopScreenshotUrl: { type: String },

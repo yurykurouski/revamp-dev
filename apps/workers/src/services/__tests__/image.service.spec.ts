@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { ImageService } from '../image.service.js';
+import { ImageService, WEBP_MAX_DIMENSION } from '../image.service.js';
 
 describe('ImageService', () => {
   it('should compress a raw image buffer into WebP format', async () => {
@@ -118,5 +118,45 @@ describe('ImageService', () => {
     expect(metadata.height).toBe(1024);
     expect(metadata.width).toBeLessThanOrEqual(1024);
     expect(metadata.width).toBe(128); // 375 * (1024 / 3000) = 128
+  });
+
+  describe('compressFullPageToWebp (REV-21)', () => {
+    const makePng = (width: number, height: number) =>
+      sharp({
+        create: { width, height, channels: 3, background: { r: 240, g: 240, b: 240 } },
+      })
+        .png()
+        .toBuffer();
+
+    it('should keep full height and only cap width for tall full-page captures', async () => {
+      const png = await makePng(1440, 6000);
+
+      const webp = await ImageService.compressFullPageToWebp(png, { maxWidth: 1440 });
+      const meta = await sharp(webp).metadata();
+
+      expect(meta.format).toBe('webp');
+      expect(meta.width).toBe(1440);
+      expect(meta.height).toBe(6000);
+    });
+
+    it('should downscale wider captures proportionally', async () => {
+      const png = await makePng(750, 3000);
+
+      const webp = await ImageService.compressFullPageToWebp(png, { maxWidth: 375 });
+      const meta = await sharp(webp).metadata();
+
+      expect(meta.width).toBe(375);
+      expect(meta.height).toBe(1500);
+    });
+
+    it('should crop heights above the WebP dimension limit instead of failing', async () => {
+      const png = await makePng(200, WEBP_MAX_DIMENSION + 500);
+
+      const webp = await ImageService.compressFullPageToWebp(png, { maxWidth: 200 });
+      const meta = await sharp(webp).metadata();
+
+      expect(meta.width).toBe(200);
+      expect(meta.height).toBe(WEBP_MAX_DIMENSION);
+    });
   });
 });

@@ -128,10 +128,19 @@ export const SideBySideInspectorModal: React.FC = () => {
     currentLead?.previewUrl ||
     '';
 
+  // Prefer the full-page capture (REV-21); fall back to the above-the-fold shot for older audits
   const originalScreenshotUrl =
     originalScreenTab === 'desktop'
-      ? audit?.desktopScreenshotUrl || 'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp'
-      : audit?.mobileScreenshotUrl || 'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp';
+      ? audit?.desktopFullScreenshotUrl ||
+        audit?.desktopScreenshotUrl ||
+        'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp'
+      : audit?.mobileFullScreenshotUrl ||
+        audit?.mobileScreenshotUrl ||
+        'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp';
+  const isFullPageScreenshot =
+    originalScreenTab === 'desktop'
+      ? Boolean(audit?.desktopFullScreenshotUrl)
+      : Boolean(audit?.mobileFullScreenshotUrl);
 
   return (
     <Dialog
@@ -341,43 +350,64 @@ export const SideBySideInspectorModal: React.FC = () => {
                 </Card>
               </Box>
 
-              {/* Screenshot Preview Box */}
-              <Box
-                sx={{
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  borderRadius: 2,
-                  overflow: 'hidden',
-                  backgroundColor: 'background.default',
-                  height: originalScreenTab === 'desktop' ? 240 : 360,
-                  display: 'flex',
-                  alignItems: 'flex-start',
-                  justifyContent: 'center',
-                  boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)',
-                  position: 'relative',
-                }}
-              >
-                {isAuditLoading ? (
-                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                    <CircularProgress size={24} />
-                  </Box>
-                ) : (
-                  <Box
-                    component="img"
-                    src={originalScreenshotUrl}
-                    alt="Original Website Screenshot"
-                    sx={{
-                      width: '100%',
-                      height: 'auto',
-                      objectFit: 'cover',
-                      objectPosition: 'top',
-                    }}
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80';
-                    }}
-                  />
-                )}
+              {/* Screenshot Preview Box: scrollable full-page capture */}
+              <Box>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                  <Typography variant="caption" color="text.secondary">
+                    {isFullPageScreenshot ? 'Full-page capture · scroll to view the whole site' : 'First screen only'}
+                  </Typography>
+                  <Button
+                    size="small"
+                    href={originalScreenshotUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
+                    sx={{ fontSize: '0.75rem', textTransform: 'none', fontWeight: 600 }}
+                  >
+                    Open full size
+                  </Button>
+                </Box>
+                <Box
+                  data-testid="original-screenshot-viewer"
+                  sx={{
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    borderRadius: 2,
+                    overflowY: 'auto',
+                    overflowX: 'hidden',
+                    backgroundColor: 'background.default',
+                    height: { xs: 360, md: 'calc(100vh - 380px)' },
+                    minHeight: 320,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    justifyContent: 'center',
+                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)',
+                    position: 'relative',
+                  }}
+                >
+                  {isAuditLoading ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                      <CircularProgress size={24} />
+                    </Box>
+                  ) : (
+                    <Box
+                      component="img"
+                      src={originalScreenshotUrl}
+                      alt={`Original website ${originalScreenTab} ${isFullPageScreenshot ? 'full-page ' : ''}screenshot`}
+                      loading="lazy"
+                      sx={{
+                        width: '100%',
+                        maxWidth: originalScreenTab === 'mobile' ? 375 : '100%',
+                        height: 'auto',
+                        display: 'block',
+                      }}
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src =
+                          'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80';
+                      }}
+                    />
+                  )}
+                </Box>
               </Box>
 
               {/* 3 Critical Flaws from Vision LLM Design Critique */}
