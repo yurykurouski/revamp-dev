@@ -199,6 +199,12 @@ export const pl: Translation = {
     starting: 'Uruchamianie...',
     runInBackground: 'Działaj w tle',
     newSearch: 'Nowe wyszukiwanie',
+    backgroundReady: 'Wyszukiwanie w tle zakończone · nowe firmy: {{count}}',
+    backgroundReview: 'Przejrzyj',
+    backgroundNothingNew: 'Wyszukiwanie w tle zakończone: brak nowych firm do importu.',
+    backgroundFailed: 'Wyszukiwanie firm w tle nie powiodło się.',
+    backgroundDetails: 'Szczegóły',
+    backgroundDismiss: 'Zamknij',
     searchSummary: '{{what}} · {{location}} · {{provider}}',
     runningHint: 'Trwa wyszukiwanie na mapie i import firm. Możesz zamknąć to okno — wyszukiwanie będzie kontynuowane.',
     states: {

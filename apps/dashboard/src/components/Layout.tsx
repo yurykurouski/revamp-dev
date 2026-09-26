@@ -2,6 +2,8 @@ import React from 'react';
 import { Box } from '@mui/material';
 import { Sidebar, type DashboardView } from './Sidebar.js';
 import { Header } from './Header.js';
+import { DiscoveryModal } from './DiscoveryModal.js';
+import { DiscoveryFinishWatcher } from './DiscoveryFinishWatcher.js';
 import { useSidebarStore } from '../store/useSidebarStore.js';
 
 interface LayoutProps {
@@ -21,6 +23,10 @@ export const Layout: React.FC<LayoutProps> = ({ activeView, children }) => {
           {children}
         </Box>
       </Box>
+
+      {/* Business discovery (REV-27) lives here so a background search is picked up on every page (REV-41) */}
+      <DiscoveryModal />
+      <DiscoveryFinishWatcher />
     </Box>
   );
 };

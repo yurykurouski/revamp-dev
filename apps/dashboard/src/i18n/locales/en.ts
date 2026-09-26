@@ -200,6 +200,12 @@ export const en = {
     starting: 'Starting...',
     runInBackground: 'Run in background',
     newSearch: 'New search',
+    backgroundReady: 'Background search finished · new businesses: {{count}}',
+    backgroundReview: 'Review',
+    backgroundNothingNew: 'Background search finished: no new businesses to import.',
+    backgroundFailed: 'Background business search failed.',
+    backgroundDetails: 'Details',
+    backgroundDismiss: 'Dismiss',
     searchSummary: '{{what}} in {{location}} · {{provider}}',
     runningHint: 'Searching the map and importing businesses. You can close this window; the search keeps running.',
     states: {

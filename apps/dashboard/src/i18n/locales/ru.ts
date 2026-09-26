@@ -199,6 +199,12 @@ export const ru: Translation = {
     starting: 'Запуск...',
     runInBackground: 'Продолжить в фоне',
     newSearch: 'Новый поиск',
+    backgroundReady: 'Фоновый поиск завершён · новых компаний: {{count}}',
+    backgroundReview: 'Просмотреть',
+    backgroundNothingNew: 'Фоновый поиск завершён: новых компаний для импорта нет.',
+    backgroundFailed: 'Фоновый поиск компаний завершился ошибкой.',
+    backgroundDetails: 'Подробнее',
+    backgroundDismiss: 'Скрыть',
     searchSummary: '{{what}} · {{location}} · {{provider}}',
     runningHint: 'Идёт поиск на карте и импорт компаний. Окно можно закрыть — поиск продолжится.',
     states: {

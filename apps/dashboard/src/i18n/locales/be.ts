@@ -199,6 +199,12 @@ export const be: Translation = {
     starting: 'Запуск...',
     runInBackground: 'Працягнуць у фоне',
     newSearch: 'Новы пошук',
+    backgroundReady: 'Фонавы пошук завершаны · новых кампаній: {{count}}',
+    backgroundReview: 'Праглядзець',
+    backgroundNothingNew: 'Фонавы пошук завершаны: новых кампаній для імпарту няма.',
+    backgroundFailed: 'Фонавы пошук кампаній завяршыўся памылкай.',
+    backgroundDetails: 'Падрабязней',
+    backgroundDismiss: 'Схаваць',
     searchSummary: '{{what}} · {{location}} · {{provider}}',
     runningHint: 'Ідзе пошук на мапе і імпарт кампаній. Акно можна закрыць — пошук працягнецца.',
     states: {

@@ -199,6 +199,12 @@ export const lt: Translation = {
     starting: 'Paleidžiama...',
     runInBackground: 'Tęsti fone',
     newSearch: 'Nauja paieška',
+    backgroundReady: 'Paieška fone baigta · naujų įmonių: {{count}}',
+    backgroundReview: 'Peržiūrėti',
+    backgroundNothingNew: 'Paieška fone baigta: naujų įmonių importuoti nėra.',
+    backgroundFailed: 'Įmonių paieška fone nepavyko.',
+    backgroundDetails: 'Išsamiau',
+    backgroundDismiss: 'Uždaryti',
     searchSummary: '{{what}} · {{location}} · {{provider}}',
     runningHint: 'Vyksta paieška žemėlapyje ir įmonių importas. Langą galite uždaryti – paieška tęsis.',
     states: {

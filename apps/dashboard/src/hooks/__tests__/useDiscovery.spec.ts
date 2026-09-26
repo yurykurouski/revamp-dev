@@ -6,6 +6,7 @@ import {
   DISCOVERY_POLL_INTERVAL_MS,
   discoveryRefetchInterval,
   discoveryIndicator,
+  discoveryFinishAction,
   discoveryStatusQueryOptions,
   newCandidateCount,
   discoveryStateBucket,
@@ -303,5 +304,53 @@ describe('background discovery indicator (REV-40)', () => {
       unsubscribe();
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('background discovery finish (REV-41)', () => {
+  const candidate = (externalId: string, status: IDiscoveryCandidate['status']) => ({ externalId, status }) as IDiscoveryCandidate;
+  const completed = (...statuses: IDiscoveryCandidate['status'][]) =>
+    ({ state: 'completed', result: { candidates: statuses.map((st, i) => candidate(`c${i}`, st)) } }) as IDiscoveryJobStatus;
+  const base = { activeJobId: 'disc-1', resultsSeen: false, isOpen: false, notifiedJobId: null };
+
+  it('announces new businesses when the job completes with some', () => {
+    expect(discoveryFinishAction({ ...base, status: completed('new', 'existing_lead') })).toBe('notifyReady');
+  });
+
+  it('shows a notice instead when nothing new was found', () => {
+    expect(discoveryFinishAction({ ...base, status: completed() })).toBe('notifyEmpty');
+    expect(discoveryFinishAction({ ...base, status: completed('existing_lead', 'no_website') })).toBe('notifyEmpty');
+    // Pre-REV-29 jobs kept no candidate list
+    expect(discoveryFinishAction({ ...base, status: { state: 'completed', result: {} } as IDiscoveryJobStatus })).toBe('notifyEmpty');
+  });
+
+  it('shows a failure notice when the job or its status request fails', () => {
+    expect(discoveryFinishAction({ ...base, status: { state: 'failed' } })).toBe('notifyFailed');
+    expect(discoveryFinishAction({ ...base, isError: true })).toBe('notifyFailed');
+  });
+
+  it('does nothing while the job is queued or running', () => {
+    expect(discoveryFinishAction({ ...base })).toBe('none');
+    expect(discoveryFinishAction({ ...base, status: { state: 'waiting' } })).toBe('none');
+    expect(discoveryFinishAction({ ...base, status: { state: 'active' } })).toBe('none');
+  });
+
+  it('does nothing without a job', () => {
+    expect(discoveryFinishAction({ ...base, activeJobId: null, status: completed('new') })).toBe('none');
+  });
+
+  it('does nothing when the modal is already open', () => {
+    expect(discoveryFinishAction({ ...base, isOpen: true, status: completed('new') })).toBe('none');
+    expect(discoveryFinishAction({ ...base, isOpen: true, status: { state: 'failed' } })).toBe('none');
+  });
+
+  it('announces once per job: not again after it was announced or seen', () => {
+    expect(discoveryFinishAction({ ...base, notifiedJobId: 'disc-1', status: completed('new') })).toBe('none');
+    expect(discoveryFinishAction({ ...base, resultsSeen: true, status: completed('new') })).toBe('none');
+    expect(discoveryFinishAction({ ...base, resultsSeen: true, isError: true })).toBe('none');
+  });
+
+  it('announces a new job even if an earlier one was announced', () => {
+    expect(discoveryFinishAction({ ...base, notifiedJobId: 'disc-0', status: completed('new') })).toBe('notifyReady');
   });
 });
