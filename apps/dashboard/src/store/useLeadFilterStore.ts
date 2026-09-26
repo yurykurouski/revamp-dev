@@ -37,10 +37,11 @@ export const useLeadFilterStore = create<LeadFilterState>((set) => ({
   pageSize: 10,
   isAddModalOpen: false,
 
-  setSearchQuery: (query) => set({ searchQuery: query }),
-  setSelectedStatus: (status) => set({ selectedStatus: status }),
-  setSelectedNiche: (niche) => set({ selectedNiche: niche }),
-  setSelectedComplexity: (complexity) => set({ selectedComplexity: complexity }),
+  // A new filter yields a new result set, so the table goes back to its first page (REV-43)
+  setSearchQuery: (query) => set({ searchQuery: query, page: 0 }),
+  setSelectedStatus: (status) => set({ selectedStatus: status, page: 0 }),
+  setSelectedNiche: (niche) => set({ selectedNiche: niche, page: 0 }),
+  setSelectedComplexity: (complexity) => set({ selectedComplexity: complexity, page: 0 }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setPage: (page) => set({ page }),
   setPageSize: (pageSize) => set({ pageSize }),

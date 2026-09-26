@@ -34,6 +34,12 @@ export type LeadStatus =
   | 'REJECTED'
   | 'UNSUBSCRIBED';
 
+/** Pipeline-wide lead counts from GET /api/v1/leads/stats; ignores list filters (REV-43) */
+export interface ILeadStats {
+  total: number;
+  byStatus: Partial<Record<LeadStatus, number>>;
+}
+
 export type AuditStatus = 'QUEUED' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
 
 export type EmailCampaignStatus =

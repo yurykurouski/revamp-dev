@@ -213,7 +213,7 @@ export const LeadsPage: React.FC = () => {
           <Box sx={{ flexGrow: 1 }} />
 
           <Typography variant="body2" color="text.secondary">
-            {t('leadsPage.found')} <strong>{leads.length}</strong>
+            {t('leadsPage.found')} <strong>{data?.total ?? leads.length}</strong>
           </Typography>
         </CardContent>
       </Card>

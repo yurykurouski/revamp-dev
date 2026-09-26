@@ -132,6 +132,53 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
   });
 
+  describe('GET /api/v1/leads/stats (REV-43)', () => {
+    it('should return 200 with pipeline-wide counts and not treat "stats" as a lead id', async () => {
+      const byId = vi.spyOn(LeadService, 'getLeadById');
+      byId.mockClear();
+      vi.spyOn(LeadService, 'getLeadStats').mockResolvedValue({ total: 41, byStatus: { QUEUED: 41 } });
+
+      const res = await request(app).get('/api/v1/leads/stats');
+
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: { total: 41, byStatus: { QUEUED: 41 } } });
+      expect(byId).not.toHaveBeenCalled();
+    });
+
+    it('should return 500 when the aggregation fails', async () => {
+      vi.spyOn(LeadService, 'getLeadStats').mockRejectedValue(new Error('mongo down'));
+
+      const res = await request(app).get('/api/v1/leads/stats');
+
+      expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  describe('GET /api/v1/leads search and paging (REV-43)', () => {
+    it('should pass search, page and limit to the service', async () => {
+      const spy = vi.spyOn(LeadService, 'getLeads').mockResolvedValue({
+        leads: [],
+        pagination: { total: 0, page: 2, limit: 100, totalPages: 0 },
+      });
+
+      const res = await request(app).get('/api/v1/leads?search=dental&page=2&limit=100');
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith({ search: 'dental', page: 2, limit: 100 });
+    });
+
+    it('should reject a page size above 100', async () => {
+      const spy = vi.spyOn(LeadService, 'getLeads');
+      spy.mockClear();
+
+      const res = await request(app).get('/api/v1/leads?limit=101');
+
+      expect(res.status).toBe(400);
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
   describe('GET /api/v1/leads/:id', () => {
     it('should return 200 and lead details when found', async () => {
       vi.spyOn(LeadService, 'getLeadById').mockResolvedValue({

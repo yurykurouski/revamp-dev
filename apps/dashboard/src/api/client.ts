@@ -15,6 +15,7 @@ import {
   IMvpCompletenessReport,
   IMvpCompletenessSummary,
   IReverseGeocodeResult,
+  ILeadStats,
   LeadStatus,
   NicheType,
   SiteComplexityClass,
@@ -180,100 +181,145 @@ const isTestEnv =
 
 let localLeadsCache: ILeadItem[] = isTestEnv ? [...initialMockLeads] : [];
 
-export const apiClient = {
-  /**
-   * Fetches all leads with optional status, niche, and text filters
-   */
-  async getLeads(filters?: {
-    search?: string;
-    status?: string;
-    niche?: string;
-    complexity?: ComplexityFilter;
-  }): Promise<{ leads: ILeadItem[]; kpi: KpiMetrics }> {
-    if (!isTestEnv) {
-      try {
-        const params = new URLSearchParams();
-        if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
-        if (filters?.niche && filters.niche !== 'ALL') params.append('niche', filters.niche);
-        if (filters?.complexity && filters.complexity !== 'ALL') params.append('complexity', filters.complexity);
+interface IServerLead {
+  _id?: string;
+  id?: string;
+  businessName?: string;
+  domain?: string;
+  originalUrl?: string;
+  url?: string;
+  niche?: NicheType;
+  city?: string;
+  contactPhone?: string;
+  contactEmail?: string;
+  contacts?: {
+    city?: string;
+    phone?: string;
+  };
+  totalScore?: number;
+  score?: number;
+  status: LeadStatus;
+  auditId?: string;
+  previewUrl?: string;
+  comparisonBannerUrl?: string;
+  mvpGeneratedAt?: string;
+  generationError?: string;
+  completeness?: IMvpCompletenessSummary;
+  siteComplexity?: SiteComplexityClass;
+  createdAt: string;
+}
 
-      const res = await fetch(`${API_BASE_URL}/leads?${params.toString()}`, {
-        headers: { Accept: 'application/json' },
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          interface IServerLead {
-            _id?: string;
-            id?: string;
-            businessName?: string;
-            domain?: string;
-            originalUrl?: string;
-            url?: string;
-            niche?: NicheType;
-            city?: string;
-            contactPhone?: string;
-            contactEmail?: string;
-            contacts?: {
-              city?: string;
-              phone?: string;
-            };
-            totalScore?: number;
-            score?: number;
-            status: LeadStatus;
-            auditId?: string;
-            previewUrl?: string;
-            comparisonBannerUrl?: string;
-            mvpGeneratedAt?: string;
-            generationError?: string;
-            completeness?: IMvpCompletenessSummary;
-            siteComplexity?: SiteComplexityClass;
-            createdAt: string;
-          }
-
-          const serverLeads: ILeadItem[] = (data.data as IServerLead[]).map((l) => {
-            const rawUrl = l.originalUrl || l.url || '';
-            let domain = l.domain || '';
-            if (!domain && rawUrl) {
-              try {
-                domain = new URL(rawUrl).hostname.replace(/^www\./, '');
-              } catch {
-                domain = '';
-              }
-            }
-
-            return {
-              id: l._id || l.id || `lead-${Math.random()}`,
-              businessName: l.businessName || domain || 'Business',
-              domain,
-              originalUrl: rawUrl,
-              niche: l.niche || 'other',
-              city: l.city || l.contacts?.city,
-              phone: l.contactPhone || l.contacts?.phone,
-              totalScore: l.totalScore ?? l.score,
-              status: l.status,
-              auditId: l.auditId || l._id || l.id,
-              previewUrl: l.previewUrl,
-              comparisonBannerUrl: l.comparisonBannerUrl,
-              mvpGeneratedAt: l.mvpGeneratedAt,
-              generationError: l.generationError,
-              completeness: l.completeness,
-              siteComplexity: l.siteComplexity,
-              createdAt: l.createdAt,
-            };
-          });
-
-          localLeadsCache = serverLeads;
-        }
-      }
+const mapServerLead = (l: IServerLead): ILeadItem => {
+  const rawUrl = l.originalUrl || l.url || '';
+  let domain = l.domain || '';
+  if (!domain && rawUrl) {
+    try {
+      domain = new URL(rawUrl).hostname.replace(/^www\./, '');
     } catch {
-      // Backend not running, use mock dataset
-      if (localLeadsCache.length === 0) {
-        localLeadsCache = [...initialMockLeads];
-      }
+      domain = '';
     }
   }
+
+  return {
+    id: l._id || l.id || `lead-${Math.random()}`,
+    businessName: l.businessName || domain || 'Business',
+    domain,
+    originalUrl: rawUrl,
+    niche: l.niche || 'other',
+    city: l.city || l.contacts?.city,
+    phone: l.contactPhone || l.contacts?.phone,
+    totalScore: l.totalScore ?? l.score,
+    status: l.status,
+    auditId: l.auditId || l._id || l.id,
+    previewUrl: l.previewUrl,
+    comparisonBannerUrl: l.comparisonBannerUrl,
+    mvpGeneratedAt: l.mvpGeneratedAt,
+    generationError: l.generationError,
+    completeness: l.completeness,
+    siteComplexity: l.siteComplexity,
+    createdAt: l.createdAt,
+  };
+};
+
+export interface LeadListFilters {
+  search?: string;
+  status?: string;
+  niche?: string;
+  complexity?: ComplexityFilter;
+}
+
+/** Largest page the API serves (`GetLeadsQuerySchema.limit`) */
+export const LEADS_PAGE_SIZE = 100;
+/** Stops a runaway loop if the total keeps growing while paging */
+const MAX_LEAD_PAGES = 50;
+
+/**
+ * Loads every lead matching the filters by walking the API's pages; the Kanban and the table both
+ * need the full set, not the API's default first page of 20 (REV-43)
+ */
+export async function fetchAllLeadPages(filters?: LeadListFilters): Promise<{ leads: ILeadItem[]; total: number }> {
+  const leads: ILeadItem[] = [];
+  let total = 0;
+
+  for (let page = 1; page <= MAX_LEAD_PAGES; page++) {
+    const params = new URLSearchParams({ page: String(page), limit: String(LEADS_PAGE_SIZE) });
+    if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
+    if (filters?.niche && filters.niche !== 'ALL') params.append('niche', filters.niche);
+    if (filters?.complexity && filters.complexity !== 'ALL') params.append('complexity', filters.complexity);
+    const search = filters?.search?.trim();
+    if (search) params.append('search', search);
+
+    const res = await fetch(`${API_BASE_URL}/leads?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) throw new Error(`Failed to load leads (HTTP ${res.status})`);
+    const body = (await res.json()) as {
+      success?: boolean;
+      data?: IServerLead[];
+      pagination?: { total?: number; totalPages?: number };
+    };
+    if (!body.success || !Array.isArray(body.data)) throw new Error('Unexpected leads response');
+
+    leads.push(...body.data.map(mapServerLead));
+    total = body.pagination?.total ?? leads.length;
+    const totalPages = body.pagination?.totalPages ?? 1;
+    if (page >= totalPages || body.data.length === 0) break;
+  }
+
+  return { leads, total };
+}
+
+/** Pipeline-wide counts by status, independent of the list filters (REV-43) */
+export async function fetchLeadStats(): Promise<ILeadStats> {
+  const res = await fetch(`${API_BASE_URL}/leads/stats`, { headers: { Accept: 'application/json' } });
+  return readDataOrThrow<ILeadStats>(res);
+}
+
+export const kpiFromStats = ({ total, byStatus }: ILeadStats): KpiMetrics => ({
+  totalLeads: total,
+  needsApproval: byStatus.NEEDS_APPROVAL ?? 0,
+  scheduled: byStatus.SCHEDULED ?? 0,
+  sent: byStatus.SENT ?? 0,
+  engaged: (byStatus.CLICKED ?? 0) + (byStatus.OPENED ?? 0),
+});
+
+export const apiClient = {
+  /**
+   * Fetches every lead matching the status, niche, complexity and text filters, plus the pipeline KPIs
+   */
+  async getLeads(filters?: LeadListFilters): Promise<{ leads: ILeadItem[]; kpi: KpiMetrics; total: number }> {
+    if (!isTestEnv) {
+      try {
+        const [{ leads, total }, stats] = await Promise.all([fetchAllLeadPages(filters), fetchLeadStats()]);
+        localLeadsCache = leads;
+        return { leads, kpi: kpiFromStats(stats), total };
+      } catch {
+        // Backend not running, use mock dataset
+        if (localLeadsCache.length === 0) {
+          localLeadsCache = [...initialMockLeads];
+        }
+      }
+    }
 
     let result = [...localLeadsCache];
 
@@ -305,7 +351,7 @@ export const apiClient = {
       engaged: localLeadsCache.filter((l) => l.status === 'CLICKED' || l.status === 'OPENED').length,
     };
 
-    return { leads: result, kpi };
+    return { leads: result, kpi, total: result.length };
   },
 
   /**

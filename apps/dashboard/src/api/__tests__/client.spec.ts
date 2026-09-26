@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { apiClient } from '../client.js';
+import { apiClient, fetchAllLeadPages, fetchLeadStats, kpiFromStats, LEADS_PAGE_SIZE } from '../client.js';
 
 describe('Dashboard apiClient', () => {
   it('should fetch leads and compute accurate KPI counters', async () => {
@@ -403,6 +403,101 @@ describe('Dashboard apiClient', () => {
     it('falls back to demo data when the backend is unreachable', async () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
       await expect(apiClient.generateMvp('audit-1', 'lead-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
+    });
+  });
+
+  describe('loading every lead (REV-43)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const serverLead = (i: number) => ({
+      _id: `lead-${i}`,
+      businessName: `Business ${i}`,
+      originalUrl: `https://www.site-${i}.com/`,
+      status: 'QUEUED',
+      createdAt: '2026-09-26T00:00:00.000Z',
+    });
+
+    const pageResponse = (page: number, total: number) => {
+      const from = (page - 1) * LEADS_PAGE_SIZE;
+      const count = Math.max(0, Math.min(LEADS_PAGE_SIZE, total - from));
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: Array.from({ length: count }, (_, i) => serverLead(from + i)),
+          pagination: { total, page, limit: LEADS_PAGE_SIZE, totalPages: Math.ceil(total / LEADS_PAGE_SIZE) },
+        }),
+        { status: 200 },
+      );
+    };
+
+    it('should walk every page with the maximum page size and return the real total', async () => {
+      const fetchMock = vi.fn((url: string) =>
+        Promise.resolve(pageResponse(Number(new URL(url).searchParams.get('page')), 241)),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const { leads, total } = await fetchAllLeadPages();
+
+      expect(total).toBe(241);
+      expect(leads).toHaveLength(241);
+      expect(new Set(leads.map((l) => l.id)).size).toBe(241);
+      expect(leads[0]).toMatchObject({ id: 'lead-0', domain: 'site-0.com', businessName: 'Business 0' });
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      const pages = fetchMock.mock.calls.map(([url]) => new URL(url).searchParams);
+      expect(pages.map((p) => p.get('page'))).toEqual(['1', '2', '3']);
+      expect(pages.every((p) => p.get('limit') === String(LEADS_PAGE_SIZE))).toBe(true);
+    });
+
+    it('should send search and filters to the server and skip ALL and blank values', async () => {
+      const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(pageResponse(1, 1)));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await fetchAllLeadPages({ search: '  dental  ', status: 'NEEDS_APPROVAL', niche: 'dental', complexity: 'ONE_PAGE_BROCHURE' });
+      const params = new URL(fetchMock.mock.calls[0][0]).searchParams;
+      expect(params.get('search')).toBe('dental');
+      expect(params.get('status')).toBe('NEEDS_APPROVAL');
+      expect(params.get('niche')).toBe('dental');
+      expect(params.get('complexity')).toBe('ONE_PAGE_BROCHURE');
+
+      await fetchAllLeadPages({ search: '   ', status: 'ALL', niche: 'ALL', complexity: 'ALL' });
+      const bare = new URL(fetchMock.mock.calls[1][0]).searchParams;
+      expect([...bare.keys()].sort()).toEqual(['limit', 'page']);
+    });
+
+    it('should make a single request when the result is empty', async () => {
+      const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(pageResponse(1, 0)));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(fetchAllLeadPages()).resolves.toEqual({ leads: [], total: 0 });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('should throw when the server answers with an error', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 500 })));
+      await expect(fetchAllLeadPages()).rejects.toThrow(/HTTP 500/);
+    });
+
+    it('should read pipeline stats and turn them into KPI counters', async () => {
+      const stats = { total: 41, byStatus: { NEEDS_APPROVAL: 5, SENT: 3, OPENED: 2, CLICKED: 1, QUEUED: 30 } };
+      const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: stats }), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await fetchLeadStats();
+
+      expect(fetchMock.mock.calls[0][0]).toMatch(/\/leads\/stats$/);
+      expect(kpiFromStats(result)).toEqual({ totalLeads: 41, needsApproval: 5, scheduled: 0, sent: 3, engaged: 3 });
+    });
+
+    it('should report zero for statuses with no leads', () => {
+      expect(kpiFromStats({ total: 0, byStatus: {} })).toEqual({
+        totalLeads: 0,
+        needsApproval: 0,
+        scheduled: 0,
+        sent: 0,
+        engaged: 0,
+      });
     });
   });
 });
