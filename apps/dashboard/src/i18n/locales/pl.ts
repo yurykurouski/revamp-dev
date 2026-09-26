@@ -106,6 +106,15 @@ export const pl: Translation = {
     generating: '✨ Generowanie MVP...',
     rejected: '✕ Odrzucony',
     openMvp: 'Otwórz MVP',
+    generationFailed: 'Generowanie nie powiodło się',
+  },
+  regenerate: {
+    action: 'Wygeneruj MVP ponownie',
+    confirmTitle: 'Wygenerować MVP ponownie?',
+    confirmBody: 'Dla {{name}} powstanie nowa wersja MVP, która zastąpi obecną pod tym samym linkiem podglądu. Lead wróci do weryfikacji; żaden e-mail nie zostanie wysłany.',
+    confirm: 'Wygeneruj ponownie',
+    cancel: 'Anuluj',
+    failed: 'Nie udało się rozpocząć ponownego generowania: {{message}}',
   },
   grid: {
     company: 'Firma i strona',
@@ -235,6 +244,7 @@ export const pl: Translation = {
     iframeTitle: 'Interaktywny podgląd MVP w piaskownicy',
     generatingTitle: 'Generowanie i wdrażanie interaktywnego MVP...',
     generatingBody: 'Proces w tle składa układ Bento i przesyła paczkę do odizolowanego magazynu MinIO.',
+    regenerating: 'Ponowne generowanie: obecna wersja pozostaje widoczna, dopóki nowa nie będzie gotowa',
     hitlNotice: '🔒 Tryb human-in-the-loop: wysyłka jest zablokowana do wyraźnego zatwierdzenia przez operatora',
     goToApproval: 'Przejdź do zatwierdzenia i wysyłki',
     backToInspector: 'Wróć do inspektora strony',

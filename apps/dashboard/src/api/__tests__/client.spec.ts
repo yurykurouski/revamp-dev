@@ -307,4 +307,52 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.getDiscoveryStatus('x')).rejects.toThrow('Malformed server response');
     });
   });
+
+  describe('generateMvp / regenerate (REV-31)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const respond = (status: number, body: unknown) =>
+      vi.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body });
+
+    it('sends forceRegenerate: false for a first generation', async () => {
+      const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(apiClient.generateMvp('audit-1', 'lead-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toContain('/mvp/generate');
+      expect(JSON.parse(init.body)).toEqual({ auditId: 'audit-1', forceRegenerate: false });
+    });
+
+    it('sends forceRegenerate: true for a regeneration', async () => {
+      const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await apiClient.generateMvp('audit-1', 'lead-1', { forceRegenerate: true });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true });
+    });
+
+    it('surfaces a 409 from the API instead of pretending the job started', async () => {
+      vi.stubGlobal(
+        'fetch',
+        respond(409, { success: false, message: 'MVP generation is not allowed while the lead is SCHEDULED' }),
+      );
+
+      await expect(apiClient.generateMvp('audit-1', 'lead-1', { forceRegenerate: true })).rejects.toThrow(
+        'MVP generation is not allowed while the lead is SCHEDULED',
+      );
+    });
+
+    it('surfaces a 404 from the API', async () => {
+      vi.stubGlobal('fetch', respond(404, { success: false, message: 'Audit not found' }));
+      await expect(apiClient.generateMvp('missing')).rejects.toThrow('Audit not found');
+    });
+
+    it('falls back to demo data when the backend is unreachable', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+      await expect(apiClient.generateMvp('audit-1', 'lead-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
+    });
+  });
 });

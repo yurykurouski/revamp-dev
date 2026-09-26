@@ -107,6 +107,15 @@ export const en = {
     generating: '✨ Generating MVP...',
     rejected: '✕ Rejected',
     openMvp: 'Open MVP',
+    generationFailed: 'Generation failed',
+  },
+  regenerate: {
+    action: 'Regenerate MVP',
+    confirmTitle: 'Regenerate this MVP?',
+    confirmBody: 'A new version of the MVP for {{name}} will be generated and will replace the current one at the same preview link. The lead goes back to review; no email is sent.',
+    confirm: 'Regenerate',
+    cancel: 'Cancel',
+    failed: 'Could not start regeneration: {{message}}',
   },
   grid: {
     company: 'Company & website',
@@ -236,6 +245,7 @@ export const en = {
     iframeTitle: 'MVP interactive sandbox preview',
     generatingTitle: 'Generating and deploying the interactive MVP...',
     generatingBody: 'A background worker is compiling the Bento layout and uploading the bundle to isolated MinIO storage.',
+    regenerating: 'Regenerating: the current version stays visible until the new one is ready',
     hitlNotice: '🔒 Human-in-the-loop mode: outreach is blocked until the operator explicitly approves',
     goToApproval: 'Go to approval & sending',
     backToInspector: 'Back to site inspector',

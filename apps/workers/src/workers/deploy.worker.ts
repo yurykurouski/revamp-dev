@@ -10,6 +10,7 @@ import { bentoTemplateService } from '../services/template.service.js';
 import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
+import { handleGenerationFailure } from './generation-failure.js';
 
 function transliterate(str: string): string {
   const ruToEn: Record<string, string> = {
@@ -30,8 +31,11 @@ export const createDeployWorker = (): Worker => {
   const worker = new Worker<IDeployJobData>(
     QUEUE_NAMES.DEPLOY,
     async (job: Job<IDeployJobData>) => {
-      const { leadId, auditId } = job.data;
-      console.log(`[DeployWorker] Deploying MVP static site for lead: ${leadId}, audit: ${auditId}`);
+      const { leadId, auditId, forceRegenerate = false } = job.data;
+      console.log(
+        `[DeployWorker] Deploying MVP static site for lead: ${leadId}, audit: ${auditId}` +
+          (forceRegenerate ? ' (regeneration: replacing the existing preview)' : ''),
+      );
 
       const lead = await Lead.findById(leadId).exec();
       if (!lead) {
@@ -45,12 +49,14 @@ export const createDeployWorker = (): Worker => {
         throw new Error(`Audit ${auditId || leadId} not found`);
       }
 
-      // 1. Generate clean preview slug
+      // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
+      // the same objects in the demos bucket and the preview URL already shared stays valid.
+      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug').exec();
       const transliterated = transliterate(lead.businessName || lead.domain || 'demo');
       const rawSlug = transliterated
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') || 'preview';
-      const slug = `${rawSlug}-${leadId.toString().slice(-6)}`;
+      const slug = existingProject?.previewSlug || `${rawSlug}-${leadId.toString().slice(-6)}`;
 
       // 2. Render Bento Landing Page HTML
       const html = bentoTemplateService.renderFromAudit(
@@ -106,10 +112,13 @@ export const createDeployWorker = (): Worker => {
       const comparisonBannerUrl = await storageService.uploadComparisonBanner(slug, bannerBuffer);
       console.log(`[DeployWorker] Comparison banner uploaded to ${comparisonBannerUrl}`);
 
-      // 8. Create or update MvpProject document in MongoDB
+      // 8. Create or update MvpProject document in MongoDB (one per lead; regeneration updates it)
+      const generatedAt = new Date();
       const mvpProject = await MvpProject.findOneAndUpdate(
         { leadId: lead._id },
         {
+          $inc: { generationCount: 1 },
+          generatedAt,
           auditId: audit._id,
           leadId: lead._id,
           previewSlug: slug,
@@ -144,9 +153,13 @@ export const createDeployWorker = (): Worker => {
       }).exec();
 
       await Lead.findByIdAndUpdate(lead._id, {
-        status: 'NEEDS_APPROVAL',
-        previewUrl: fullPreviewUrl,
-        comparisonBannerUrl,
+        $set: {
+          status: 'NEEDS_APPROVAL',
+          previewUrl: fullPreviewUrl,
+          comparisonBannerUrl,
+          mvpGeneratedAt: generatedAt,
+        },
+        $unset: { generationError: '' },
       }).exec();
 
       console.log(
@@ -173,6 +186,7 @@ export const createDeployWorker = (): Worker => {
 
   worker.on('failed', (job, err) => {
     console.error(`[DeployWorker] Job ${job?.id} failed:`, err);
+    void handleGenerationFailure(job, err, 'deploy');
   });
 
   return worker;

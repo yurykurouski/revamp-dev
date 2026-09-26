@@ -133,6 +133,11 @@ describe('DeployWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockMvpProjectDoc),
     } as any);
 
+    // First deploy for this lead: no existing project
+    vi.mocked(MvpProject.findOne).mockReturnValue({
+      select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
+    } as any);
+
     vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
     } as any);
@@ -174,10 +179,25 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     // Assert Lead transitioned to NEEDS_APPROVAL (HITL constraint) with previewUrl and comparisonBannerUrl
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(mockLeadId, {
-      status: 'NEEDS_APPROVAL',
-      previewUrl: 'http://localhost:9000/revamp-demos/v/stomatologiya-ulybka-456789/index.html',
-      comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/stomatologiya-ulybka-456789.webp',
+      $set: {
+        status: 'NEEDS_APPROVAL',
+        previewUrl: 'http://localhost:9000/revamp-demos/v/stomatologiya-ulybka-456789/index.html',
+        comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/stomatologiya-ulybka-456789.webp',
+        mvpGeneratedAt: expect.any(Date),
+      },
+      $unset: { generationError: '' },
     });
+
+    // REV-31: one MvpProject per lead, stamped with the generation time and run count
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledWith(
+      { leadId: mockLeadId },
+      expect.objectContaining({
+        $inc: { generationCount: 1 },
+        generatedAt: expect.any(Date),
+        previewSlug: expect.stringContaining('smile-dental'),
+      }),
+      { upsert: true, new: true },
+    );
 
     // Assert Audit updated with comparisonBanner
     expect(Audit.findByIdAndUpdate).toHaveBeenCalledWith(
@@ -186,6 +206,58 @@ describe('DeployWorker (@revamp/workers)', () => {
         'screenshotUrls.comparisonBanner': expect.stringContaining('.webp'),
       }),
     );
+  });
+
+  it('should redeploy a regenerated MVP to the existing previewSlug, overwriting it in place (REV-31)', async () => {
+    createDeployWorker();
+    const leadId = '64f8a1234567890123456789';
+    const lead = { _id: leadId, businessName: 'Renamed Clinic', domain: 'smile.pl', toObject: () => lead };
+    const audit = { _id: 'audit-1', leadId, generatedContent: { hero: { headline: 'New copy' } }, toObject: () => audit };
+
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+    vi.mocked(Audit.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(audit) } as any);
+    vi.mocked(MvpProject.findOne).mockReturnValue({
+      select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ previewSlug: 'smile-dental-456789' }) }),
+    } as any);
+    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<html>v2</html>');
+    vi.mocked(storageService.uploadHtml).mockResolvedValue({
+      url: 'http://localhost:9000/revamp-demos/v/smile-dental-456789/index.html',
+      key: 'v/smile-dental-456789/index.html',
+    });
+    vi.mocked(browserService.captureHtmlScreenshot).mockResolvedValue(Buffer.from('shot'));
+    vi.mocked(ImageService.createComparisonBanner).mockResolvedValue(Buffer.from('banner'));
+    vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue('http://localhost:9000/revamp-assets/banners/smile-dental-456789.webp');
+    vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }),
+    } as any);
+    vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+
+    const result = await capturedProcessor!({
+      id: 'job-deploy-regen',
+      data: { leadId, auditId: 'audit-1', forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' },
+    });
+
+    // Same slug even though the business was renamed, so the shared preview URL keeps working
+    expect(result.previewSlug).toBe('smile-dental-456789');
+    expect(storageService.uploadHtml).toHaveBeenCalledWith('smile-dental-456789', '<html>v2</html>', expect.any(String));
+    expect(storageService.uploadComparisonBanner).toHaveBeenCalledWith('smile-dental-456789', expect.any(Buffer));
+    // Updated in place, not duplicated
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledWith(
+      { leadId },
+      expect.objectContaining({ previewSlug: 'smile-dental-456789', generatedContent: audit.generatedContent }),
+      { upsert: true, new: true },
+    );
+    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+      leadId,
+      expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
+    );
+  });
+
+  it('should register a failed handler that resets the lead after the last attempt', () => {
+    createDeployWorker();
+    expect(mockWorkerInstance.on).toHaveBeenCalledWith('failed', expect.any(Function));
   });
 
   it('should throw error when lead is not found', async () => {

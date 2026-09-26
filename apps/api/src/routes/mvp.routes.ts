@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { GenerateMvpSchema, UpdateMvpTokensSchema } from '@revamp/validation';
+import { GenerateMvpSchema, UpdateMvpTokensSchema, mvpGenerationMode } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { Audit } from '../models/Audit.model.js';
@@ -34,12 +34,33 @@ router.post(
         throw new AppError('Associated lead not found', 404);
       }
 
-      await Lead.findByIdAndUpdate(lead._id, { status: 'GENERATING' }).exec();
+      // REV-31: generate once from AUDITED; regenerating needs forceRegenerate and is never
+      // allowed once outreach is scheduled or dispatched (Human-In-The-Loop)
+      const mode = mvpGenerationMode(lead.status);
+      if (mode === 'blocked') {
+        throw new AppError(`MVP generation is not allowed while the lead is ${lead.status}`, 409, {
+          code: 'MVP_GENERATION_NOT_ALLOWED',
+          status: lead.status,
+        });
+      }
+      if (mode === 'regenerate' && !forceRegenerate) {
+        throw new AppError('This lead already has an MVP. Set forceRegenerate to replace it.', 409, {
+          code: 'MVP_ALREADY_GENERATED',
+          status: lead.status,
+        });
+      }
+
+      const previousStatus = lead.status;
+      await Lead.findByIdAndUpdate(lead._id, {
+        $set: { status: 'GENERATING' },
+        $unset: { generationError: '' },
+      }).exec();
 
       const job = await addAiGenerationJob({
         leadId: lead._id.toString(),
         auditId: audit._id.toString(),
-        forceRegenerate,
+        forceRegenerate: mode === 'regenerate',
+        previousStatus,
       });
 
       res.status(202).json({

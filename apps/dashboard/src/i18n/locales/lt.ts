@@ -106,6 +106,15 @@ export const lt: Translation = {
     generating: '✨ Generuojamas MVP...',
     rejected: '✕ Atmestas',
     openMvp: 'Atidaryti MVP',
+    generationFailed: 'Generavimas nepavyko',
+  },
+  regenerate: {
+    action: 'Generuoti MVP iš naujo',
+    confirmTitle: 'Generuoti MVP iš naujo?',
+    confirmBody: '{{name}} bus sugeneruota nauja MVP versija, kuri pakeis dabartinę ta pačia peržiūros nuoroda. Potencialus klientas grįš peržiūrai; laiškai nesiunčiami.',
+    confirm: 'Generuoti iš naujo',
+    cancel: 'Atšaukti',
+    failed: 'Nepavyko pradėti generavimo iš naujo: {{message}}',
   },
   grid: {
     company: 'Įmonė ir svetainė',
@@ -235,6 +244,7 @@ export const lt: Translation = {
     iframeTitle: 'Interaktyvi MVP peržiūra smėlio dėžėje',
     generatingTitle: 'Generuojamas ir diegiamas interaktyvus MVP...',
     generatingBody: 'Foninis procesas surenka Bento maketą ir įkelia paketą į izoliuotą MinIO saugyklą.',
+    regenerating: 'Generuojama iš naujo: dabartinė versija matoma, kol nauja bus paruošta',
     hitlNotice: '🔒 Human-in-the-loop režimas: siuntimas užblokuotas, kol operatorius aiškiai nepatvirtins',
     goToApproval: 'Pereiti prie patvirtinimo ir siuntimo',
     backToInspector: 'Atgal į svetainės inspektorių',

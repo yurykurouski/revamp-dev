@@ -69,6 +69,10 @@ export interface ILead {
   tags: string[];
   previewUrl?: string;
   comparisonBannerUrl?: string;
+  /** When the current MVP was last deployed; used to cache-bust the preview (REV-31) */
+  mvpGeneratedAt?: string | Date;
+  /** Why the last MVP generation failed; cleared when a new run starts (REV-31) */
+  generationError?: string;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -234,6 +238,10 @@ export interface IMvpProject {
     accent: string;
   };
   isPublished: boolean;
+  /** When this version was generated and deployed (REV-31) */
+  generatedAt?: string | Date;
+  /** Number of generation runs for the lead, the first one included (REV-31) */
+  generationCount?: number;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -398,12 +406,16 @@ export interface IAiGenerationJobData {
   leadId: string;
   auditId: string;
   forceRegenerate?: boolean;
+  /** Lead status before the run started; restored if generation fails for good (REV-31) */
+  previousStatus?: LeadStatus;
 }
 
 export interface IDeployJobData {
   leadId: string;
   auditId: string;
   mvpProjectId?: string;
+  forceRegenerate?: boolean;
+  previousStatus?: LeadStatus;
 }
 
 export interface IEmailDispatchJobData {

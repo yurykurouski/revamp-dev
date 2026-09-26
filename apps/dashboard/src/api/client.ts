@@ -4,6 +4,7 @@ import {
   ImportDiscoverySchema,
   StartDiscoveryInput,
   StartDiscoverySchema,
+  GenerateMvpSchema,
 } from '@revamp/validation';
 import {
   IDiscoveryImportResult,
@@ -26,6 +27,10 @@ export interface ILeadItem {
   auditId?: string;
   previewUrl?: string;
   comparisonBannerUrl?: string;
+  /** When the current MVP was deployed; cache-busts the preview after a regeneration (REV-31) */
+  mvpGeneratedAt?: string;
+  /** Why the last MVP generation failed, if it did (REV-31) */
+  generationError?: string;
   createdAt: string;
 }
 
@@ -205,6 +210,8 @@ export const apiClient = {
             auditId?: string;
             previewUrl?: string;
             comparisonBannerUrl?: string;
+            mvpGeneratedAt?: string;
+            generationError?: string;
             createdAt: string;
           }
 
@@ -232,6 +239,8 @@ export const apiClient = {
               auditId: l.auditId || l._id || l.id,
               previewUrl: l.previewUrl,
               comparisonBannerUrl: l.comparisonBannerUrl,
+              mvpGeneratedAt: l.mvpGeneratedAt,
+              generationError: l.generationError,
               createdAt: l.createdAt,
             };
           });
@@ -560,24 +569,38 @@ export const apiClient = {
   },
 
   /**
-   * Triggers MVP generation for an audited lead
+   * Triggers MVP generation for an audited lead, or regenerates an existing MVP with
+   * `forceRegenerate` (REV-31). Server rejections (e.g. 409 once outreach is scheduled) are thrown;
+   * only an unreachable backend falls back to the local demo data.
    */
-  async generateMvp(auditId: string, leadId?: string): Promise<{ success: boolean; status: LeadStatus }> {
+  async generateMvp(
+    auditId: string,
+    leadId?: string,
+    options: { forceRegenerate?: boolean } = {},
+  ): Promise<{ success: boolean; status: LeadStatus }> {
+    let res: Response | null = null;
     try {
-      const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
+      res = await fetch(`${API_BASE_URL}/mvp/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ auditId }),
+        body: JSON.stringify(
+          GenerateMvpSchema.parse({ auditId, forceRegenerate: options.forceRegenerate ?? false }),
+        ),
       });
-      if (res.ok) {
-        if (leadId) {
-          const target = localLeadsCache.find((l) => l.id === leadId);
-          if (target) target.status = 'GENERATING';
-        }
-        return { success: true, status: 'GENERATING' };
-      }
     } catch {
-      // Fallback
+      // Backend unreachable: fall through to the demo fallback below
+    }
+
+    if (res) {
+      await readDataOrThrow<unknown>(res);
+      if (leadId) {
+        const target = localLeadsCache.find((l) => l.id === leadId);
+        if (target) {
+          target.status = 'GENERATING';
+          target.generationError = undefined;
+        }
+      }
+      return { success: true, status: 'GENERATING' };
     }
 
     if (leadId) {
@@ -669,6 +692,8 @@ export interface IMvpProjectDetail {
   };
   generatedContent?: Record<string, unknown>;
   isPublished?: boolean;
+  generatedAt?: string;
+  generationCount?: number;
 }
 
 export interface ICriticalFlaw {

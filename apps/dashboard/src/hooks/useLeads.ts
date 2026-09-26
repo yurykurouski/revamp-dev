@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient, ILeadItem, KpiMetrics } from '../api/client.js';
-import { QuickAddLeadInput } from '@revamp/validation';
+import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
+import { LeadStatus } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
 export const LEADS_QUERY_KEY = ['leads'];
@@ -97,14 +98,47 @@ export const useUpdateMvpTokensMutation = () => {
   });
 };
 
+export interface GenerateMvpVariables {
+  auditId: string;
+  leadId?: string;
+  /** Replace an existing MVP (REV-31) */
+  forceRegenerate?: boolean;
+}
+
+/** Sends a generate or regenerate request (REV-31); exported for tests */
+export const generateMvpRequest = ({ auditId, leadId, forceRegenerate }: GenerateMvpVariables) =>
+  apiClient.generateMvp(auditId, leadId, { forceRegenerate: forceRegenerate ?? false });
+
 export const useGenerateMvpMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: ({ auditId, leadId }: { auditId: string; leadId?: string }) =>
-      apiClient.generateMvp(auditId, leadId),
-    onSuccess: () => {
+    mutationFn: generateMvpRequest,
+    onSuccess: (_data, { leadId }) => {
       queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+      if (leadId) queryClient.invalidateQueries({ queryKey: ['mvp', leadId] });
     },
   });
+};
+
+/** Whether the dashboard offers "Regenerate MVP" for a lead (REV-31) */
+export const canRegenerateMvp = (status: LeadStatus | undefined): boolean =>
+  mvpGenerationMode(status) === 'regenerate';
+
+/**
+ * Appends the MVP generation time as a `v` query parameter, so the preview iframe and the banner
+ * reload after a regeneration that overwrote the same URL (REV-31).
+ */
+export const withPreviewVersion = (url: string | undefined, version: string | undefined): string => {
+  if (!url) return '';
+  if (!version) return url;
+  const stamp = Date.parse(version);
+  if (Number.isNaN(stamp)) return url;
+  try {
+    const parsed = new URL(url);
+    parsed.searchParams.set('v', String(stamp));
+    return parsed.toString();
+  } catch {
+    return `${url}${url.includes('?') ? '&' : '?'}v=${stamp}`;
+  }
 };

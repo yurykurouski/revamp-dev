@@ -106,6 +106,15 @@ export const ru: Translation = {
     generating: '✨ Генерация MVP...',
     rejected: '✕ Отклонён',
     openMvp: 'Открыть MVP',
+    generationFailed: 'Ошибка генерации',
+  },
+  regenerate: {
+    action: 'Перегенерировать MVP',
+    confirmTitle: 'Перегенерировать MVP?',
+    confirmBody: 'Для {{name}} будет создана новая версия MVP, она заменит текущую по той же ссылке на превью. Лид вернётся на проверку; письма не отправляются.',
+    confirm: 'Перегенерировать',
+    cancel: 'Отмена',
+    failed: 'Не удалось запустить перегенерацию: {{message}}',
   },
   grid: {
     company: 'Компания и сайт',
@@ -235,6 +244,7 @@ export const ru: Translation = {
     iframeTitle: 'Интерактивный предпросмотр MVP в песочнице',
     generatingTitle: 'Генерация и публикация интерактивного MVP...',
     generatingBody: 'Фоновый воркер собирает Bento-макет и загружает бандл в изолированное хранилище MinIO.',
+    regenerating: 'Перегенерация: текущая версия остаётся видна, пока не будет готова новая',
     hitlNotice: '🔒 Режим human-in-the-loop: рассылка заблокирована до явного одобрения оператором',
     goToApproval: 'Перейти к одобрению и отправке',
     backToInspector: 'Назад к инспектору сайта',

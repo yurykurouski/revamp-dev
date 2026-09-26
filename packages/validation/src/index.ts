@@ -229,6 +229,27 @@ export const GenerateMvpSchema = z.object({
 export type GenerateMvpDto = z.infer<typeof GenerateMvpSchema>;
 
 /**
+ * MVP generation rules by lead status (REV-31), shared by the API and the dashboard.
+ * - `first`: the lead is audited and has no MVP yet.
+ * - `regenerate`: an MVP exists and outreach has not been scheduled; needs `forceRegenerate`.
+ * - `blocked`: no finished audit yet, generation already running, or outreach scheduled/dispatched.
+ */
+export type MvpGenerationMode = 'first' | 'regenerate' | 'blocked';
+
+export const MVP_REGENERATABLE_STATUSES = [
+  'MVP_READY',
+  'NEEDS_APPROVAL',
+  'AWAITING_APPROVAL',
+  'APPROVED',
+] as const;
+
+export function mvpGenerationMode(status: string | undefined | null): MvpGenerationMode {
+  if (status === 'AUDITED') return 'first';
+  if ((MVP_REGENERATABLE_STATUSES as readonly string[]).includes(status ?? '')) return 'regenerate';
+  return 'blocked';
+}
+
+/**
  * Schema for PATCH /api/v1/mvp/:id/tokens
  */
 export const UpdateMvpTokensSchema = z.object({

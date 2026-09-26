@@ -103,6 +103,8 @@ export class StorageService {
         Key: key,
         Body: buffer,
         ContentType: 'text/html; charset=utf-8',
+        // Regeneration overwrites this object in place (REV-31); make browsers revalidate it
+        CacheControl: 'no-cache',
         Metadata: {
           'x-frame-options': 'SAMEORIGIN',
           'content-security-policy': "default-src 'self' 'unsafe-inline' data: https:;",
