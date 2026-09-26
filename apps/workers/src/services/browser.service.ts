@@ -3,6 +3,7 @@ import { axeService, AxeAuditResult } from './axe.service.js';
 import { vitalsService, VitalsAuditResult } from './vitals.service.js';
 import { RawBrandExtractionData } from './brand-extractor.service.js';
 import { extractSiteContentInPage, RawSiteContent } from './site-content.extractor.js';
+import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.service.js';
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -27,6 +28,8 @@ export interface FullAuditCrawlingResult extends ScreenshotResult {
   a11yResult: AxeAuditResult;
   vitalsResult: VitalsAuditResult;
   rawBrandData: RawBrandExtractionData;
+  /** How each capture context handled the site's cookie consent UI (REV-33) */
+  cookieConsent: { desktop: CookieConsentOutcome; mobile: CookieConsentOutcome };
 }
 
 /**
@@ -433,6 +436,8 @@ export class BrowserService {
     let a11yResult: AxeAuditResult;
     let vitalsResult: VitalsAuditResult;
     let rawBrandData: RawBrandExtractionData;
+    let desktopConsent: CookieConsentOutcome;
+    let mobileConsent: CookieConsentOutcome;
 
     // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
@@ -446,6 +451,8 @@ export class BrowserService {
     try {
       const page = await desktopContext.newPage();
       await this.navigateWithFallback(page, url, 25000);
+      // Dismiss the cookie banner so screenshots, brand colours and content come from the site itself
+      desktopConsent = await cookieConsentService.dismiss(page);
       desktopBuffer = await page.screenshot({
         type: 'png',
         fullPage: false,
@@ -476,16 +483,20 @@ export class BrowserService {
       const page = await mobileContext.newPage();
       await this.navigateWithFallback(page, url, 25000);
 
+      // Deterministic Core Web Vitals & Web Standards. Collected before the cookie banner is dismissed,
+      // so the dismissal clicks and the layout changes they cause never count towards CLS.
+      vitalsResult = await vitalsService.collectVitals(page, url);
+
+      mobileConsent = await cookieConsentService.dismiss(page);
+
       // Screenshot first screen
       mobileBuffer = await page.screenshot({
         type: 'png',
         fullPage: false,
       });
 
-      // Deterministic Core Web Vitals & Web Standards
-      vitalsResult = await vitalsService.collectVitals(page, url);
-
-      // Deterministic WCAG 2.1 AA Axe-core audit
+      // Deterministic WCAG 2.1 AA Axe-core audit. Runs after dismissal, so it covers the site's own
+      // markup; the (usually third-party) consent widget is intentionally not part of the scan.
       a11yResult = await axeService.scanPage(page);
 
       // Full-page mobile screenshot last, so scrolling does not skew vitals collection
@@ -502,6 +513,7 @@ export class BrowserService {
       a11yResult,
       vitalsResult,
       rawBrandData,
+      cookieConsent: { desktop: desktopConsent, mobile: mobileConsent },
     };
   }
 

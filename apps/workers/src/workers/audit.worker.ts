@@ -54,6 +54,7 @@ export const createAuditWorker = (): Worker => {
           a11yResult,
           vitalsResult,
           rawBrandData,
+          cookieConsent,
         } = await browserService.captureFullAudit(url);
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
@@ -145,6 +146,7 @@ export const createAuditWorker = (): Worker => {
             extractedServices: brandResult.services,
             extractedContacts: brandResult.contacts,
             extractedContent: brandResult.siteContent,
+            cookieBannerHandled: cookieConsent,
           },
           { new: true, ...LATEST_AUDIT },
         ).exec();

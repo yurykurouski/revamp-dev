@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserService, FULL_PAGE_MAX_HEIGHT, REVEAL_ANIMATIONS_CSS, EVALUATE_NAME_SHIM } from '../browser.service.js';
 import { chromium } from 'playwright';
+import { cookieConsentService } from '../cookie-consent.service.js';
+import { vitalsService } from '../vitals.service.js';
+import { axeService } from '../axe.service.js';
 
 vi.mock('../axe.service.js', () => ({
   axeService: {
@@ -21,6 +24,12 @@ vi.mock('../vitals.service.js', () => ({
       performanceScore: 95,
       standardsScore: 100,
     }),
+  },
+}));
+
+vi.mock('../cookie-consent.service.js', () => ({
+  cookieConsentService: {
+    dismiss: vi.fn().mockResolvedValue('dismissed:cmp:onetrust'),
   },
 }));
 
@@ -177,6 +186,34 @@ describe('BrowserService', () => {
     expect(fullPageShots).toHaveLength(2);
     expect(result.desktopFullBuffer).toBeInstanceOf(Buffer);
     expect(result.mobileFullBuffer).toBeInstanceOf(Buffer);
+  });
+
+  it('should dismiss the cookie banner before the first screenshot in both contexts (REV-33)', async () => {
+    const service = new BrowserService(20);
+    vi.mocked(cookieConsentService.dismiss)
+      .mockResolvedValueOnce('dismissed:cmp:onetrust')
+      .mockResolvedValueOnce('not_found');
+
+    const result = await service.captureFullAudit('https://consent-test.com');
+
+    expect(cookieConsentService.dismiss).toHaveBeenCalledTimes(2);
+    expect(result.cookieConsent).toEqual({ desktop: 'dismissed:cmp:onetrust', mobile: 'not_found' });
+
+    const dismissOrder = vi.mocked(cookieConsentService.dismiss).mock.invocationCallOrder;
+    const screenshotOrder = mockPage.screenshot.mock.invocationCallOrder;
+    // Desktop: dismiss, viewport shot, full-page shot; mobile: dismiss, viewport shot, full-page shot
+    expect(dismissOrder[0]).toBeLessThan(screenshotOrder[0]);
+    expect(dismissOrder[1]).toBeGreaterThan(screenshotOrder[1]);
+    expect(dismissOrder[1]).toBeLessThan(screenshotOrder[2]);
+  });
+
+  it('should collect vitals before dismissing consent and scan a11y after it (REV-33)', async () => {
+    const service = new BrowserService(20);
+    await service.captureFullAudit('https://consent-order-test.com');
+
+    const mobileDismiss = vi.mocked(cookieConsentService.dismiss).mock.invocationCallOrder[1]!;
+    expect(vi.mocked(vitalsService.collectVitals).mock.invocationCallOrder[0]).toBeLessThan(mobileDismiss);
+    expect(vi.mocked(axeService.scanPage).mock.invocationCallOrder[0]).toBeGreaterThan(mobileDismiss);
   });
 
   it('should auto-scroll the page to trigger lazy-loaded content before full-page capture', async () => {

@@ -181,6 +181,8 @@ export interface IAudit {
   extractedServices?: string[];
   extractedContacts?: IExtractedContacts;
   extractedContent?: ISiteContent;
+  /** How the audit crawler handled the site's cookie banner per capture context (REV-33) */
+  cookieBannerHandled?: { desktop?: string; mobile?: string };
   generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;
