@@ -9,6 +9,7 @@ import {
 import { BentoTemplateDataSchema } from '@revamp/validation';
 import { generateBentoHtml } from '../templates/bento.template.js';
 import { getSupportedIconNames } from '../templates/icons.js';
+import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 
 export class BentoTemplateService {
   /**
@@ -47,10 +48,13 @@ export class BentoTemplateService {
     audit?: Partial<IAudit>,
     generatedContent?: Partial<IMvpGeneratedContent>,
   ): string {
-    const businessName = lead.businessName || lead.domain || 'Our business';
+    const site = audit?.extractedContent;
+    // The MVP speaks the original site's language (REV-25)
+    const language = sanitizeLanguageTag(site?.language) ?? 'en';
+    const t = getMvpStrings(language);
+    const businessName = lead.businessName || lead.domain || t.ourBusiness;
     const tokens = audit?.extractedBrandTokens;
     const contacts = audit?.extractedContacts;
-    const site = audit?.extractedContent;
 
     // Services come from the generated (grounded) copy, else straight from the original site
     let services: IBentoServiceCard[] = (generatedContent?.services || []).map((s, idx) => ({
@@ -62,18 +66,18 @@ export class BentoTemplateService {
     if (services.length === 0 && site) {
       services = site.serviceItems.slice(0, 6).map((item, idx) => ({
         title: item.title.slice(0, 60),
-        description: (item.description || `${item.title} at ${businessName}.`).slice(0, 200),
+        description: (item.description || t.serviceAt(item.title, businessName)).slice(0, 200),
         highlight: idx === 0,
       }));
     }
 
     // Only real testimonials from the original site, never invented reviews
     const reviews: IBentoReviewItem[] = (site?.testimonials || [])
-      .filter((t) => t.text.length >= 5)
+      .filter((review) => review.text.length >= 5)
       .slice(0, 6)
-      .map((t) => ({
-        author: (t.author || 'Customer').slice(0, 60),
-        comment: t.text.slice(0, 300),
+      .map((review) => ({
+        author: (review.author || t.customer).slice(0, 60),
+        comment: review.text.slice(0, 300),
         source: 'Website' as const,
       }));
 
@@ -87,6 +91,7 @@ export class BentoTemplateService {
 
     const templateData: IBentoTemplateData = {
       businessName,
+      language,
       niche: lead.niche,
       logoUrl,
       monogramSvg: !logoUrl && tokens?.logoUrl?.startsWith('<svg') ? tokens.logoUrl : undefined,
