@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import { DiscoveryCandidateStatus, LLM_PROVIDER_IDS, findLlmProvider } from '@revamp/shared-types';
+import {
+  DiscoveryCandidateStatus,
+  LLM_PROVIDER_IDS,
+  SITE_COMPLEXITY_CLASSES,
+  findLlmProvider,
+} from '@revamp/shared-types';
 
 // ==============================================================================
 // In-App Autonomous AI Agents Schemas (from AGENTS.md)
@@ -118,6 +123,50 @@ export const CreateLeadSchema = z.object({
   contactPhone: z.string().max(30).optional(),
   ownerName: z.string().max(100).optional(),
 });
+
+// ==============================================================================
+// Site complexity (REV-38)
+// ==============================================================================
+
+export const SiteComplexityClassSchema = z.enum(SITE_COMPLEXITY_CLASSES);
+
+export const SiteComplexitySignalsSchema = z.object({
+  internalPageCount: z.number().int().min(0),
+  internalPages: z.array(z.string().max(300)).max(20),
+  hasEcommerce: z.boolean(),
+  hasBooking: z.boolean(),
+  hasLogin: z.boolean(),
+  hasSearch: z.boolean(),
+  hasAppShell: z.boolean(),
+  sectionCount: z.number().int().min(0),
+  pageHeight: z.number().min(0),
+});
+
+export const SiteComplexitySchema = z.object({
+  class: SiteComplexityClassSchema,
+  signals: SiteComplexitySignalsSchema.optional(),
+  reasons: z.array(z.string().max(100)).max(20),
+});
+
+export type SiteComplexityDto = z.infer<typeof SiteComplexitySchema>;
+
+/** Query-string value: an empty parameter counts as missing */
+const optionalQueryParam = <T extends z.ZodTypeAny>(schema: T) =>
+  z.preprocess((val) => (val === '' ? undefined : val), schema.optional());
+
+/**
+ * Schema for GET /api/v1/leads
+ */
+export const GetLeadsQuerySchema = z.object({
+  page: optionalQueryParam(z.coerce.number().int().min(1)),
+  limit: optionalQueryParam(z.coerce.number().int().min(1).max(100)),
+  status: optionalQueryParam(z.string().max(40)),
+  niche: optionalQueryParam(z.string().max(40)),
+  search: optionalQueryParam(z.string().max(100)),
+  complexity: optionalQueryParam(SiteComplexityClassSchema),
+});
+
+export type GetLeadsQueryDto = z.infer<typeof GetLeadsQuerySchema>;
 
 export const QuickAddLeadSchema = z.object({
   url: z.preprocess((val) => {

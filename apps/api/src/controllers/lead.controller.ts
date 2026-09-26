@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { LeadService } from '../services/lead.service.js';
+import { LeadService, GetLeadsQuery } from '../services/lead.service.js';
 
 export const createLead = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -21,7 +21,7 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
 
 export const getLeads = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await LeadService.getLeads(req.query);
+    const result = await LeadService.getLeads(req.query as GetLeadsQuery);
     res.status(200).json({
       success: true,
       data: result.leads,

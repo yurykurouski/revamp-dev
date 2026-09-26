@@ -278,6 +278,22 @@ export const lt: Translation = {
     backToInspector: 'Atgal į svetainės inspektorių',
     closeButton: 'Uždaryti',
   },
+  siteComplexity: {
+    label: 'Svetainės tipas',
+    all: 'Visi svetainių tipai',
+    classes: {
+      ONE_PAGE_BROCHURE: 'Vieno puslapio',
+      SMALL_MULTI_PAGE: 'Nedidelė kelių puslapių',
+      COMPLEX: 'Sudėtinga',
+      UNKNOWN: 'Neįvertinta',
+    },
+    hints: {
+      ONE_PAGE_BROCHURE: 'Vieno puslapio vizitinė svetainė: MVP gali ją visiškai pakeisti. Tokie potencialūs klientai rodomi pirmi.',
+      SMALL_MULTI_PAGE: 'Keli puslapiai, internetinė registracija ar paieška: dalis svetainės gali netilpti į vieno puslapio MVP.',
+      COMPLEX: 'Parduotuvė, klientų paskyros, žiniatinklio programa ar daug puslapių: sunku pakeisti vieno puslapio MVP.',
+      UNKNOWN: 'Auditas negalėjo įvertinti šios svetainės sudėtingumo.',
+    },
+  },
   completeness: {
     title: '📋 MVP duomenų patikra',
     score: 'Įvertis {{score}}/100',

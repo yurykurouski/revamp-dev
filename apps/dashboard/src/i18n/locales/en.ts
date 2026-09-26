@@ -279,6 +279,22 @@ export const en = {
     backToInspector: 'Back to site inspector',
     closeButton: 'Close',
   },
+  siteComplexity: {
+    label: 'Site type',
+    all: 'All site types',
+    classes: {
+      ONE_PAGE_BROCHURE: 'One-page',
+      SMALL_MULTI_PAGE: 'Small multi-page',
+      COMPLEX: 'Complex',
+      UNKNOWN: 'Not estimated',
+    },
+    hints: {
+      ONE_PAGE_BROCHURE: 'A one-page brochure site: the MVP can replace it outright. These leads are shown first.',
+      SMALL_MULTI_PAGE: 'A few pages, online booking or search: part of the site may not fit on one MVP page.',
+      COMPLEX: 'A shop, customer accounts, a web app or many pages: hard to replace with a one-page MVP.',
+      UNKNOWN: 'The audit could not estimate how complex this site is.',
+    },
+  },
   completeness: {
     title: '📋 MVP data check',
     score: 'Score {{score}}/100',

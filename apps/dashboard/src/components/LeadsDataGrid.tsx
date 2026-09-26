@@ -6,6 +6,7 @@ import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
+import { SiteComplexityChip } from './SiteComplexityChip.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useTranslation } from 'react-i18next';
@@ -141,6 +142,19 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
           />
         );
       },
+    },
+    {
+      field: 'siteComplexity',
+      headerName: t('siteComplexity.label'),
+      width: 160,
+      renderCell: (params: GridRenderCellParams<ILeadItem>) =>
+        params.row.siteComplexity && params.row.siteComplexity !== 'UNKNOWN' ? (
+          <SiteComplexityChip complexity={params.row.siteComplexity} />
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            —
+          </Typography>
+        ),
     },
     {
       field: 'city',

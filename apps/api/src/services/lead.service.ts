@@ -1,4 +1,4 @@
-import { LeadSource } from '@revamp/shared-types';
+import { LeadSource, SiteComplexityClass } from '@revamp/shared-types';
 import {
   CreateLeadDto,
   MvpCompletenessReportDto,
@@ -18,7 +18,11 @@ export interface GetLeadsQuery {
   status?: string;
   niche?: string;
   search?: string;
+  complexity?: SiteComplexityClass;
 }
+
+/** One-page brochure sites are the easiest to replace, so they lead the list; newest first within (REV-38) */
+export const LEAD_LIST_SORT = { onePageBrochure: -1, createdAt: -1 } as const;
 
 export class LeadService {
   /**
@@ -93,6 +97,12 @@ export class LeadService {
       filter['niche'] = query.niche;
     }
 
+    if (query.complexity) {
+      // Leads audited before REV-38 have no class yet; they count as unknown
+      filter['siteComplexity'] =
+        query.complexity === 'UNKNOWN' ? { $in: [null, 'UNKNOWN'] } : query.complexity;
+    }
+
     if (query.search) {
       const searchRegex = new RegExp(query.search, 'i');
       filter['$or'] = [
@@ -104,7 +114,7 @@ export class LeadService {
     }
 
     const [leads, total] = await Promise.all([
-      Lead.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).exec(),
+      Lead.find(filter).sort(LEAD_LIST_SORT).skip(skip).limit(limit).exec(),
       Lead.countDocuments(filter).exec(),
     ]);
 

@@ -27,7 +27,8 @@ import { LeadsDataGrid } from '../components/LeadsDataGrid.js';
 import { AddLeadModal } from '../components/AddLeadModal.js';
 import { DiscoveryModal } from '../components/DiscoveryModal.js';
 import { SideBySideInspectorModal } from '../components/SideBySideInspectorModal.js';
-import { LeadStatus, NicheType } from '@revamp/shared-types';
+import { LeadStatus, NicheType, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
+import { ComplexityFilter } from '../utils/siteComplexity.js';
 import { useTranslation } from 'react-i18next';
 import { NICHES, NICHE_EMOJI } from '../i18n/niches.js';
 
@@ -36,10 +37,12 @@ export const LeadsPage: React.FC = () => {
     searchQuery,
     selectedStatus,
     selectedNiche,
+    selectedComplexity,
     viewMode,
     setSearchQuery,
     setSelectedStatus,
     setSelectedNiche,
+    setSelectedComplexity,
     resetFilters,
   } = useLeadFilterStore();
 
@@ -177,7 +180,24 @@ export const LeadsPage: React.FC = () => {
             </Select>
           </FormControl>
 
-          {(searchQuery || selectedStatus !== 'ALL' || selectedNiche !== 'ALL') && (
+          <FormControl size="small" sx={{ width: { xs: '100%', sm: 200 } }}>
+            <InputLabel id="complexity-select-label">{t('siteComplexity.label')}</InputLabel>
+            <Select
+              labelId="complexity-select-label"
+              label={t('siteComplexity.label')}
+              value={selectedComplexity}
+              onChange={(e) => setSelectedComplexity(e.target.value as ComplexityFilter)}
+            >
+              <MenuItem value="ALL">{t('siteComplexity.all')}</MenuItem>
+              {SITE_COMPLEXITY_CLASSES.map((complexity) => (
+                <MenuItem key={complexity} value={complexity}>
+                  {t(`siteComplexity.classes.${complexity}`)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+
+          {(searchQuery || selectedStatus !== 'ALL' || selectedNiche !== 'ALL' || selectedComplexity !== 'ALL') && (
             <Button
               variant="text"
               color="inherit"

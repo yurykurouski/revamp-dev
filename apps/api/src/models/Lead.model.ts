@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { ILead, NicheType, LeadStatus, LeadSource } from '@revamp/shared-types';
+import { ILead, NicheType, LeadStatus, LeadSource, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 
 export interface ILeadDocument extends Omit<ILead, '_id' | 'createdAt' | 'updatedAt'>, Document {
   createdAt: Date;
@@ -126,6 +126,14 @@ const LeadSchema = new Schema<ILeadDocument>(
     generationError: {
       type: String,
     },
+    // REV-38: complexity class from the latest audit; one-page brochure sites sort first
+    siteComplexity: {
+      type: String,
+      enum: [...SITE_COMPLEXITY_CLASSES],
+    },
+    onePageBrochure: {
+      type: Boolean,
+    },
   },
   {
     timestamps: true,
@@ -139,6 +147,9 @@ const LeadSchema = new Schema<ILeadDocument>(
     },
   },
 );
+
+// Default list order (REV-38): one-page brochure sites first, newest first within each group
+LeadSchema.index({ onePageBrochure: -1, createdAt: -1 });
 
 export const Lead: Model<ILeadDocument> =
   mongoose.models['Lead'] || mongoose.model<ILeadDocument>('Lead', LeadSchema);
