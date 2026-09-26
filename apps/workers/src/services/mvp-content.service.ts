@@ -3,6 +3,7 @@ import { ISiteContent } from '@revamp/shared-types';
 import { env } from '../config/env.js';
 import { getSupportedIconNames } from '../templates/icons.js';
 import { getMvpStrings, languageDisplayName, sanitizeLanguageTag } from '../templates/mvp-locale.js';
+import { ClaudeCliRunner, createClaudeCliRunner } from './claude-cli.js';
 
 export interface GenerateMvpContentInput {
   businessName: string;
@@ -29,12 +30,16 @@ export interface MvpContentGenerationResult {
   attempts: number;
 }
 
+export type MvpContentProvider = 'anthropic' | 'openai' | 'gemini' | 'claude-cli' | 'mock';
+
 export interface MvpContentServiceOptions {
-  provider?: 'anthropic' | 'openai' | 'gemini' | 'mock';
+  provider?: MvpContentProvider;
   anthropicApiKey?: string;
   openaiApiKey?: string;
   geminiApiKey?: string;
   customFetcher?: typeof fetch;
+  /** Replaces the local Claude Code CLI call for the 'claude-cli' provider (REV-30) */
+  claudeCliRunner?: ClaudeCliRunner;
 }
 
 export const MVP_CONTENT_SYSTEM_PROMPT = `You are a professional Senior Conversion Copywriter.
@@ -110,20 +115,29 @@ export function clipText(text: string, maxLength: number): string {
 }
 
 export class MvpContentService {
-  private provider: 'anthropic' | 'openai' | 'gemini' | 'mock';
+  private provider: MvpContentProvider;
   private anthropicApiKey?: string;
   private openaiApiKey?: string;
   private geminiApiKey?: string;
   private fetcher: typeof fetch;
+  private claudeCliRunner: ClaudeCliRunner;
 
   constructor(options: MvpContentServiceOptions = {}) {
     this.anthropicApiKey = options.anthropicApiKey ?? env.ANTHROPIC_API_KEY;
     this.openaiApiKey = options.openaiApiKey ?? env.OPENAI_API_KEY;
     this.geminiApiKey = options.geminiApiKey ?? env.GEMINI_API_KEY;
     this.fetcher = options.customFetcher ?? fetch;
+    this.claudeCliRunner =
+      options.claudeCliRunner ??
+      createClaudeCliRunner({
+        cliPath: env.CLAUDE_CLI_PATH,
+        model: env.CLAUDE_CLI_MODEL,
+        timeoutMs: env.CLAUDE_CLI_TIMEOUT_MS,
+      });
 
-    if (options.provider) {
-      this.provider = options.provider;
+    const configuredProvider = options.provider ?? env.MVP_LLM_PROVIDER;
+    if (configuredProvider) {
+      this.provider = configuredProvider;
     } else if (this.anthropicApiKey) {
       this.provider = 'anthropic';
     } else if (this.openaiApiKey) {
@@ -140,11 +154,12 @@ export class MvpContentService {
    * On failure or missing keys, falls back gracefully with aiFallbackUsed: true.
    */
   async generateContent(input: GenerateMvpContentInput): Promise<MvpContentGenerationResult> {
+    // The local Claude CLI authenticates itself, so it needs no API key
     if (
       this.provider === 'mock' ||
-      (!this.anthropicApiKey && !this.openaiApiKey && !this.geminiApiKey)
+      (this.provider !== 'claude-cli' && !this.anthropicApiKey && !this.openaiApiKey && !this.geminiApiKey)
     ) {
-      console.log('[MvpContentService] No LLM API keys detected. Using deterministic grounded copy.');
+      console.log('[MvpContentService] No LLM provider configured. Using deterministic grounded copy.');
       const fallback = this.generateDeterministicFallback(input);
       return {
         content: fallback,
@@ -168,7 +183,13 @@ export class MvpContentService {
         );
 
         let rawResponse: string;
-        if (this.provider === 'anthropic') {
+        if (this.provider === 'claude-cli') {
+          // The CLI has no temperature setting; retries simply re-run it
+          rawResponse = await this.claudeCliRunner({
+            systemPrompt: MVP_CONTENT_SYSTEM_PROMPT,
+            userPrompt: this.buildUserPrompt(input),
+          });
+        } else if (this.provider === 'anthropic') {
           rawResponse = await this.callAnthropic(input, currentTemp);
         } else if (this.provider === 'gemini') {
           rawResponse = await this.callGemini(input, currentTemp);

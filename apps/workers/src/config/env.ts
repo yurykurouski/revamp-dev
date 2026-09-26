@@ -5,7 +5,7 @@ import { z } from 'zod';
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-const EnvSchema = z.object({
+export const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   MONGODB_URI: z.string().default('mongodb://localhost:27017/revamp'),
   REDIS_HOST: z.string().default('localhost'),
@@ -22,6 +22,15 @@ const EnvSchema = z.object({
   ANTHROPIC_API_KEY: z.string().optional(),
   OPENAI_API_KEY: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
+  // MVP copywriting provider; when unset it is picked from whichever API key is present
+  MVP_LLM_PROVIDER: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['anthropic', 'openai', 'gemini', 'claude-cli', 'mock']).optional(),
+  ),
+  // Local Claude Code CLI provider (REV-30); uses the account the CLI is logged into
+  CLAUDE_CLI_PATH: z.string().default('claude'),
+  CLAUDE_CLI_MODEL: z.string().default('sonnet'),
+  CLAUDE_CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   EMAIL_PROVIDER: z.enum(['mock', 'resend', 'sendgrid', 'smtp']).default('mock'),
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),

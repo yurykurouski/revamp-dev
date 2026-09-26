@@ -266,6 +266,77 @@ describe('MvpContentService (@revamp/workers)', () => {
     expect(result.modelUsed).toBe('deterministic-fallback');
   });
 
+  describe('local Claude CLI provider (REV-30)', () => {
+    const cliCopy = JSON.stringify({
+      hero: {
+        badge: '✨ Pain-free treatment',
+        headline: 'Dental implants and whitening at Dent-Prestige',
+        subheadline: 'Professional hygiene and microscope-assisted treatment in one clinic.',
+        primaryCtaText: 'Book an appointment',
+        secondaryCtaText: 'Talk to a dentist',
+      },
+      services: [
+        { title: 'Dental implants', description: 'Implants placed with care.', lucideIconName: 'shield-check' },
+        { title: 'Professional hygiene', description: 'Thorough, gentle cleaning.', lucideIconName: 'sparkles' },
+        { title: 'Zoom enamel whitening', description: 'A brighter smile in one visit.', lucideIconName: 'sparkles' },
+      ],
+      trustSignals: [],
+      offerNotice: 'Book your first consultation online',
+    });
+
+    it('should generate copy through the CLI without any API key', async () => {
+      const runner = vi.fn().mockResolvedValue(`Here you go:\n${cliCopy}`);
+      const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(result.aiFallbackUsed).toBe(false);
+      expect(result.modelUsed).toBe('claude-cli');
+      expect(result.attempts).toBe(1);
+      expect(result.content.hero.headline).toBe('Dental implants and whitening at Dent-Prestige');
+      expect(runner).toHaveBeenCalledTimes(1);
+      const request = runner.mock.calls[0]?.[0];
+      expect(request.systemPrompt).toContain('Senior Conversion Copywriter');
+      expect(JSON.parse(request.userPrompt).businessName).toBe('Dent-Prestige Dental');
+    });
+
+    it('should retry after a CLI failure and use the next successful answer', async () => {
+      const runner = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Claude CLI timed out after 120000ms'))
+        .mockResolvedValueOnce(cliCopy);
+      const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(result.aiFallbackUsed).toBe(false);
+      expect(result.attempts).toBe(2);
+    });
+
+    it('should fall back to deterministic copy when every CLI attempt fails', async () => {
+      const runner = vi.fn().mockRejectedValue(new Error('Claude CLI exited with code 1: Not logged in'));
+      const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(runner).toHaveBeenCalledTimes(3);
+      expect(result.aiFallbackUsed).toBe(true);
+      expect(result.modelUsed).toBe('deterministic-fallback');
+      expect(result.content.hero.headline).toContain('Dent-Prestige');
+    });
+
+    it('should apply Strict Grounding to CLI output', async () => {
+      const ungrounded = JSON.parse(cliCopy);
+      ungrounded.trustSignals = [{ metric: '4.9 ★', label: 'Rating on Google Maps' }];
+      const runner = vi.fn().mockResolvedValue(JSON.stringify(ungrounded));
+      const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(result.content.trustSignals).toEqual([]);
+    });
+  });
+
   describe('grounding in the original site content (REV-23)', () => {
     const emptySite: ISiteContent = {
       headings: [],
