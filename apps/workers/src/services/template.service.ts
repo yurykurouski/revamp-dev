@@ -4,6 +4,7 @@ import {
   IAudit,
   IMvpGeneratedContent,
   IBentoServiceCard,
+  IBentoReviewItem,
 } from '@revamp/shared-types';
 import { BentoTemplateDataSchema } from '@revamp/validation';
 import { generateBentoHtml } from '../templates/bento.template.js';
@@ -46,86 +47,80 @@ export class BentoTemplateService {
     audit?: Partial<IAudit>,
     generatedContent?: Partial<IMvpGeneratedContent>,
   ): string {
-    const businessName = lead.businessName || 'Service Center';
-    const primaryColor = audit?.extractedBrandTokens?.primaryColor || '#5c5bed';
-    const secondaryColor = audit?.extractedBrandTokens?.secondaryColor || '#b8c4fe';
-    const accentColor = audit?.extractedBrandTokens?.accentColor || '#5c5bed';
+    const businessName = lead.businessName || lead.domain || 'Our business';
+    const tokens = audit?.extractedBrandTokens;
+    const contacts = audit?.extractedContacts;
+    const site = audit?.extractedContent;
 
-    // Map services or create defaults
-    let services: IBentoServiceCard[] = [];
-    if (generatedContent?.services && generatedContent.services.length > 0) {
-      services = generatedContent.services.map((s, idx) => ({
-        title: s.title,
-        description: s.description,
-        lucideIconName: s.lucideIconName,
-        badge: idx === 0 ? 'Top pick' : undefined,
+    // Services come from the generated (grounded) copy, else straight from the original site
+    let services: IBentoServiceCard[] = (generatedContent?.services || []).map((s, idx) => ({
+      title: s.title,
+      description: s.description,
+      lucideIconName: s.lucideIconName,
+      highlight: idx === 0,
+    }));
+    if (services.length === 0 && site) {
+      services = site.serviceItems.slice(0, 6).map((item, idx) => ({
+        title: item.title.slice(0, 60),
+        description: (item.description || `${item.title} at ${businessName}.`).slice(0, 200),
         highlight: idx === 0,
       }));
-    } else {
-      services = [
-        {
-          title: 'Full inspection & diagnostics',
-          description: 'Detailed expert inspection using professional certified equipment.',
-          lucideIconName: 'activity',
-          badge: 'Recommended',
-          highlight: true,
-        },
-        {
-          title: 'Professional service',
-          description: 'All scheduled maintenance, done to quality standards and manufacturer specs.',
-          lucideIconName: 'wrench',
-        },
-        {
-          title: 'Warranty protection',
-          description: 'Official warranty on all completed work and genuine installed parts.',
-          lucideIconName: 'shield-check',
-          badge: 'Warranty',
-        },
-        {
-          title: 'Personal consultation',
-          description: 'Free estimate and a detailed work plan from a senior specialist in 15 minutes.',
-          lucideIconName: 'phone',
-        },
-      ];
     }
 
-    // Map trust signals
-    const trustSignals =
-      generatedContent?.trustSignals && generatedContent.trustSignals.length > 0
-        ? generatedContent.trustSignals
-        : [
-            { metric: '4.9 ★', label: 'Rating on Google Maps' },
-            { metric: '10+ yrs', label: 'Of successful work and happy clients' },
-            { metric: '100%', label: 'Honest fixed quote, no extra charges' },
-          ];
+    // Only real testimonials from the original site, never invented reviews
+    const reviews: IBentoReviewItem[] = (site?.testimonials || [])
+      .filter((t) => t.text.length >= 5)
+      .slice(0, 6)
+      .map((t) => ({
+        author: (t.author || 'Customer').slice(0, 60),
+        comment: t.text.slice(0, 300),
+        source: 'Website' as const,
+      }));
+
+    const isHttpUrl = (url?: string): url is string => Boolean(url && /^https?:\/\//i.test(url));
+    const images = (site?.images || []).filter(isHttpUrl);
+    const logoUrl = isHttpUrl(tokens?.logoUrl) ? tokens.logoUrl : undefined;
+    // og:image is often just the logo; only use it as the hero photo when it is a real image
+    const ogIsLogo = !site?.ogImage || site.ogImage === logoUrl || /logo/i.test(site.ogImage);
+    const heroImageUrl = !ogIsLogo && isHttpUrl(site?.ogImage) ? site.ogImage : images[0];
+    const email = contacts?.email || lead.contactEmail;
 
     const templateData: IBentoTemplateData = {
       businessName,
       niche: lead.niche,
-      logoUrl: audit?.extractedBrandTokens?.logoUrl,
+      logoUrl,
+      monogramSvg: !logoUrl && tokens?.logoUrl?.startsWith('<svg') ? tokens.logoUrl : undefined,
       palette: {
-        primary: primaryColor,
-        secondary: secondaryColor,
-        accent: accentColor,
+        primary: tokens?.primaryColor || '#2563eb',
+        secondary: tokens?.secondaryColor || '#1e293b',
+        accent: tokens?.accentColor || tokens?.primaryColor || '#2563eb',
       },
       contacts: {
-        phone: lead.contactPhone || '+7 (812) 000-00-00',
-        email: lead.contactEmail,
+        phone: (contacts?.phone || lead.contactPhone)?.slice(0, 30),
+        email: email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : undefined,
+        address: contacts?.address?.slice(0, 150),
+        workingHours: contacts?.workingHours?.slice(0, 100),
         city: lead.city,
       },
       hero: {
-        badge: generatedContent?.hero?.badge || '✨ Special offer',
-        headline:
-          generatedContent?.hero?.headline ||
-          `Professional services by ${businessName}, with guaranteed results`,
+        badge: generatedContent?.hero?.badge || undefined,
+        headline: generatedContent?.hero?.headline || site?.h1 || businessName,
         subheadline:
-          generatedContent?.hero?.subheadline ||
-          `A personal approach, certified specialists and transparent fixed prices in ${lead.city || 'your city'}.`,
-        primaryCtaText: generatedContent?.hero?.primaryCtaText || 'Book online',
-        secondaryCtaText: generatedContent?.hero?.secondaryCtaText || 'Call us',
+          generatedContent?.hero?.subheadline || site?.metaDescription || site?.paragraphs[0] || businessName,
+        primaryCtaText: generatedContent?.hero?.primaryCtaText || undefined,
+        secondaryCtaText: generatedContent?.hero?.secondaryCtaText || undefined,
       },
-      services,
-      trustSignals,
+      // Mixed Mongo fields round-trip undefined as null
+      about: generatedContent?.about || undefined,
+      servicesHeading: generatedContent?.servicesHeading || undefined,
+      services: services.length > 0 ? services : [{ title: businessName, description: site?.metaDescription || businessName }],
+      trustSignals: generatedContent?.trustSignals || [],
+      reviews,
+      heroImageUrl,
+      gallery: images.slice(0, 7),
+      socialLinks: (contacts?.socialLinks || []).filter((l) => isHttpUrl(l.url)).slice(0, 8),
+      footerTagline: site?.metaDescription?.slice(0, 300),
+      originalUrl: isHttpUrl(lead.originalUrl) ? lead.originalUrl : undefined,
     };
 
     return this.render(templateData);

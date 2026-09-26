@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MvpContentService, GenerateMvpContentInput } from '../mvp-content.service.js';
+import { MvpContentService, GenerateMvpContentInput, clipText } from '../mvp-content.service.js';
+import { ISiteContent } from '@revamp/shared-types';
 import { MvpContentOutputSchema } from '@revamp/validation';
 import { getSupportedIconNames } from '../../templates/icons.js';
 
@@ -40,7 +41,8 @@ describe('MvpContentService (@revamp/workers)', () => {
     expect(validated.hero.headline).toContain('Dent-Prestige');
     expect(validated.services.length).toBeGreaterThanOrEqual(3);
     expect(validated.services.length).toBeLessThanOrEqual(6);
-    expect(validated.trustSignals).toHaveLength(3);
+    // No rating / founding year on the source site -> no invented trust metrics (REV-23)
+    expect(validated.trustSignals).toEqual([]);
   });
 
   it('should ground extracted services in deterministic fallback', async () => {
@@ -52,7 +54,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     expect(serviceTitles).toContain('Professional hygiene');
   });
 
-  it('should generate niche-specific copy for auto repair when services are empty', async () => {
+  it('should not fabricate boilerplate services or metrics when the site provides nothing (REV-23)', async () => {
     const service = new MvpContentService({ provider: 'mock' });
     const autoInput: GenerateMvpContentInput = {
       businessName: 'Motor-Pro Auto Service',
@@ -61,9 +63,13 @@ describe('MvpContentService (@revamp/workers)', () => {
     };
 
     const result = await service.generateContent(autoInput);
-    expect(result.content.hero.headline).toContain('Motor-Pro');
-    expect(result.content.hero.badge).toContain('repairs');
-    expect(result.content.services[0]?.title).toContain('diagnostics');
+    expect(result.content.hero.headline).toBe('Motor-Pro Auto Service');
+    expect(result.content.hero.badge).toBe('📍 Moscow');
+    expect(result.content.services).toHaveLength(1);
+    expect(result.content.services[0]?.title).toBe('Auto service');
+    expect(result.content.trustSignals).toEqual([]);
+    expect(result.content.about).toBeUndefined();
+    expect(JSON.stringify(result.content)).not.toMatch(/diagnostics|warranty|10\+|4\.9/i);
   });
 
   it('should successfully parse and validate Anthropic API response', async () => {
@@ -258,5 +264,170 @@ describe('MvpContentService (@revamp/workers)', () => {
 
     expect(result.aiFallbackUsed).toBe(true);
     expect(result.modelUsed).toBe('deterministic-fallback');
+  });
+
+  describe('grounding in the original site content (REV-23)', () => {
+    const emptySite: ISiteContent = {
+      headings: [],
+      paragraphs: [],
+      serviceItems: [],
+      navItems: [],
+      testimonials: [],
+      images: [],
+    };
+
+    const dentalSite: GenerateMvpContentInput = {
+      businessName: 'Warsaw Dental Center',
+      niche: 'dental',
+      city: 'Warsaw',
+      contacts: { phone: '+48 22 542 18 04' },
+      siteContent: {
+        ...emptySite,
+        title: 'Warsaw Dental Center: Best dental clinic in Warsaw',
+        h1: 'Best dental clinic in Warsaw: implants, orthodontics, root canals',
+        metaDescription: 'Modern dental center. Full range of services, treatment under sedation.',
+        paragraphs: [
+          'At Warsaw Dental Center we offer a wide range of professional treatments to take care of your oral health.',
+          'Our team of specialists has been treating patients in the heart of Warsaw since 2009.',
+        ],
+        serviceItems: [
+          { title: 'Dental implants', description: 'Titanium implants that restore full function and aesthetics.' },
+          { title: 'Veneers', description: 'Thin ceramic shells that change the shape and color of teeth.' },
+          { title: 'Tooth extraction' },
+        ],
+        testimonials: [
+          { text: 'Doctors and staff speak English fluently, every experience was positive.', author: 'Abhijit C.' },
+          { text: 'Painless implant surgery and very professional follow-up care.', author: 'Anna K.' },
+        ],
+        rating: { value: 4.9, count: 312 },
+        foundingYear: 2009,
+      },
+    };
+
+    const mallSite: GenerateMvpContentInput = {
+      businessName: 'Galeria Bemowo',
+      niche: 'other',
+      siteContent: {
+        ...emptySite,
+        title: 'Strona główna - Bemowo',
+        headings: ['Godziny otwarcia', 'Wyjątkowe miejsce na zakupy!', 'Galeria Handlowa Bemowo'],
+        paragraphs: ['W Galerii Bemowo znajdziesz wszystko, czego potrzebujesz: sklepy, restauracje i usługi w jednym miejscu.'],
+        navItems: ['Sklepy', 'RESTAURACJE', 'Usługi', 'Kontakt', 'O nas'],
+      },
+    };
+
+    it('should produce different MVP copy for two different sites', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const dental = service.generateDeterministicFallback(dentalSite);
+      const mall = service.generateDeterministicFallback(mallSite);
+
+      expect(dental.hero.headline).not.toBe(mall.hero.headline);
+      expect(dental.hero.subheadline).not.toBe(mall.hero.subheadline);
+      expect(dental.about?.body).not.toBe(mall.about?.body);
+      expect(dental.services.map((s) => s.title)).not.toEqual(mall.services.map((s) => s.title));
+    });
+
+    it('should build hero, about and services from the site own copy', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const content = service.generateDeterministicFallback(dentalSite);
+
+      expect(content.hero.headline).toBe('Best dental clinic in Warsaw: implants, orthodontics, root canals');
+      expect(content.hero.subheadline).toBe(dentalSite.siteContent!.metaDescription);
+      expect(content.hero.badge).toBe('★ 4.9 rating');
+      expect(content.about?.heading).toBe('About Warsaw Dental Center');
+      expect(content.about?.body).toContain('since 2009');
+      expect(content.services[0]).toMatchObject({
+        title: 'Dental implants',
+        description: 'Titanium implants that restore full function and aesthetics.',
+        lucideIconName: 'shield-check',
+      });
+      expect(content.services[2]?.description).toBe('Tooth extraction at Warsaw Dental Center.');
+      expect(content.offerNotice).toContain('+48 22 542 18 04');
+      expect(() => MvpContentOutputSchema.parse(content)).not.toThrow();
+    });
+
+    it('should derive trust signals only from verifiable site data', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const content = service.generateDeterministicFallback(dentalSite);
+
+      expect(content.trustSignals).toEqual([
+        { metric: '4.9 ★', label: 'Average rating from 312 reviews' },
+        { metric: 'Since 2009', label: expect.stringMatching(/^Serving customers for \d+\+ years$/) },
+        { metric: '2', label: 'Customer testimonials on our site' },
+      ]);
+    });
+
+    it('should skip generic page and section titles when picking the headline', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const content = service.generateDeterministicFallback(mallSite);
+
+      expect(content.hero.headline).toBe('Wyjątkowe miejsce na zakupy!');
+    });
+
+    it('should use navigation sections as services and drop site chrome links', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const titles = service.generateDeterministicFallback(mallSite).services.map((s) => s.title);
+
+      expect(titles).toEqual(['Sklepy', 'Restauracje', 'Usługi']);
+    });
+
+    it('should drop LLM trust signals whose numbers are not on the original site', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const grounded = service.enforceStrictGrounding(
+        {
+          hero: { badge: 'b', headline: 'h', subheadline: 's', primaryCtaText: 'p', secondaryCtaText: 'c' },
+          services: [{ title: 'Dental implants', description: 'd', lucideIconName: 'smile' }],
+          trustSignals: [
+            { metric: '4.9 ★', label: 'Rating' },
+            { metric: '15+ years', label: 'Invented' },
+            { metric: '100%', label: 'Invented guarantee' },
+          ],
+          offerNotice: 'o',
+        },
+        dentalSite,
+      );
+
+      expect(grounded.trustSignals).toEqual([{ metric: '4.9 ★', label: 'Rating' }]);
+    });
+
+    it('should pad short LLM service lists only with services extracted from the site', () => {
+      const service = new MvpContentService({ provider: 'mock' });
+      const grounded = service.enforceStrictGrounding(
+        {
+          hero: { badge: 'b', headline: 'h', subheadline: 's', primaryCtaText: 'p', secondaryCtaText: 'c' },
+          services: [{ title: 'Dental implants', description: 'd', lucideIconName: 'smile' }],
+          trustSignals: [],
+          offerNotice: 'o',
+        },
+        dentalSite,
+      );
+
+      expect(grounded.services.map((s) => s.title)).toEqual(['Dental implants', 'Veneers', 'Tooth extraction']);
+      expect(grounded.about?.body).toContain('Warsaw Dental Center');
+    });
+
+    it('should send the original site content to the LLM as grounding context', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500, text: async () => 'boom' });
+      const service = new MvpContentService({
+        provider: 'anthropic',
+        anthropicApiKey: 'sk-test',
+        customFetcher: mockFetch as unknown as typeof fetch,
+      });
+
+      await service.generateContent(dentalSite);
+
+      const body = JSON.parse(mockFetch.mock.calls[0][1].body);
+      const context = JSON.parse(body.messages[0].content);
+      expect(context.originalSite.h1).toBe(dentalSite.siteContent!.h1);
+      expect(context.originalSite.services).toHaveLength(3);
+      expect(context.originalSite.rating).toEqual({ value: 4.9, count: 312 });
+      expect(body.system).toContain('Never invent');
+    });
+
+    it('clipText should cut at sentence or word boundaries', () => {
+      expect(clipText('Short text', 50)).toBe('Short text');
+      expect(clipText('First sentence here. Second sentence is long', 30)).toBe('First sentence here.');
+      expect(clipText('one two three four five', 12)).toBe('one two');
+    });
   });
 });

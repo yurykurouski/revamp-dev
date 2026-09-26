@@ -37,6 +37,13 @@ export const MvpContentOutputSchema = z.object({
     primaryCtaText: z.string().max(35),
     secondaryCtaText: z.string().max(35),
   }),
+  about: z
+    .object({
+      heading: z.string().max(80),
+      body: z.string().max(700),
+    })
+    .optional(),
+  servicesHeading: z.string().max(80).optional(),
   services: z
     .array(
       z.object({
@@ -45,8 +52,9 @@ export const MvpContentOutputSchema = z.object({
         lucideIconName: z.string(),
       }),
     )
-    .min(3)
+    .min(1)
     .max(6),
+  // Only metrics stated on the original site; may be empty (Strict Grounding)
   trustSignals: z
     .array(
       z.object({
@@ -54,7 +62,7 @@ export const MvpContentOutputSchema = z.object({
         label: z.string().max(50),  // e.g. "in business", "map rating"
       }),
     )
-    .length(3),
+    .max(3),
   offerNotice: z.string().max(100),
 });
 
@@ -208,7 +216,7 @@ export type TestEmailOutreachDto = z.infer<typeof TestEmailOutreachSchema>;
  */
 export const BentoReviewItemSchema = z.object({
   author: z.string().min(1).max(60),
-  rating: z.number().min(1).max(5).default(5),
+  rating: z.number().min(1).max(5).optional(),
   comment: z.string().min(5).max(300),
   date: z.string().max(50).optional(),
   source: z.enum(['Google Maps', 'Yandex Maps', '2GIS', 'Website', 'Direct']).optional(),
@@ -226,10 +234,16 @@ export const BentoServiceCardSchema = z.object({
 
 export type BentoServiceCard = z.infer<typeof BentoServiceCardSchema>;
 
+/** Only http(s) links may be rendered into a published MVP (z.string().url() also accepts javascript:) */
+const HttpUrlSchema = z
+  .string()
+  .url()
+  .regex(/^https?:\/\//i, 'Only http(s) URLs are allowed');
+
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
   niche: NicheEnumSchema.optional(),
-  logoUrl: z.string().url().optional(),
+  logoUrl: HttpUrlSchema.optional(),
   monogramSvg: z.string().optional(),
   palette: z.object({
     primary: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/),
@@ -261,6 +275,13 @@ export const BentoTemplateDataSchema = z.object({
     )
     .optional(),
   reviews: z.array(BentoReviewItemSchema).optional(),
+  about: z.object({ heading: z.string().min(1).max(80), body: z.string().min(1).max(900) }).optional(),
+  servicesHeading: z.string().max(80).optional(),
+  heroImageUrl: HttpUrlSchema.optional(),
+  gallery: z.array(HttpUrlSchema).max(8).optional(),
+  socialLinks: z.array(z.object({ platform: z.string().max(30), url: HttpUrlSchema })).max(8).optional(),
+  footerTagline: z.string().max(300).optional(),
+  originalUrl: HttpUrlSchema.optional(),
   trackingToken: z.string().optional(),
   customHeadSnippet: z.string().optional(),
 });

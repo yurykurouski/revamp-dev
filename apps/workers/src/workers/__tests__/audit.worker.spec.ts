@@ -248,6 +248,14 @@ describe('AuditWorker (@revamp/workers)', () => {
           secondaryColor: expect.any(String),
           accentColor: expect.any(String),
         }),
+        // REV-23: verified contacts and original content are persisted for generation
+        extractedContacts: expect.objectContaining({
+          phone: '+1 555-1234',
+          email: 'info@example.com',
+          address: '123 Test St',
+          socialLinks: [{ platform: 'telegram', url: 'https://t.me/test' }],
+        }),
+        extractedContent: expect.objectContaining({ serviceItems: [{ title: 'General Dentistry' }] }),
       }),
       { new: true, sort: { createdAt: -1 } },
     );
@@ -259,9 +267,10 @@ describe('AuditWorker (@revamp/workers)', () => {
         status: 'AUDITED',
         totalScore: 85,
         contactPhone: '+1 555-1234',
-        city: '123 Test St',
       }),
     );
+    // The street address is not written into the lead's city (REV-23)
+    expect(vi.mocked(Lead.findByIdAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['city'])).toBe(false);
 
     // Analytics token usage event logging
     expect(AnalyticsEvent.create).toHaveBeenCalledWith(

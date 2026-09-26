@@ -33,10 +33,14 @@ export const createAiWorker = (): Worker => {
         city: lead.city,
         originalUrl: lead.originalUrl,
         extractedServices: audit?.extractedServices,
+        // Verified contacts: extracted from the original site first, then operator-entered lead data
         contacts: {
-          phone: lead.contactPhone,
-          email: lead.contactEmail,
+          phone: audit?.extractedContacts?.phone || lead.contactPhone,
+          email: audit?.extractedContacts?.email || lead.contactEmail,
+          address: audit?.extractedContacts?.address,
+          workingHours: audit?.extractedContacts?.workingHours,
         },
+        siteContent: audit?.extractedContent,
         critiqueQuickWins: audit?.designCritique?.quickWins,
         ownerName: lead.ownerName,
       });
@@ -44,7 +48,8 @@ export const createAiWorker = (): Worker => {
       // 3. Persist generated copy to Audit
       if (audit) {
         await Audit.findByIdAndUpdate(audit._id, {
-          generatedContent: generationResult.content,
+          // Drop undefined keys: the Mongo driver would persist them as null
+          generatedContent: JSON.parse(JSON.stringify(generationResult.content)),
           aiFallbackUsed: audit.aiFallbackUsed || generationResult.aiFallbackUsed,
         }).exec();
       }

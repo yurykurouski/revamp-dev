@@ -239,6 +239,33 @@ describe('BrowserService', () => {
     expect(mockContext.addInitScript).toHaveBeenCalledWith({ content: EVALUATE_NAME_SHIM });
   });
 
+  it('should attach extracted site content to the raw brand data (REV-23)', async () => {
+    const service = new BrowserService(20);
+    const siteContent = {
+      headings: ['Welcome'],
+      paragraphs: ['A paragraph of real site copy.'],
+      serviceItems: [],
+      navItems: [],
+      testimonials: [],
+      images: [],
+    };
+    vi.spyOn(service, 'extractSiteContent').mockResolvedValue(siteContent);
+
+    const result = await service.captureFullAudit('https://content-test.com');
+
+    expect(result.rawBrandData.content).toEqual(siteContent);
+  });
+
+  it('should return undefined when site content extraction fails or is malformed', async () => {
+    const service = new BrowserService(20);
+
+    mockPage.evaluate.mockRejectedValueOnce(new Error('Execution context was destroyed'));
+    await expect(service.extractSiteContent(mockPage)).resolves.toBeUndefined();
+
+    mockPage.evaluate.mockResolvedValueOnce({ unexpected: true });
+    await expect(service.extractSiteContent(mockPage)).resolves.toBeUndefined();
+  });
+
   it('should close browser gracefully on close()', async () => {
     const service = new BrowserService(20);
     await service.getBrowser();

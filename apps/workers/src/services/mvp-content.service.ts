@@ -1,4 +1,5 @@
 import { MvpContentOutputSchema, MvpContentOutput } from '@revamp/validation';
+import { ISiteContent } from '@revamp/shared-types';
 import { env } from '../config/env.js';
 import { getSupportedIconNames } from '../templates/icons.js';
 
@@ -12,7 +13,10 @@ export interface GenerateMvpContentInput {
     phone?: string;
     email?: string;
     address?: string;
+    workingHours?: string;
   };
+  /** The original site's own copy and structure (REV-23) - the single source of facts */
+  siteContent?: ISiteContent;
   critiqueQuickWins?: string[];
   ownerName?: string;
 }
@@ -33,20 +37,94 @@ export interface MvpContentServiceOptions {
 }
 
 export const MVP_CONTENT_SYSTEM_PROMPT = `You are a professional Senior Conversion Copywriter.
-Your goal is to take the scraped content of a local business and rewrite it for a modern, high-converting one-page Bento landing page.
+You receive the content scraped from a local business's current website. Rewrite it into the copy for a modern, high-converting one-page Bento landing page for THAT specific business: keep everything the original site says, but make it clearer, more persuasive and better structured.
 
-FUNDAMENTAL GROUNDING RULE:
-- Never invent new services, change the actual address, alter phone numbers, or make up staff members or prices.
-- All factual information must come STRICTLY from the provided context.
+FUNDAMENTAL GROUNDING RULES:
+- Every fact (services, products, locations, numbers, years, ratings, prices, staff, awards) must come from the provided context. Never invent any of them.
+- Never output phone numbers, email addresses or street addresses; they are rendered separately from verified data.
+- Use the business's own specifics (its name, what it actually offers, its wording and its selling points) so the copy could not belong to any other business.
+- trustSignals: include at most 3, and only metrics whose numbers literally appear in the context (e.g. a rating or a founding year). Return an empty array when there are none.
+- If the source text is in another language, translate the meaning faithfully.
 
 Style requirements:
 - Write all copy in English.
-- Hero headline: formula "Customer benefit + removal of the main fear / local specifics" (up to 90 characters).
-- Hero subheadline: a clear explanation of how the business solves the customer's problem (up to 180 characters).
-- Services: turn the scraped services into 3-6 key cards with a concise, persuasive description (up to 15 words each) and pick a matching Lucide icon (e.g. 'wrench', 'shield-check', 'sparkles', 'calendar', 'phone', 'award', 'activity', 'truck', 'heart', 'smile', 'zap').
-- CTA buttons: a concrete action ("Book a diagnostic", "Get a repair quote").
-- 3 trust signals (trustSignals): objective metrics (e.g. "4.9 ★", "10+ yrs", "100%").
-- Respond with a raw JSON object only, with no preamble and no markdown around the JSON.`;
+- hero.headline: customer benefit + what makes this business specific (up to 90 characters).
+- hero.subheadline: how the business solves the customer's problem, based on its own description (up to 180 characters).
+- about: a heading (up to 80 characters) and 2-4 sentences (up to 700 characters) retelling the business's own story and strengths.
+- services: 1-6 cards built from the services the site lists, each with a concise, persuasive description (up to 15 words) and a matching Lucide icon (e.g. 'wrench', 'shield-check', 'sparkles', 'calendar', 'phone', 'award', 'activity', 'truck', 'heart', 'smile', 'zap', 'car', 'clock', 'star', 'stethoscope').
+- CTA buttons: a concrete action that fits this business.
+
+Respond with a raw JSON object only, with no preamble and no markdown, in exactly this shape:
+{"hero":{"badge":string,"headline":string,"subheadline":string,"primaryCtaText":string,"secondaryCtaText":string},"about":{"heading":string,"body":string},"servicesHeading":string,"services":[{"title":string,"description":string,"lucideIconName":string}],"trustSignals":[{"metric":string,"label":string}],"offerNotice":string}`;
+
+/** Navigation labels that are site chrome rather than an offering */
+const NON_SERVICE_NAV =
+  /^(home|start|main|about|about us|contact|contacts|kontakt|o nas|o centrum|blog|news|aktualno|faq|login|log in|sign in|register|cart|koszyk|search|szukaj|privacy|polityka|regulamin|terms|cookies?|career|careers|praca|jobs|menu|pl|en|de|ru|ua|главная|о нас|контакты|новости)$/i;
+
+/** Page titles that name the page type rather than the business ("Home page") */
+const GENERIC_PAGE_TITLES =
+  /^(home|home ?page|homepage|main page|welcome|start|strona g[łl][óo]wna|startseite|accueil|inicio|главная( страница)?|головна)$/i;
+
+/** Headings that label a page section rather than state anything about the business */
+const GENERIC_SECTION_TITLES =
+  /^(opening hours|contact( us)?|our services|services|about( us)?|newsletter|subscribe|follow us|godziny otwarcia|kontakt|nasze usługi|usługi|o nas|zapisz się|bądź na bieżąco|часы работы|контакты|услуги|о нас)!?$/i;
+
+const NICHE_LABELS: Record<string, string> = {
+  dental: 'Dental care',
+  auto: 'Auto service',
+  legal: 'Legal services',
+  beauty: 'Beauty & care',
+  restaurant: 'Restaurant',
+  fitness: 'Fitness',
+  other: 'Local business',
+};
+
+const NICHE_PRIMARY_CTA: Record<string, string> = {
+  dental: 'Book an appointment',
+  auto: 'Book a service',
+  legal: 'Get a consultation',
+  beauty: 'Book a visit',
+  restaurant: 'Reserve a table',
+  fitness: 'Start training',
+  other: 'Send a request',
+};
+
+/** Keyword → Lucide icon, used to pick grounded icons for extracted services */
+const ICON_KEYWORDS: Array<[RegExp, string]> = [
+  // Specific treatments first, so dental services do not all collapse into one generic icon
+  [/implant|имплант/i, 'shield-check'],
+  [/veneer|licówk|crown|koron|bonding|whiten|wybiel|виниры|корон/i, 'sparkles'],
+  [/extract|usuwan|surgery|chirurg|удален/i, 'activity'],
+  [/filling|wypełn|plomb|root canal|kanałow|endodon|пломб/i, 'shield-check'],
+  [/orthodon|ortodon|aligner|invisalign|brace|aparat|брекет/i, 'smile'],
+  [/implant|tooth|teeth|dent|smile|zęb|стомат|зуб/i, 'smile'],
+  [/whiten|clean|shine|beauty|cosmet|spa|hair|nail|kosmet|fryzj/i, 'sparkles'],
+  [/repair|fix|mechanic|tyre|tire|engine|napraw|serwis|ремонт/i, 'wrench'],
+  [/car|auto|vehicle|samoch|авто/i, 'car'],
+  [/deliver|courier|shipping|transport|dostaw|kurier|достав/i, 'truck'],
+  [/legal|law|court|lawyer|prawn|adwokat|юрист|прав/i, 'shield-check'],
+  [/doctor|medical|clinic|health|therapy|lekar|zdrow|врач|мед/i, 'stethoscope'],
+  [/food|restaurant|cafe|kitchen|eat|restaur|kuchn|jedzen|рестор|кафе/i, 'heart'],
+  [/shop|store|sklep|zakup|buy|магазин/i, 'award'],
+  [/event|calendar|book|appointment|wydarz|termin|запис/i, 'calendar'],
+  [/fast|express|quick|24|szybk|срочн/i, 'zap'],
+  [/hour|time|schedule|godzin|время/i, 'clock'],
+  [/fitness|gym|sport|training|trening|спорт/i, 'activity'],
+  [/phone|call|consult|advice|porad|консульт/i, 'phone'],
+];
+
+/**
+ * Clips text to maxLength at a word boundary, preferring a sentence end.
+ */
+export function clipText(text: string, maxLength: number): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= maxLength) return clean;
+  const slice = clean.slice(0, maxLength);
+  const sentenceEnd = Math.max(slice.lastIndexOf('. '), slice.lastIndexOf('! '), slice.lastIndexOf('? '));
+  if (sentenceEnd >= maxLength * 0.5) return slice.slice(0, sentenceEnd + 1);
+  const wordEnd = slice.lastIndexOf(' ');
+  return (wordEnd > 0 ? slice.slice(0, wordEnd) : slice).replace(/[\s,;:–—-]+$/, '');
+}
 
 export class MvpContentService {
   private provider: 'anthropic' | 'openai' | 'gemini' | 'mock';
@@ -145,18 +223,242 @@ export class MvpContentService {
   }
 
   /**
-   * Enforces Strict Grounding:
+   * Enforces Strict Grounding on LLM output:
    * 1. Validates and normalizes Lucide icon names against known icons.
-   * 2. Guards against niche misalignment / hallucinated categories.
-   * 3. Sanitizes lengths to schema bounds.
+   * 2. Drops trust-signal metrics whose numbers do not appear in the original site content.
+   * 3. Pads missing services only with services extracted from the site, never with boilerplate.
+   * 4. Sanitizes lengths to schema bounds.
    */
   public enforceStrictGrounding(
     raw: MvpContentOutput,
     input: GenerateMvpContentInput,
   ): MvpContentOutput {
-    const supportedIcons = new Set(getSupportedIconNames());
+    const normalizedServices = raw.services.slice(0, 6).map((service) => ({
+      title: clipText(service.title, 50),
+      description: clipText(service.description, 120),
+      lucideIconName: this.normalizeIcon(service.lucideIconName, service.title),
+    }));
 
-    // Icon fallback mapping for common terms
+    if (normalizedServices.length < 3) {
+      for (const extracted of this.buildGroundedServices(input)) {
+        if (normalizedServices.length >= 3) break;
+        if (!normalizedServices.some((s) => s.title.toLowerCase() === extracted.title.toLowerCase())) {
+          normalizedServices.push(extracted);
+        }
+      }
+    }
+
+    const corpus = this.buildGroundingCorpus(input);
+    const trustSignals = raw.trustSignals
+      .filter((ts) => this.isMetricGrounded(ts.metric, corpus))
+      .slice(0, 3)
+      .map((ts) => ({ metric: clipText(ts.metric, 20), label: clipText(ts.label, 50) }));
+
+    return {
+      hero: {
+        badge: clipText(raw.hero.badge, 40),
+        headline: clipText(raw.hero.headline, 90),
+        subheadline: clipText(raw.hero.subheadline, 180),
+        primaryCtaText: clipText(raw.hero.primaryCtaText, 35),
+        secondaryCtaText: clipText(raw.hero.secondaryCtaText, 35),
+      },
+      about:
+        raw.about && raw.about.body.trim()
+          ? { heading: clipText(raw.about.heading, 80), body: clipText(raw.about.body, 700) }
+          : this.buildAbout(input),
+      servicesHeading: raw.servicesHeading ? clipText(raw.servicesHeading, 80) : undefined,
+      services: normalizedServices,
+      trustSignals,
+      offerNotice: clipText(raw.offerNotice, 100),
+    };
+  }
+
+  /**
+   * Deterministic copy built from the original site's own content when no LLM is available.
+   * Every field is derived from that business's extracted data, so two different sites never
+   * produce the same MVP, and no facts are invented.
+   */
+  public generateDeterministicFallback(input: GenerateMvpContentInput): MvpContentOutput {
+    const businessName = input.businessName || 'Our business';
+    const niche = input.niche || 'other';
+    const site = input.siteContent;
+
+    return {
+      hero: {
+        badge: clipText(this.buildBadge(input), 40),
+        headline: clipText(this.buildHeadline(input), 90),
+        subheadline: clipText(this.buildSubheadline(input), 180),
+        primaryCtaText: NICHE_PRIMARY_CTA[niche] || NICHE_PRIMARY_CTA['other']!,
+        secondaryCtaText: input.contacts?.phone ? 'Call us' : input.contacts?.email ? 'Email us' : 'Contact us',
+      },
+      about: this.buildAbout(input),
+      servicesHeading: clipText(`What ${businessName} offers`, 80),
+      services: this.buildGroundedServices(input).slice(0, 6).length
+        ? this.buildGroundedServices(input).slice(0, 6)
+        : [
+            {
+              title: clipText(NICHE_LABELS[niche] || NICHE_LABELS['other']!, 50),
+              description: clipText(site?.metaDescription || site?.paragraphs[0] || businessName, 120),
+              lucideIconName: this.normalizeIcon(undefined, `${niche} ${businessName}`),
+            },
+          ],
+      trustSignals: this.buildGroundedTrustSignals(input),
+      offerNotice: clipText(
+        input.contacts?.phone
+          ? `Call ${input.contacts.phone} or send a request online`
+          : 'Send a request online and we will get back to you',
+        100,
+      ),
+    };
+  }
+
+  /** Headline: the site's own H1 or page title, otherwise the business name */
+  private buildHeadline(input: GenerateMvpContentInput): string {
+    const site = input.siteContent;
+    const titleParts = (site?.title || '').split(/\s+[|–—:-]\s+/).map((p) => p.trim());
+    // Section titles ("Opening hours", "Contact") are two words or less; real value statements are longer
+    const headingCandidates = (site?.headings || [])
+      .slice(0, 6)
+      .filter((h) => h.split(/\s+/).length >= 3 && !GENERIC_SECTION_TITLES.test(h.trim()));
+    const candidates = [site?.h1, ...titleParts, ...headingCandidates]
+      .filter((c): c is string => Boolean(c))
+      .filter((c) => c.length >= 12 && c.length <= 120 && !GENERIC_PAGE_TITLES.test(c.trim()));
+    return candidates[0] || input.businessName;
+  }
+
+  /** Subheadline: meta description or the site's first descriptive paragraph */
+  private buildSubheadline(input: GenerateMvpContentInput): string {
+    const site = input.siteContent;
+    const niche = NICHE_LABELS[input.niche || 'other'] || NICHE_LABELS['other']!;
+    return (
+      site?.metaDescription ||
+      site?.paragraphs[0] ||
+      `${niche} by ${input.businessName}${input.city ? ` in ${input.city}` : ''}.`
+    );
+  }
+
+  /** Badge: the strongest real fact available (rating, founding year, city) */
+  private buildBadge(input: GenerateMvpContentInput): string {
+    const site = input.siteContent;
+    if (site?.rating) return `★ ${site.rating.value} rating`;
+    if (site?.foundingYear) return `Since ${site.foundingYear}`;
+    if (input.city) return `📍 ${input.city}`;
+    return NICHE_LABELS[input.niche || 'other'] || NICHE_LABELS['other']!;
+  }
+
+  /** About section from the site's own paragraphs */
+  private buildAbout(input: GenerateMvpContentInput): { heading: string; body: string } | undefined {
+    const paragraphs = input.siteContent?.paragraphs || [];
+    if (paragraphs.length === 0) return undefined;
+    let body = '';
+    for (const p of paragraphs) {
+      if ((body + ' ' + p).trim().length > 700) break;
+      body = `${body} ${p}`.trim();
+    }
+    return {
+      heading: clipText(`About ${input.businessName}`, 80),
+      body: body || clipText(paragraphs[0]!, 700),
+    };
+  }
+
+  /**
+   * Services from the original site, in priority order: service blocks, extracted service
+   * titles, then navigation sections. Descriptions come from the site whenever it has one.
+   */
+  public buildGroundedServices(input: GenerateMvpContentInput) {
+    const site = input.siteContent;
+    const items: Array<{ title: string; description?: string }> = [...(site?.serviceItems || [])];
+    for (const title of input.extractedServices || []) {
+      if (!items.some((i) => i.title.toLowerCase() === title.toLowerCase())) items.push({ title });
+    }
+    if (items.length < 3) {
+      for (const nav of site?.navItems || []) {
+        if (items.length >= 6) break;
+        if (NON_SERVICE_NAV.test(nav.trim()) || nav.toLowerCase() === input.businessName.toLowerCase()) continue;
+        if (!items.some((i) => i.title.toLowerCase() === nav.toLowerCase())) items.push({ title: nav });
+      }
+    }
+
+    return items.slice(0, 6).map((item) => {
+      const title = clipText(this.toTitleCase(item.title), 50);
+      const description =
+        item.description || this.findParagraphMentioning(item.title, site?.paragraphs || []) || `${title} at ${input.businessName}.`;
+      return {
+        title,
+        description: clipText(description, 120),
+        // The service's own words pick the icon; the niche is only a tie-breaker
+        lucideIconName: this.normalizeIcon(undefined, `${item.title} ${item.description || ''}`, input.niche),
+      };
+    });
+  }
+
+  /** Trust signals only from verifiable data: structured rating and founding year */
+  private buildGroundedTrustSignals(input: GenerateMvpContentInput) {
+    const site = input.siteContent;
+    const signals: Array<{ metric: string; label: string }> = [];
+    if (site?.rating) {
+      signals.push({
+        metric: `${site.rating.value} ★`,
+        label: site.rating.count ? `Average rating from ${site.rating.count} reviews` : 'Average customer rating',
+      });
+    }
+    if (site?.foundingYear) {
+      signals.push({ metric: `Since ${site.foundingYear}`, label: `Serving customers for ${new Date().getFullYear() - site.foundingYear}+ years` });
+    }
+    if ((site?.testimonials.length || 0) >= 2) {
+      signals.push({ metric: `${site!.testimonials.length}`, label: 'Customer testimonials on our site' });
+    }
+    return signals.slice(0, 3);
+  }
+
+  /** All source text a grounded metric may cite */
+  private buildGroundingCorpus(input: GenerateMvpContentInput): string {
+    const site = input.siteContent;
+    return [
+      site?.title,
+      site?.metaDescription,
+      site?.h1,
+      ...(site?.headings || []),
+      ...(site?.paragraphs || []),
+      ...(site?.serviceItems || []).map((s) => `${s.title} ${s.description || ''}`),
+      ...(site?.testimonials || []).map((t) => t.text),
+      site?.rating ? `${site.rating.value} ${site.rating.count ?? ''}` : '',
+      site?.foundingYear ? String(site.foundingYear) : '',
+      String(site?.testimonials.length ?? ''),
+    ]
+      .filter(Boolean)
+      .join(' \n ')
+      .toLowerCase();
+  }
+
+  /** A metric is grounded when every number in it appears in the source text */
+  private isMetricGrounded(metric: string, corpus: string): boolean {
+    const numbers = metric.match(/\d+(?:[.,]\d+)?/g);
+    if (!numbers) return corpus.includes(metric.toLowerCase().trim());
+    return numbers.every((n) => corpus.includes(n) || corpus.includes(n.replace(',', '.')) || corpus.includes(n.replace('.', ',')));
+  }
+
+  private findParagraphMentioning(title: string, paragraphs: string[]): string | undefined {
+    const keyword = title
+      .toLowerCase()
+      .split(/\s+/)
+      .find((w) => w.length >= 5);
+    if (!keyword) return undefined;
+    return paragraphs.find((p) => p.toLowerCase().includes(keyword));
+  }
+
+  private toTitleCase(text: string): string {
+    const clean = text.trim();
+    // Menu labels are often upper-cased by CSS/markup; restore sentence case
+    if (clean === clean.toUpperCase() && /\p{L}/u.test(clean)) {
+      const lower = clean.toLowerCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    }
+    return clean;
+  }
+
+  private normalizeIcon(iconName: string | undefined, context: string, fallbackContext?: string): string {
+    const supportedIcons = new Set(getSupportedIconNames());
     const iconAliasMap: Record<string, string> = {
       shield: 'shield-check',
       guard: 'shield-check',
@@ -170,13 +472,11 @@ export class MvpContentService {
       tooth: 'smile',
       medical: 'activity',
       doctor: 'stethoscope',
-      clock: 'clock',
       time: 'clock',
       fast: 'zap',
       speed: 'zap',
       call: 'phone',
       telephone: 'phone',
-      star: 'star',
       rating: 'award',
       trophy: 'award',
       delivery: 'truck',
@@ -186,219 +486,22 @@ export class MvpContentService {
       magic: 'sparkles',
     };
 
-    // Normalize services
-    const normalizedServices = raw.services.slice(0, 6).map((service) => {
-      let iconName = (service.lucideIconName || 'sparkles').toLowerCase().trim().replace(/_/g, '-');
-      if (!supportedIcons.has(iconName)) {
-        iconName = iconAliasMap[iconName] || 'sparkles';
-      }
-
-      return {
-        title: service.title.slice(0, 50),
-        description: service.description.slice(0, 120),
-        lucideIconName: iconName,
-      };
-    });
-
-    // Ensure at least 3 services
-    if (normalizedServices.length < 3) {
-      const fallbackServices = this.getNicheDefaultServices(input.niche || 'other');
-      for (const fs of fallbackServices) {
-        if (normalizedServices.length >= 3) break;
-        if (!normalizedServices.some((s) => s.title === fs.title)) {
-          normalizedServices.push(fs);
-        }
-      }
+    if (iconName) {
+      const normalized = iconName.toLowerCase().trim().replace(/_/g, '-');
+      if (supportedIcons.has(normalized)) return normalized;
+      const alias = iconAliasMap[normalized];
+      if (alias && supportedIcons.has(alias)) return alias;
     }
 
-    return {
-      hero: {
-        badge: raw.hero.badge.slice(0, 40),
-        headline: raw.hero.headline.slice(0, 90),
-        subheadline: raw.hero.subheadline.slice(0, 180),
-        primaryCtaText: raw.hero.primaryCtaText.slice(0, 35),
-        secondaryCtaText: raw.hero.secondaryCtaText.slice(0, 35),
-      },
-      services: normalizedServices,
-      trustSignals: raw.trustSignals.slice(0, 3).map((ts) => ({
-        metric: ts.metric.slice(0, 20),
-        label: ts.label.slice(0, 50),
-      })),
-      offerNotice: raw.offerNotice.slice(0, 100),
-    };
-  }
-
-  /**
-   * Deterministic grounded copy generator when LLM is unavailable or fails.
-   */
-  public generateDeterministicFallback(input: GenerateMvpContentInput): MvpContentOutput {
-    const businessName = input.businessName || 'Service Center';
-    const city = input.city || '';
-    const citySuffix = city ? ` in ${city}` : '';
-    const niche = input.niche || 'other';
-
-    const nicheServices = this.getNicheDefaultServices(niche);
-
-    // If scraped services exist, ground them as top priorities
-    let selectedServices = [...nicheServices];
-    if (input.extractedServices && input.extractedServices.length > 0) {
-      selectedServices = input.extractedServices.slice(0, 4).map((rawName, idx) => {
-        const matchingFallback = nicheServices[idx] || nicheServices[0]!;
-        return {
-          title: rawName.slice(0, 50),
-          description: matchingFallback.description,
-          lucideIconName: matchingFallback.lucideIconName,
-        };
-      });
-      // Pad to at least 3
-      while (selectedServices.length < 3) {
-        const next = nicheServices[selectedServices.length];
-        if (next) selectedServices.push(next);
-        else break;
-      }
-    }
-
-    const heroCopy = this.getNicheHeroCopy(niche, businessName, citySuffix);
-
-    return {
-      hero: {
-        badge: heroCopy.badge,
-        headline: heroCopy.headline.slice(0, 90),
-        subheadline: heroCopy.subheadline.slice(0, 180),
-        primaryCtaText: heroCopy.primaryCtaText,
-        secondaryCtaText: heroCopy.secondaryCtaText,
-      },
-      services: selectedServices.slice(0, 6),
-      trustSignals: [
-        { metric: '4.9 ★', label: 'Rating on Google Maps' },
-        { metric: '10+ yrs', label: `Of experience${citySuffix}` },
-        { metric: '100%', label: 'Quality guarantee and honest quotes' },
-      ],
-      offerNotice: 'Special terms and priority booking when you contact us online',
-    };
-  }
-
-  private getNicheHeroCopy(niche: string, businessName: string, citySuffix: string) {
-    switch (niche) {
-      case 'dental':
-        return {
-          badge: '✨ Pain-free treatment',
-          headline: `A healthy smile without pain or fear at ${businessName}`,
-          subheadline: `Modern dentistry with a 5-year guarantee${citySuffix}. The latest equipment and caring dentists.`,
-          primaryCtaText: 'Book an appointment',
-          secondaryCtaText: 'Talk to a dentist',
-        };
-      case 'auto':
-        return {
-          badge: '⚡ Same-day repairs',
-          headline: `Honest auto service at ${businessName}, with a warranty on all work`,
-          subheadline: `Accurate computer diagnostics, transparent pricing and repairs of any complexity${citySuffix}.`,
-          primaryCtaText: 'Book a service',
-          secondaryCtaText: 'Get a quote',
-        };
-      case 'legal':
-        return {
-          badge: '⚖️ Protecting your interests',
-          headline: `Qualified legal help from ${businessName}`,
-          subheadline: `Comprehensive legal support for businesses and individuals${citySuffix}. An honest assessment of your case.`,
-          primaryCtaText: 'Get a consultation',
-          secondaryCtaText: 'Ask a question',
-        };
-      case 'beauty':
-        return {
-          badge: '💖 Premium care',
-          headline: `Flawless style and beauty care at ${businessName}`,
-          subheadline: `Certified stylists, premium products and a cozy atmosphere${citySuffix}.`,
-          primaryCtaText: 'Pick a time',
-          secondaryCtaText: 'Services & prices',
-        };
-      default:
-        return {
-          badge: '⭐ Trusted quality',
-          headline: `Professional services by ${businessName}, guaranteed`,
-          subheadline: `A personal approach, transparent prices and reliable service${citySuffix}.`,
-          primaryCtaText: 'Send a request',
-          secondaryCtaText: 'Call us',
-        };
-    }
-  }
-
-  private getNicheDefaultServices(niche: string) {
-    switch (niche) {
-      case 'dental':
-        return [
-          {
-            title: 'Turnkey dental implants',
-            description: 'Swiss implants with a lifetime guarantee and pain-free placement.',
-            lucideIconName: 'shield-check',
-          },
-          {
-            title: 'Gentle Zoom whitening',
-            description: 'Safely whitens enamel up to 8 shades in a single session.',
-            lucideIconName: 'sparkles',
-          },
-          {
-            title: 'Bite correction with aligners',
-            description: 'Clear, invisible aligners for a perfect smile without discomfort.',
-            lucideIconName: 'smile',
-          },
-          {
-            title: 'Urgent dental care',
-            description: 'Fast, pain-free treatment of cavities and acute toothache.',
-            lucideIconName: 'activity',
-          },
-        ];
-      case 'auto':
-        return [
-          {
-            title: 'Full vehicle diagnostics',
-            description: 'Scans of all electronic systems and suspension with dealer-grade equipment.',
-            lucideIconName: 'activity',
-          },
-          {
-            title: 'Major and routine repairs',
-            description: 'Engine, transmission and chassis restoration with a warranty.',
-            lucideIconName: 'wrench',
-          },
-          {
-            title: 'Scheduled maintenance & oil change',
-            description: 'Fast servicing to manufacturer specifications.',
-            lucideIconName: 'clock',
-          },
-          {
-            title: 'Tyre fitting & balancing',
-            description: 'Precise wheel balancing and seasonal tyre storage.',
-            lucideIconName: 'car',
-          },
-        ];
-      default:
-        return [
-          {
-            title: 'Full assessment & audit',
-            description: 'A detailed needs assessment and a transparent work plan.',
-            lucideIconName: 'activity',
-          },
-          {
-            title: 'Professional delivery',
-            description: 'On-time delivery to high quality standards and your requirements.',
-            lucideIconName: 'wrench',
-          },
-          {
-            title: 'Official quality guarantee',
-            description: 'A written guarantee on all services and materials.',
-            lucideIconName: 'shield-check',
-          },
-          {
-            title: 'Express expert consultation',
-            description: 'A free estimate and answers to your questions within 10 minutes.',
-            lucideIconName: 'phone',
-          },
-        ];
-    }
+    const byKeyword =
+      ICON_KEYWORDS.find(([pattern]) => pattern.test(context)) ||
+      (fallbackContext ? ICON_KEYWORDS.find(([pattern]) => pattern.test(fallbackContext)) : undefined);
+    const candidate = byKeyword ? byKeyword[1] : 'sparkles';
+    return supportedIcons.has(candidate) ? candidate : 'sparkles';
   }
 
   private extractAndValidateJson(rawText: string): MvpContentOutput {
-    let clean = rawText.trim();
+    const clean = rawText.trim();
     const jsonMatch = clean.match(/\{[\s\S]*\}/);
     if (!jsonMatch) {
       throw new Error('LLM response did not contain a valid JSON object.');
@@ -408,15 +511,35 @@ export class MvpContentService {
     return MvpContentOutputSchema.parse(parsed);
   }
 
+  /**
+   * Grounding context for the LLM: the original site's own content plus verified contacts.
+   */
   private buildUserPrompt(input: GenerateMvpContentInput): string {
+    const site = input.siteContent;
     return JSON.stringify(
       {
         businessName: input.businessName,
         niche: input.niche || 'other',
         city: input.city || 'Not specified',
         originalUrl: input.originalUrl || '',
+        originalSite: site
+          ? {
+              language: site.language,
+              title: site.title,
+              metaDescription: site.metaDescription,
+              h1: site.h1,
+              headings: site.headings.slice(0, 12),
+              paragraphs: site.paragraphs.slice(0, 8).map((p) => clipText(p, 400)),
+              services: site.serviceItems.slice(0, 10),
+              navigation: site.navItems.slice(0, 12),
+              testimonialsCount: site.testimonials.length,
+              rating: site.rating,
+              foundingYear: site.foundingYear,
+            }
+          : undefined,
         scrapedServices: input.extractedServices || [],
-        contacts: input.contacts || {},
+        hasPhone: Boolean(input.contacts?.phone),
+        hasAddress: Boolean(input.contacts?.address),
         critiqueQuickWins: input.critiqueQuickWins || [],
       },
       null,

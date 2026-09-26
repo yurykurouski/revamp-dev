@@ -235,6 +235,37 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(parsed.trustSignals).toHaveLength(3);
     });
 
+    it('should accept grounded MVP content with no trust signals, an about block and a single service (REV-23)', () => {
+      const parsed = MvpContentOutputSchema.parse({
+        hero: { badge: '📍 Warsaw', headline: 'H', subheadline: 'S', primaryCtaText: 'Book', secondaryCtaText: 'Call' },
+        about: { heading: 'About us', body: 'Real story from the site.' },
+        servicesHeading: 'What we offer',
+        services: [{ title: 'Implants', description: 'Titanium implants', lucideIconName: 'shield-check' }],
+        trustSignals: [],
+        offerNotice: '',
+      });
+
+      expect(parsed.trustSignals).toEqual([]);
+      expect(parsed.about?.heading).toBe('About us');
+    });
+
+    it('should reject MVP content with more than 3 trust signals or no services', () => {
+      const base = {
+        hero: { badge: 'b', headline: 'h', subheadline: 's', primaryCtaText: 'p', secondaryCtaText: 'c' },
+        offerNotice: '',
+      };
+      const signal = { metric: '1', label: 'x' };
+
+      expect(() =>
+        MvpContentOutputSchema.parse({
+          ...base,
+          services: [{ title: 't', description: 'd', lucideIconName: 'i' }],
+          trustSignals: [signal, signal, signal, signal],
+        }),
+      ).toThrow();
+      expect(() => MvpContentOutputSchema.parse({ ...base, services: [], trustSignals: [] })).toThrow();
+    });
+
     it('should validate EmailDraftOutputSchema', () => {
       const validDraft = {
         subject: 'Quick question regarding Dr. Smile Dental website',
@@ -316,6 +347,31 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(parsed.palette.primary).toBe('#5c5bed');
       expect(parsed.services).toHaveLength(2);
       expect(parsed.reviews).toHaveLength(1);
+    });
+
+    it('should validate grounded site sections and reject non-URL images or socials (REV-23)', () => {
+      const base = {
+        businessName: 'Warsaw Dental Center',
+        palette: { primary: '#9a7d42', secondary: '#1e293b', accent: '#9a7d42' },
+        contacts: {},
+        hero: { headline: 'Best clinic', subheadline: 'Modern dental center' },
+        services: [{ title: 'Veneers', description: 'Thin ceramic shells' }],
+      };
+
+      const parsed = BentoTemplateDataSchema.parse({
+        ...base,
+        about: { heading: 'About us', body: 'Our story.' },
+        gallery: ['https://wdc.example/a.jpg'],
+        heroImageUrl: 'https://wdc.example/hero.jpg',
+        socialLinks: [{ platform: 'instagram', url: 'https://instagram.com/wdc' }],
+        reviews: [{ author: 'Anna', comment: 'Great experience overall', source: 'Website' }],
+      });
+      expect(parsed.reviews?.[0]?.rating).toBeUndefined();
+
+      expect(() => BentoTemplateDataSchema.parse({ ...base, gallery: ['not-a-url'] })).toThrow();
+      expect(() =>
+        BentoTemplateDataSchema.parse({ ...base, socialLinks: [{ platform: 'x', url: 'javascript:alert(1)' }] }),
+      ).toThrow();
     });
 
     it('should reject invalid hex color in palette', () => {

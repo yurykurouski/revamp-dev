@@ -92,6 +92,9 @@ const AuditSchema = new Schema<IAuditDocument>(
       mobileFull: { type: String },
       comparisonBanner: { type: String },
     },
+    // REV-23: contacts and original content extracted from the site (free-form, deterministic)
+    extractedContacts: { type: Schema.Types.Mixed },
+    extractedContent: { type: Schema.Types.Mixed },
     desktopScreenshotUrl: { type: String },
     mobileScreenshotUrl: { type: String },
     lcp: { type: Number },

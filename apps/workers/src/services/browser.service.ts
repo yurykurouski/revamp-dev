@@ -2,6 +2,7 @@ import { chromium, Browser, BrowserContextOptions, Page } from 'playwright';
 import { axeService, AxeAuditResult } from './axe.service.js';
 import { vitalsService, VitalsAuditResult } from './vitals.service.js';
 import { RawBrandExtractionData } from './brand-extractor.service.js';
+import { extractSiteContentInPage, RawSiteContent } from './site-content.extractor.js';
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -215,6 +216,20 @@ export class BrowserService {
   }
 
   /**
+   * Extracts the original site's own copy, structure and business data (REV-23).
+   * Never throws: a failed extraction just means less grounding material.
+   */
+  async extractSiteContent(page: Page): Promise<RawSiteContent | undefined> {
+    try {
+      const content = await page.evaluate(extractSiteContentInPage);
+      return content && typeof content === 'object' && Array.isArray(content.paragraphs) ? content : undefined;
+    } catch (err) {
+      console.warn('[BrowserService] Site content extraction failed:', err);
+      return undefined;
+    }
+  }
+
+  /**
    * Extracts raw brand colors, fonts, logo candidates, and contacts directly from page DOM
    */
   async extractRawBrandData(page: Page): Promise<RawBrandExtractionData> {
@@ -223,7 +238,7 @@ export class BrowserService {
       const colorElements = document.querySelectorAll(
         'button, header, nav, a, h1, h2, h3, [class*="btn"], [class*="hero"], footer, body, input',
       );
-      for (let i = 0; i < Math.min(colorElements.length, 60); i++) {
+      for (let i = 0; i < Math.min(colorElements.length, 200); i++) {
         const el = colorElements[i];
         if (!el) continue;
         try {
@@ -271,9 +286,20 @@ export class BrowserService {
 
       // Logo candidate
       let logoUrl: string | undefined = undefined;
-      const logoImg = document.querySelector(
-        'header img[class*="logo" i], header img[id*="logo" i], header img[alt*="logo" i], nav img[class*="logo" i], nav img[id*="logo" i], a[href="/"] img, header img, nav img',
-      ) as HTMLImageElement | null;
+      // Selectors are tried in priority order (a comma list would return the first match in
+      // document order, e.g. a partner badge that precedes the real logo)
+      const logoSelectors = [
+        'header img[class*="logo" i], header img[id*="logo" i], header img[alt*="logo" i], header img[src*="logo" i]',
+        '[class*="logo" i] img, [id*="logo" i] img, img[src*="logo" i]',
+        'nav img[class*="logo" i], nav img[id*="logo" i]',
+        'a[href="/"] img, a[href="' + location.origin + '/"] img, a[href="' + location.origin + '"] img',
+        'header img, nav img',
+      ];
+      let logoImg: HTMLImageElement | null = null;
+      for (const selector of logoSelectors) {
+        logoImg = document.querySelector(selector) as HTMLImageElement | null;
+        if (logoImg) break;
+      }
       if (logoImg && logoImg.src && !logoImg.src.startsWith('data:image/svg')) {
         logoUrl = logoImg.src;
       }
@@ -424,11 +450,13 @@ export class BrowserService {
         type: 'png',
         fullPage: false,
       });
-      // Extract brand data on Desktop viewport where full layout is present
-      rawBrandData = await this.extractRawBrandData(page);
-
-      // Full-page desktop screenshot (after lazy-load auto-scroll)
+      // Full-page desktop screenshot (auto-scroll also loads lazy content for extraction below)
       desktopFullBuffer = await this.captureFullPageScreenshot(page, FULL_PAGE_MAX_HEIGHT.desktop);
+
+      // Extract brand data and the site's own content on Desktop where the full layout is present
+      rawBrandData = await this.extractRawBrandData(page);
+      const content = await this.extractSiteContent(page);
+      if (content) rawBrandData.content = content;
     } finally {
       await desktopContext.close();
     }

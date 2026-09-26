@@ -127,6 +127,36 @@ export interface IExtractedBrandTokens {
   faviconUrl?: string;
 }
 
+// Contacts and content extracted deterministically from the original site (REV-23)
+export interface ISocialLink {
+  platform: string;
+  url: string;
+}
+
+export interface IExtractedContacts {
+  phone?: string;
+  email?: string;
+  address?: string;
+  workingHours?: string;
+  socialLinks: ISocialLink[];
+}
+
+export interface ISiteContent {
+  language?: string;
+  title?: string;
+  metaDescription?: string;
+  ogImage?: string;
+  h1?: string;
+  headings: string[];
+  paragraphs: string[];
+  serviceItems: Array<{ title: string; description?: string }>;
+  navItems: string[];
+  testimonials: Array<{ text: string; author?: string }>;
+  images: string[];
+  rating?: { value: number; count?: number };
+  foundingYear?: number;
+}
+
 export interface IScreenshotUrls {
   desktopOriginal: string;
   mobileOriginal: string;
@@ -149,6 +179,8 @@ export interface IAudit {
   aiFallbackUsed?: boolean;
   errorMessage?: string;
   extractedServices?: string[];
+  extractedContacts?: IExtractedContacts;
+  extractedContent?: ISiteContent;
   generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;
@@ -174,6 +206,12 @@ export interface IMvpGeneratedContent {
     primaryCtaText: string;
     secondaryCtaText: string;
   };
+  /** Rewritten "about" copy grounded in the original site's own text */
+  about?: {
+    heading: string;
+    body: string;
+  };
+  servicesHeading?: string;
   services: IMvpServiceItem[];
   trustSignals: IMvpTrustSignal[];
   offerNotice: string;
@@ -284,7 +322,7 @@ export interface IEmailDispatchJobData {
 // 8. Bento Template Data Interfaces
 export interface IBentoReviewItem {
   author: string;
-  rating: number; // 1-5
+  rating?: number; // 1-5, only when the source states it
   comment: string;
   date?: string;
   source?: 'Google Maps' | 'Yandex Maps' | '2GIS' | 'Website' | 'Direct';
@@ -329,6 +367,16 @@ export interface IBentoTemplateData {
     label: string;
   }>;
   reviews?: IBentoReviewItem[];
+  about?: {
+    heading: string;
+    body: string;
+  };
+  servicesHeading?: string;
+  heroImageUrl?: string;
+  gallery?: string[];
+  socialLinks?: ISocialLink[];
+  footerTagline?: string;
+  originalUrl?: string;
   trackingToken?: string;
   customHeadSnippet?: string;
 }
