@@ -1,8 +1,13 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
+import { QueryClient, QueryObserver, environmentManager } from '@tanstack/react-query';
+import { IDiscoveryCandidate, IDiscoveryJobStatus } from '@revamp/shared-types';
 import { apiClient } from '../../api/client.js';
 import {
   DISCOVERY_POLL_INTERVAL_MS,
   discoveryRefetchInterval,
+  discoveryIndicator,
+  discoveryStatusQueryOptions,
+  newCandidateCount,
   discoveryStateBucket,
   countCandidates,
   discoverySearchOutcome,
@@ -199,6 +204,104 @@ describe('discovery hook helpers (REV-27)', () => {
     it('discoverySearchOutcome should treat jobs from before REV-35 as filled', () => {
       expect(discoverySearchOutcome({}, 10)).toBe('filled');
       expect(discoverySearchOutcome({ counts: counts(0) }, 10)).toBe('filled');
+    });
+  });
+});
+
+describe('background discovery indicator (REV-40)', () => {
+  const base = { activeJobId: 'disc-1', resultsSeen: false };
+
+  it('is idle without a job', () => {
+    expect(discoveryIndicator({ ...base, activeJobId: null })).toBe('idle');
+    expect(discoveryIndicator({ ...base, activeJobId: null, status: { state: 'completed' } })).toBe('idle');
+  });
+
+  it('shows progress while the job is queued or running, including before the first status arrives', () => {
+    expect(discoveryIndicator({ ...base })).toBe('running');
+    expect(discoveryIndicator({ ...base, status: { state: 'waiting' } })).toBe('running');
+    expect(discoveryIndicator({ ...base, status: { state: 'delayed' } })).toBe('running');
+    expect(discoveryIndicator({ ...base, status: { state: 'active' } })).toBe('running');
+  });
+
+  it('keeps showing progress even if the operator already saw an earlier state', () => {
+    expect(discoveryIndicator({ ...base, resultsSeen: true, status: { state: 'active' } })).toBe('running');
+  });
+
+  it('shows results ready on completion and an error on failure', () => {
+    expect(discoveryIndicator({ ...base, status: { state: 'completed' } })).toBe('ready');
+    expect(discoveryIndicator({ ...base, status: { state: 'failed' } })).toBe('failed');
+    expect(discoveryIndicator({ ...base, isError: true })).toBe('failed');
+  });
+
+  it('clears once the operator has seen the outcome', () => {
+    const seen = { ...base, resultsSeen: true };
+    expect(discoveryIndicator({ ...seen, status: { state: 'completed' } })).toBe('idle');
+    expect(discoveryIndicator({ ...seen, status: { state: 'failed' } })).toBe('idle');
+    expect(discoveryIndicator({ ...seen, isError: true })).toBe('idle');
+  });
+
+  it('newCandidateCount counts only importable businesses', () => {
+    const candidate = (externalId: string, status: IDiscoveryCandidate['status']) =>
+      ({ externalId, status }) as IDiscoveryCandidate;
+    expect(
+      newCandidateCount({ candidates: [candidate('a', 'new'), candidate('b', 'new'), candidate('c', 'existing_lead')] }),
+    ).toBe(2);
+    expect(newCandidateCount({ candidates: [] })).toBe(0);
+    expect(newCandidateCount(null)).toBe(0);
+    expect(newCandidateCount(undefined)).toBe(0);
+    // Pre-REV-29 jobs kept no candidate list
+    expect(newCandidateCount({ candidates: undefined as unknown as IDiscoveryCandidate[] })).toBe(0);
+  });
+
+  describe('status polling', () => {
+    // Query-core never schedules refetch intervals on the server, which is what Node looks like
+    const wasServer = environmentManager.isServer();
+    beforeAll(() => environmentManager.setIsServer(() => false));
+    afterAll(() => environmentManager.setIsServer(() => wasServer));
+
+    afterEach(() => {
+      vi.useRealTimers();
+      vi.restoreAllMocks();
+    });
+
+    const status = (state: IDiscoveryJobStatus['state']) => ({ jobId: 'disc-1', state }) as IDiscoveryJobStatus;
+
+    /** Subscribes like a mounted component and returns how often the API was called after `ms` */
+    async function pollFor(states: IDiscoveryJobStatus['state'][], ms: number): Promise<number> {
+      vi.useFakeTimers();
+      const spy = vi.spyOn(apiClient, 'getDiscoveryStatus');
+      states.forEach((state) => spy.mockResolvedValueOnce(status(state)));
+      spy.mockResolvedValue(status(states[states.length - 1]));
+
+      const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const observer = new QueryObserver(client, discoveryStatusQueryOptions('disc-1'));
+      const unsubscribe = observer.subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(ms);
+      unsubscribe();
+      client.clear();
+      return spy.mock.calls.length;
+    }
+
+    it('keeps polling while the job is queued or running', async () => {
+      expect(await pollFor(['waiting', 'active'], DISCOVERY_POLL_INTERVAL_MS * 3 + 10)).toBe(4);
+    });
+
+    it('stops polling once the job completes', async () => {
+      expect(await pollFor(['active', 'completed'], DISCOVERY_POLL_INTERVAL_MS * 5)).toBe(2);
+    });
+
+    it('stops polling once the job fails', async () => {
+      expect(await pollFor(['waiting', 'failed'], DISCOVERY_POLL_INTERVAL_MS * 5)).toBe(2);
+    });
+
+    it('does not poll without a job', async () => {
+      vi.useFakeTimers();
+      const spy = vi.spyOn(apiClient, 'getDiscoveryStatus');
+      const client = new QueryClient();
+      const unsubscribe = new QueryObserver(client, discoveryStatusQueryOptions(null)).subscribe(() => {});
+      await vi.advanceTimersByTimeAsync(DISCOVERY_POLL_INTERVAL_MS * 3);
+      unsubscribe();
+      expect(spy).not.toHaveBeenCalled();
     });
   });
 });

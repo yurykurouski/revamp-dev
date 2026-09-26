@@ -17,7 +17,6 @@ import {
 import TranslateIcon from '@mui/icons-material/Translate';
 import { useTranslation } from 'react-i18next';
 import AddIcon from '@mui/icons-material/Add';
-import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import BoltIcon from '@mui/icons-material/Bolt';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -27,12 +26,25 @@ import { useThemeStore } from '../store/useThemeStore.js';
 import { useLeadFilterStore, ViewMode } from '../store/useLeadFilterStore.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
+import { DiscoveryButton } from './DiscoveryButton.js';
+import { discoveryIndicator, newCandidateCount, useDiscoveryStatusQuery } from '../hooks/useDiscovery.js';
 import { AppLanguage, LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/languages.js';
 
 export const Header: React.FC = () => {
   const { mode, toggleTheme } = useThemeStore();
   const { viewMode, setViewMode, openAddModal } = useLeadFilterStore();
   const openDiscovery = useDiscoveryStore((s) => s.open);
+  // Separate selectors: re-rendering the header when the modal opens would fight the dialog for focus
+  const activeJobId = useDiscoveryStore((s) => s.activeJobId);
+  const resultsSeen = useDiscoveryStore((s) => s.resultsSeen);
+  // Shares the modal's query, so the job keeps polling while the modal is closed and stops once it finishes
+  const discoveryStatus = useDiscoveryStatusQuery(activeJobId);
+  const discovery = discoveryIndicator({
+    activeJobId,
+    status: discoveryStatus.data,
+    isError: discoveryStatus.isError,
+    resultsSeen,
+  });
   const { language, setLanguage } = useLanguageStore();
   const { t } = useTranslation();
 
@@ -120,22 +132,8 @@ export const Header: React.FC = () => {
             </ToggleButton>
           </ToggleButtonGroup>
 
-          {/* Local business discovery from maps providers (REV-27) */}
-          <Tooltip title={t('header.findBusinesses')}>
-            <Button
-              variant="outlined"
-              color="primary"
-              onClick={openDiscovery}
-              aria-label={t('header.findBusinesses')}
-              sx={{ px: 1.5, py: 0.9, minWidth: 0, gap: 1, fontWeight: 600, whiteSpace: 'nowrap' }}
-            >
-              <TravelExploreIcon sx={{ fontSize: 20 }} />
-              {/* Icon-only until there is room for the label next to the other header controls */}
-              <Box component="span" sx={{ display: { xs: 'none', xl: 'inline' } }}>
-                {t('header.findBusinesses')}
-              </Box>
-            </Button>
-          </Tooltip>
+          {/* Local business discovery from maps providers (REV-27), with background search progress (REV-40) */}
+          <DiscoveryButton indicator={discovery} newCount={newCandidateCount(discoveryStatus.data?.result)} onClick={openDiscovery} />
 
           {/* Quick Add Lead Button */}
           <Button

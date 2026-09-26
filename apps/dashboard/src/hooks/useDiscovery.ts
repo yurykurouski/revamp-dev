@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   DiscoveryCandidateStatus,
   DiscoveryJobState,
@@ -36,6 +36,33 @@ export function discoveryStateBucket(state: DiscoveryJobState): DiscoveryStateBu
   if (state === 'active') return 'running';
   if (state === 'completed' || state === 'failed') return state;
   return 'queued';
+}
+
+/** What the header button shows about the background search (REV-40) */
+export type DiscoveryIndicator = 'idle' | 'running' | 'ready' | 'failed';
+
+export interface DiscoveryIndicatorInput {
+  activeJobId: string | null;
+  status?: Pick<IDiscoveryJobStatus, 'state'> | null;
+  /** The status request itself failed */
+  isError?: boolean;
+  /** The operator has already seen the finished job in the modal */
+  resultsSeen: boolean;
+}
+
+export function discoveryIndicator({ activeJobId, status, isError, resultsSeen }: DiscoveryIndicatorInput): DiscoveryIndicator {
+  if (!activeJobId) return 'idle';
+  if (isError) return resultsSeen ? 'idle' : 'failed';
+  // Status not loaded yet counts as queued
+  if (!status || !isDiscoveryFinished(status)) return 'running';
+  if (resultsSeen) return 'idle';
+  return status.state === 'completed' ? 'ready' : 'failed';
+}
+
+/** New businesses the operator can still import from a finished search */
+export function newCandidateCount(result?: Pick<IDiscoveryJobResult, 'candidates'> | null): number {
+  // Searches from before REV-29 kept no candidate list
+  return Array.isArray(result?.candidates) ? importableIds(result.candidates).length : 0;
 }
 
 export type DiscoveryFormErrorKey =
@@ -164,13 +191,16 @@ export const useStartDiscoveryMutation = () =>
     mutationFn: (input: StartDiscoveryInput) => apiClient.startDiscovery(input),
   });
 
-export const useDiscoveryStatusQuery = (jobId: string | null) =>
-  useQuery({
+/** Shared by the modal and the header button, which keeps the job polling while the modal is closed (REV-40) */
+export const discoveryStatusQueryOptions = (jobId: string | null) =>
+  queryOptions({
     queryKey: ['discovery', jobId],
     queryFn: () => apiClient.getDiscoveryStatus(jobId as string),
     enabled: Boolean(jobId),
     refetchInterval: (q) => discoveryRefetchInterval(q.state.data),
   });
+
+export const useDiscoveryStatusQuery = (jobId: string | null) => useQuery(discoveryStatusQueryOptions(jobId));
 
 export const useImportDiscoveryMutation = (jobId: string | null) => {
   const queryClient = useQueryClient();

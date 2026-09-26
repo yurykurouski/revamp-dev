@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -49,7 +49,7 @@ const STATE_CHIP_COLOR = {
 } as const;
 
 export const DiscoveryModal: React.FC = () => {
-  const { isOpen, close, activeJobId, setActiveJob, startNewSearch } = useDiscoveryStore();
+  const { isOpen, close, activeJobId, setActiveJob, markResultsSeen, startNewSearch } = useDiscoveryStore();
   const startMutation = useStartDiscoveryMutation();
   const statusQuery = useDiscoveryStatusQuery(activeJobId);
   const { t, i18n } = useTranslation();
@@ -64,6 +64,12 @@ export const DiscoveryModal: React.FC = () => {
 
   const status = statusQuery.data;
   const finished = isDiscoveryFinished(status);
+
+  // Seeing the outcome here clears the header indicator (REV-40)
+  const outcomeShown = isOpen && Boolean(activeJobId) && (finished || statusQuery.isError);
+  useEffect(() => {
+    if (outcomeShown) markResultsSeen();
+  }, [outcomeShown, markResultsSeen]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
