@@ -1,6 +1,8 @@
 import {
+  DiscoveryCandidateStatus,
   DiscoveryProvider,
   IDiscoveredBusiness,
+  IDiscoveryCandidate,
   IDiscoveryJobData,
   IDiscoveryJobResult,
   NicheType,
@@ -8,11 +10,8 @@ import {
 import { DiscoveredBusinessSchema } from '@revamp/validation';
 import { env } from '../config/env.js';
 import { Lead } from '../models/Lead.model.js';
-import { Audit } from '../models/Audit.model.js';
-import { addAuditJob } from '../queues/audit.queue.js';
 import { OsmDiscoveryProvider } from './osm-discovery.provider.js';
 import { GooglePlacesProvider } from './google-places.provider.js';
-import { EMAIL_GUESSED_TAG } from './discovery.constants.js';
 
 export type FetchFn = typeof fetch;
 
@@ -105,8 +104,8 @@ function sanitize(business: IDiscoveredBusiness, website: string): IDiscoveredBu
 }
 
 /**
- * Searches a maps provider and imports businesses with their own website as QUEUED leads,
- * each with an Audit record and an audit job. The pipeline still halts at NEEDS_APPROVAL (HITL).
+ * Searches a maps provider and classifies every listing for operator review. Nothing is imported
+ * here: the operator picks which `new` businesses become leads (POST /discovery/:jobId/import).
  */
 export async function runDiscovery(
   data: IDiscoveryJobData,
@@ -116,75 +115,62 @@ export async function runDiscovery(
     niche: data.niche,
     location: data.location,
     keyword: data.keyword,
-    // Many listings are dropped as duplicates or lacking a site, so over-fetch
+    // Many listings are skipped as duplicates or lacking a site, so over-fetch
     maxResults: Math.min(data.limit * 3, 300),
   });
 
-  const result: IDiscoveryJobResult = {
-    found: businesses.length,
-    created: 0,
-    skippedNoWebsite: 0,
-    skippedDuplicate: 0,
-    skippedInvalid: 0,
-    leadIds: [],
-  };
-
-  // 1. Normalise, validate, and dedupe within the batch
-  const candidates = new Map<string, IDiscoveredBusiness & { website: string }>();
+  // 1. Normalise, validate, and dedupe within the batch, keeping the provider's order
+  const candidates: IDiscoveryCandidate[] = [];
+  const seenDomains = new Set<string>();
   for (const business of businesses) {
+    const base = {
+      provider: business.provider,
+      externalId: business.externalId,
+      name: business.name.slice(0, 100),
+      city: business.city?.slice(0, 100),
+    };
     const site = normalizeWebsite(business.website);
     if (!site) {
-      result.skippedNoWebsite++;
+      candidates.push({ ...base, status: 'no_website', phone: business.phone, address: business.address });
       continue;
     }
     const parsed = DiscoveredBusinessSchema.safeParse(sanitize(business, site.url));
     if (!parsed.success) {
-      result.skippedInvalid++;
+      candidates.push({ ...base, status: 'invalid', website: site.url, domain: site.domain });
       continue;
     }
-    if (candidates.has(site.domain)) {
-      result.skippedDuplicate++;
-      continue;
-    }
-    candidates.set(site.domain, { ...parsed.data, website: site.url });
+    const { name, phone, email, address, city } = parsed.data;
+    const status = seenDomains.has(site.domain) ? 'duplicate' : 'new';
+    seenDomains.add(site.domain);
+    candidates.push({ ...base, name, phone, email, address, city, website: site.url, domain: site.domain, status });
   }
 
-  // 2. Skip domains that are already leads
-  const existing = await Lead.find({ domain: { $in: [...candidates.keys()] } }, { domain: 1 })
+  // 2. Mark domains that are already leads
+  const existing = (await Lead.find({ domain: { $in: [...seenDomains] } }, { domain: 1 })
     .lean()
-    .exec();
-  for (const lead of existing as Array<{ domain?: string }>) {
-    if (lead.domain && candidates.delete(lead.domain)) result.skippedDuplicate++;
+    .exec()) as Array<{ _id: unknown; domain?: string }>;
+  const leadIdByDomain = new Map(existing.map((lead) => [lead.domain, String(lead._id)]));
+  for (const candidate of candidates) {
+    const leadId = candidate.status === 'new' && candidate.domain ? leadIdByDomain.get(candidate.domain) : undefined;
+    if (leadId) Object.assign(candidate, { status: 'existing_lead', leadId });
   }
 
-  // 3. Create leads and dispatch audits
-  for (const [domain, business] of candidates) {
-    if (result.created >= data.limit) break;
-    try {
-      const tags = ['discovered', `source:${data.provider}`];
-      if (!business.email) tags.push(EMAIL_GUESSED_TAG);
+  // 3. Offer at most `limit` new businesses; skipped listings are all kept so the operator sees why
+  let offered = 0;
+  const limited = candidates.filter((c) => c.status !== 'new' || ++offered <= data.limit);
 
-      const lead = await Lead.create({
-        businessName: business.name,
-        originalUrl: business.website,
-        domain,
-        niche: data.niche,
-        city: business.city ?? data.location.slice(0, 100),
-        contactEmail: business.email ?? `info@${domain}`,
-        contactPhone: business.phone,
-        status: 'QUEUED',
-        tags,
-      });
-      await Audit.create({ leadId: lead._id, status: 'QUEUED' });
-      await addAuditJob({ leadId: lead._id.toString(), url: business.website, niche: data.niche });
+  return { found: businesses.length, candidates: limited };
+}
 
-      result.created++;
-      result.leadIds.push(lead._id.toString());
-    } catch (error) {
-      console.error(`[Discovery] Failed to import ${business.name} (${domain}):`, error);
-      result.skippedInvalid++;
-    }
-  }
-
-  return result;
+/** Counts candidates per status, for logs and summaries */
+export function countByStatus(candidates: IDiscoveryCandidate[]): Record<DiscoveryCandidateStatus, number> {
+  const counts: Record<DiscoveryCandidateStatus, number> = {
+    new: 0,
+    existing_lead: 0,
+    duplicate: 0,
+    no_website: 0,
+    invalid: 0,
+  };
+  for (const candidate of candidates) counts[candidate.status]++;
+  return counts;
 }

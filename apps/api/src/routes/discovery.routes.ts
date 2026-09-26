@@ -1,7 +1,12 @@
 import { Router } from 'express';
-import { ReverseGeocodeQuerySchema, StartDiscoverySchema } from '@revamp/validation';
+import { ImportDiscoverySchema, ReverseGeocodeQuerySchema, StartDiscoverySchema } from '@revamp/validation';
 import { validateBody, validateQuery } from '../middlewares/validate.js';
-import { startDiscovery, getDiscoveryStatus, reverseGeocode } from '../controllers/discovery.controller.js';
+import {
+  startDiscovery,
+  getDiscoveryStatus,
+  reverseGeocode,
+  importDiscoveryCandidates,
+} from '../controllers/discovery.controller.js';
 
 const router = Router();
 
@@ -13,5 +18,8 @@ router.get('/reverse-geocode', validateQuery(ReverseGeocodeQuerySchema), reverse
 
 // GET /discovery/:jobId - Discovery job state and import summary
 router.get('/:jobId', getDiscoveryStatus);
+
+// POST /discovery/:jobId/import - Import the operator's selection as leads (REV-29)
+router.post('/:jobId/import', validateBody(ImportDiscoverySchema), importDiscoveryCandidates);
 
 export default router;

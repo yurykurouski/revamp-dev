@@ -2,7 +2,7 @@ import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { IDiscoveryJobData, IDiscoveryJobResult } from '@revamp/shared-types';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
-import { runDiscovery } from '../services/discovery.service.js';
+import { countByStatus, runDiscovery } from '../services/discovery.service.js';
 
 // Failures that a retry cannot fix
 const PERMANENT_ERRORS = [/not configured/i, /Location not found/i, /no usable geometry/i, /Unknown discovery provider/i, /HTTP 4(00|01|03)/];
@@ -18,9 +18,11 @@ export const createDiscoveryWorker = (): Worker => {
 
       try {
         const result = await runDiscovery(job.data);
+        const counts = countByStatus(result.candidates);
         console.log(
-          `[DiscoveryWorker] Job ${job.id} done: found ${result.found}, created ${result.created}, ` +
-            `no website ${result.skippedNoWebsite}, duplicates ${result.skippedDuplicate}, invalid ${result.skippedInvalid}`,
+          `[DiscoveryWorker] Job ${job.id} done: found ${result.found}, new ${counts.new}, ` +
+            `already leads ${counts.existing_lead}, duplicates ${counts.duplicate}, ` +
+            `no website ${counts.no_website}, invalid ${counts.invalid}`,
         );
         return result;
       } catch (error: unknown) {

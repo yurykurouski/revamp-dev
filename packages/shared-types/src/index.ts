@@ -327,13 +327,39 @@ export interface IDiscoveredBusiness {
   lng?: number;
 }
 
+/**
+ * What discovery decided about a listing. Only `new` ones can be imported; the rest are shown
+ * to the operator with the reason they were skipped.
+ */
+export type DiscoveryCandidateStatus = 'new' | 'existing_lead' | 'duplicate' | 'no_website' | 'invalid';
+
+export interface IDiscoveryCandidate {
+  provider: DiscoveryProvider;
+  externalId: string;
+  name: string;
+  status: DiscoveryCandidateStatus;
+  /** Normalised website; absent for no_website */
+  website?: string;
+  domain?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  /** The lead that already covers this domain (existing_lead only) */
+  leadId?: string;
+}
+
 export interface IDiscoveryJobResult {
+  /** Listings returned by the provider */
   found: number;
-  created: number;
-  skippedNoWebsite: number;
-  skippedDuplicate: number;
-  skippedInvalid: number;
-  leadIds: string[];
+  candidates: IDiscoveryCandidate[];
+}
+
+export type DiscoveryImportOutcome = 'imported' | 'existing_lead' | 'not_importable' | 'not_found' | 'failed';
+
+export interface IDiscoveryImportResult {
+  imported: number;
+  results: Array<{ externalId: string; outcome: DiscoveryImportOutcome; leadId?: string }>;
 }
 
 /** A browser position resolved to a searchable place name (REV-28) */

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { IDiscoveredBusiness, IDiscoveryJobData } from '@revamp/shared-types';
 import {
+  countByStatus,
   runDiscovery,
   normalizeWebsite,
   createDiscoveryProvider,
@@ -9,14 +10,8 @@ import {
 import { OsmDiscoveryProvider } from '../osm-discovery.provider.js';
 import { GooglePlacesProvider } from '../google-places.provider.js';
 import { Lead } from '../../models/Lead.model.js';
-import { Audit } from '../../models/Audit.model.js';
-import { addAuditJob } from '../../queues/audit.queue.js';
 
 vi.mock('../../models/Lead.model.js');
-vi.mock('../../models/Audit.model.js');
-vi.mock('../../queues/audit.queue.js', () => ({
-  addAuditJob: vi.fn().mockResolvedValue({ id: 'audit-job' }),
-}));
 
 const jobData: IDiscoveryJobData = { provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 10 };
 
@@ -34,7 +29,7 @@ const providerReturning = (items: IDiscoveredBusiness[]): DiscoveryProviderClien
 
 const mockExistingDomains = (domains: string[]) => {
   vi.spyOn(Lead, 'find').mockReturnValue({
-    lean: () => ({ exec: vi.fn().mockResolvedValue(domains.map((domain) => ({ domain }))) }),
+    lean: () => ({ exec: vi.fn().mockResolvedValue(domains.map((domain) => ({ _id: `lead-${domain}`, domain }))) }),
   } as any);
 };
 
@@ -77,17 +72,9 @@ describe('createDiscoveryProvider', () => {
 });
 
 describe('runDiscovery', () => {
-  let leadCounter = 0;
-
   beforeEach(() => {
     vi.clearAllMocks();
-    leadCounter = 0;
     mockExistingDomains([]);
-    vi.spyOn(Lead, 'create').mockImplementation((async (doc: any) => {
-      const id = `lead-${++leadCounter}`;
-      return { ...doc, _id: { toString: () => id } };
-    }) as any);
-    vi.spyOn(Audit, 'create').mockResolvedValue({} as any);
   });
 
   it('should over-fetch from the provider relative to the limit, capped at 300', async () => {
@@ -104,111 +91,105 @@ describe('runDiscovery', () => {
     expect(vi.mocked(provider.search).mock.calls[1][0].maxResults).toBe(300);
   });
 
-  it('should create QUEUED leads with audits and audit jobs', async () => {
+  it('should return normalised new candidates without creating any leads', async () => {
     const provider = providerReturning([
-      business('1', { email: 'Hello@Clinic-1.lt', phone: '+370 600 00000', city: 'Vilnius' }),
+      business('1', { email: 'Hello@Clinic-1.lt', phone: '+370 600 00000', city: 'Vilnius', lat: 54.6, lng: 25.2 }),
     ]);
 
     const result = await runDiscovery(jobData, provider);
 
-    expect(Lead.create).toHaveBeenCalledWith({
-      businessName: 'Clinic 1',
-      originalUrl: 'https://clinic-1.lt/',
-      domain: 'clinic-1.lt',
-      niche: 'dental',
-      city: 'Vilnius',
-      contactEmail: 'hello@clinic-1.lt',
-      contactPhone: '+370 600 00000',
-      status: 'QUEUED',
-      tags: ['discovered', 'source:osm'],
-    });
-    expect(Audit.create).toHaveBeenCalledWith(expect.objectContaining({ status: 'QUEUED' }));
-    expect(addAuditJob).toHaveBeenCalledWith({ leadId: 'lead-1', url: 'https://clinic-1.lt/', niche: 'dental' });
     expect(result).toEqual({
       found: 1,
-      created: 1,
-      skippedNoWebsite: 0,
-      skippedDuplicate: 0,
-      skippedInvalid: 0,
-      leadIds: ['lead-1'],
+      candidates: [
+        {
+          provider: 'osm',
+          externalId: 'node/1',
+          name: 'Clinic 1',
+          status: 'new',
+          website: 'https://clinic-1.lt/',
+          domain: 'clinic-1.lt',
+          email: 'hello@clinic-1.lt',
+          phone: '+370 600 00000',
+          address: undefined,
+          city: 'Vilnius',
+        },
+      ],
     });
-  });
-
-  it('should guess info@<domain> and tag the lead when no email is listed', async () => {
-    await runDiscovery(jobData, providerReturning([business('2')]));
-    expect(Lead.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contactEmail: 'info@clinic-2.lt',
-        city: 'Vilnius',
-        tags: ['discovered', 'source:osm', 'email-guessed'],
-      }),
-    );
-  });
-
-  it('should drop unusable optional fields instead of the whole listing', async () => {
-    await runDiscovery(jobData, providerReturning([business('3', { email: 'broken@', phone: '1'.repeat(40) })]));
-    const created = vi.mocked(Lead.create).mock.calls[0][0] as any;
-    expect(created.contactEmail).toBe('info@clinic-3.lt');
-    expect(created.contactPhone).toBeUndefined();
-  });
-
-  it('should skip listings without an auditable website', async () => {
-    const result = await runDiscovery(
-      jobData,
-      providerReturning([
-        business('1'),
-        business('4', { website: undefined }),
-        business('5', { website: 'https://facebook.com/clinic5' }),
-      ]),
-    );
-    expect(result.created).toBe(1);
-    expect(result.skippedNoWebsite).toBe(2);
-  });
-
-  it('should skip listings that fail schema validation', async () => {
-    const result = await runDiscovery(jobData, providerReturning([business('6', { name: 'X' })]));
-    expect(result.skippedInvalid).toBe(1);
     expect(Lead.create).not.toHaveBeenCalled();
   });
 
-  it('should dedupe within the batch and against existing leads', async () => {
-    mockExistingDomains(['clinic-2.lt']);
-    const result = await runDiscovery(
+  it('should drop unusable optional fields instead of the whole listing', async () => {
+    const { candidates } = await runDiscovery(
+      jobData,
+      providerReturning([business('3', { email: 'broken@', phone: '1'.repeat(40) })]),
+    );
+    expect(candidates[0]).toMatchObject({ status: 'new', email: undefined, phone: undefined });
+  });
+
+  it('should list listings without an auditable website as no_website', async () => {
+    const { candidates } = await runDiscovery(
       jobData,
       providerReturning([
-        business('1'),
-        business('1b', { website: 'https://www.clinic-1.lt/contact' }),
-        business('2'),
+        business('4', { website: undefined, phone: '+370 1', address: 'Main st 1' }),
+        business('5', { website: 'https://facebook.com/clinic5' }),
       ]),
+    );
+    expect(candidates).toEqual([
+      expect.objectContaining({ externalId: 'node/4', status: 'no_website', phone: '+370 1', address: 'Main st 1' }),
+      expect.objectContaining({ externalId: 'node/5', status: 'no_website' }),
+    ]);
+    expect(candidates[0]).not.toHaveProperty('website');
+  });
+
+  it('should list listings that fail schema validation as invalid', async () => {
+    const { candidates } = await runDiscovery(jobData, providerReturning([business('6', { name: 'X' })]));
+    expect(candidates).toEqual([
+      expect.objectContaining({ name: 'X', status: 'invalid', domain: 'clinic-6.lt' }),
+    ]);
+  });
+
+  it('should mark in-batch duplicates and existing leads, keeping provider order', async () => {
+    mockExistingDomains(['clinic-2.lt']);
+    const { candidates } = await runDiscovery(
+      jobData,
+      providerReturning([business('1'), business('1b', { website: 'https://www.clinic-1.lt/contact' }), business('2')]),
     );
 
     expect(Lead.find).toHaveBeenCalledWith({ domain: { $in: ['clinic-1.lt', 'clinic-2.lt'] } }, { domain: 1 });
-    expect(result.created).toBe(1);
-    expect(result.skippedDuplicate).toBe(2);
+    expect(candidates.map((c) => [c.externalId, c.status, c.leadId])).toEqual([
+      ['node/1', 'new', undefined],
+      ['node/1b', 'duplicate', undefined],
+      ['node/2', 'existing_lead', 'lead-clinic-2.lt'],
+    ]);
   });
 
-  it('should stop creating leads at the limit', async () => {
-    const items = Array.from({ length: 8 }, (_, i) => business(String(i)));
+  it('should offer at most `limit` new businesses but keep every skipped listing', async () => {
+    const items = [
+      ...Array.from({ length: 5 }, (_, i) => business(String(i))),
+      business('nosite', { website: undefined }),
+      business('late'),
+    ];
     const result = await runDiscovery({ ...jobData, limit: 3 }, providerReturning(items));
-    expect(result.found).toBe(8);
-    expect(result.created).toBe(3);
-    expect(Lead.create).toHaveBeenCalledTimes(3);
-  });
 
-  it('should count a failed import as invalid and continue with the rest', async () => {
-    vi.mocked(Lead.create).mockRejectedValueOnce(new Error('validation failed'));
-    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-
-    const result = await runDiscovery(jobData, providerReturning([business('1'), business('2')]));
-
-    expect(result.skippedInvalid).toBe(1);
-    expect(result.created).toBe(1);
-    expect(result.leadIds).toEqual(['lead-1']);
-    errorSpy.mockRestore();
+    expect(result.found).toBe(7);
+    expect(result.candidates.map((c) => c.externalId)).toEqual(['node/0', 'node/1', 'node/2', 'node/nosite']);
   });
 
   it('should propagate provider errors', async () => {
     const provider: DiscoveryProviderClient = { search: vi.fn().mockRejectedValue(new Error('Overpass down')) };
     await expect(runDiscovery(jobData, provider)).rejects.toThrow('Overpass down');
+  });
+});
+
+describe('countByStatus', () => {
+  it('should count candidates per status', () => {
+    const c = (status: any) => ({ provider: 'osm' as const, externalId: status, name: 'x', status });
+    expect(countByStatus([c('new'), c('new'), c('duplicate'), c('no_website')])).toEqual({
+      new: 2,
+      existing_lead: 0,
+      duplicate: 1,
+      no_website: 1,
+      invalid: 0,
+    });
   });
 });

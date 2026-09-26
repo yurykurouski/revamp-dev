@@ -19,13 +19,12 @@ import {
   LinearProgress,
   IconButton,
   Tooltip,
-  alpha,
 } from '@mui/material';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
-import { DiscoveryProvider, IDiscoveryJobResult, NicheType } from '@revamp/shared-types';
+import { DiscoveryProvider, NicheType } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import {
@@ -38,6 +37,7 @@ import {
   validateDiscoveryForm,
 } from '../hooks/useDiscovery.js';
 import { NICHES, NICHE_EMOJI, isDashboardNiche } from '../i18n/niches.js';
+import { DiscoveryReview } from './DiscoveryReview.js';
 
 const PROVIDERS: DiscoveryProvider[] = ['osm', 'google'];
 
@@ -47,14 +47,6 @@ const STATE_CHIP_COLOR = {
   completed: 'success',
   failed: 'error',
 } as const;
-
-const SUMMARY_FIELDS: Array<keyof Omit<IDiscoveryJobResult, 'leadIds'>> = [
-  'created',
-  'found',
-  'skippedNoWebsite',
-  'skippedDuplicate',
-  'skippedInvalid',
-];
 
 export const DiscoveryModal: React.FC = () => {
   const { isOpen, close, activeJobId, setActiveJob, startNewSearch } = useDiscoveryStore();
@@ -255,46 +247,16 @@ export const DiscoveryModal: React.FC = () => {
           </Alert>
         )}
 
-        {bucket === 'completed' && result && (
-          <>
-            <Box
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(5, 1fr)' },
-                gap: 1.5,
-              }}
-            >
-              {SUMMARY_FIELDS.map((field) => (
-                <Box
-                  key={field}
-                  sx={{
-                    p: 1.5,
-                    borderRadius: 2,
-                    border: '1px solid',
-                    borderColor: field === 'created' ? 'primary.main' : 'divider',
-                    backgroundColor: (theme) =>
-                      field === 'created' ? alpha(theme.palette.primary.main, 0.08) : 'transparent',
-                  }}
-                >
-                  <Typography
-                    variant="h5"
-                    sx={{ fontWeight: 800, color: field === 'created' ? 'primary.main' : 'text.primary' }}
-                  >
-                    {result[field]}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.2, display: 'block' }}>
-                    {t(`discovery.summary.${field}`)}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-            <Alert severity={result.created > 0 ? 'success' : 'info'} sx={{ borderRadius: 2 }}>
-              {result.created > 0
-                ? t('discovery.createdHint', { created: result.created })
-                : t('discovery.nothingCreatedHint')}
+        {bucket === 'completed' &&
+          result &&
+          (Array.isArray(result.candidates) ? (
+            <DiscoveryReview key={status.jobId} jobId={status.jobId} candidates={result.candidates} />
+          ) : (
+            // Searches from before REV-29 imported automatically and kept no candidate list
+            <Alert severity="info" sx={{ borderRadius: 2 }}>
+              {t('discovery.legacyResult')}
             </Alert>
-          </>
-        )}
+          ))}
       </Box>
     );
   };
@@ -302,7 +264,14 @@ export const DiscoveryModal: React.FC = () => {
   const showStatus = Boolean(activeJobId);
 
   return (
-    <Dialog open={isOpen} onClose={close} maxWidth="sm" fullWidth PaperProps={{ sx: { p: 1 } }}>
+    <Dialog
+      open={isOpen}
+      onClose={close}
+      // The review table needs more room than the search form
+      maxWidth={status?.state === 'completed' && showStatus ? 'md' : 'sm'}
+      fullWidth
+      PaperProps={{ sx: { p: 1 } }}
+    >
       <form onSubmit={handleSubmit}>
         <DialogTitle sx={{ pb: 1, display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box

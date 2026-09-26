@@ -3,7 +3,8 @@ import { UnrecoverableError } from 'bullmq';
 import { createDiscoveryWorker } from '../discovery.worker.js';
 import { runDiscovery } from '../../services/discovery.service.js';
 
-vi.mock('../../services/discovery.service.js', () => ({
+vi.mock('../../services/discovery.service.js', async (importOriginal) => ({
+  countByStatus: (await importOriginal<typeof import('../../services/discovery.service.js')>()).countByStatus,
   runDiscovery: vi.fn(),
 }));
 vi.mock('../../queues/connection.js', () => ({
@@ -47,12 +48,11 @@ describe('DiscoveryWorker (@revamp/workers)', () => {
 
   it('should run discovery and return the import summary', async () => {
     const summary = {
-      found: 4,
-      created: 2,
-      skippedNoWebsite: 1,
-      skippedDuplicate: 1,
-      skippedInvalid: 0,
-      leadIds: ['a', 'b'],
+      found: 2,
+      candidates: [
+        { provider: 'osm' as const, externalId: 'node/1', name: 'A', status: 'new' as const },
+        { provider: 'osm' as const, externalId: 'node/2', name: 'B', status: 'no_website' as const },
+      ],
     };
     vi.mocked(runDiscovery).mockResolvedValue(summary);
     createDiscoveryWorker();

@@ -15,6 +15,7 @@ import {
   StartDiscoverySchema,
   DiscoveredBusinessSchema,
   ReverseGeocodeQuerySchema,
+  ImportDiscoverySchema,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -618,6 +619,25 @@ describe('Validation Schemas (@revamp/validation)', () => {
     it('should reject malformed language tags', () => {
       expect(ReverseGeocodeQuerySchema.safeParse({ lat: 1, lng: 2, lang: 'english!' }).success).toBe(false);
       expect(ReverseGeocodeQuerySchema.safeParse({ lat: 1, lng: 2, lang: 'e' }).success).toBe(false);
+    });
+  });
+
+  describe('ImportDiscoverySchema', () => {
+    it('should accept 1 to 100 unique ids', () => {
+      expect(ImportDiscoverySchema.safeParse({ externalIds: ['node/1'] }).success).toBe(true);
+      expect(
+        ImportDiscoverySchema.safeParse({ externalIds: Array.from({ length: 100 }, (_, i) => `node/${i}`) }).success,
+      ).toBe(true);
+    });
+
+    it('should reject empty, oversized, duplicate, and blank-id selections', () => {
+      expect(ImportDiscoverySchema.safeParse({ externalIds: [] }).success).toBe(false);
+      expect(
+        ImportDiscoverySchema.safeParse({ externalIds: Array.from({ length: 101 }, (_, i) => `node/${i}`) }).success,
+      ).toBe(false);
+      expect(ImportDiscoverySchema.safeParse({ externalIds: ['node/1', 'node/1'] }).success).toBe(false);
+      expect(ImportDiscoverySchema.safeParse({ externalIds: [''] }).success).toBe(false);
+      expect(ImportDiscoverySchema.safeParse({}).success).toBe(false);
     });
   });
 });

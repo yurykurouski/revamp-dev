@@ -4,6 +4,10 @@ import {
   DISCOVERY_POLL_INTERVAL_MS,
   discoveryRefetchInterval,
   discoveryStateBucket,
+  countCandidates,
+  importableIds,
+  pruneSelection,
+  summarizeImport,
   detectLocation,
   isDiscoveryFinished,
   LocationDetectError,
@@ -112,6 +116,40 @@ describe('discovery hook helpers (REV-27)', () => {
     it('should report a failed place lookup', async () => {
       vi.spyOn(apiClient, 'reverseGeocode').mockRejectedValue(new Error('No place found at these coordinates'));
       expect(await errorKeyOf(detectLocation('en', geoResolving))).toBe('discovery.errors.geoLookupFailed');
+    });
+  });
+
+  describe('candidate review helpers (REV-29)', () => {
+    const c = (id: string, status: any) => ({ provider: 'osm' as const, externalId: id, name: id, status });
+    const candidates = [c('a', 'new'), c('b', 'new'), c('c', 'existing_lead'), c('d', 'no_website'), c('e', 'duplicate')];
+
+    it('countCandidates should count every status', () => {
+      expect(countCandidates(candidates)).toEqual({ new: 2, existing_lead: 1, duplicate: 1, no_website: 1, invalid: 0 });
+      expect(countCandidates([])).toEqual({ new: 0, existing_lead: 0, duplicate: 0, no_website: 0, invalid: 0 });
+    });
+
+    it('importableIds should return only new candidates', () => {
+      expect(importableIds(candidates)).toEqual(['a', 'b']);
+    });
+
+    it('pruneSelection should drop ids that are no longer importable', () => {
+      const afterImport = [c('a', 'existing_lead'), c('b', 'new')];
+      expect([...pruneSelection(new Set(['a', 'b', 'zzz']), afterImport)]).toEqual(['b']);
+    });
+
+    it('summarizeImport should split imported, skipped and failed', () => {
+      expect(
+        summarizeImport({
+          imported: 2,
+          results: [
+            { externalId: '1', outcome: 'imported' },
+            { externalId: '2', outcome: 'imported' },
+            { externalId: '3', outcome: 'existing_lead' },
+            { externalId: '4', outcome: 'not_found' },
+            { externalId: '5', outcome: 'failed' },
+          ],
+        }),
+      ).toEqual({ imported: 2, skipped: 2, failed: 1 });
     });
   });
 });
