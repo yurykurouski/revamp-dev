@@ -22,10 +22,6 @@ export const ru: Translation = {
   },
   sidebar: {
     leads: 'Лиды и воронка',
-    audits: 'Аудиты сайтов',
-    outreach: 'Рассылка (HITL)',
-    analytics: 'Аналитика',
-    settings: 'Настройки',
   },
   niches: {
     dental: 'Стоматология',

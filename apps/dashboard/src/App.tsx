@@ -25,7 +25,7 @@ export const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={currentTheme}>
         <CssBaseline />
-        <Layout>
+        <Layout activeView="leads">
           <LeadsPage />
         </Layout>
       </ThemeProvider>
