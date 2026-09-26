@@ -3,6 +3,7 @@ import { useLeadFilterStore } from '../useLeadFilterStore.js';
 import { useHitlModalStore, BREAKPOINT_WIDTHS } from '../useHitlModalStore.js';
 import { useThemeStore } from '../useThemeStore.js';
 import { useLanguageStore, LANGUAGE_STORAGE_KEY } from '../useLanguageStore.js';
+import { useDiscoveryStore } from '../useDiscoveryStore.js';
 
 describe('Zustand Dashboard Stores', () => {
   describe('useLeadFilterStore', () => {
@@ -221,6 +222,41 @@ describe('Zustand Dashboard Stores', () => {
       expect(fresh.getState().language).toBe('en');
       fresh.getState().setLanguage('pl');
       expect(fresh.getState().language).toBe('pl');
+    });
+  });
+
+  describe('useDiscoveryStore (REV-27)', () => {
+    beforeEach(() => {
+      useDiscoveryStore.setState({ isOpen: false, activeJobId: null });
+    });
+
+    it('should start closed with no active job', () => {
+      const state = useDiscoveryStore.getState();
+      expect(state.isOpen).toBe(false);
+      expect(state.activeJobId).toBeNull();
+    });
+
+    it('should open and close the modal', () => {
+      useDiscoveryStore.getState().open();
+      expect(useDiscoveryStore.getState().isOpen).toBe(true);
+      useDiscoveryStore.getState().close();
+      expect(useDiscoveryStore.getState().isOpen).toBe(false);
+    });
+
+    it('should keep the active job while the modal is closed and reopened', () => {
+      useDiscoveryStore.getState().open();
+      useDiscoveryStore.getState().setActiveJob('disc-7');
+      useDiscoveryStore.getState().close();
+      useDiscoveryStore.getState().open();
+      expect(useDiscoveryStore.getState().activeJobId).toBe('disc-7');
+    });
+
+    it('should clear the active job on a new search without closing the modal', () => {
+      useDiscoveryStore.getState().open();
+      useDiscoveryStore.getState().setActiveJob('disc-7');
+      useDiscoveryStore.getState().startNewSearch();
+      expect(useDiscoveryStore.getState().activeJobId).toBeNull();
+      expect(useDiscoveryStore.getState().isOpen).toBe(true);
     });
   });
 });

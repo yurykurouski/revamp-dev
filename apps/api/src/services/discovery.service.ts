@@ -1,4 +1,5 @@
 import { StartDiscoveryDto } from '@revamp/validation';
+import { DiscoveryJobState, IDiscoveryJobStatus } from '@revamp/shared-types';
 import { addDiscoveryJob, getDiscoveryJob } from '../queues/discovery.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
@@ -20,15 +21,15 @@ export class DiscoveryService {
   /**
    * Returns the state of a discovery job and, once finished, its import summary
    */
-  static async getDiscoveryStatus(jobId: string) {
+  static async getDiscoveryStatus(jobId: string): Promise<IDiscoveryJobStatus> {
     const job = await getDiscoveryJob(jobId);
     if (!job) {
       throw new AppError('Discovery job not found', 404);
     }
 
-    const state = await job.getState();
+    const state = (await job.getState()) as DiscoveryJobState;
     return {
-      jobId: job.id,
+      jobId: job.id as string,
       state,
       params: job.data,
       result: job.returnvalue ?? null,
