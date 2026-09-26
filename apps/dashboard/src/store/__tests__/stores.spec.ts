@@ -259,7 +259,7 @@ describe('Zustand Dashboard Stores', () => {
 
   describe('useDiscoveryStore (REV-27)', () => {
     beforeEach(() => {
-      useDiscoveryStore.setState({ isOpen: false, activeJobId: null, resultsSeen: false });
+      useDiscoveryStore.setState({ isOpen: false, activeJobId: null, resultsSeen: false, notifiedJobId: null });
     });
 
     it('should start closed with no active job', () => {
@@ -310,6 +310,29 @@ describe('Zustand Dashboard Stores', () => {
       useDiscoveryStore.getState().markResultsSeen();
       useDiscoveryStore.getState().startNewSearch();
       expect(useDiscoveryStore.getState()).toMatchObject({ activeJobId: null, resultsSeen: false });
+    });
+
+    it('should record a background job as notified without opening the modal (REV-41)', () => {
+      useDiscoveryStore.getState().setActiveJob('disc-7');
+      useDiscoveryStore.getState().markJobNotified('disc-7');
+      expect(useDiscoveryStore.getState()).toMatchObject({ isOpen: false, notifiedJobId: 'disc-7' });
+    });
+
+    it('should ignore a notification for a job that is no longer active (REV-41)', () => {
+      useDiscoveryStore.getState().setActiveJob('disc-8');
+      useDiscoveryStore.getState().markJobNotified('disc-7');
+      expect(useDiscoveryStore.getState().notifiedJobId).toBeNull();
+    });
+
+    it('should reset the notified job for a new job and on a new search (REV-41)', () => {
+      useDiscoveryStore.getState().setActiveJob('disc-7');
+      useDiscoveryStore.getState().markJobNotified('disc-7');
+      useDiscoveryStore.getState().setActiveJob('disc-8');
+      expect(useDiscoveryStore.getState().notifiedJobId).toBeNull();
+
+      useDiscoveryStore.getState().markJobNotified('disc-8');
+      useDiscoveryStore.getState().startNewSearch();
+      expect(useDiscoveryStore.getState().notifiedJobId).toBeNull();
     });
   });
 });

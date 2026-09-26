@@ -70,6 +70,8 @@ The operator can override the provider and model for each generation from the da
 
 OpenStreetMap works with no configuration. Google Places needs `GOOGLE_PLACES_API_KEY`. Set `DISCOVERY_USER_AGENT` to something that identifies you: the Nominatim and Overpass usage policies require it.
 
+A search can keep running in the background after the operator closes the discovery window. When it finishes, the dashboard shows a notification on any page: the number of new businesses to review, "nothing new", or a failure. Clicking the notification opens the results. The window never opens by itself.
+
 ## Scripts
 
 | Command | What it does |

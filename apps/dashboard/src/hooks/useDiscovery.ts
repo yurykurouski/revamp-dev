@@ -59,6 +59,36 @@ export function discoveryIndicator({ activeJobId, status, isError, resultsSeen }
   return status.state === 'completed' ? 'ready' : 'failed';
 }
 
+/** What to do when a job sent to the background finishes (REV-41) */
+export type DiscoveryFinishAction = 'none' | 'notifyReady' | 'notifyEmpty' | 'notifyFailed';
+
+export interface DiscoveryFinishInput extends DiscoveryIndicatorInput {
+  status?: (Pick<IDiscoveryJobStatus, 'state'> & Partial<Pick<IDiscoveryJobStatus, 'result'>>) | null;
+  /** The discovery modal is open, so the operator watches the job finish there */
+  isOpen: boolean;
+  /** The job whose finish was already announced */
+  notifiedJobId: string | null;
+}
+
+/**
+ * Which notification to show when a background search finishes: new businesses to review, nothing
+ * new, or a failure. Once per job, and never while the modal is open, since the operator sees it there.
+ */
+export function discoveryFinishAction({
+  activeJobId,
+  status,
+  isError,
+  resultsSeen,
+  isOpen,
+  notifiedJobId,
+}: DiscoveryFinishInput): DiscoveryFinishAction {
+  if (!activeJobId || isOpen || resultsSeen || notifiedJobId === activeJobId) return 'none';
+  if (isError) return 'notifyFailed';
+  if (!status || !isDiscoveryFinished(status)) return 'none';
+  if (status.state === 'failed') return 'notifyFailed';
+  return newCandidateCount(status.result) > 0 ? 'notifyReady' : 'notifyEmpty';
+}
+
 /** New businesses the operator can still import from a finished search */
 export function newCandidateCount(result?: Pick<IDiscoveryJobResult, 'candidates'> | null): number {
   // Searches from before REV-29 kept no candidate list
