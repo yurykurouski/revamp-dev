@@ -62,6 +62,10 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
       type: Number,
       default: 0,
     },
+    // REV-36: the MVP compared with the original site's key business data
+    completenessReport: {
+      type: Schema.Types.Mixed,
+    },
   },
   {
     timestamps: true,

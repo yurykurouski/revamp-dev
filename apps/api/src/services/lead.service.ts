@@ -1,5 +1,5 @@
 import { URL } from 'url';
-import { CreateLeadDto } from '@revamp/validation';
+import { CreateLeadDto, MvpCompletenessReportDto, summarizeCompletenessReport } from '@revamp/validation';
 import { Lead, ILeadDocument } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
@@ -97,7 +97,10 @@ export class LeadService {
       Lead.countDocuments(filter).exec(),
     ]);
 
-    let mvpMap = new Map<string, { fullPreviewUrl?: string; comparisonBannerUrl?: string }>();
+    let mvpMap = new Map<
+      string,
+      { fullPreviewUrl?: string; comparisonBannerUrl?: string; completenessReport?: MvpCompletenessReportDto }
+    >();
     try {
       const leadIds = leads.map((l: any) => l._id || l.id).filter(Boolean);
       if (leadIds.length > 0 && MvpProject && typeof MvpProject.find === 'function') {
@@ -125,6 +128,11 @@ export class LeadService {
         }
         if (!obj.comparisonBannerUrl && mvp.comparisonBannerUrl) {
           obj.comparisonBannerUrl = mvp.comparisonBannerUrl;
+        }
+        // The Kanban card warns when the MVP lost or changed critical business data (REV-36)
+        const completeness = summarizeCompletenessReport(mvp.completenessReport);
+        if (completeness) {
+          obj.completeness = completeness;
         }
       }
       return obj;

@@ -250,6 +250,75 @@ export function mvpGenerationMode(status: string | undefined | null): MvpGenerat
 }
 
 /**
+ * MVP completeness report (REV-36): the generated page compared with the original site's data.
+ * The workers validate the report before saving it on the MvpProject.
+ */
+export const CompletenessTierSchema = z.enum(['critical', 'important', 'informational']);
+export const CompletenessStatusSchema = z.enum(['present', 'missing', 'altered', 'not_in_source', 'unsourced']);
+export const CompletenessFieldSchema = z.enum([
+  'businessName',
+  'phone',
+  'email',
+  'address',
+  'workingHours',
+  'services',
+  'socialLinks',
+  'logo',
+  'images',
+  'testimonials',
+  'rating',
+  'foundingYear',
+]);
+
+export const CompletenessCheckSchema = z.object({
+  field: CompletenessFieldSchema,
+  tier: CompletenessTierSchema,
+  status: CompletenessStatusSchema,
+  originalValue: z.string().max(500).optional(),
+  mvpValue: z.string().max(500).optional(),
+  note: z.string().max(500).optional(),
+});
+
+export const MvpCompletenessReportSchema = z.object({
+  status: z.enum(['verified', 'unverified']),
+  score: z.number().min(0).max(100).optional(),
+  hasCriticalIssues: z.boolean(),
+  checks: z.array(CompletenessCheckSchema).max(50),
+  checkedAt: z.union([z.string(), z.date()]),
+  error: z.string().max(500).optional(),
+});
+
+export type CompletenessCheckDto = z.infer<typeof CompletenessCheckSchema>;
+export type MvpCompletenessReportDto = z.infer<typeof MvpCompletenessReportSchema>;
+
+/** Statuses that count as a problem for a critical field */
+const COMPLETENESS_PROBLEM_STATUSES = ['missing', 'altered', 'unsourced'];
+
+/** Critical fields the MVP lost, changed or made up, without duplicates */
+export function criticalCompletenessIssues(
+  checks: ReadonlyArray<{ field: string; tier: string; status: string }> | undefined | null,
+): string[] {
+  const fields = (checks || [])
+    .filter((c) => c.tier === 'critical' && COMPLETENESS_PROBLEM_STATUSES.includes(c.status))
+    .map((c) => c.field);
+  return [...new Set(fields)];
+}
+
+/** The report reduced to what the Kanban card needs; undefined when there is no report */
+export function summarizeCompletenessReport(
+  report: Pick<MvpCompletenessReportDto, 'status' | 'score' | 'checks'> | undefined | null,
+) {
+  if (!report) return undefined;
+  const criticalIssues = criticalCompletenessIssues(report.checks);
+  return {
+    status: report.status,
+    score: report.score,
+    hasCriticalIssues: criticalIssues.length > 0,
+    criticalIssues,
+  };
+}
+
+/**
  * Schema for PATCH /api/v1/mvp/:id/tokens
  */
 export const UpdateMvpTokensSchema = z.object({

@@ -21,6 +21,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import type { CompletenessField } from '@revamp/shared-types';
 import { ILeadItem, IAuditDetail } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
@@ -32,6 +33,8 @@ interface EmailDraftEditorProps {
   onSendTest: (testEmail: string) => Promise<void>;
   onReject: (reason: string) => Promise<void>;
   isActionLoading?: boolean;
+  /** Critical business data the MVP lost or changed; approving then needs an extra confirmation (REV-36) */
+  criticalDataIssues?: CompletenessField[];
 }
 
 const TEMPLATE_VARIABLES: Array<keyof Translation['email']['variables']> = [
@@ -50,6 +53,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
   onSendTest,
   onReject,
   isActionLoading = false,
+  criticalDataIssues = [],
 }) => {
   const { t } = useTranslation();
   // The draft itself is outreach copy for the business owner, so it is not tied to the operator's UI language
@@ -79,6 +83,7 @@ Best regards, the Revamp SaaS team`;
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState(() => t('email.defaultRejectReason'));
   const [successAlert, setSuccessAlert] = useState<string | null>(null);
+  const [dataConfirmOpen, setDataConfirmOpen] = useState(false);
 
   // Substitute variables for preview
   const demoUrl = lead.previewUrl || `http://localhost:9000/revamp-demos/v/${lead.domain}/index.html`;
@@ -101,9 +106,23 @@ Best regards, the Revamp SaaS team`;
     setBody((prev) => `${prev} ${tag}`);
   };
 
-  const handleApproveSubmit = async () => {
+  const approve = async () => {
     await onApprove({ subject, preheader, body });
     setSuccessAlert(t('email.approved'));
+  };
+
+  // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
+  const handleApproveSubmit = async () => {
+    if (criticalDataIssues.length > 0) {
+      setDataConfirmOpen(true);
+      return;
+    }
+    await approve();
+  };
+
+  const handleDataConfirm = async () => {
+    setDataConfirmOpen(false);
+    await approve();
   };
 
   const handleSendTestSubmit = async () => {
@@ -127,7 +146,7 @@ Best regards, the Revamp SaaS team`;
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [subject, preheader, body]);
+  }, [subject, preheader, body, criticalDataIssues]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 2 }}>
@@ -437,6 +456,26 @@ Best regards, the Revamp SaaS team`;
           </Button>
           <Button onClick={handleSendTestSubmit} variant="contained" color="primary">
             {t('email.sendTest')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Approve despite missing business data (REV-36) */}
+      <Dialog open={dataConfirmOpen} onClose={() => setDataConfirmOpen(false)}>
+        <DialogTitle sx={{ fontWeight: 700, color: 'warning.main' }}>{t('completeness.confirmTitle')}</DialogTitle>
+        <DialogContent sx={{ pt: 1 }}>
+          <Typography variant="body2" color="text.secondary">
+            {t('completeness.confirmBody', {
+              fields: criticalDataIssues.map((field) => t(`completeness.fields.${field}`)).join(', '),
+            })}
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setDataConfirmOpen(false)} color="inherit" autoFocus>
+            {t('completeness.cancel')}
+          </Button>
+          <Button onClick={handleDataConfirm} variant="contained" color="warning">
+            {t('completeness.confirmApprove')}
           </Button>
         </DialogActions>
       </Dialog>

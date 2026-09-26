@@ -7,6 +7,7 @@ import { bentoTemplateService } from '../../services/template.service.js';
 import { storageService } from '../../services/storage.service.js';
 import { browserService } from '../../services/browser.service.js';
 import { ImageService } from '../../services/image.service.js';
+import { mvpCompletenessService } from '../../services/mvp-completeness.service.js';
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
@@ -41,6 +42,7 @@ vi.mock('bullmq', () => {
 describe('DeployWorker (@revamp/workers)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     capturedProcessor = null;
   });
 
@@ -253,6 +255,104 @@ describe('DeployWorker (@revamp/workers)', () => {
       leadId,
       expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
     );
+  });
+
+  describe('MVP completeness check (REV-36)', () => {
+    const leadId = '64f8a1234567890123456789';
+    const mvpHtml =
+      '<html><body><h1>Smile Dental</h1><footer><a href="tel:+48221234567">+48 22 123 45 67</a></footer></body></html>';
+
+    const setUpDeploy = () => {
+      createDeployWorker();
+      const lead = { _id: leadId, businessName: 'Smile Dental', domain: 'smile.pl', toObject: () => lead };
+      const audit = {
+        _id: 'audit-1',
+        leadId,
+        extractedContacts: { phone: '+48 22 123 45 67', email: 'info@smile.pl', socialLinks: [] },
+        toObject: () => audit,
+      };
+      vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+      vi.mocked(Audit.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(audit) } as any);
+      vi.mocked(MvpProject.findOne).mockReturnValue({
+        select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
+      } as any);
+      vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue(mvpHtml);
+      vi.mocked(storageService.uploadHtml).mockResolvedValue({ url: 'http://minio/v/smile/index.html', key: 'v/smile/index.html' });
+      vi.mocked(browserService.captureHtmlScreenshot).mockResolvedValue(Buffer.from('shot'));
+      vi.mocked(ImageService.createComparisonBanner).mockResolvedValue(Buffer.from('banner'));
+      vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue('http://minio/banners/smile.webp');
+      vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }) } as any);
+      vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      return { lead, audit };
+    };
+
+    const savedReport = () => (vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]?.[1] as any)?.completenessReport;
+
+    it('checks the rendered HTML and saves the report on the MvpProject before the lead moves to NEEDS_APPROVAL', async () => {
+      setUpDeploy();
+      const checkSpy = vi.spyOn(mvpCompletenessService, 'check');
+
+      await capturedProcessor!({ id: 'job-completeness', data: { leadId, auditId: 'audit-1' } });
+
+      expect(checkSpy).toHaveBeenCalledWith(mvpHtml, expect.objectContaining({ _id: leadId }), expect.objectContaining({ _id: 'audit-1' }));
+      const report = savedReport();
+      expect(report.status).toBe('verified');
+      expect(report.checks).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ field: 'phone', status: 'present' }),
+          expect.objectContaining({ field: 'email', status: 'missing' }),
+        ]),
+      );
+      // The email is gone from the MVP: flagged, but the lead still reaches review (not blocked)
+      expect(report.hasCriticalIssues).toBe(true);
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+        leadId,
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
+      );
+
+      const checkOrder = checkSpy.mock.invocationCallOrder[0]!;
+      const saveOrder = vi.mocked(MvpProject.findOneAndUpdate).mock.invocationCallOrder[0]!;
+      const approvalOrder = vi.mocked(Lead.findByIdAndUpdate).mock.invocationCallOrder[0]!;
+      expect(checkOrder).toBeLessThan(saveOrder);
+      expect(saveOrder).toBeLessThan(approvalOrder);
+    });
+
+    it('recomputes the report on every regeneration', async () => {
+      setUpDeploy();
+      await capturedProcessor!({ id: 'job-1', data: { leadId, auditId: 'audit-1' } });
+      const first = savedReport();
+
+      vi.mocked(MvpProject.findOneAndUpdate).mockClear();
+      vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue(
+        '<html><body><h1>Smile Dental</h1><a href="mailto:info@smile.pl">info@smile.pl</a><a href="tel:+48221234567">+48 22 123 45 67</a></body></html>',
+      );
+      await capturedProcessor!({ id: 'job-2', data: { leadId, auditId: 'audit-1', forceRegenerate: true } });
+      const second = savedReport();
+
+      expect(first.hasCriticalIssues).toBe(true);
+      expect(second.hasCriticalIssues).toBe(false);
+      expect(new Date(second.checkedAt).getTime()).toBeGreaterThanOrEqual(new Date(first.checkedAt).getTime());
+    });
+
+    it('saves an unverified report and still deploys when the comparison fails', async () => {
+      setUpDeploy();
+      vi.spyOn(mvpCompletenessService, 'compare').mockImplementation(() => {
+        throw new Error('parser exploded');
+      });
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+      const result = await capturedProcessor!({ id: 'job-completeness-err', data: { leadId, auditId: 'audit-1' } });
+
+      expect(result.success).toBe(true);
+      expect(savedReport()).toEqual(
+        expect.objectContaining({ status: 'unverified', hasCriticalIssues: false, checks: [], error: 'parser exploded' }),
+      );
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+        leadId,
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
+      );
+    });
   });
 
   it('should register a failed handler that resets the lead after the last attempt', () => {

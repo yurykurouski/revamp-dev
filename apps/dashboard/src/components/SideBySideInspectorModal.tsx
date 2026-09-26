@@ -45,6 +45,8 @@ import {
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
 import { EmailDraftEditor } from './EmailDraftEditor.js';
+import { CompletenessChecklist } from './CompletenessChecklist.js';
+import { criticalIssueFields } from '../utils/completeness.js';
 import { useTranslation } from 'react-i18next';
 import { isDashboardNiche } from '../i18n/niches.js';
 
@@ -357,6 +359,9 @@ export const SideBySideInspectorModal: React.FC = () => {
                   </Box>
                 </Card>
               </Box>
+
+              {/* The MVP checked against the original site's key business data (REV-36) */}
+              <CompletenessChecklist report={mvp?.completenessReport} />
 
               {/* Screenshot Preview Box: scrollable full-page capture */}
               <Box>
@@ -705,6 +710,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                 lead={currentLead}
                 audit={audit}
                 onApprove={handleApprove}
+                criticalDataIssues={criticalIssueFields(mvp?.completenessReport, currentLead.completeness)}
                 onSendTest={handleSendTest}
                 onReject={handleReject}
                 isActionLoading={
