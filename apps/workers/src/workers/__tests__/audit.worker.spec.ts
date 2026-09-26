@@ -7,6 +7,7 @@ import { browserService } from '../../services/browser.service.js';
 import { ImageService } from '../../services/image.service.js';
 import { storageService } from '../../services/storage.service.js';
 import { designCritiqueService } from '../../services/design-critique.service.js';
+import { UnrecoverableError } from 'bullmq';
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
@@ -29,7 +30,9 @@ const mockWorkerInstance = {
 };
 
 vi.mock('bullmq', () => {
+  class UnrecoverableError extends Error {}
   return {
+    UnrecoverableError,
     Queue: vi.fn().mockImplementation(() => ({
       add: vi.fn().mockResolvedValue({ id: 'mock-job' }),
     })),
@@ -165,7 +168,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     );
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
       'lead-123',
-      { status: 'AUDITING' },
+      { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
       { new: true },
     );
 
@@ -513,5 +516,74 @@ describe('AuditWorker (@revamp/workers)', () => {
       // Re-audits create a new Audit doc; the latest one must be marked FAILED
       { sort: { createdAt: -1 } },
     );
+  });
+
+  describe('failed audits (REV-44)', () => {
+    const failingJob = (error: Error, attemptsMade: number, attempts = 3) => {
+      createAuditWorker();
+      vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+      vi.mocked(browserService.captureFullAudit).mockRejectedValue(error);
+      return {
+        id: 'job-fail',
+        data: { leadId: 'lead-fail', url: 'https://broken.example', niche: 'dental' },
+        attemptsMade,
+        opts: { attempts },
+      };
+    };
+
+    it('keeps the lead in AUDITING while a transient failure still has retries left', async () => {
+      const job = failingJob(new Error('page.goto: Timeout 30000ms exceeded.'), 0);
+
+      const error = await capturedProcessor!(job).catch((err: unknown) => err);
+
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(UnrecoverableError);
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
+        { leadId: 'lead-fail' },
+        { status: 'FAILED', errorMessage: 'page.goto: Timeout 30000ms exceeded.' },
+        { sort: { createdAt: -1 } },
+      );
+    });
+
+    it('marks the lead AUDIT_FAILED with a one-line reason after the last attempt', async () => {
+      const crash = new Error(
+        'browserContext.close: Target page, context or browser has been closed\nBrowser logs:\n\n<launching> /chromium --headless',
+      );
+      const job = failingJob(crash, 2);
+
+      await expect(capturedProcessor!(job)).rejects.toBe(crash);
+
+      const reason = 'browserContext.close: Target page, context or browser has been closed';
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'lead-fail', status: 'AUDITING' },
+        { $set: { status: 'AUDIT_FAILED', auditError: reason } },
+      );
+      expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
+        { leadId: 'lead-fail' },
+        { status: 'FAILED', errorMessage: reason },
+        { sort: { createdAt: -1 } },
+      );
+    });
+
+    it('fails a permanent navigation error at once, without retries, and strips ANSI codes', async () => {
+      const job = failingJob(
+        new Error('page.goto: net::ERR_NAME_NOT_RESOLVED at https://ekomyj.com/\nCall log:\n\x1B[2m  - navigating to "https://ekomyj.com/"\x1B[22m'),
+        0,
+      );
+
+      const error = await capturedProcessor!(job).catch((err: unknown) => err);
+
+      const reason = 'page.goto: net::ERR_NAME_NOT_RESOLVED at https://ekomyj.com/';
+      expect(error).toBeInstanceOf(UnrecoverableError);
+      expect((error as Error).message).toBe(reason);
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'lead-fail', status: 'AUDITING' },
+        { $set: { status: 'AUDIT_FAILED', auditError: reason } },
+      );
+    });
   });
 });

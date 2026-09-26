@@ -5,6 +5,7 @@ import {
   StartDiscoveryInput,
   StartDiscoverySchema,
   GenerateMvpSchema,
+  TriggerAuditSchema,
 } from '@revamp/validation';
 import {
   IDiscoveryImportResult,
@@ -39,6 +40,8 @@ export interface ILeadItem {
   mvpGeneratedAt?: string;
   /** Why the last MVP generation failed, if it did (REV-31) */
   generationError?: string;
+  /** Why the last audit failed for good, if it did (REV-44) */
+  auditError?: string;
   /** How much of the original site's key data the MVP kept (REV-36) */
   completeness?: IMvpCompletenessSummary;
   /** Complexity class from the latest audit (REV-38) */
@@ -204,6 +207,7 @@ interface IServerLead {
   comparisonBannerUrl?: string;
   mvpGeneratedAt?: string;
   generationError?: string;
+  auditError?: string;
   completeness?: IMvpCompletenessSummary;
   siteComplexity?: SiteComplexityClass;
   createdAt: string;
@@ -235,6 +239,7 @@ const mapServerLead = (l: IServerLead): ILeadItem => {
     comparisonBannerUrl: l.comparisonBannerUrl,
     mvpGeneratedAt: l.mvpGeneratedAt,
     generationError: l.generationError,
+    auditError: l.auditError,
     completeness: l.completeness,
     siteComplexity: l.siteComplexity,
     createdAt: l.createdAt,
@@ -680,6 +685,33 @@ export const apiClient = {
       if (target) target.status = 'GENERATING';
     }
     return { success: true, status: 'GENERATING' };
+  },
+
+  /**
+   * Re-queues the audit of a lead whose audit failed (REV-44). The lead goes back to QUEUED;
+   * server rejections are thrown, and only an unreachable backend falls back to the demo data.
+   */
+  async retryAudit(leadId: string): Promise<{ success: boolean; status: LeadStatus }> {
+    const payload = TriggerAuditSchema.parse({ leadId });
+    let res: Response | null = null;
+    try {
+      res = await fetch(`${API_BASE_URL}/audits/trigger`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch {
+      // Backend unreachable: fall through to the demo fallback below
+    }
+
+    if (res) await readDataOrThrow<unknown>(res);
+
+    const target = localLeadsCache.find((l) => l.id === leadId);
+    if (target) {
+      target.status = 'QUEUED';
+      target.auditError = undefined;
+    }
+    return { success: true, status: 'QUEUED' };
   },
 
   /**

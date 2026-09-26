@@ -736,3 +736,34 @@ export function countCandidatesByStatus(
   for (const candidate of candidates) counts[candidate.status]++;
   return counts;
 }
+
+/**
+ * Audit failures (REV-44), shared by the audit worker and the API backfill.
+ * Playwright errors carry ANSI colour codes and, after the first line, a call log or the whole
+ * browser launch log; the stored reason keeps only the first readable line.
+ */
+export const MAX_AUDIT_ERROR_LENGTH = 300;
+
+const ANSI_ESCAPE = /\x1B\[[0-?]*[ -/]*[@-~]/g;
+
+/**
+ * Navigation errors that another attempt cannot fix: the domain does not resolve or the site's
+ * TLS certificate is invalid. The audit fails at once instead of using up its retries.
+ */
+const PERMANENT_AUDIT_ERROR = /net::ERR_(NAME_NOT_RESOLVED|CERT_[A-Z_]+|INVALID_URL)\b/;
+
+export function sanitizeAuditError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
+  const firstLine =
+    raw
+      .replace(ANSI_ESCAPE, '')
+      .split('\n')
+      .map((line) => line.trim())
+      .find((line) => line.length > 0) ?? '';
+  const message = firstLine.replace(/\s+/g, ' ') || 'Failed to complete audit inspection';
+  return message.slice(0, MAX_AUDIT_ERROR_LENGTH);
+}
+
+export function isPermanentAuditError(message: string): boolean {
+  return PERMANENT_AUDIT_ERROR.test(message);
+}

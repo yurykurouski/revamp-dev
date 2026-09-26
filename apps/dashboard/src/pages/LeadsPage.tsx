@@ -155,6 +155,7 @@ export const LeadsPage: React.FC = () => {
             >
               <MenuItem value="ALL">{t('leadsPage.allStatuses')}</MenuItem>
               <MenuItem value="QUEUED">{t('statuses.QUEUED')}</MenuItem>
+              <MenuItem value="AUDIT_FAILED">{t('statuses.AUDIT_FAILED')}</MenuItem>
               <MenuItem value="NEEDS_APPROVAL">{t('statuses.NEEDS_APPROVAL')}</MenuItem>
               <MenuItem value="SCHEDULED">{t('statuses.SCHEDULED')}</MenuItem>
               <MenuItem value="SENT">{t('statuses.SENT')}</MenuItem>

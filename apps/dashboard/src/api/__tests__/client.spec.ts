@@ -406,6 +406,71 @@ describe('Dashboard apiClient', () => {
     });
   });
 
+  describe('failed audits (REV-44)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const respond = (status: number, body: unknown) =>
+      vi.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body });
+
+    it('maps the audit error of a failed lead', async () => {
+      const auditError = 'page.goto: net::ERR_NAME_NOT_RESOLVED at https://ekomyj.com/';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: [
+                {
+                  _id: 'lead-failed',
+                  originalUrl: 'https://ekomyj.com',
+                  status: 'AUDIT_FAILED',
+                  auditError,
+                  createdAt: '2026-09-26T00:00:00.000Z',
+                },
+              ],
+              pagination: { total: 1, page: 1, limit: LEADS_PAGE_SIZE, totalPages: 1 },
+            }),
+            { status: 200 },
+          ),
+        ),
+      );
+
+      const { leads } = await fetchAllLeadPages();
+      expect(leads[0]).toMatchObject({ id: 'lead-failed', status: 'AUDIT_FAILED', auditError });
+    });
+
+    it('re-queues the audit through /audits/trigger', async () => {
+      const fetchMock = respond(202, { success: true, data: { status: 'QUEUED' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(apiClient.retryAudit('lead-1')).resolves.toEqual({ success: true, status: 'QUEUED' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toContain('/audits/trigger');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ leadId: 'lead-1', force: false });
+    });
+
+    it('surfaces an API error instead of pretending the audit was queued', async () => {
+      vi.stubGlobal('fetch', respond(404, { success: false, message: 'Lead not found' }));
+      await expect(apiClient.retryAudit('missing')).rejects.toThrow('Lead not found');
+    });
+
+    it('refuses an empty lead id before calling the API', async () => {
+      const fetchMock = respond(202, { success: true });
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(apiClient.retryAudit('')).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('falls back to demo data when the backend is unreachable', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+      await expect(apiClient.retryAudit('lead-1')).resolves.toEqual({ success: true, status: 'QUEUED' });
+    });
+  });
+
   describe('loading every lead (REV-43)', () => {
     afterEach(() => {
       vi.unstubAllGlobals();

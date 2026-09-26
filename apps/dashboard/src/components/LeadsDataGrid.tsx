@@ -7,6 +7,8 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
+import { AuditFailedActions } from './AuditFailedActions.js';
+import { isAuditFailed } from '../utils/auditFailure.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +22,7 @@ type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'succe
 const STATUS_COLORS: Record<keyof Translation['statuses'], ChipColor> = {
   QUEUED: 'default',
   AUDITING: 'info',
+  AUDIT_FAILED: 'error',
   AUDITED: 'info',
   GENERATING: 'primary',
   NEEDS_APPROVAL: 'warning',
@@ -105,13 +108,19 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
         const conf = isLabelledStatus(status)
           ? { label: t(`statuses.${status}`), color: STATUS_COLORS[status] }
           : { label: status, color: 'default' as const };
-        return (
+        const chip = (
           <Chip
             label={conf.label}
             size="small"
             color={conf.color}
             sx={{ fontWeight: 600, fontSize: '0.75rem' }}
           />
+        );
+        // REV-44: the reason a failed audit failed is in the tooltip
+        return isAuditFailed(params.row) && params.row.auditError ? (
+          <Tooltip title={params.row.auditError}>{chip}</Tooltip>
+        ) : (
+          chip
         );
       },
     },
@@ -189,7 +198,9 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
         const isNeedsApproval = params.row.status === 'NEEDS_APPROVAL';
         return (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            {isNeedsApproval ? (
+            {isAuditFailed(params.row) ? (
+              <AuditFailedActions lead={params.row} />
+            ) : isNeedsApproval ? (
               <Button
                 variant="contained"
                 color="warning"

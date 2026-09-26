@@ -59,6 +59,7 @@ export const en = {
   statuses: {
     QUEUED: 'Queued',
     AUDITING: 'Auditing...',
+    AUDIT_FAILED: 'Audit failed',
     AUDITED: 'Audited',
     GENERATING: 'Generating...',
     NEEDS_APPROVAL: 'Awaiting review',
@@ -116,6 +117,16 @@ export const en = {
     confirm: 'Regenerate',
     cancel: 'Cancel',
     failed: 'Could not start regeneration: {{message}}',
+  },
+  auditFailure: {
+    chip: 'Audit failed',
+    retry: 'Retry audit',
+    reject: 'Reject lead',
+    rejectTitle: 'Reject this lead?',
+    rejectBody: 'The site of {{name}} could not be audited. The lead will be archived as REJECTED and no outreach will be sent.',
+    confirmReject: 'Reject',
+    cancel: 'Cancel',
+    failed: 'Could not update the lead: {{message}}',
   },
   generate: {
     confirmTitle: 'Generate the MVP?',

@@ -58,6 +58,7 @@ export const lt: Translation = {
   statuses: {
     QUEUED: 'Eilėje',
     AUDITING: 'Auditas...',
+    AUDIT_FAILED: 'Auditas nepavyko',
     AUDITED: 'Auditas atliktas',
     GENERATING: 'Generuojama...',
     NEEDS_APPROVAL: 'Laukia peržiūros',
@@ -115,6 +116,16 @@ export const lt: Translation = {
     confirm: 'Generuoti iš naujo',
     cancel: 'Atšaukti',
     failed: 'Nepavyko pradėti generavimo iš naujo: {{message}}',
+  },
+  auditFailure: {
+    chip: 'Auditas nepavyko',
+    retry: 'Kartoti auditą',
+    reject: 'Atmesti klientą',
+    rejectTitle: 'Atmesti šį klientą?',
+    rejectBody: 'Nepavyko atlikti {{name}} svetainės audito. Klientas bus archyvuotas kaip REJECTED ir laiškas nebus išsiųstas.',
+    confirmReject: 'Atmesti',
+    cancel: 'Atšaukti',
+    failed: 'Nepavyko atnaujinti kliento: {{message}}',
   },
   generate: {
     confirmTitle: 'Generuoti MVP?',

@@ -1,4 +1,4 @@
-import { Worker, Job } from 'bullmq';
+import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { IAuditJobData } from '@revamp/shared-types';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -14,6 +14,8 @@ import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
+import { isPermanentAuditError, sanitizeAuditError } from '@revamp/validation';
+import { isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
 const LATEST_AUDIT = { sort: { createdAt: -1 } } as const;
@@ -29,7 +31,7 @@ export const createAuditWorker = (): Worker => {
       const [existingLead] = await Promise.all([
         Lead.findByIdAndUpdate(
           leadId,
-          { status: 'AUDITING' },
+          { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
           { new: true },
         ).exec(),
         Audit.findOneAndUpdate(
@@ -223,10 +225,8 @@ export const createAuditWorker = (): Worker => {
           processedAt: new Date().toISOString(),
         };
       } catch (error: unknown) {
-        const errorMessage =
-          error instanceof Error
-            ? error.message
-            : 'Failed to complete audit inspection';
+        const errorMessage = sanitizeAuditError(error);
+        const permanent = isPermanentAuditError(errorMessage);
         console.error(`[AuditWorker] Error processing audit for lead ${leadId}:`, error);
 
         await Audit.findOneAndUpdate(
@@ -238,6 +238,15 @@ export const createAuditWorker = (): Worker => {
           LATEST_AUDIT,
         ).exec();
 
+        // REV-44: retries keep the lead in AUDITING; the last attempt moves it to AUDIT_FAILED
+        if (isFinalAuditAttempt(job, permanent)) {
+          await markLeadAuditFailed(job, errorMessage);
+        }
+
+        // A domain that does not resolve or an invalid certificate will not recover on retry
+        if (permanent) {
+          throw new UnrecoverableError(errorMessage);
+        }
         throw error;
       }
     },

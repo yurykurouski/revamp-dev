@@ -58,6 +58,7 @@ export const be: Translation = {
   statuses: {
     QUEUED: 'У чарзе',
     AUDITING: 'Аўдыт...',
+    AUDIT_FAILED: 'Памылка аўдыту',
     AUDITED: 'Аўдыт завершаны',
     GENERATING: 'Генерацыя...',
     NEEDS_APPROVAL: 'Чакае праверкі',
@@ -115,6 +116,16 @@ export const be: Translation = {
     confirm: 'Перагенераваць',
     cancel: 'Скасаваць',
     failed: 'Не ўдалося запусціць перагенерацыю: {{message}}',
+  },
+  auditFailure: {
+    chip: 'Памылка аўдыту',
+    retry: 'Паўтарыць аўдыт',
+    reject: 'Адхіліць лід',
+    rejectTitle: 'Адхіліць гэты лід?',
+    rejectBody: 'Сайт {{name}} не ўдалося праверыць. Лід будзе перанесены ў архіў са статусам REJECTED, ліст дасланы не будзе.',
+    confirmReject: 'Адхіліць',
+    cancel: 'Скасаваць',
+    failed: 'Не ўдалося абнавіць лід: {{message}}',
   },
   generate: {
     confirmTitle: 'Стварыць MVP?',

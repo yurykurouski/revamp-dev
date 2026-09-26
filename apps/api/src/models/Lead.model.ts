@@ -83,6 +83,7 @@ const LeadSchema = new Schema<ILeadDocument>(
         'QUEUED',
         'PENDING',
         'AUDITING',
+        'AUDIT_FAILED',
         'AUDITED',
         'GENERATING',
         'MVP_READY',
@@ -124,6 +125,10 @@ const LeadSchema = new Schema<ILeadDocument>(
       type: Date,
     },
     generationError: {
+      type: String,
+    },
+    // REV-44: why the last audit failed for good; shown on the card with a retry action
+    auditError: {
       type: String,
     },
     // REV-38: complexity class from the latest audit; one-page brochure sites sort first

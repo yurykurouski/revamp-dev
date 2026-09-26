@@ -26,6 +26,14 @@ router.post(
         status: 'QUEUED',
       });
 
+      // REV-44: retrying a failed audit clears the error and puts the lead back in the queue
+      if (lead.status === 'AUDIT_FAILED' || lead.auditError) {
+        await Lead.findByIdAndUpdate(lead._id, {
+          $set: { status: lead.status === 'AUDIT_FAILED' ? 'QUEUED' : lead.status },
+          $unset: { auditError: '' },
+        }).exec();
+      }
+
       const job = await addAuditJob({
         leadId: lead._id.toString(),
         url: lead.originalUrl,

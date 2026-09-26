@@ -18,6 +18,7 @@ export type LeadStatus =
   | 'QUEUED'
   | 'PENDING'
   | 'AUDITING'
+  | 'AUDIT_FAILED'
   | 'AUDITED'
   | 'GENERATING'
   | 'MVP_READY'
@@ -85,6 +86,8 @@ export interface ILead {
   mvpGeneratedAt?: string | Date;
   /** Why the last MVP generation failed; cleared when a new run starts (REV-31) */
   generationError?: string;
+  /** Why the last audit failed for good, as one readable line; cleared when a new audit is queued (REV-44) */
+  auditError?: string;
   /** Complexity class from the latest audit, copied here for list sorting and filtering (REV-38) */
   siteComplexity?: SiteComplexityClass;
   /** Set when the latest audit found a one-page brochure site; these leads sort first (REV-38) */
