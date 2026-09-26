@@ -1,4 +1,4 @@
-import { IBentoTemplateData, IBentoServiceCard, IBentoReviewItem } from '@revamp/shared-types';
+import { IBentoTemplateData } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
 
 /**
@@ -36,46 +36,6 @@ function escapeHtml(str: string | undefined | null): string {
 }
 
 /**
- * Generates default reviews if none are provided.
- */
-function getDefaultReviews(businessName: string): IBentoReviewItem[] {
-  return [
-    {
-      author: 'Alex Mitchell',
-      rating: 5,
-      comment: `Great service! I came to ${businessName} on a recommendation. Everything was fast, transparent and with no hidden costs. Highly recommend!`,
-      date: '3 days ago',
-      source: 'Yandex Maps',
-    },
-    {
-      author: 'Kate Smith',
-      rating: 5,
-      comment: 'Very polite staff and high-quality work. Pleasantly surprised by their punctuality and attention to detail.',
-      date: '1 week ago',
-      source: 'Google Maps',
-    },
-    {
-      author: 'Daniel Cooper',
-      rating: 5,
-      comment: 'True professionals. You can tell they are experienced and honest with clients. I will definitely come back.',
-      date: '2 weeks ago',
-      source: '2GIS',
-    },
-  ];
-}
-
-/**
- * Generates default trust signals if none provided.
- */
-function getDefaultTrustSignals(): Array<{ metric: string; label: string }> {
-  return [
-    { metric: '4.9 ★', label: 'Map rating based on 150+ reviews' },
-    { metric: '10+ yrs', label: 'Of experience and certified specialists' },
-    { metric: '100%', label: 'Guarantee on all work and transparent pricing' },
-  ];
-}
-
-/**
  * Compiles the complete, self-contained Bento Landing Page HTML document.
  */
 export function generateBentoHtml(data: IBentoTemplateData): string {
@@ -86,46 +46,30 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const primaryRgb = hexToRgb(primaryColor);
   const accentRgb = hexToRgb(accentColor);
 
-  const phone = data.contacts?.phone || '+7 (812) 000-00-00';
-  const phoneClean = phone.replace(/[^+\d]/g, '');
-  const email = data.contacts?.email || `info@${data.businessName.toLowerCase().replace(/\s+/g, '')}.ru`;
-  const address = data.contacts?.address || (data.contacts?.city ? data.contacts.city : 'Saint Petersburg');
-  const workingHours = data.contacts?.workingHours || 'Mon–Sun: 09:00 – 21:00 (open daily)';
+  // Contacts are rendered only when they were verified on the original site (Strict Grounding)
+  const phone = data.contacts?.phone;
+  const phoneClean = phone ? phone.replace(/[^+\d]/g, '') : '';
+  const email = data.contacts?.email;
+  const address = data.contacts?.address;
+  const workingHours = data.contacts?.workingHours;
+  const mapUrl = address
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${data.businessName} ${address}`)}`
+    : '';
 
-  const heroBadge = escapeHtml(data.hero.badge || '✨ Special offer');
+  const heroBadge = escapeHtml(data.hero.badge);
   const heroHeadline = escapeHtml(data.hero.headline);
   const heroSubheadline = escapeHtml(data.hero.subheadline);
-  const primaryCtaText = escapeHtml(data.hero.primaryCtaText || 'Book online');
-  const secondaryCtaText = escapeHtml(data.hero.secondaryCtaText || 'Call us');
+  const primaryCtaText = escapeHtml(data.hero.primaryCtaText || 'Send a request');
+  const secondaryCtaText = escapeHtml(data.hero.secondaryCtaText || (phone ? 'Call us' : 'Contact us'));
+  const secondaryCtaHref = phone ? `tel:${phoneClean}` : email ? `mailto:${escapeHtml(email)}` : '#booking';
 
-  const services: IBentoServiceCard[] = data.services && data.services.length > 0 ? data.services : [
-    {
-      title: 'Full diagnostics',
-      description: 'Accurate assessment that finds every hidden issue using certified equipment.',
-      lucideIconName: 'activity',
-      badge: 'Popular',
-      highlight: true,
-    },
-    {
-      title: 'Fast repairs',
-      description: 'Fixes of any complexity with guaranteed results, on the agreed schedule.',
-      lucideIconName: 'wrench',
-    },
-    {
-      title: 'Warranty service',
-      description: 'Official warranty on all work and genuine parts.',
-      lucideIconName: 'shield-check',
-      badge: '1-year warranty',
-    },
-    {
-      title: 'Express consultation',
-      description: 'Free cost estimate and expert advice within 10 minutes.',
-      lucideIconName: 'phone',
-    },
-  ];
-
-  const trustSignals = data.trustSignals && data.trustSignals.length > 0 ? data.trustSignals : getDefaultTrustSignals();
-  const reviews = data.reviews && data.reviews.length > 0 ? data.reviews : getDefaultReviews(data.businessName);
+  const services = data.services || [];
+  const trustSignals = data.trustSignals || [];
+  const reviews = data.reviews || [];
+  const gallery = (data.gallery || []).filter((src) => src !== data.heroImageUrl).slice(0, 6);
+  const socialLinks = data.socialLinks || [];
+  const servicesHeading = escapeHtml(data.servicesHeading || `What ${data.businessName} offers`);
+  const footerTagline = escapeHtml(data.footerTagline || data.hero.subheadline);
 
   // Logo or Monogram rendering
   let logoHtml = '';
@@ -194,10 +138,12 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   // Render Reviews
   const reviewsHtml = reviews
     .map((rev) => {
-      const starRating = Array(Math.min(5, Math.max(1, rev.rating || 5)))
-        .fill(0)
-        .map(() => `<span class="star-icon">★</span>`)
-        .join('');
+      const starRating = rev.rating
+        ? Array(Math.min(5, Math.max(1, Math.round(rev.rating))))
+            .fill(0)
+            .map(() => `<span class="star-icon">★</span>`)
+            .join('')
+        : '';
 
       return `
         <div class="review-card">
@@ -206,7 +152,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
               <div class="review-avatar">${escapeHtml(rev.author.charAt(0))}</div>
               <div>
                 <div class="review-author-name">${escapeHtml(rev.author)}</div>
-                <div class="review-source">${escapeHtml(rev.source || 'Verified review')} ${rev.date ? `• ${escapeHtml(rev.date)}` : ''}</div>
+                <div class="review-source">${escapeHtml(rev.source || 'Website')} ${rev.date ? `• ${escapeHtml(rev.date)}` : ''}</div>
               </div>
             </div>
             <div class="review-stars">${starRating}</div>
@@ -216,6 +162,46 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       `;
     })
     .join('\n');
+
+  const aboutHtml = data.about
+    ? `
+    <!-- MODULE 2b: ABOUT (rewritten from the original site's own copy) -->
+    <section class="about-section" id="about">
+      <div class="container about-grid">
+        <div>
+          <span class="section-tag">About</span>
+          <h2 class="section-title">${escapeHtml(data.about.heading)}</h2>
+          <p class="about-body">${escapeHtml(data.about.body)}</p>
+        </div>
+        ${gallery[0] ? `<img class="about-image" src="${escapeHtml(gallery[0])}" alt="${businessName}" loading="lazy" />` : ''}
+      </div>
+    </section>`
+    : '';
+
+  const galleryImages = data.about ? gallery.slice(1) : gallery;
+  const galleryHtml =
+    galleryImages.length >= 2
+      ? `
+    <!-- MODULE 3b: GALLERY (images from the original site) -->
+    <section class="gallery-section" id="gallery">
+      <div class="container">
+        <div class="gallery-grid">
+          ${galleryImages
+            .map((src) => `<img class="gallery-image" src="${escapeHtml(src)}" alt="${businessName}" loading="lazy" />`)
+            .join('\n')}
+        </div>
+      </div>
+    </section>`
+      : '';
+
+  const socialHtml = socialLinks.length
+    ? `<div class="footer-socials">${socialLinks
+        .map(
+          (link) =>
+            `<a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer" class="footer-social-link">${escapeHtml(link.platform.charAt(0).toUpperCase() + link.platform.slice(1))}</a>`,
+        )
+        .join('')}</div>`
+    : '';
 
   // Service Options for Booking Select
   const serviceSelectOptions = services
@@ -1026,6 +1012,64 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       background: rgba(255, 255, 255, 0.12);
       color: #ffffff;
     }
+    /* REV-23: sections built from the original site's own content */
+    .hero-image {
+      display: block;
+      width: 100%;
+      max-width: 960px;
+      max-height: 440px;
+      object-fit: cover;
+      margin: 3rem auto 0;
+      border-radius: 24px;
+      box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.25);
+    }
+    .about-section { padding: 5rem 0; }
+    .about-grid {
+      display: grid;
+      gap: 2.5rem;
+      align-items: center;
+    }
+    @media (min-width: 900px) {
+      .about-grid { grid-template-columns: 1.2fr 1fr; }
+    }
+    .about-body {
+      font-size: 1.1rem;
+      line-height: 1.75;
+      color: var(--text-secondary, #475569);
+      margin-top: 1rem;
+    }
+    .about-image {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 24px;
+    }
+    .gallery-section { padding: 0 0 5rem; }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+    }
+    .gallery-image {
+      width: 100%;
+      aspect-ratio: 4 / 3;
+      object-fit: cover;
+      border-radius: 18px;
+    }
+    .footer-socials {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin: 1rem 0;
+    }
+    .footer-social-link {
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      font-size: 0.85rem;
+      color: inherit;
+      text-decoration: none;
+    }
   </style>
 
   ${data.customHeadSnippet ? data.customHeadSnippet : ''}
@@ -1041,10 +1085,14 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       </a>
 
       <div class="header-actions">
-        <a href="tel:${phoneClean}" class="call-btn" aria-label="Call us">
+        ${
+          phone
+            ? `<a href="tel:${phoneClean}" class="call-btn" aria-label="Call us">
           ${getLucideIconSvg('phone', { size: 18 })}
           <span>${escapeHtml(phone)}</span>
-        </a>
+        </a>`
+            : ''
+        }
         <a href="#booking" class="header-booking-btn">
           <span>Book now</span>
         </a>
@@ -1057,9 +1105,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     <section class="hero-section">
       <div class="hero-bg-glow"></div>
       <div class="container hero-content">
-        <div class="hero-badge">
-          ${heroBadge}
-        </div>
+        ${heroBadge ? `<div class="hero-badge">${heroBadge}</div>` : ''}
 
         <h1 class="hero-headline">
           ${heroHeadline}
@@ -1074,62 +1120,56 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
             <span>${primaryCtaText}</span>
             ${getLucideIconSvg('arrow-right', { size: 18 })}
           </a>
-          <a href="tel:${phoneClean}" class="btn-secondary" data-revamp-cta="call">
-            ${getLucideIconSvg('phone', { size: 18 })}
+          <a href="${secondaryCtaHref}" class="btn-secondary" data-revamp-cta="call">
+            ${getLucideIconSvg(phone ? 'phone' : 'mail', { size: 18 })}
             <span>${secondaryCtaText}</span>
           </a>
         </div>
 
-        <!-- Trust signals -->
-        <div class="trust-signals-bar">
-          ${trustSignalsHtml}
-        </div>
+        ${trustSignals.length ? `<div class="trust-signals-bar">${trustSignalsHtml}</div>` : ''}
+
+        ${data.heroImageUrl ? `<img class="hero-image" src="${escapeHtml(data.heroImageUrl)}" alt="${businessName}" />` : ''}
       </div>
     </section>
+${aboutHtml}
 
     <!-- MODULE 3: BENTO SERVICES GRID -->
-    <section class="bento-section" id="services">
+    ${services.length ? `<section class="bento-section" id="services">
       <div class="container">
         <div class="section-header">
-          <span class="section-tag">Our services</span>
-          <h2 class="section-title">Quality solutions for every need</h2>
-          <p class="section-desc">
-            Transparent fixed prices, an official guarantee and a personal approach to every client.
-          </p>
+          <span class="section-tag">Services</span>
+          <h2 class="section-title">${servicesHeading}</h2>
         </div>
 
         <div class="bento-grid">
           ${bentoCardsHtml}
         </div>
       </div>
-    </section>
-
-    <!-- MODULE 4: SOCIAL PROOF & REVIEWS -->
-    <section class="reviews-section" id="reviews">
+    </section>` : ''}
+${galleryHtml}
+    <!-- MODULE 4: SOCIAL PROOF & REVIEWS (only real testimonials from the original site) -->
+    ${reviews.length ? `<section class="reviews-section" id="reviews">
       <div class="container">
         <div class="section-header">
-          <span class="section-tag">Client reviews</span>
-          <h2 class="section-title">Trusted by hundreds of clients</h2>
-          <p class="section-desc">
-            Honest reviews and ratings on Google Maps and other directories.
-          </p>
+          <span class="section-tag">Reviews</span>
+          <h2 class="section-title">What customers say about ${businessName}</h2>
         </div>
 
         <div class="reviews-grid">
           ${reviewsHtml}
         </div>
       </div>
-    </section>
+    </section>` : ''}
 
     <!-- MODULE 5: INTERACTIVE BOOKING FORM -->
     <section class="booking-section" id="booking">
       <div class="container">
         <div class="booking-wrapper">
           <div class="section-header" style="margin-bottom: 2rem;">
-            <span class="section-tag">Online booking</span>
-            <h2 class="section-title" style="font-size: 1.75rem;">Book a consultation</h2>
+            <span class="section-tag">Get in touch</span>
+            <h2 class="section-title" style="font-size: 1.75rem;">${primaryCtaText}</h2>
             <p class="section-desc">
-              Leave a request now and we will call you back to find a convenient time.
+              Leave your details and ${businessName} will get back to you.
             </p>
           </div>
 
@@ -1154,7 +1194,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
                 id="lead-phone" 
                 name="phone" 
                 class="form-input" 
-                placeholder="+7 (999) 000-00-00" 
+                placeholder="Your phone number" 
                 required 
                 autocomplete="tel"
               />
@@ -1215,9 +1255,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       <div class="footer-grid">
         <div>
           <div class="footer-brand-title">${businessName}</div>
-          <p class="footer-desc">
-            Modern service, experienced specialists and reliable quality. We value the trust of every client.
-          </p>
+          <p class="footer-desc">${footerTagline}</p>
+          ${socialHtml}
           <a href="#booking" class="revamp-badge">
             ${getLucideIconSvg('sparkles', { size: 14 })}
             <span>Prototype built by the Revamp platform</span>
@@ -1227,39 +1266,36 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
         <div>
           <div class="footer-col-title">Contacts</div>
           <ul class="footer-contact-list">
-            <li class="footer-contact-item">
+            ${phone ? `<li class="footer-contact-item">
               ${getLucideIconSvg('phone', { size: 18 })}
               <a href="tel:${phoneClean}">${escapeHtml(phone)}</a>
-            </li>
-            <li class="footer-contact-item">
+            </li>` : ''}
+            ${email ? `<li class="footer-contact-item">
               ${getLucideIconSvg('mail', { size: 18 })}
               <a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a>
-            </li>
-            <li class="footer-contact-item">
+            </li>` : ''}
+            ${address ? `<li class="footer-contact-item">
               ${getLucideIconSvg('map-pin', { size: 18 })}
-              <span>${escapeHtml(address)}</span>
-            </li>
+              <a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(address)}</a>
+            </li>` : ''}
+            ${!phone && !email && !address ? `<li class="footer-contact-item"><a href="#booking">Send us a request</a></li>` : ''}
           </ul>
         </div>
 
-        <div>
+        ${workingHours ? `<div>
           <div class="footer-col-title">Opening hours</div>
           <ul class="footer-contact-list">
             <li class="footer-contact-item">
               ${getLucideIconSvg('clock', { size: 18 })}
               <span>${escapeHtml(workingHours)}</span>
             </li>
-            <li class="footer-contact-item">
-              ${getLucideIconSvg('shield-check', { size: 18 })}
-              <span>Official guarantee</span>
-            </li>
           </ul>
-        </div>
+        </div>` : ''}
       </div>
 
       <div class="footer-bottom">
         <div>© ${new Date().getFullYear()} ${businessName}. All rights reserved.</div>
-        <div>Modern responsive web standard</div>
+        <div>Redesign concept based on the original website</div>
       </div>
     </div>
   </footer>

@@ -246,8 +246,130 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     expect(html).toContain('Listonosz Auto Service');
     expect(html).toContain('--brand-primary: #5c5bed;');
     expect(html).toContain('+48 500 123 456');
-    expect(html).toContain('Warsaw');
     expect(html).toContain('class="bento-grid"');
+  });
+
+  describe('renderFromAudit grounding (REV-23)', () => {
+    const baseTokens = {
+      primaryColor: '#9a7d42',
+      secondaryColor: '#1e293b',
+      accentColor: '#9a7d42',
+      fontFamilies: ['Inter'],
+    };
+
+    const fullAudit: Partial<IAudit> = {
+      extractedBrandTokens: { ...baseTokens, logoUrl: 'https://wdc.example/logo.png' },
+      extractedContacts: {
+        phone: '+48 22 542 18 04',
+        email: 'kontakt@wdc.example',
+        address: 'ulica Topiel 11, 00-342 Warszawa',
+        workingHours: 'Pon - Pt 09:00 — 21:00',
+        socialLinks: [
+          { platform: 'instagram', url: 'https://www.instagram.com/wdc_pl/' },
+          { platform: 'facebook', url: 'javascript:alert(1)' },
+        ],
+      },
+      extractedContent: {
+        h1: 'Best dental clinic in Warsaw',
+        metaDescription: 'Modern dental center with a full range of services.',
+        ogImage: 'https://wdc.example/og-logo.png',
+        headings: [],
+        paragraphs: ['We take care of your smile with modern equipment and experienced specialists.'],
+        serviceItems: [{ title: 'Veneers', description: 'Thin ceramic shells.' }],
+        navItems: [],
+        testimonials: [{ text: 'Doctors and staff speak English fluently.', author: 'Abhijit C.' }],
+        images: ['https://wdc.example/clinic.jpg', 'https://wdc.example/team.jpg', 'https://wdc.example/room.jpg'],
+      },
+      generatedContent: {
+        hero: {
+          badge: '★ 4.9 rating',
+          headline: 'Best dental clinic in Warsaw',
+          subheadline: 'Modern dental center with a full range of services.',
+          primaryCtaText: 'Book an appointment',
+          secondaryCtaText: 'Call us',
+        },
+        about: { heading: 'About Warsaw Dental Center', body: 'We take care of your smile.' },
+        servicesHeading: 'What Warsaw Dental Center offers',
+        services: [{ title: 'Veneers', description: 'Thin ceramic shells.', lucideIconName: 'sparkles' }],
+        trustSignals: [],
+        offerNotice: '',
+      },
+    };
+
+    const lead: Partial<ILead> = {
+      businessName: 'Warsaw Dental Center',
+      niche: 'dental',
+      contactEmail: 'owner@example.com',
+      originalUrl: 'https://wdc.example',
+    };
+
+    it('should render the real contacts, hours, testimonials and images from the audit', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, fullAudit, fullAudit.generatedContent);
+
+      expect(html).toContain('+48 22 542 18 04');
+      expect(html).toContain('kontakt@wdc.example');
+      expect(html).toContain('ulica Topiel 11, 00-342 Warszawa');
+      expect(html).toContain('Pon - Pt 09:00 — 21:00');
+      expect(html).toContain('Doctors and staff speak English fluently.');
+      expect(html).toContain('Abhijit C.');
+      expect(html).toContain('About Warsaw Dental Center');
+      expect(html).toContain('What Warsaw Dental Center offers');
+      expect(html).toContain('https://www.instagram.com/wdc_pl/');
+      expect(html).not.toContain('javascript:alert');
+      // og:image that is a logo is not used as the hero photo
+      expect(html).toContain('class="hero-image" src="https://wdc.example/clinic.jpg"');
+      expect(html).toContain('https://www.google.com/maps/search/');
+    });
+
+    it('should never render placeholder contacts, fake reviews or invented metrics', () => {
+      const html = bentoTemplateService.renderFromAudit(
+        { businessName: 'Bare Business', niche: 'auto' },
+        { extractedBrandTokens: baseTokens },
+      );
+
+      expect(html).not.toMatch(/\+7 \(812\)|Saint Petersburg|Mon–Sun|Alex Mitchell|Kate Smith|Daniel Cooper|4\.9 ★|10\+ yrs|Official guarantee/);
+      expect(html).not.toContain('href="tel:');
+      expect(html).not.toContain('id="reviews"');
+      expect(html).not.toContain('class="trust-signals-bar"');
+      expect(html).not.toContain('Opening hours');
+      expect(html).toContain('Send us a request');
+    });
+
+    it('should produce different pages for different businesses', () => {
+      const dental = bentoTemplateService.renderFromAudit(lead, fullAudit, fullAudit.generatedContent);
+      const mall = bentoTemplateService.renderFromAudit(
+        { businessName: 'Galeria Bemowo', niche: 'other' },
+        {
+          extractedBrandTokens: { ...baseTokens, primaryColor: '#d0001c' },
+          extractedContacts: { phone: '225697290', address: 'ul. Powstańców Śląskich 126', socialLinks: [] },
+          extractedContent: {
+            headings: [],
+            paragraphs: [],
+            serviceItems: [{ title: 'Sklepy' }, { title: 'Restauracje' }],
+            navItems: [],
+            testimonials: [],
+            images: [],
+          },
+        },
+      );
+
+      expect(mall).not.toBe(dental);
+      expect(mall).toContain('Sklepy');
+      expect(mall).toContain('--brand-primary: #d0001c;');
+      expect(mall).not.toContain('Topiel');
+      expect(dental).not.toContain('Powstańców');
+    });
+
+    it('should treat null generated fields from Mongo as absent', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, fullAudit, {
+        ...fullAudit.generatedContent!,
+        about: null as unknown as undefined,
+        servicesHeading: null as unknown as undefined,
+      });
+
+      expect(html).not.toContain('id="about"');
+      expect(html).toContain('What Warsaw Dental Center offers');
+    });
   });
 
   it('should list all supported Lucide icon identifiers', () => {

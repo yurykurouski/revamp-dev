@@ -66,6 +66,21 @@ describe('AiWorker (@revamp/workers)', () => {
       _id: 'audit-456',
       leadId: 'lead-123',
       extractedServices: ['Implants', 'Whitening'],
+      extractedContacts: {
+        phone: '+48 22 542 18 04',
+        address: 'ulica Topiel 11, 00-342 Warszawa',
+        workingHours: 'Pon - Pt 09:00 — 21:00',
+        socialLinks: [],
+      },
+      extractedContent: {
+        h1: 'Best dental clinic in town',
+        headings: [],
+        paragraphs: ['Real copy from the site.'],
+        serviceItems: [{ title: 'Implants' }],
+        navItems: [],
+        testimonials: [],
+        images: [],
+      },
       aiFallbackUsed: false,
     };
 
@@ -142,6 +157,19 @@ describe('AiWorker (@revamp/workers)', () => {
     // Verify status transitions: first GENERATING, then NEEDS_APPROVAL (HITL Gate)
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-123', { status: 'GENERATING' });
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-123', { status: 'NEEDS_APPROVAL' });
+
+    // REV-23: generation is grounded in the site's own content and verified contacts
+    expect(mvpContentService.generateContent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        siteContent: mockAudit.extractedContent,
+        contacts: {
+          phone: '+48 22 542 18 04',
+          email: 'info@smile.spb.ru',
+          address: 'ulica Topiel 11, 00-342 Warszawa',
+          workingHours: 'Pon - Pt 09:00 — 21:00',
+        },
+      }),
+    );
 
     // Verify Audit persistence
     expect(Audit.findByIdAndUpdate).toHaveBeenCalledWith(

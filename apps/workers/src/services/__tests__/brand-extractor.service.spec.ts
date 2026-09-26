@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   BrandExtractorService,
   RawBrandExtractionData,
+  MIN_BRAND_CONTRAST,
 } from '../brand-extractor.service.js';
 
 describe('BrandExtractorService', () => {
@@ -134,6 +135,44 @@ describe('BrandExtractorService', () => {
     });
   });
 
+  describe('ensureReadablePalette (REV-23)', () => {
+    const white = { r: 255, g: 255, b: 255 };
+    const contrast = (hex: string) =>
+      BrandExtractorService.getContrastRatio(BrandExtractorService.parseColorToRgb(hex)!, white);
+
+    it('should replace a white primary with a readable palette color', () => {
+      const palette = BrandExtractorService.ensureReadablePalette({
+        primaryColor: '#ffffff',
+        secondaryColor: '#000000',
+        accentColor: '#d0001c',
+      });
+
+      expect(palette.primaryColor).toBe('#d0001c');
+      expect(palette.accentColor).toBe('#d0001c');
+    });
+
+    it('should keep already readable colors untouched', () => {
+      const palette = BrandExtractorService.ensureReadablePalette({
+        primaryColor: '#2563eb',
+        secondaryColor: '#1e293b',
+        accentColor: '#06b6d4',
+      });
+
+      expect(palette.primaryColor).toBe('#2563eb');
+    });
+
+    it('should darken a pale color when no readable candidate exists', () => {
+      const palette = BrandExtractorService.ensureReadablePalette({
+        primaryColor: '#ffe4a0',
+        secondaryColor: '#fafafa',
+        accentColor: '#f0f0f0',
+      });
+
+      expect(contrast(palette.primaryColor)).toBeGreaterThanOrEqual(MIN_BRAND_CONTRAST);
+      expect(contrast(palette.accentColor)).toBeGreaterThanOrEqual(MIN_BRAND_CONTRAST);
+    });
+  });
+
   describe('processBrandData', () => {
     it('should aggregate raw extraction data into structured BrandIdentityResult', () => {
       const rawData: RawBrandExtractionData = {
@@ -189,6 +228,65 @@ describe('BrandExtractorService', () => {
       const result = BrandExtractorService.processBrandData(rawData, 'Health Clinic');
       expect(result.contacts.phone).toBe('+1 (555) 234-5678');
       expect(result.contacts.email).toBe('support@clinic.com');
+    });
+
+    it('should prefer schema.org data and visible-text heuristics over noisy DOM class matches (REV-23)', () => {
+      const rawData: RawBrandExtractionData = {
+        colors: [],
+        fontFamilies: [],
+        socialLinks: [],
+        services: ['Implants'],
+        phone: '+48 111 222 333',
+        address: 'Our address',
+        workingHours: 'Centrum handlowe',
+        content: {
+          headings: [],
+          paragraphs: ['A long description of the clinic and what it offers to patients.'],
+          serviceItems: [{ title: 'Veneers', description: 'Thin ceramic shells.' }, { title: 'implants' }],
+          navItems: [],
+          testimonials: [],
+          images: [],
+          addressText: 'ul. Powstańców Śląskich 126, 01-466 Warszawa',
+          workingHoursText: 'Pon-Pt: 09:00 – 19:00',
+          structured: { telephone: '+48 22 542 18 04', ratingValue: 4.8, reviewCount: 120, foundingYear: 2005 },
+        },
+      };
+
+      const result = BrandExtractorService.processBrandData(rawData, 'Clinic');
+
+      expect(result.contacts.phone).toBe('+48 22 542 18 04');
+      expect(result.contacts.address).toBe('ul. Powstańców Śląskich 126, 01-466 Warszawa');
+      expect(result.contacts.workingHours).toBe('Pon-Pt: 09:00 – 19:00');
+      expect(result.services).toEqual(['Implants', 'Veneers']);
+      expect(result.siteContent.serviceItems).toEqual([
+        { title: 'Veneers', description: 'Thin ceramic shells.' },
+        { title: 'implants' },
+      ]);
+      expect(result.siteContent.rating).toEqual({ value: 4.8, count: 120 });
+      expect(result.siteContent.foundingYear).toBe(2005);
+      expect(result.siteContent.paragraphs).toHaveLength(1);
+    });
+
+    it('should ignore DOM address/hours matches without digits', () => {
+      const rawData: RawBrandExtractionData = {
+        colors: [],
+        fontFamilies: [],
+        socialLinks: [],
+        services: [],
+        address: 'See our address below',
+        workingHours: 'Centrum handlowe',
+      };
+
+      const result = BrandExtractorService.processBrandData(rawData, 'Mall');
+      expect(result.contacts.address).toBeUndefined();
+      expect(result.contacts.workingHours).toBeUndefined();
+      expect(result.siteContent).toMatchObject({ headings: [], paragraphs: [], serviceItems: [], testimonials: [] });
+    });
+
+    it('should bound free-text contact fields at a word boundary', () => {
+      expect(BrandExtractorService.sanitizeText('  a   b  ', 10)).toBe('a b');
+      expect(BrandExtractorService.sanitizeText('one two three four', 11)).toBe('one two');
+      expect(BrandExtractorService.sanitizeText('', 10)).toBeUndefined();
     });
 
     it('should reject invalid phone and email candidates', () => {

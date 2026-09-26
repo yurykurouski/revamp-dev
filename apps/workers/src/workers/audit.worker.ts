@@ -142,6 +142,8 @@ export const createAuditWorker = (): Worker => {
             aiFallbackUsed: critiqueResult.aiFallbackUsed,
             extractedBrandTokens: brandResult.tokens,
             extractedServices: brandResult.services,
+            extractedContacts: brandResult.contacts,
+            extractedContent: brandResult.siteContent,
           },
           { new: true, ...LATEST_AUDIT },
         ).exec();
@@ -154,9 +156,7 @@ export const createAuditWorker = (): Worker => {
         if (!existingLead?.contactPhone && brandResult.contacts.phone) {
           leadUpdate['contactPhone'] = brandResult.contacts.phone;
         }
-        if (!existingLead?.city && brandResult.contacts.address) {
-          leadUpdate['city'] = brandResult.contacts.address.slice(0, 100);
-        }
+        // The full street address is persisted on the Audit (extractedContacts), not as the lead's city
 
         await Lead.findByIdAndUpdate(leadId, leadUpdate).exec();
 

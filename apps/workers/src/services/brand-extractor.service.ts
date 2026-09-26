@@ -1,4 +1,5 @@
-import { IExtractedBrandTokens } from '@revamp/shared-types';
+import { IExtractedBrandTokens, IExtractedContacts, ISiteContent } from '@revamp/shared-types';
+import { RawSiteContent } from './site-content.extractor.js';
 
 export interface RgbColor {
   r: number;
@@ -17,20 +18,20 @@ export interface RawBrandExtractionData {
   workingHours?: string;
   socialLinks: Array<{ platform: string; url: string }>;
   services: string[];
+  /** The site's own copy and structured business data (REV-23) */
+  content?: RawSiteContent;
 }
 
 export interface BrandIdentityResult {
   tokens: IExtractedBrandTokens;
-  contacts: {
-    phone?: string;
-    email?: string;
-    address?: string;
-    workingHours?: string;
-    socialLinks: Array<{ platform: string; url: string }>;
-  };
+  contacts: IExtractedContacts;
   services: string[];
+  siteContent: ISiteContent;
   monogramSvg: string;
 }
+
+/** Minimum contrast against white for colors used as button / accent backgrounds */
+export const MIN_BRAND_CONTRAST = 3;
 
 export class BrandExtractorService {
   /**
@@ -320,11 +321,37 @@ export class BrandExtractorService {
    * Aggregates raw in-page extraction data into structured BrandIdentityResult
    */
   static processBrandData(rawData: RawBrandExtractionData, businessName: string = 'Business'): BrandIdentityResult {
-    const palette = this.clusterPalette(rawData.colors);
+    const palette = this.ensureReadablePalette(this.clusterPalette(rawData.colors));
     const monogramSvg = this.generateMonogramSvg(businessName, palette.primaryColor, palette.accentColor);
     const fontFamilies = this.sanitizeFontFamilies(rawData.fontFamilies);
 
     const logoUrl = rawData.logoUrl || monogramSvg;
+    const content = rawData.content;
+    const structured = content?.structured;
+
+    // Contact precedence: schema.org data > dedicated DOM element > visible-text heuristics
+    const contacts: IExtractedContacts = {
+      phone: this.sanitizePhone(structured?.telephone || rawData.phone),
+      email: this.sanitizeEmail(structured?.email || rawData.email),
+      // DOM class matches ("[class*=address]", "[class*=hours]") are noisy: trust them only with digits
+      address: this.sanitizeText(
+        structured?.address || content?.addressText || this.withDigits(rawData.address),
+        150,
+      ),
+      workingHours: this.sanitizeText(
+        structured?.openingHours || content?.workingHoursText || this.withDigits(rawData.workingHours),
+        100,
+      ),
+      socialLinks: rawData.socialLinks || [],
+    };
+
+    const serviceTitles = [
+      ...(rawData.services || []),
+      ...(content?.serviceItems || []).map((s) => s.title),
+    ];
+    const services = serviceTitles.filter(
+      (title, idx) => serviceTitles.findIndex((t) => t.toLowerCase() === title.toLowerCase()) === idx,
+    );
 
     return {
       tokens: {
@@ -335,16 +362,95 @@ export class BrandExtractorService {
         logoUrl,
         faviconUrl: rawData.faviconUrl,
       },
-      contacts: {
-        phone: this.sanitizePhone(rawData.phone),
-        email: this.sanitizeEmail(rawData.email),
-        address: rawData.address,
-        workingHours: rawData.workingHours,
-        socialLinks: rawData.socialLinks || [],
-      },
-      services: rawData.services || [],
+      contacts,
+      services,
+      siteContent: this.toSiteContent(content, rawData),
       monogramSvg,
     };
+  }
+
+  /**
+   * Normalizes raw in-page content into the persisted ISiteContent shape.
+   */
+  static toSiteContent(content: RawSiteContent | undefined, rawData: RawBrandExtractionData): ISiteContent {
+    const serviceItems = [...(content?.serviceItems || [])];
+    for (const title of rawData.services || []) {
+      if (!serviceItems.some((s) => s.title.toLowerCase() === title.toLowerCase())) {
+        serviceItems.push({ title });
+      }
+    }
+
+    return {
+      language: content?.language,
+      title: content?.title,
+      metaDescription: content?.metaDescription,
+      ogImage: content?.ogImage,
+      h1: content?.h1,
+      headings: content?.headings || [],
+      paragraphs: content?.paragraphs || [],
+      serviceItems,
+      navItems: content?.navItems || [],
+      testimonials: content?.testimonials || [],
+      images: content?.images || [],
+      rating: content?.structured?.ratingValue
+        ? { value: content.structured.ratingValue, count: content.structured.reviewCount }
+        : undefined,
+      foundingYear: content?.structured?.foundingYear,
+    };
+  }
+
+  static withDigits(value?: string): string | undefined {
+    return value && /\d/.test(value) ? value : undefined;
+  }
+
+  /**
+   * Collapses whitespace and bounds the length of free-text contact fields.
+   */
+  static sanitizeText(value: string | undefined, maxLength: number): string | undefined {
+    const clean = (value || '').replace(/\s+/g, ' ').trim();
+    if (!clean) return undefined;
+    return clean.length > maxLength ? clean.slice(0, maxLength).replace(/[\s,;]+\S*$/, '') : clean;
+  }
+
+  /**
+   * Guarantees primary and accent colors are usable as backgrounds for white text.
+   * Pale colors (e.g. a white page background picked as "primary") are replaced with a more
+   * readable palette color when one exists, otherwise darkened until they reach MIN_BRAND_CONTRAST.
+   */
+  static ensureReadablePalette(palette: { primaryColor: string; secondaryColor: string; accentColor: string }) {
+    const white: RgbColor = { r: 255, g: 255, b: 255 };
+    const isReadable = (hex: string) => {
+      const rgb = this.parseColorToRgb(hex);
+      return rgb ? this.getContrastRatio(rgb, white) >= MIN_BRAND_CONTRAST : false;
+    };
+
+    const candidates = [palette.primaryColor, palette.accentColor, palette.secondaryColor]
+      .map((hex) => this.parseColorToRgb(hex))
+      .filter((rgb): rgb is RgbColor => rgb !== null)
+      .filter((rgb) => this.getContrastRatio(rgb, white) >= MIN_BRAND_CONTRAST)
+      .sort((a, b) => this.getSaturation(b) - this.getSaturation(a));
+
+    const primaryColor = isReadable(palette.primaryColor)
+      ? palette.primaryColor
+      : candidates[0]
+        ? this.rgbToHex(candidates[0])
+        : this.darkenUntilReadable(palette.primaryColor);
+
+    const accentColor = isReadable(palette.accentColor) ? palette.accentColor : primaryColor;
+
+    return { primaryColor, secondaryColor: palette.secondaryColor, accentColor };
+  }
+
+  /**
+   * Darkens a color in 10% steps until it reaches MIN_BRAND_CONTRAST against white.
+   */
+  static darkenUntilReadable(hex: string): string {
+    const white: RgbColor = { r: 255, g: 255, b: 255 };
+    let rgb = this.parseColorToRgb(hex) || { r: 37, g: 99, b: 235 };
+    for (let i = 0; i < 12 && this.getContrastRatio(rgb, white) < MIN_BRAND_CONTRAST; i++) {
+      rgb = { r: rgb.r * 0.85, g: rgb.g * 0.85, b: rgb.b * 0.85 };
+    }
+    return this.rgbToHex(rgb);
   }
 }
 
