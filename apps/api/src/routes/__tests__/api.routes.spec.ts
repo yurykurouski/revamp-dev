@@ -247,6 +247,46 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data.auditId).toBe(mockAudit._id.toString());
       expect(res.body.data.jobId).toBe('job-999');
     });
+
+    it('should put a failed lead back in the queue and clear its audit error on retry (REV-44)', async () => {
+      const mockLead = {
+        _id: new mongoose.Types.ObjectId(),
+        originalUrl: 'https://ekomyj.com',
+        niche: 'dental',
+        status: 'AUDIT_FAILED',
+        auditError: 'page.goto: net::ERR_NAME_NOT_RESOLVED at https://ekomyj.com/',
+      };
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
+      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: new mongoose.Types.ObjectId() } as any);
+      vi.spyOn(auditQueue, 'addAuditJob').mockResolvedValue({ id: 'job-retry' } as any);
+
+      const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
+
+      expect(res.status).toBe(202);
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(mockLead._id, {
+        $set: { status: 'QUEUED' },
+        $unset: { auditError: '' },
+      });
+      expect(auditQueue.addAuditJob).toHaveBeenCalledWith({
+        leadId: mockLead._id.toString(),
+        url: 'https://ekomyj.com',
+        niche: 'dental',
+      });
+    });
+
+    it('should leave the lead untouched when re-auditing a lead without an audit failure', async () => {
+      const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status: 'AUDITED' };
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
+      const updateSpy = vi.spyOn(Lead, 'findByIdAndUpdate');
+      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: new mongoose.Types.ObjectId() } as any);
+      vi.spyOn(auditQueue, 'addAuditJob').mockResolvedValue({ id: 'job-1' } as any);
+
+      const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
+
+      expect(res.status).toBe(202);
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /api/v1/audits/:id', () => {

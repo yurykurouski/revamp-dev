@@ -58,6 +58,7 @@ export const ru: Translation = {
   statuses: {
     QUEUED: 'В очереди',
     AUDITING: 'Аудит...',
+    AUDIT_FAILED: 'Ошибка аудита',
     AUDITED: 'Аудит завершён',
     GENERATING: 'Генерация...',
     NEEDS_APPROVAL: 'Ожидает проверки',
@@ -115,6 +116,16 @@ export const ru: Translation = {
     confirm: 'Перегенерировать',
     cancel: 'Отмена',
     failed: 'Не удалось запустить перегенерацию: {{message}}',
+  },
+  auditFailure: {
+    chip: 'Ошибка аудита',
+    retry: 'Повторить аудит',
+    reject: 'Отклонить лид',
+    rejectTitle: 'Отклонить этот лид?',
+    rejectBody: 'Сайт {{name}} не удалось проверить. Лид будет перенесён в архив со статусом REJECTED, письмо отправлено не будет.',
+    confirmReject: 'Отклонить',
+    cancel: 'Отмена',
+    failed: 'Не удалось обновить лид: {{message}}',
   },
   generate: {
     confirmTitle: 'Создать MVP?',

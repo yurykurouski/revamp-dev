@@ -58,6 +58,7 @@ export const pl: Translation = {
   statuses: {
     QUEUED: 'W kolejce',
     AUDITING: 'Audyt...',
+    AUDIT_FAILED: 'Audyt nieudany',
     AUDITED: 'Po audycie',
     GENERATING: 'Generowanie...',
     NEEDS_APPROVAL: 'Czeka na weryfikację',
@@ -115,6 +116,16 @@ export const pl: Translation = {
     confirm: 'Wygeneruj ponownie',
     cancel: 'Anuluj',
     failed: 'Nie udało się rozpocząć ponownego generowania: {{message}}',
+  },
+  auditFailure: {
+    chip: 'Audyt nieudany',
+    retry: 'Ponów audyt',
+    reject: 'Odrzuć leada',
+    rejectTitle: 'Odrzucić tego leada?',
+    rejectBody: 'Nie udało się przeprowadzić audytu strony {{name}}. Lead zostanie zarchiwizowany jako REJECTED i żadna wiadomość nie zostanie wysłana.',
+    confirmReject: 'Odrzuć',
+    cancel: 'Anuluj',
+    failed: 'Nie udało się zaktualizować leada: {{message}}',
   },
   generate: {
     confirmTitle: 'Wygenerować MVP?',

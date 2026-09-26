@@ -89,6 +89,18 @@ export const useRejectLeadMutation = () => {
   });
 };
 
+/** Re-queues a failed audit (REV-44) */
+export const useRetryAuditMutation = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ leadId }: { leadId: string }) => apiClient.retryAudit(leadId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
+    },
+  });
+};
+
 export const useUpdateMvpTokensMutation = () => {
   return useMutation({
     mutationFn: ({

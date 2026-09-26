@@ -9,7 +9,7 @@ Manual URL ──┘
 ```
 
 - **Discovery:** searches OpenStreetMap (no key needed) or Google Places by niche and city. The operator picks which businesses become leads.
-- **Audit:** Playwright captures above-the-fold and full-page screenshots (cookie banners dismissed first), then runs axe-core (WCAG 2.1 AA), Core Web Vitals and a Vision LLM design critique. It also extracts the brand palette, logo, contacts and the site's own text.
+- **Audit:** Playwright captures above-the-fold and full-page screenshots (cookie banners dismissed first), then runs axe-core (WCAG 2.1 AA), Core Web Vitals and a Vision LLM design critique. It also extracts the brand palette, logo, contacts and the site's own text. A site that cannot be audited (unresolvable domain, invalid certificate, repeated browser crashes) moves the lead to `AUDIT_FAILED` with a one-line reason; the operator can retry the audit or reject the lead.
 - **MVP:** an LLM rewrites the original site's content in the site's own language. A Bento template renders it, and the page is checked against the original site's data before it is published to S3/MinIO.
 - **Dashboard:** Kanban/DataGrid pipeline, a side-by-side inspector, MVP regeneration with a choice of LLM provider and model, an email editor and the approval gate. The UI is available in English, Russian, Belarusian, Polish and Lithuanian.
 
@@ -80,6 +80,7 @@ OpenStreetMap works with no configuration. Google Places needs `GOOGLE_PLACES_AP
 | `npm test` | Vitest, all workspaces |
 | `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
+| `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
 
 Production deployment uses `.env.production.example`, `docker-compose.prod.yml` and `deploy/deploy.sh`.
 

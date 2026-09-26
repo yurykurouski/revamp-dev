@@ -27,6 +27,8 @@ import { withPreviewVersion } from '../hooks/useLeads.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { GenerateMvpButton } from './GenerateMvpButton.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
+import { AuditFailedActions } from './AuditFailedActions.js';
+import { isAuditFailed } from '../utils/auditFailure.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
@@ -45,7 +47,7 @@ interface KanbanColumnConfig {
 const COLUMNS: KanbanColumnConfig[] = [
   {
     id: 'queued',
-    status: ['QUEUED', 'PENDING', 'AUDITING', 'AUDITED', 'GENERATING'],
+    status: ['QUEUED', 'PENDING', 'AUDITING', 'AUDIT_FAILED', 'AUDITED', 'GENERATING'],
     icon: <PendingActionsIcon sx={{ fontSize: 18 }} />,
     color: '#64748B',
     bgColor: 'rgba(100, 116, 139, 0.08)',
@@ -321,6 +323,20 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       </Tooltip>
                     )}
 
+                    {/* The site could not be audited (REV-44); the reason is in the tooltip */}
+                    {isAuditFailed(lead) && (
+                      <Tooltip title={lead.auditError ?? ''}>
+                        <Chip
+                          icon={<ErrorOutlineIcon sx={{ fontSize: 14 }} />}
+                          label={t('auditFailure.chip')}
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                        />
+                      </Tooltip>
+                    )}
+
                     {/* Critical business data the MVP lost or changed (REV-36) */}
                     {lead.status !== 'GENERATING' && criticalIssueFields(null, lead.completeness).length > 0 && (
                       <Tooltip
@@ -403,6 +419,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           }}
                         />
                       )}
+
+                      {isAuditFailed(lead) && <AuditFailedActions lead={lead} />}
 
                       {lead.status === 'AUDITED' && <GenerateMvpButton lead={lead} />}
 
