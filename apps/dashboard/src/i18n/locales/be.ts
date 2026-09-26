@@ -22,6 +22,8 @@ export const be: Translation = {
   },
   sidebar: {
     leads: 'Ліды і варонка',
+    collapse: 'Згарнуць меню',
+    expand: 'Разгарнуць меню',
   },
   niches: {
     dental: 'Стаматалогія',
