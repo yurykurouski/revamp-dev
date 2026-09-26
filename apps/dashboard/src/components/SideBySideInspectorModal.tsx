@@ -40,7 +40,9 @@ import {
   useSendTestEmailMutation,
   useRejectLeadMutation,
   useUpdateMvpTokensMutation,
+  withPreviewVersion,
 } from '../hooks/useLeads.js';
+import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
 import { EmailDraftEditor } from './EmailDraftEditor.js';
 import { useTranslation } from 'react-i18next';
@@ -126,10 +128,13 @@ export const SideBySideInspectorModal: React.FC = () => {
 
   if (!isOpen) return null;
 
-  const previewUrl =
-    mvp?.fullPreviewUrl ||
-    currentLead?.previewUrl ||
-    '';
+  // Versioned by the generation time so the iframe reloads after a regeneration (REV-31), which
+  // overwrites the same preview URL
+  const previewUrl = withPreviewVersion(
+    mvp?.fullPreviewUrl || currentLead?.previewUrl || '',
+    currentLead?.mvpGeneratedAt || mvp?.generatedAt,
+  );
+  const isRegenerating = currentLead?.status === 'GENERATING' && Boolean(previewUrl);
 
   // Prefer the full-page capture (REV-21); fall back to the above-the-fold shot for older audits
   const originalScreenshotUrl =
@@ -525,6 +530,21 @@ export const SideBySideInspectorModal: React.FC = () => {
                 </Box>
 
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {isRegenerating && (
+                    <Tooltip title={t('inspector.regenerating')}>
+                      <Chip
+                        icon={<CircularProgress size={12} />}
+                        label={t('kanban.generating')}
+                        size="small"
+                        color="warning"
+                        variant="outlined"
+                        sx={{ fontSize: '0.72rem', height: 24, fontWeight: 600 }}
+                      />
+                    </Tooltip>
+                  )}
+
+                  {currentLead && <RegenerateMvpButton lead={currentLead} variant="button" />}
+
                   <Chip
                     icon={<SecurityIcon sx={{ fontSize: 14 }} />}
                     label={t('inspector.sandbox')}
@@ -639,6 +659,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   {/* Secure Sandboxed Iframe or Loading State */}
                   {previewUrl ? (
                     <iframe
+                      key={previewUrl}
                       ref={iframeRef}
                       src={previewUrl}
                       title={t('inspector.iframeTitle')}

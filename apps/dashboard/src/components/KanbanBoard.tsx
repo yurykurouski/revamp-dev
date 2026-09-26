@@ -18,10 +18,12 @@ import TouchAppIcon from '@mui/icons-material/TouchApp';
 import WhatshotIcon from '@mui/icons-material/Whatshot';
 import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import BlockIcon from '@mui/icons-material/Block';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
-import { useGenerateMvpMutation } from '../hooks/useLeads.js';
+import { useGenerateMvpMutation, withPreviewVersion } from '../hooks/useLeads.js';
+import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
@@ -288,7 +290,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                     {lead.comparisonBannerUrl && (
                       <Box
                         component="img"
-                        src={lead.comparisonBannerUrl}
+                        src={withPreviewVersion(lead.comparisonBannerUrl, lead.mvpGeneratedAt)}
                         alt={t('kanban.comparisonBanner')}
                         sx={{
                           width: '100%',
@@ -301,6 +303,20 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       />
                     )}
 
+                    {/* Last MVP generation failure (REV-31); the operator can retry */}
+                    {lead.generationError && lead.status !== 'GENERATING' && (
+                      <Tooltip title={lead.generationError}>
+                        <Chip
+                          icon={<ErrorOutlineIcon sx={{ fontSize: 14 }} />}
+                          label={t('kanban.generationFailed')}
+                          size="small"
+                          color="error"
+                          variant="outlined"
+                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                        />
+                      </Tooltip>
+                    )}
+
                     {/* Action Footer */}
                     <Box
                       sx={{
@@ -309,10 +325,10 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         borderColor: 'divider',
                         display: 'flex',
                         alignItems: 'center',
-                        justifyContent: 'space-between',
+                        gap: 0.5,
                       }}
                     >
-                      <Typography variant="caption" color="text.secondary">
+                      <Typography variant="caption" color="text.secondary" sx={{ mr: 'auto' }}>
                         {formatDate(lead.createdAt, language, {
                           day: 'numeric',
                           month: 'short',
@@ -424,7 +440,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           variant="outlined"
                           color="primary"
-                          href={lead.previewUrl}
+                          href={withPreviewVersion(lead.previewUrl, lead.mvpGeneratedAt)}
                           target="_blank"
                           rel="noopener noreferrer"
                           sx={{ fontSize: '0.75rem', py: 0.3, px: 1 }}
@@ -432,6 +448,8 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           {t('kanban.openMvp')}
                         </Button>
                       )}
+
+                      <RegenerateMvpButton lead={lead} />
                     </Box>
                   </Card>
                 ))

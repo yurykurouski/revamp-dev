@@ -106,6 +106,13 @@ const LeadSchema = new Schema<ILeadDocument>(
       type: String,
       trim: true,
     },
+    // REV-31: preview cache-busting and the last generation failure shown to the operator
+    mvpGeneratedAt: {
+      type: Date,
+    },
+    generationError: {
+      type: String,
+    },
   },
   {
     timestamps: true,

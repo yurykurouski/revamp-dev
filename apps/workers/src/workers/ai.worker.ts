@@ -6,13 +6,17 @@ import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { mvpContentService } from '../services/mvp-content.service.js';
 import { addDeployJob } from '../queues/deploy.queue.js';
+import { handleGenerationFailure } from './generation-failure.js';
 
 export const createAiWorker = (): Worker => {
   const worker = new Worker<IAiGenerationJobData>(
     QUEUE_NAMES.AI_GENERATION,
     async (job: Job<IAiGenerationJobData>) => {
-      const { leadId, auditId } = job.data;
-      console.log(`[AiWorker] Processing AI content generation for leadId: ${leadId}, auditId: ${auditId}`);
+      const { leadId, auditId, forceRegenerate = false, previousStatus } = job.data;
+      console.log(
+        `[AiWorker] Processing AI content generation for leadId: ${leadId}, auditId: ${auditId}` +
+          (forceRegenerate ? ' (regenerating: previous copy is discarded)' : ''),
+      );
 
       const lead = await Lead.findById(leadId).exec();
       if (!lead) {
@@ -26,7 +30,8 @@ export const createAiWorker = (): Worker => {
       // 1. Transition Lead status to GENERATING
       await Lead.findByIdAndUpdate(leadId, { status: 'GENERATING' }).exec();
 
-      // 2. Synthesize high-converting MVP copy with Strict Grounding
+      // 2. Synthesize high-converting MVP copy with Strict Grounding. Always a fresh LLM run: the
+      // copy stored on the audit is never reused, so a regeneration (REV-31) gets new copy.
       const generationResult = await mvpContentService.generateContent({
         businessName: lead.businessName,
         niche: lead.niche,
@@ -54,22 +59,20 @@ export const createAiWorker = (): Worker => {
         }).exec();
       }
 
-      // 4. Transition Lead status to NEEDS_APPROVAL (Human-In-The-Loop gate)
-      await Lead.findByIdAndUpdate(leadId, { status: 'NEEDS_APPROVAL' }).exec();
-
-      // 5. Auto-chain to Deploy Queue for HTML synthesis, screenshots, and MinIO deployment
-      try {
-        await addDeployJob({
-          leadId,
-          auditId: audit?._id?.toString() || auditId,
-        });
-        console.log(`[AiWorker] Dispatched MVP Deploy job for lead ${leadId}`);
-      } catch (deployErr) {
-        console.error(`[AiWorker] Failed to dispatch deploy job for lead ${leadId}:`, deployErr);
-      }
+      // 4. Chain to the Deploy Queue for HTML synthesis, screenshots, and MinIO deployment. The lead
+      // stays GENERATING until the deploy worker publishes the new preview and moves it to
+      // NEEDS_APPROVAL (Human-In-The-Loop gate), so the dashboard never shows a stale preview as ready.
+      // A failed dispatch fails the job, so BullMQ retries it instead of leaving the lead stuck.
+      await addDeployJob({
+        leadId,
+        auditId: audit?._id?.toString() || auditId,
+        forceRegenerate,
+        previousStatus,
+      });
+      console.log(`[AiWorker] Dispatched MVP Deploy job for lead ${leadId}`);
 
       console.log(
-        `[AiWorker] Content generated successfully for ${lead.businessName}. Status set to NEEDS_APPROVAL (Fallback: ${generationResult.aiFallbackUsed}).`,
+        `[AiWorker] Content generated successfully for ${lead.businessName} (Fallback: ${generationResult.aiFallbackUsed}).`,
       );
 
       return {
@@ -92,6 +95,7 @@ export const createAiWorker = (): Worker => {
 
   worker.on('failed', (job, err) => {
     console.error(`[AiWorker] Job ${job?.id} failed:`, err);
+    void handleGenerationFailure(job, err, 'content');
   });
 
   return worker;

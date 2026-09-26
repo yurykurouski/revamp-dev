@@ -9,6 +9,7 @@ import { Lead } from '../../models/Lead.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
+import { addAiGenerationJob } from '../../queues/ai.queue.js';
 
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
@@ -324,30 +325,27 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/mvp/generate', () => {
-    it('should validate auditId, update Lead status to GENERATING, enqueue ai-gen job, and return 202', async () => {
-      const auditId = new mongoose.Types.ObjectId().toString();
-      const leadId = new mongoose.Types.ObjectId().toString();
+    const auditId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
 
+    const mockLeadWithStatus = (status: string) => {
       vi.spyOn(Audit, 'findOne').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({
-          _id: auditId,
-          leadId,
-        }),
+        exec: vi.fn().mockResolvedValue({ _id: auditId, leadId }),
       } as any);
-
       vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({
-          _id: leadId,
-          businessName: 'Dr. Smile Clinic',
-        }),
+        exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status }),
       } as any);
-
       vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({
-          _id: leadId,
-          status: 'GENERATING',
-        }),
+        exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'GENERATING' }),
       } as any);
+    };
+
+    beforeEach(() => {
+      vi.mocked(addAiGenerationJob).mockClear();
+    });
+
+    it('should validate auditId, update Lead status to GENERATING, enqueue ai-gen job, and return 202', async () => {
+      mockLeadWithStatus('AUDITED');
 
       const res = await request(app)
         .post('/api/v1/mvp/generate')
@@ -358,8 +356,64 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data.status).toBe('GENERATING');
       expect(res.body.data.leadId).toBe(leadId);
       expect(res.body.data.jobId).toBe('mock-ai-job-1');
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(leadId, { status: 'GENERATING' });
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(leadId, {
+        $set: { status: 'GENERATING' },
+        $unset: { generationError: '' },
+      });
+      expect(addAiGenerationJob).toHaveBeenCalledWith({
+        leadId,
+        auditId,
+        forceRegenerate: false,
+        previousStatus: 'AUDITED',
+      });
     });
+
+    it.each(['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL', 'APPROVED'])(
+      'should regenerate the MVP of a %s lead when forceRegenerate is set (REV-31)',
+      async (status) => {
+        mockLeadWithStatus(status);
+
+        const res = await request(app)
+          .post('/api/v1/mvp/generate')
+          .send({ auditId, forceRegenerate: true });
+
+        expect(res.status).toBe(202);
+        expect(addAiGenerationJob).toHaveBeenCalledWith({
+          leadId,
+          auditId,
+          forceRegenerate: true,
+          previousStatus: status,
+        });
+      },
+    );
+
+    it('should return 409 when the lead already has an MVP and forceRegenerate is not set', async () => {
+      mockLeadWithStatus('NEEDS_APPROVAL');
+
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
+
+      expect(res.status).toBe(409);
+      expect(res.body.details.code).toBe('MVP_ALREADY_GENERATED');
+      expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+    });
+
+    it.each(['SCHEDULED', 'SENT', 'DISPATCHED', 'OPENED', 'CLICKED', 'REPLIED', 'REJECTED', 'GENERATING', 'AUDITING'])(
+      'should return 409 for a %s lead even with forceRegenerate (REV-31)',
+      async (status) => {
+        mockLeadWithStatus(status);
+
+        const res = await request(app)
+          .post('/api/v1/mvp/generate')
+          .send({ auditId, forceRegenerate: true });
+
+        expect(res.status).toBe(409);
+        expect(res.body.success).toBe(false);
+        expect(res.body.details).toEqual({ code: 'MVP_GENERATION_NOT_ALLOWED', status });
+        expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+        expect(addAiGenerationJob).not.toHaveBeenCalled();
+      },
+    );
 
     it('should return 400 when auditId is missing', async () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({});
@@ -367,8 +421,12 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.success).toBe(false);
     });
 
+    it('should return 400 when forceRegenerate is not a boolean', async () => {
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: 'yes' });
+      expect(res.status).toBe(400);
+    });
+
     it('should return 404 when audit is not found', async () => {
-      const auditId = new mongoose.Types.ObjectId().toString();
       vi.spyOn(Audit, 'findOne').mockReturnValue({
         exec: vi.fn().mockResolvedValue(null),
       } as any);
@@ -376,6 +434,17 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
+    });
+
+    it('should return 404 when the audit has no lead', async () => {
+      vi.spyOn(Audit, 'findOne').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: auditId, leadId }),
+      } as any);
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: true });
+      expect(res.status).toBe(404);
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
   });
 

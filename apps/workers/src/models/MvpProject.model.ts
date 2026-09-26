@@ -54,6 +54,14 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
       type: Boolean,
       default: true,
     },
+    // REV-31: regeneration replaces the project in place; these record the latest run
+    generatedAt: {
+      type: Date,
+    },
+    generationCount: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,

@@ -3,6 +3,7 @@ import { createAiWorker } from '../ai.worker.js';
 import { Audit } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
 import { mvpContentService } from '../../services/mvp-content.service.js';
+import { addDeployJob } from '../../queues/deploy.queue.js';
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
@@ -48,7 +49,7 @@ describe('AiWorker (@revamp/workers)', () => {
     expect(capturedProcessor).toBeTypeOf('function');
   });
 
-  it('should process AI generation job, call MvpContentService, persist to Audit, and set Lead to NEEDS_APPROVAL', async () => {
+  it('should process AI generation job, call MvpContentService, persist to Audit, and chain the deploy job', async () => {
     createAiWorker();
     expect(capturedProcessor).not.toBeNull();
 
@@ -154,9 +155,16 @@ describe('AiWorker (@revamp/workers)', () => {
     expect(result.leadId).toBe('lead-123');
     expect(result.content).toEqual(mockGeneratedContent);
 
-    // Verify status transitions: first GENERATING, then NEEDS_APPROVAL (HITL Gate)
+    // The lead stays GENERATING; the deploy worker moves it to NEEDS_APPROVAL (HITL gate) once
+    // the new preview is published (REV-31)
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-123', { status: 'GENERATING' });
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-123', { status: 'NEEDS_APPROVAL' });
+    expect(Lead.findByIdAndUpdate).not.toHaveBeenCalledWith('lead-123', { status: 'NEEDS_APPROVAL' });
+    expect(addDeployJob).toHaveBeenCalledWith({
+      leadId: 'lead-123',
+      auditId: 'audit-456',
+      forceRegenerate: false,
+      previousStatus: undefined,
+    });
 
     // REV-23: generation is grounded in the site's own content and verified contacts
     expect(mvpContentService.generateContent).toHaveBeenCalledWith(
@@ -179,6 +187,219 @@ describe('AiWorker (@revamp/workers)', () => {
         aiFallbackUsed: false,
       }),
     );
+  });
+
+  it('should pass forceRegenerate and previousStatus through to the deploy job, generating fresh copy (REV-31)', async () => {
+    createAiWorker();
+    expect(capturedProcessor).not.toBeNull();
+
+    const mockLead = {
+      _id: 'lead-123',
+      businessName: 'Smile Dental',
+      niche: 'dental',
+      city: 'Saint Petersburg',
+      originalUrl: 'https://smile.spb.ru',
+      contactPhone: '+7 812 000 11 22',
+      contactEmail: 'info@smile.spb.ru',
+    };
+
+    const mockAudit = {
+      _id: 'audit-456',
+      leadId: 'lead-123',
+      extractedServices: ['Implants', 'Whitening'],
+      extractedContacts: {
+        phone: '+48 22 542 18 04',
+        address: 'ulica Topiel 11, 00-342 Warszawa',
+        workingHours: 'Pon - Pt 09:00 — 21:00',
+        socialLinks: [],
+      },
+      extractedContent: {
+        h1: 'Best dental clinic in town',
+        headings: [],
+        paragraphs: ['Real copy from the site.'],
+        serviceItems: [{ title: 'Implants' }],
+        navItems: [],
+        testimonials: [],
+        images: [],
+      },
+      aiFallbackUsed: false,
+    };
+
+    const mockGeneratedContent = {
+      hero: {
+        badge: '✨ Special',
+        headline: 'Healthy teeth without pain in Saint Petersburg',
+        subheadline: 'Premium quality with a 5-year guarantee.',
+        primaryCtaText: 'Book now',
+        secondaryCtaText: 'Call us',
+      },
+      services: [
+        {
+          title: 'Dental implants',
+          description: 'Lifetime guarantee on implants',
+          lucideIconName: 'shield-check',
+        },
+        {
+          title: 'Whitening',
+          description: 'Safe enamel whitening',
+          lucideIconName: 'sparkles',
+        },
+        {
+          title: 'Therapy',
+          description: 'Microscope-assisted cavity treatment',
+          lucideIconName: 'activity',
+        },
+      ],
+      trustSignals: [
+        { metric: '4.9 ★', label: 'On Google Maps' },
+        { metric: '10 yrs', label: 'Of experience' },
+        { metric: '100%', label: 'Guarantee' },
+      ],
+      offerNotice: 'Free consultation',
+    };
+
+    vi.mocked(Lead.findById).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(mockLead),
+    } as any);
+
+    vi.mocked(Audit.findOne).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(mockAudit),
+    } as any);
+
+    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(true),
+    } as any);
+
+    vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(true),
+    } as any);
+
+    vi.mocked(mvpContentService.generateContent).mockResolvedValue({
+      content: mockGeneratedContent,
+      aiFallbackUsed: false,
+      modelUsed: 'claude-3-5-sonnet',
+      attempts: 1,
+    });
+
+    const job = {
+      id: 'job-ai-regen',
+      data: { leadId: 'lead-123', auditId: 'audit-456', forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' },
+    };
+
+    await capturedProcessor!(job);
+
+    // The copy already stored on the audit is never reused
+    expect(mvpContentService.generateContent).toHaveBeenCalledTimes(1);
+    expect(addDeployJob).toHaveBeenCalledWith({
+      leadId: 'lead-123',
+      auditId: 'audit-456',
+      forceRegenerate: true,
+      previousStatus: 'NEEDS_APPROVAL',
+    });
+  });
+
+  it('should fail the job when the deploy job cannot be dispatched, so BullMQ retries it', async () => {
+    createAiWorker();
+    expect(capturedProcessor).not.toBeNull();
+
+    const mockLead = {
+      _id: 'lead-123',
+      businessName: 'Smile Dental',
+      niche: 'dental',
+      city: 'Saint Petersburg',
+      originalUrl: 'https://smile.spb.ru',
+      contactPhone: '+7 812 000 11 22',
+      contactEmail: 'info@smile.spb.ru',
+    };
+
+    const mockAudit = {
+      _id: 'audit-456',
+      leadId: 'lead-123',
+      extractedServices: ['Implants', 'Whitening'],
+      extractedContacts: {
+        phone: '+48 22 542 18 04',
+        address: 'ulica Topiel 11, 00-342 Warszawa',
+        workingHours: 'Pon - Pt 09:00 — 21:00',
+        socialLinks: [],
+      },
+      extractedContent: {
+        h1: 'Best dental clinic in town',
+        headings: [],
+        paragraphs: ['Real copy from the site.'],
+        serviceItems: [{ title: 'Implants' }],
+        navItems: [],
+        testimonials: [],
+        images: [],
+      },
+      aiFallbackUsed: false,
+    };
+
+    const mockGeneratedContent = {
+      hero: {
+        badge: '✨ Special',
+        headline: 'Healthy teeth without pain in Saint Petersburg',
+        subheadline: 'Premium quality with a 5-year guarantee.',
+        primaryCtaText: 'Book now',
+        secondaryCtaText: 'Call us',
+      },
+      services: [
+        {
+          title: 'Dental implants',
+          description: 'Lifetime guarantee on implants',
+          lucideIconName: 'shield-check',
+        },
+        {
+          title: 'Whitening',
+          description: 'Safe enamel whitening',
+          lucideIconName: 'sparkles',
+        },
+        {
+          title: 'Therapy',
+          description: 'Microscope-assisted cavity treatment',
+          lucideIconName: 'activity',
+        },
+      ],
+      trustSignals: [
+        { metric: '4.9 ★', label: 'On Google Maps' },
+        { metric: '10 yrs', label: 'Of experience' },
+        { metric: '100%', label: 'Guarantee' },
+      ],
+      offerNotice: 'Free consultation',
+    };
+
+    vi.mocked(Lead.findById).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(mockLead),
+    } as any);
+
+    vi.mocked(Audit.findOne).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(mockAudit),
+    } as any);
+
+    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(true),
+    } as any);
+
+    vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({
+      exec: vi.fn().mockResolvedValue(true),
+    } as any);
+
+    vi.mocked(mvpContentService.generateContent).mockResolvedValue({
+      content: mockGeneratedContent,
+      aiFallbackUsed: false,
+      modelUsed: 'claude-3-5-sonnet',
+      attempts: 1,
+    });
+
+    vi.mocked(addDeployJob).mockRejectedValueOnce(new Error('Redis down'));
+
+    await expect(
+      capturedProcessor!({ id: 'job-ai-dispatch', data: { leadId: 'lead-123', auditId: 'audit-456' } }),
+    ).rejects.toThrow('Redis down');
+  });
+
+  it('should register a failed handler that resets the lead after the last attempt', () => {
+    createAiWorker();
+    expect(mockWorkerInstance.on).toHaveBeenCalledWith('failed', expect.any(Function));
   });
 
   it('should throw error when Lead is not found', async () => {
