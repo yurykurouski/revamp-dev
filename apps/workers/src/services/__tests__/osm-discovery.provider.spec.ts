@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { OsmDiscoveryProvider, escapeOverpassRegex } from '../osm-discovery.provider.js';
+import { OsmDiscoveryProvider, escapeOverpassRegex, nextCursor } from '../osm-discovery.provider.js';
 
 const jsonResponse = (body: unknown, status = 200) =>
   ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
@@ -52,7 +52,13 @@ describe('OsmDiscoveryProvider', () => {
       .mockResolvedValueOnce(jsonResponse(overpassElements));
     const provider = new OsmDiscoveryProvider({ ...config, fetchFn });
 
-    const results = await provider.search({ niche: 'dental', location: 'Vilnius', maxResults: 30 });
+    const { businesses: results, nextCursor: cursor } = await provider.search({
+      niche: 'dental',
+      location: 'Vilnius',
+      maxResults: 30,
+    });
+    // Fewer elements than asked for in an area: the area has nothing more
+    expect(cursor).toBeUndefined();
 
     const nominatimUrl = new URL(fetchFn.mock.calls[0][0]);
     expect(nominatimUrl.searchParams.get('q')).toBe('Vilnius');
@@ -103,7 +109,11 @@ describe('OsmDiscoveryProvider', () => {
     });
 
     fetchFn.mockResolvedValueOnce(jsonResponse([{ osm_type: 'node', osm_id: 7, lat: '52.2', lon: '21.0' }]));
-    expect(await provider.resolveLocation('Village')).toEqual({ setup: '', filter: '(around:5000,52.2,21.0)' });
+    expect(await provider.resolveLocation('Village')).toEqual({
+      setup: '',
+      filter: '(around:5000,52.2,21.0)',
+      radius: 5000,
+    });
   });
 
   it('should throw when the location cannot be found or has no geometry', async () => {
@@ -152,7 +162,84 @@ describe('OsmDiscoveryProvider', () => {
       .mockResolvedValueOnce(jsonResponse([{ osm_type: 'relation', osm_id: 1 }]))
       .mockResolvedValueOnce(jsonResponse({}));
     const provider = new OsmDiscoveryProvider({ ...config, fetchFn });
-    expect(await provider.search({ niche: 'fitness', location: 'Vilnius', maxResults: 10 })).toEqual([]);
+    expect(await provider.search({ niche: 'fitness', location: 'Vilnius', maxResults: 10 })).toEqual({
+      businesses: [],
+      nextCursor: undefined,
+    });
+  });
+
+  describe('paging (REV-35)', () => {
+    const element = (id: number) => ({ type: 'node', id, tags: { name: `Place ${id}`, website: `https://p${id}.lt` } });
+
+    it('should ask for twice as many results when a request came back full, resolving the location once', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse([{ osm_type: 'relation', osm_id: 1 }]))
+        .mockResolvedValueOnce(jsonResponse({ elements: [element(1), element(2)] }))
+        .mockResolvedValueOnce(jsonResponse({ elements: [element(1), element(2), element(3)] }));
+      const provider = new OsmDiscoveryProvider({ ...config, fetchFn });
+      const params = { niche: 'dental' as const, location: 'Vilnius', maxResults: 2 };
+
+      const first = await provider.search(params);
+      expect(first.businesses).toHaveLength(2);
+      expect(first.nextCursor).toBeDefined();
+
+      const second = await provider.search(params, first.nextCursor);
+      expect(second.businesses).toHaveLength(3);
+      expect(second.nextCursor).toBeUndefined();
+
+      // One Nominatim lookup, then two Overpass queries with a growing output limit
+      expect(fetchFn).toHaveBeenCalledTimes(3);
+      expect(new URLSearchParams(fetchFn.mock.calls[1][1].body).get('data')).toContain('out center tags 2;');
+      expect(new URLSearchParams(fetchFn.mock.calls[2][1].body).get('data')).toContain('out center tags 4;');
+    });
+
+    it('should widen the circle around a point location until the maximum radius', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse([{ osm_type: 'node', osm_id: 7, lat: '52.2', lon: '21.0' }]))
+        .mockResolvedValue(jsonResponse({ elements: [element(1)] }));
+      const provider = new OsmDiscoveryProvider({ ...config, fetchFn });
+      const params = { niche: 'dental' as const, location: 'Village', maxResults: 10 };
+
+      const radii: string[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await provider.search(params, cursor);
+        const query = new URLSearchParams(fetchFn.mock.calls.at(-1)![1].body).get('data')!;
+        radii.push(query.match(/around:(\d+)/)![1]!);
+        cursor = page.nextCursor;
+      } while (cursor);
+
+      expect(radii).toEqual(['5000', '10000', '20000']);
+    });
+
+    it('should retry a failed location lookup instead of caching the failure', async () => {
+      const fetchFn = vi
+        .fn()
+        .mockResolvedValueOnce(jsonResponse({}, 503))
+        .mockResolvedValueOnce(jsonResponse([{ osm_type: 'relation', osm_id: 1 }]))
+        .mockResolvedValueOnce(jsonResponse({ elements: [] }));
+      const provider = new OsmDiscoveryProvider({ ...config, fetchFn });
+      const params = { niche: 'dental' as const, location: 'Vilnius', maxResults: 10 };
+
+      await expect(provider.search(params)).rejects.toThrow('Nominatim request failed with HTTP 503');
+      await expect(provider.search(params)).resolves.toEqual({ businesses: [], nextCursor: undefined });
+    });
+
+    it('should reject a malformed cursor', async () => {
+      const provider = new OsmDiscoveryProvider({ ...config, fetchFn: vi.fn() });
+      await expect(
+        provider.search({ niche: 'dental', location: 'Vilnius', maxResults: 10 }, '{"out":"many"}'),
+      ).rejects.toThrow('Invalid OSM discovery cursor');
+    });
+
+    it('nextCursor should stop growing the output limit at 2000 and end complete area results', () => {
+      const area = { setup: 'area(id:1)->.a;\n', filter: '(area.a)' };
+      expect(JSON.parse(nextCursor({ out: 1500, radius: 5000 }, 1500, area)!)).toEqual({ out: 2000, radius: 5000 });
+      expect(nextCursor({ out: 2000, radius: 5000 }, 2000, area)).toBeUndefined();
+      expect(nextCursor({ out: 100, radius: 5000 }, 40, area)).toBeUndefined();
+    });
   });
 
   describe('buildQuery', () => {

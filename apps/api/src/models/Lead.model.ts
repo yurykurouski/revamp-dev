@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { ILead, NicheType, LeadStatus } from '@revamp/shared-types';
+import { ILead, NicheType, LeadStatus, LeadSource } from '@revamp/shared-types';
 
 export interface ILeadDocument extends Omit<ILead, '_id' | 'createdAt' | 'updatedAt'>, Document {
   createdAt: Date;
@@ -58,6 +58,19 @@ const LeadSchema = new Schema<ILeadDocument>(
       type: String,
       trim: true,
       maxlength: 30,
+    },
+    // REV-35: identity used to recognise a business discovery has already imported
+    phoneE164: {
+      type: String,
+      index: true,
+    },
+    source: {
+      type: String,
+      enum: ['manual', 'osm', 'google'] as LeadSource[],
+    },
+    externalId: {
+      type: String,
+      index: true,
     },
     ownerName: {
       type: String,

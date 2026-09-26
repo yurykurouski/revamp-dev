@@ -53,6 +53,8 @@ export const EnvSchema = z.object({
   NOMINATIM_URL: z.string().url().default('https://nominatim.openstreetmap.org/search'),
   // Nominatim and Overpass usage policies require an identifying User-Agent
   DISCOVERY_USER_AGENT: z.string().default('RevampBot/0.1 (+https://revampdemo.com)'),
+  // Cap on provider requests per search while paging for enough new businesses (REV-35)
+  DISCOVERY_MAX_REQUESTS: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 export const env = EnvSchema.parse(process.env);

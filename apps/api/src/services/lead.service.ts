@@ -1,5 +1,11 @@
-import { URL } from 'url';
-import { CreateLeadDto, MvpCompletenessReportDto, summarizeCompletenessReport } from '@revamp/validation';
+import { LeadSource } from '@revamp/shared-types';
+import {
+  CreateLeadDto,
+  MvpCompletenessReportDto,
+  normalizeDomain,
+  normalizePhone,
+  summarizeCompletenessReport,
+} from '@revamp/validation';
 import { Lead, ILeadDocument } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
@@ -20,13 +26,15 @@ export class LeadService {
    */
   static async createLead(
     dto: CreateLeadDto,
-    options: { tags?: string[] } = {},
+    options: { tags?: string[]; source?: LeadSource; externalId?: string } = {},
   ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string }> {
-    let domain: string;
+    let domain: string | undefined;
     try {
-      const parsedUrl = new URL(dto.originalUrl);
-      domain = parsedUrl.hostname.replace(/^www\./, '').toLowerCase();
+      domain = normalizeDomain(new URL(dto.originalUrl).hostname);
     } catch {
+      domain = undefined;
+    }
+    if (!domain) {
       throw new AppError('Invalid original URL format', 400);
     }
 
@@ -39,8 +47,11 @@ export class LeadService {
       city: dto.city,
       contactEmail: dto.contactEmail,
       contactPhone: dto.contactPhone,
+      phoneE164: normalizePhone(dto.contactPhone),
       ownerName: dto.ownerName,
       status: 'QUEUED',
+      source: options.source ?? 'manual',
+      ...(options.externalId ? { externalId: options.externalId } : {}),
       ...(options.tags ? { tags: options.tags } : {}),
     });
 

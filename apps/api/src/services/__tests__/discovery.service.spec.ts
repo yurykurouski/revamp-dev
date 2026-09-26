@@ -12,11 +12,14 @@ vi.mock('../../queues/discovery.queue.js', () => ({
 vi.mock('../../models/Lead.model.js');
 vi.mock('../lead.service.js');
 
-const mockExistingLeads = (domains: string[]) => {
+const mockLeadIdentities = (leads: Array<{ _id: string; externalId?: string; domain?: string; phoneE164?: string }>) => {
   vi.spyOn(Lead, 'find').mockReturnValue({
-    lean: () => ({ exec: vi.fn().mockResolvedValue(domains.map((domain) => ({ _id: `lead-${domain}`, domain }))) }),
+    lean: () => ({ exec: vi.fn().mockResolvedValue(leads) }),
   } as any);
 };
+
+const mockExistingLeads = (domains: string[]) =>
+  mockLeadIdentities(domains.map((domain) => ({ _id: `lead-${domain}`, domain })));
 
 const candidate = (id: string, extra: Record<string, unknown> = {}) => ({
   provider: 'osm' as const,
@@ -188,12 +191,40 @@ describe('DiscoveryService (API)', () => {
 
       const { result } = await DiscoveryService.getDiscoveryStatus('disc-9');
 
-      expect(Lead.find).toHaveBeenCalledWith({ domain: { $in: ['clinic-1.lt', 'clinic-2.lt'] } }, { domain: 1 });
+      expect(Lead.find).toHaveBeenCalledWith(
+        {
+          $or: [
+            { externalId: { $in: ['osm:node/1', 'osm:node/2'] } },
+            { domain: { $in: ['clinic-1.lt', 'clinic-2.lt'] } },
+          ],
+        },
+        { externalId: 1, domain: 1, phoneE164: 1 },
+      );
       expect(result?.candidates.map((c) => [c.externalId, c.status, c.leadId])).toEqual([
         ['node/1', 'new', undefined],
         ['node/2', 'existing_lead', 'lead-clinic-2.lt'],
         ['node/3', 'no_website', undefined],
       ]);
+    });
+
+    it('should match on provider id and phone, and keep the search-time counts', async () => {
+      mockLeadIdentities([
+        { _id: 'by-id', externalId: 'osm:node/1' },
+        { _id: 'by-phone', phoneE164: '+37060000000' },
+      ]);
+      const counts = { new: 3, existing_lead: 0, duplicate: 0, no_website: 0, invalid: 0 };
+      const job = completedJob([candidate('1'), candidate('2', { phone: '+370 600 00000' }), candidate('3')]);
+      job.returnvalue = { ...job.returnvalue, counts, requests: 1, exhausted: true } as any;
+      vi.mocked(getDiscoveryJob).mockResolvedValue(job as any);
+
+      const { result } = await DiscoveryService.getDiscoveryStatus('disc-9');
+
+      expect(result?.candidates.map((c) => [c.externalId, c.status, c.leadId])).toEqual([
+        ['node/1', 'existing_lead', 'by-id'],
+        ['node/2', 'existing_lead', 'by-phone'],
+        ['node/3', 'new', undefined],
+      ]);
+      expect(result).toMatchObject({ counts, requests: 1, exhausted: true });
     });
 
     it('should skip the lead lookup when nothing is new, and pass legacy results through', async () => {
@@ -237,13 +268,13 @@ describe('DiscoveryService (API)', () => {
           city: 'Vilnius',
           contactPhone: '+370 600',
         },
-        { tags: ['discovered', 'source:osm'] },
+        { tags: ['discovered', 'source:osm'], source: 'osm', externalId: 'osm:node/1' },
       );
       // No listed email: guessed address, tagged for replacement after the audit; job location as city
       expect(LeadService.createLead).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ contactEmail: 'info@clinic-2.lt', city: 'Vilnius, Lithuania' }),
-        { tags: ['discovered', 'source:osm', 'email-guessed'] },
+        { tags: ['discovered', 'source:osm', 'email-guessed'], source: 'osm', externalId: 'osm:node/2' },
       );
       expect(result).toEqual({
         imported: 2,
@@ -278,6 +309,25 @@ describe('DiscoveryService (API)', () => {
           { externalId: 'node/4', outcome: 'existing_lead', leadId: 'lead-clinic-4.lt' },
         ],
       });
+    });
+
+    it('should block an import when the listing became a lead after the search, by id or phone (REV-35)', async () => {
+      mockLeadIdentities([
+        { _id: 'added-by-id', externalId: 'osm:node/5', domain: 'moved.lt' },
+        { _id: 'added-by-phone', phoneE164: '+37060000006' },
+      ]);
+      vi.mocked(getDiscoveryJob).mockResolvedValue(
+        completedJob([candidate('5'), candidate('6', { phone: '00370 600 00006' }), candidate('7')]) as any,
+      );
+
+      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/5', 'node/6', 'node/7'] });
+
+      expect(LeadService.createLead).toHaveBeenCalledTimes(1);
+      expect(result.results).toEqual([
+        { externalId: 'node/5', outcome: 'existing_lead', leadId: 'added-by-id' },
+        { externalId: 'node/6', outcome: 'existing_lead', leadId: 'added-by-phone' },
+        { externalId: 'node/7', outcome: 'imported', leadId: 'new-lead-1' },
+      ]);
     });
 
     it('should record failures and keep importing the rest', async () => {

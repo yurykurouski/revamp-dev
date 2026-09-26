@@ -250,7 +250,7 @@ export const DiscoveryModal: React.FC = () => {
         {bucket === 'completed' &&
           result &&
           (Array.isArray(result.candidates) ? (
-            <DiscoveryReview key={status.jobId} jobId={status.jobId} candidates={result.candidates} />
+            <DiscoveryReview key={status.jobId} jobId={status.jobId} result={result} limit={params.limit} />
           ) : (
             // Searches from before REV-29 imported automatically and kept no candidate list
             <Alert severity="info" sx={{ borderRadius: 2 }}>

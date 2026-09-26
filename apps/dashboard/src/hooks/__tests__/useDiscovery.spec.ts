@@ -5,7 +5,9 @@ import {
   discoveryRefetchInterval,
   discoveryStateBucket,
   countCandidates,
+  discoverySearchOutcome,
   importableIds,
+  visibleCandidates,
   pruneSelection,
   summarizeImport,
   detectLocation,
@@ -150,6 +152,53 @@ describe('discovery hook helpers (REV-27)', () => {
           ],
         }),
       ).toEqual({ imported: 2, skipped: 2, failed: 1 });
+    });
+  });
+
+  describe('existing leads and search outcome (REV-35)', () => {
+    const c = (id: string, status: any) => ({ provider: 'osm' as const, externalId: id, name: id, status });
+    const candidates = [
+      c('a', 'new'),
+      c('b', 'existing_lead'),
+      c('c', 'no_website'),
+      c('d', 'existing_lead'),
+      c('e', 'duplicate'),
+      c('f', 'invalid'),
+    ];
+    const ids = (list: Array<{ externalId: string }>) => list.map((x) => x.externalId);
+
+    it('visibleCandidates should hide existing leads and other skipped listings by default', () => {
+      expect(ids(visibleCandidates(candidates, { showExisting: false, showSkipped: false }))).toEqual(['a']);
+    });
+
+    it('visibleCandidates should show existing leads with their toggle, in provider order', () => {
+      expect(ids(visibleCandidates(candidates, { showExisting: true, showSkipped: false }))).toEqual(['a', 'b', 'd']);
+    });
+
+    it('visibleCandidates should show other skipped listings independently of existing leads', () => {
+      expect(ids(visibleCandidates(candidates, { showExisting: false, showSkipped: true }))).toEqual(['a', 'c', 'e', 'f']);
+      expect(ids(visibleCandidates(candidates, { showExisting: true, showSkipped: true }))).toEqual(ids(candidates));
+    });
+
+    it('countCandidates should count existing leads for the summary line', () => {
+      expect(countCandidates(candidates)).toMatchObject({ new: 1, existing_lead: 2 });
+    });
+
+    const counts = (n: number) => ({ new: n, existing_lead: 4, duplicate: 0, no_website: 0, invalid: 0 });
+
+    it('discoverySearchOutcome should be filled when the search found `limit` new businesses', () => {
+      expect(discoverySearchOutcome({ counts: counts(10), exhausted: true }, 10)).toBe('filled');
+      expect(discoverySearchOutcome({ counts: counts(10), exhausted: false }, 10)).toBe('filled');
+    });
+
+    it('discoverySearchOutcome should tell an exhausted area from a request cap', () => {
+      expect(discoverySearchOutcome({ counts: counts(3), exhausted: true }, 10)).toBe('exhausted');
+      expect(discoverySearchOutcome({ counts: counts(3), exhausted: false }, 10)).toBe('capped');
+    });
+
+    it('discoverySearchOutcome should treat jobs from before REV-35 as filled', () => {
+      expect(discoverySearchOutcome({}, 10)).toBe('filled');
+      expect(discoverySearchOutcome({ counts: counts(0) }, 10)).toBe('filled');
     });
   });
 });
