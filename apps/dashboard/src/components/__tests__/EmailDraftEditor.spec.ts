@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 
 export const TEMPLATE_VARIABLES = [
-  { tag: '{{businessName}}', label: 'Компания' },
-  { tag: '{{city}}', label: 'Город' },
-  { tag: '{{demoUrl}}', label: 'Ссылка на демо' },
-  { tag: '{{score}}', label: 'Скоринг' },
-  { tag: '{{lcpSeconds}}', label: 'LCP скорость' },
-  { tag: '{{criticalFlaws}}', label: 'Дефекты' },
+  { tag: '{{businessName}}', label: 'Company' },
+  { tag: '{{city}}', label: 'City' },
+  { tag: '{{demoUrl}}', label: 'Demo link' },
+  { tag: '{{score}}', label: 'Score' },
+  { tag: '{{lcpSeconds}}', label: 'LCP speed' },
+  { tag: '{{criticalFlaws}}', label: 'Issues' },
 ];
 
 export const COLOR_PRESETS = [
@@ -33,21 +33,21 @@ function interpolateEmailTemplate(
 ): string {
   return text
     .replace(/{{businessName}}/g, context.businessName)
-    .replace(/{{city}}/g, context.city || 'города')
+    .replace(/{{city}}/g, context.city || 'your city')
     .replace(/{{demoUrl}}/g, context.demoUrl)
     .replace(/{{score}}/g, `${context.score ?? 42}/100`)
     .replace(/{{lcpSeconds}}/g, `${context.lcpSeconds ?? 3.4}s`)
     .replace(
       /{{criticalFlaws}}/g,
       context.criticalFlaws?.map((f, i) => `${i + 1}. ${f.title}`).join('\n') ||
-        '1. Медленная загрузка LCP\n2. Ошибки контрастности WCAG',
+        '1. Slow LCP loading\n2. WCAG contrast errors',
     );
 }
 
 describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
   it('should interpolate all standard variables accurately into subject and body', () => {
     const rawTemplate =
-      'Здравствуйте! Готовим MVP для {{businessName}} в {{city}}. Оценка: {{score}}, LCP: {{lcpSeconds}}. Демо: {{demoUrl}}.\nДефекты:\n{{criticalFlaws}}';
+      'Hello! Preparing an MVP for {{businessName}} in {{city}}. Score: {{score}}, LCP: {{lcpSeconds}}. Demo: {{demoUrl}}.\nIssues:\n{{criticalFlaws}}';
 
     const result = interpolateEmailTemplate(rawTemplate, {
       businessName: 'Listonosz Courier',
@@ -56,8 +56,8 @@ describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
       score: 96,
       lcpSeconds: 1.8,
       criticalFlaws: [
-        { title: 'Отсутствует заметная кнопка целевого действия' },
-        { title: 'Низкая контрастность текста' },
+        { title: 'No prominent call-to-action button' },
+        { title: 'Low text contrast' },
       ],
     });
 
@@ -66,23 +66,23 @@ describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
     expect(result).toContain('96/100');
     expect(result).toContain('1.8s');
     expect(result).toContain('http://localhost:9000/revamp-demos/v/listonosz/index.html');
-    expect(result).toContain('1. Отсутствует заметная кнопка целевого действия');
-    expect(result).toContain('2. Низкая контрастность текста');
+    expect(result).toContain('1. No prominent call-to-action button');
+    expect(result).toContain('2. Low text contrast');
     expect(result).not.toContain('{{businessName}}');
     expect(result).not.toContain('{{city}}');
     expect(result).not.toContain('{{demoUrl}}');
   });
 
   it('should gracefully handle missing optional fields with sensible fallbacks', () => {
-    const rawTemplate = 'Бизнес: {{businessName}}, Регион: {{city}}, Скоринг: {{score}}';
+    const rawTemplate = 'Business: {{businessName}}, Region: {{city}}, Score: {{score}}';
     const result = interpolateEmailTemplate(rawTemplate, {
-      businessName: 'Стоматология',
+      businessName: 'Dental Clinic',
       demoUrl: 'https://demo.url',
     });
 
-    expect(result).toContain('Бизнес: Стоматология');
-    expect(result).toContain('Регион: города');
-    expect(result).toContain('Скоринг: 42/100');
+    expect(result).toContain('Business: Dental Clinic');
+    expect(result).toContain('Region: your city');
+    expect(result).toContain('Score: 42/100');
   });
 
   it('should have valid template variable tags matching double curly brace syntax', () => {

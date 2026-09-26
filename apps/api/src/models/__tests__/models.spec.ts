@@ -104,8 +104,8 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
         leadId,
         senderEmail: 'outreach@revampdemo.com',
         recipientEmail: 'director@listonosz.site',
-        subject: 'Концепция редизайна',
-        bodyHtml: '<p>Привет</p>',
+        subject: 'Redesign concept',
+        bodyHtml: '<p>Hello</p>',
         trackingToken: 'tok-123456',
       });
 

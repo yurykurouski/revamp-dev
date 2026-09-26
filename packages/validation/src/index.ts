@@ -50,8 +50,8 @@ export const MvpContentOutputSchema = z.object({
   trustSignals: z
     .array(
       z.object({
-        metric: z.string().max(20), // e.g. "12 лет", "4.9"
-        label: z.string().max(50),  // e.g. "на рынке СПб", "рейтинг в картах"
+        metric: z.string().max(20), // e.g. "12 years", "4.9"
+        label: z.string().max(50),  // e.g. "in business", "map rating"
       }),
     )
     .length(3),
@@ -120,10 +120,10 @@ export const QuickAddLeadSchema = z.object({
       return trimmed;
     }
     return val;
-  }, z.string().url('Укажите корректный URL сайта (например, https://example.com)')),
+  }, z.string().url('Enter a valid website URL (e.g. https://example.com)')),
   niche: NicheEnumSchema.default('other'),
   businessName: z.string().min(2).max(100).optional(),
-  contactEmail: z.string().email('Некорректный адрес электронной почты').optional().or(z.literal('')),
+  contactEmail: z.string().email('Invalid email address').optional().or(z.literal('')),
 });
 
 export type QuickAddLeadInput = z.infer<typeof QuickAddLeadSchema>;
@@ -211,7 +211,7 @@ export const BentoReviewItemSchema = z.object({
   rating: z.number().min(1).max(5).default(5),
   comment: z.string().min(5).max(300),
   date: z.string().max(50).optional(),
-  source: z.enum(['Яндекс Карты', 'Google Карты', '2ГИС', 'Прямой отзыв']).optional(),
+  source: z.enum(['Google Maps', 'Yandex Maps', '2GIS', 'Website', 'Direct']).optional(),
 });
 
 export type BentoReviewItem = z.infer<typeof BentoReviewItemSchema>;

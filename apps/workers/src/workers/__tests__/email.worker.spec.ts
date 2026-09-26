@@ -77,9 +77,9 @@ describe('EmailWorker (@revamp/workers)', () => {
       leadId: mockLeadId,
       status: 'SCHEDULED',
       recipientEmail: 'director@listonosz.site',
-      subject: '3 точки роста в конверсии сайта «Listonosz Courier & Logistics»',
-      bodyHtml: '<p>Приветственный текст</p>',
-      bodyPlainText: 'Приветственный текст',
+      subject: '3 ways to lift conversions on the Listonosz Courier & Logistics website',
+      bodyHtml: '<p>Welcome text</p>',
+      bodyPlainText: 'Welcome text',
       trackingToken: 'tok-listonosz-123',
     };
 

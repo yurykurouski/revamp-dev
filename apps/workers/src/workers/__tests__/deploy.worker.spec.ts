@@ -60,12 +60,12 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     const mockLead = {
       _id: mockLeadId,
-      businessName: 'Стоматология Улыбка',
+      businessName: 'Smile Dental',
       domain: 'smile.spb.ru',
       niche: 'dental',
       contactPhone: '+7 (812) 123-45-67',
       contactEmail: 'info@smile.spb.ru',
-      city: 'Санкт-Петербург',
+      city: 'Saint Petersburg',
       toObject: () => mockLead,
     };
 
@@ -85,11 +85,11 @@ describe('DeployWorker (@revamp/workers)', () => {
       a11ySummary: { violationsCount: 12 },
       generatedContent: {
         hero: {
-          badge: '✨ Акция',
-          headline: 'Улыбка вашей мечты',
-          subheadline: 'Без боли',
-          primaryCtaText: 'Записаться',
-          secondaryCtaText: 'Позвонить',
+          badge: '✨ Special',
+          headline: 'The smile of your dreams',
+          subheadline: 'Pain-free',
+          primaryCtaText: 'Book now',
+          secondaryCtaText: 'Call us',
         },
         services: [],
         trustSignals: [],
@@ -158,7 +158,7 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     // Assert S3 HTML upload called with proper key & html
     expect(storageService.uploadHtml).toHaveBeenCalledWith(
-      expect.stringContaining('stomatologiya-ulybka'),
+      expect.stringContaining('smile-dental'),
       '<!DOCTYPE html><html>Bento MVP</html>',
       expect.any(String),
     );

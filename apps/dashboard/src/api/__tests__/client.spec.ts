@@ -17,9 +17,9 @@ describe('Dashboard apiClient', () => {
   });
 
   it('should filter leads by search term', async () => {
-    const { leads } = await apiClient.getLeads({ search: 'Дента' });
+    const { leads } = await apiClient.getLeads({ search: 'Denta' });
     expect(leads.length).toBeGreaterThan(0);
-    expect(leads.every((l) => l.businessName.includes('Дента') || l.domain.includes('Дента'))).toBe(true);
+    expect(leads.every((l) => l.businessName.includes('Denta') || l.domain.includes('Denta'))).toBe(true);
   });
 
   it('should filter leads by status', async () => {
@@ -157,7 +157,7 @@ describe('Dashboard apiClient', () => {
     });
 
     it('should reject lead and transition status to REJECTED', async () => {
-      const result = await apiClient.rejectLead('lead-dental-002', 'Нецелевая ниша');
+      const result = await apiClient.rejectLead('lead-dental-002', 'Off-target niche');
       expect(result.success).toBe(true);
       expect(result.leadId).toBe('lead-dental-002');
       expect(result.status).toBe('REJECTED');

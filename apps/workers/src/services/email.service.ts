@@ -263,8 +263,8 @@ export class EmailService {
     if (!preparedHtml.includes(unsubscribeUrl)) {
       const unsubscribeHtmlFooter = `
 <div style="margin-top: 32px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-family: sans-serif; font-size: 12px; color: #64748b; text-align: center;">
-  <p style="margin: 0 0 6px 0;">Вы получили это письмо, так как ваш бизнес зарегистрирован в открытых каталогах.</p>
-  <p style="margin: 0;"><a href="${unsubscribeUrl}" style="color: #64748b; text-decoration: underline;">Отписаться от рассылки в 1 клик</a></p>
+  <p style="margin: 0 0 6px 0;">You are receiving this email because your business is listed in public directories.</p>
+  <p style="margin: 0;"><a href="${unsubscribeUrl}" style="color: #64748b; text-decoration: underline;">Unsubscribe in one click</a></p>
 </div>`;
       if (preparedHtml.includes('</body>')) {
         preparedHtml = preparedHtml.replace('</body>', `${unsubscribeHtmlFooter}</body>`);
@@ -287,7 +287,7 @@ export class EmailService {
     // Append 1-click unsubscribe footer to Plain Text
     let preparedText = options.text || '';
     if (!preparedText.includes(unsubscribeUrl)) {
-      const unsubscribeTextFooter = `\n\n---\nВы получили это письмо, так как ваш бизнес зарегистрирован в открытых каталогах.\nОтписаться от рассылки в 1 клик: ${unsubscribeUrl}`;
+      const unsubscribeTextFooter = `\n\n---\nYou are receiving this email because your business is listed in public directories.\nUnsubscribe in one click: ${unsubscribeUrl}`;
       preparedText = `${preparedText}${unsubscribeTextFooter}`.trim();
     }
 

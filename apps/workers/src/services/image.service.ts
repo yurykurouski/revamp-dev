@@ -87,9 +87,9 @@ export class ImageService {
     const screenWidth = 360;
     const screenHeight = 460;
 
-    const oldLcpText = input.oldLcpSeconds ? `LCP: ${input.oldLcpSeconds.toFixed(1)}s` : 'Медленная загрузка';
-    const oldA11yText = input.oldA11yViolationsCount !== undefined ? `a11y: ${input.oldA11yViolationsCount} ош.` : 'Ошибки верстки';
-    const newScoreText = input.newScore ? `Скоринг: ${input.newScore}/100` : 'Скоринг: 95/100';
+    const oldLcpText = input.oldLcpSeconds ? `LCP: ${input.oldLcpSeconds.toFixed(1)}s` : 'Slow loading';
+    const oldA11yText = input.oldA11yViolationsCount !== undefined ? `a11y: ${input.oldA11yViolationsCount} issues` : 'Layout issues';
+    const newScoreText = input.newScore ? `Score: ${input.newScore}/100` : 'Score: 95/100';
 
     // 1. Prepare Left Screen (Original)
     const leftScreen = await sharp(input.originalMobileBuffer)
@@ -126,7 +126,7 @@ export class ImageService {
 
         <!-- Header Title -->
         <text x="600" y="52" fill="#ffffff" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="24" font-weight="800" text-anchor="middle" letter-spacing="-0.5">
-          ${escapeXml(input.businessName)}: Сравнение мобильных версий
+          ${escapeXml(input.businessName)}: mobile version comparison
         </text>
 
         <!-- Left "BEFORE" Card Frame & Header Bar -->
@@ -135,7 +135,7 @@ export class ImageService {
         <!-- Left Badge (Red / Warning) -->
         <rect x="130" y="96" width="130" height="28" rx="14" fill="#ef4444" />
         <text x="195" y="115" fill="#ffffff" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">
-          ДО: Исходный сайт
+          BEFORE: Original
         </text>
         <text x="470" y="115" fill="#94a3b8" font-family="sans-serif" font-size="12" font-weight="600" text-anchor="end">
           ${escapeXml(oldLcpText)} • ${escapeXml(oldA11yText)}
@@ -147,7 +147,7 @@ export class ImageService {
         <!-- Right Badge (Green / Success) -->
         <rect x="710" y="96" width="150" height="28" rx="14" fill="#22c55e" />
         <text x="785" y="115" fill="#ffffff" font-family="sans-serif" font-size="13" font-weight="bold" text-anchor="middle">
-          ПОСЛЕ: Bento MVP
+          AFTER: Bento MVP
         </text>
         <text x="1050" y="115" fill="#a5b4fc" font-family="sans-serif" font-size="12" font-weight="600" text-anchor="end">
           ${escapeXml(newScoreText)} • LCP &lt; 1.8s
@@ -162,7 +162,7 @@ export class ImageService {
 
         <!-- Footer Caption -->
         <text x="600" y="612" fill="#64748b" font-family="sans-serif" font-size="12" text-anchor="middle">
-          Прототип подготовлен автоматически платформой Revamp SaaS • preview.revamp.io
+          Prototype generated automatically by Revamp SaaS • preview.revamp.io
         </text>
       </svg>
     `;

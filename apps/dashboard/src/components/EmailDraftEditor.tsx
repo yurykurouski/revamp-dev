@@ -33,12 +33,12 @@ interface EmailDraftEditorProps {
 }
 
 const TEMPLATE_VARIABLES = [
-  { tag: '{{businessName}}', label: 'Компания' },
-  { tag: '{{city}}', label: 'Город' },
-  { tag: '{{demoUrl}}', label: 'Ссылка на демо' },
-  { tag: '{{score}}', label: 'Скоринг' },
-  { tag: '{{lcpSeconds}}', label: 'LCP скорость' },
-  { tag: '{{criticalFlaws}}', label: 'Дефекты' },
+  { tag: '{{businessName}}', label: 'Company' },
+  { tag: '{{city}}', label: 'City' },
+  { tag: '{{demoUrl}}', label: 'Demo link' },
+  { tag: '{{score}}', label: 'Score' },
+  { tag: '{{lcpSeconds}}', label: 'LCP speed' },
+  { tag: '{{criticalFlaws}}', label: 'Issues' },
 ];
 
 export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
@@ -49,22 +49,22 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
   onReject,
   isActionLoading = false,
 }) => {
-  const defaultSubject = `Новый мобильный сайт для «${lead.businessName}» (рост конверсии и исправление LCP)`;
-  const defaultPreheader = `Подготовили интерактивный прототип на современном Bento-стеке для г. ${lead.city || 'вашего региона'}`;
-  const defaultBody = `Здравствуйте!
+  const defaultSubject = `A new mobile website for ${lead.businessName} (higher conversion, faster LCP)`;
+  const defaultPreheader = `We built an interactive prototype on a modern Bento stack${lead.city ? ` for ${lead.city}` : ''}`;
+  const defaultBody = `Hello,
 
-Обратили внимание на ваш сайт ${lead.domain}. Согласно автоматическому экспресс-аудиту, текущая мобильная версия загружается за ${audit?.lcpSeconds ?? 3.4}с (LCP) и содержит замечания по мобильной верстке.
+We took a look at your website ${lead.domain}. According to our automated express audit, the current mobile version loads in ${audit?.lcpSeconds ?? 3.4}s (LCP) and has a few mobile layout issues.
 
-Чтобы наглядно показать, как может выглядеть современный конверсионный ресурс, наша платформа автоматически сгенерировала адаптивный Bento-прототип:
+To show what a modern, high-converting site could look like, our platform automatically generated a responsive Bento prototype for you:
 👉 {{demoUrl}}
 
-Ключевые улучшения в прототипе:
-1. Мгновенная загрузка (LCP < 1.8s) и оценка качества 96/100
-2. Запись в 1 клик с любого мобильного устройства
-3. Адаптивная сетка услуг и сохранение вашего фирменного стиля
+Key improvements in the prototype:
+1. Instant loading (LCP < 1.8s) and a 96/100 quality score
+2. One-tap booking from any mobile device
+3. A responsive services grid that keeps your brand identity
 
-Будем рады получить вашу обратную связь!
-С уважением, команда Revamp SaaS`;
+We would love to hear your feedback!
+Best regards, the Revamp SaaS team`;
 
   const [subject, setSubject] = useState(defaultSubject);
   const [preheader, setPreheader] = useState(defaultPreheader);
@@ -73,7 +73,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testEmail, setTestEmail] = useState('operator@revamp.io');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
-  const [rejectReason, setRejectReason] = useState('Нецелевая ниша / сайт закрыт');
+  const [rejectReason, setRejectReason] = useState('Off-target niche / site closed');
   const [successAlert, setSuccessAlert] = useState<string | null>(null);
 
   // Substitute variables for preview
@@ -82,14 +82,14 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
   const renderSubstitutedText = (text: string): string => {
     return text
       .replace(/{{businessName}}/g, lead.businessName)
-      .replace(/{{city}}/g, lead.city || 'города')
+      .replace(/{{city}}/g, lead.city || 'your city')
       .replace(/{{demoUrl}}/g, demoUrl)
       .replace(/{{score}}/g, `${lead.totalScore ?? 42}/100`)
       .replace(/{{lcpSeconds}}/g, `${audit?.lcpSeconds ?? 3.4}s`)
       .replace(
         /{{criticalFlaws}}/g,
         audit?.criticalFlaws.map((f, i) => `${i + 1}. ${f.title}`).join('\n') ||
-          '1. Медленная загрузка LCP\n2. Ошибки контрастности WCAG',
+          '1. Slow LCP loading\n2. WCAG contrast errors',
       );
   };
 
@@ -99,13 +99,13 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
 
   const handleApproveSubmit = async () => {
     await onApprove({ subject, preheader, body });
-    setSuccessAlert('Лид успешно одобрен и переведен в статус SCHEDULED!');
+    setSuccessAlert('Lead approved and moved to SCHEDULED!');
   };
 
   const handleSendTestSubmit = async () => {
     await onSendTest(testEmail);
     setTestDialogOpen(false);
-    setSuccessAlert(`Тестовое письмо отправлено на ${testEmail}`);
+    setSuccessAlert(`Test email sent to ${testEmail}`);
   };
 
   const handleRejectSubmit = async () => {
@@ -152,32 +152,32 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <MailOutlineIcon color="primary" />
-            Редактор письма (Outreach Personalizer)
+            Email editor (Outreach Personalizer)
           </Typography>
 
           <TextField
-            label="Тема письма (Subject)"
+            label="Subject"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             fullWidth
             size="small"
             required
-            helperText="Краткий цепляющий заголовок с упоминанием бизнеса"
+            helperText="A short, catchy subject line that mentions the business"
           />
 
           <TextField
-            label="Прехедер (Preheader / Preview Text)"
+            label="Preheader (preview text)"
             value={preheader}
             onChange={(e) => setPreheader(e.target.value)}
             fullWidth
             size="small"
-            helperText="Отображается в списке входящих рядом с темой"
+            helperText="Shown next to the subject in the inbox list"
           />
 
           {/* Template variable pills */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
             <Typography variant="caption" sx={{ fontWeight: 600, color: 'text.secondary' }}>
-              Вставить переменную:
+              Insert variable:
             </Typography>
             {TEMPLATE_VARIABLES.map((v) => (
               <Chip
@@ -196,7 +196,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
           </Box>
 
           <TextField
-            label="Тело письма (Email Body)"
+            label="Email body"
             value={body}
             onChange={(e) => setBody(e.target.value)}
             multiline
@@ -216,7 +216,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <VisibilityIcon color="action" />
-            Предпросмотр входящего письма получателем
+            Recipient inbox preview
           </Typography>
 
           {/* Email client shell */}
@@ -269,13 +269,13 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
                       Revamp SaaS &lt;outreach@revampdemo.com&gt;
                     </Typography>
                     <Typography variant="caption" sx={{ color: '#64748B' }}>
-                      Кому: {lead.phone || 'Владельцу бизнеса'} &lt;info@{lead.domain}&gt;
+                      To: {lead.phone || 'Business owner'} &lt;info@{lead.domain}&gt;
                     </Typography>
                   </Box>
                 </Box>
 
                 <Typography variant="caption" sx={{ color: '#94A3B8' }}>
-                  Только что
+                  Just now
                 </Typography>
               </Box>
             </Box>
@@ -298,7 +298,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
               {lead.comparisonBannerUrl && (
                 <Box sx={{ my: 1 }}>
                   <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, mb: 0.5, display: 'block' }}>
-                    📎 Вложенный файл: Наглядное сравнение «До / После» (1200x630)
+                    📎 Attachment: Before / After comparison (1200x630)
                   </Typography>
                   <Box
                     component="img"
@@ -336,7 +336,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
                     },
                   }}
                 >
-                  Ознакомиться с интерактивным прототипом
+                  View the interactive prototype
                 </Button>
               </Box>
             </CardContent>
@@ -362,7 +362,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Chip
             icon={<CheckCircleOutlineIcon sx={{ fontSize: 16 }} />}
-            label="Горячая клавиша: Cmd + Enter"
+            label="Shortcut: Cmd + Enter"
             size="small"
             variant="outlined"
             sx={{ fontWeight: 600, color: 'text.secondary' }}
@@ -378,7 +378,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
             disabled={isActionLoading}
             sx={{ fontWeight: 600 }}
           >
-            Отклонить лид
+            Reject lead
           </Button>
 
           <Button
@@ -389,7 +389,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
             disabled={isActionLoading}
             sx={{ fontWeight: 600 }}
           >
-            Отправить тестовое себе
+            Send a test to myself
           </Button>
 
           <Button
@@ -406,20 +406,20 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
             disabled={isActionLoading}
             sx={{ px: 3, py: 1, fontWeight: 700 }}
           >
-            Одобрить и отправить (HITL)
+            Approve & send (HITL)
           </Button>
         </Box>
       </Box>
 
       {/* Test Email Dialog */}
       <Dialog open={testDialogOpen} onClose={() => setTestDialogOpen(false)}>
-        <DialogTitle sx={{ fontWeight: 700 }}>Отправить тестовое письмо</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700 }}>Send test email</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Письмо будет отправлено на ваш рабочий email для финальной проверки верстки перед боевой рассылкой.
+            The email will be sent to your work address for a final layout check before the real send.
           </Typography>
           <TextField
-            label="Email получателя"
+            label="Recipient email"
             value={testEmail}
             onChange={(e) => setTestEmail(e.target.value)}
             fullWidth
@@ -429,23 +429,23 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setTestDialogOpen(false)} color="inherit">
-            Отмена
+            Cancel
           </Button>
           <Button onClick={handleSendTestSubmit} variant="contained" color="primary">
-            Отправить тест
+            Send test
           </Button>
         </DialogActions>
       </Dialog>
 
       {/* Reject Lead Dialog */}
       <Dialog open={rejectDialogOpen} onClose={() => setRejectDialogOpen(false)}>
-        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>Отклонить лид</DialogTitle>
+        <DialogTitle sx={{ fontWeight: 700, color: 'error.main' }}>Reject lead</DialogTitle>
         <DialogContent sx={{ pt: 1 }}>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            Укажите причину отказа. Лид перейдет в архив со статусом REJECTED и рассылка по нему будет остановлена.
+            Give a reason. The lead will be archived as REJECTED and no outreach will be sent.
           </Typography>
           <TextField
-            label="Причина отклонения"
+            label="Rejection reason"
             value={rejectReason}
             onChange={(e) => setRejectReason(e.target.value)}
             fullWidth
@@ -455,10 +455,10 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
           <Button onClick={() => setRejectDialogOpen(false)} color="inherit">
-            Отмена
+            Cancel
           </Button>
           <Button onClick={handleRejectSubmit} variant="contained" color="error">
-            Подтвердить отказ
+            Confirm rejection
           </Button>
         </DialogActions>
       </Dialog>

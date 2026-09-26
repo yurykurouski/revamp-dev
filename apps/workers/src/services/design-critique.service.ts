@@ -32,19 +32,20 @@ export interface DesignCritiqueServiceOptions {
   customFetcher?: typeof fetch;
 }
 
-export const DESIGN_CRITIQUE_SYSTEM_PROMPT = `Ты — ведущий UX/UI арт-директор и эксперт по конверсии веб-сайтов локального бизнеса.
-Твоя задача — объективно оценить первый экран сайта (above-the-fold) по скриншоту и предоставить конструктивную критику для коммерческого предложения по редизайну.
+export const DESIGN_CRITIQUE_SYSTEM_PROMPT = `You are a lead UX/UI art director and conversion expert for local-business websites.
+Your task is to objectively assess the first screen of a website (above the fold) from screenshots and give constructive critique for a redesign proposal.
 
-Входные данные:
-1. Скриншот мобильной версии сайта (375px) и десктопной версии (1440px).
-2. Ниша бизнеса (например: стоматология, автосервис, юрист).
-3. Числовые метрики: оценка a11y (0-100) и LCP (сек).
+Inputs:
+1. Screenshots of the mobile (375px) and desktop (1440px) versions of the site.
+2. The business niche (e.g. dental clinic, auto repair, law firm).
+3. Numeric metrics: accessibility score (0-100) and LCP (seconds).
 
-Правила анализа:
-- Оценивай дизайн строго с точки зрения современного мобильного пользователя (эвристики Нильсена, читаемость, заметность CTA).
-- Сформулируй ровно 3 критических недостатка (Critical Flaws), которые снижают доверие или мешают посетителю оставить заявку.
-- Сформулируй ровно 3 точки быстрого роста (Quick Wins), которые даст современный редизайн.
-- Ответ должен быть строго в формате JSON без вводных слов и markdown-разметки вокруг JSON.`;
+Analysis rules:
+- Judge the design strictly from the point of view of a modern mobile visitor (Nielsen heuristics, readability, CTA visibility).
+- List exactly 3 Critical Flaws that reduce trust or stop a visitor from getting in touch.
+- List exactly 3 Quick Wins that a modern redesign would deliver.
+- Write all text in English.
+- Respond with a raw JSON object only, with no preamble and no markdown around the JSON.`;
 
 export class DesignCritiqueService {
   private provider: 'anthropic' | 'openai' | 'mock';
@@ -168,7 +169,7 @@ export class DesignCritiqueService {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
-        text: `Ниша бизнеса: ${input.niche || 'не указана'}\nОценка доступности (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nВремя LCP: ${input.lcpSeconds ?? 'N/A'} сек\n\nПроанализируй приложенный скриншот первого экрана и верни чистый JSON объект по спецификации.`,
+        text: `Business niche: ${input.niche || 'not specified'}\nAccessibility score (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nLCP: ${input.lcpSeconds ?? 'N/A'} s\n\nAnalyze the attached above-the-fold screenshot and return a clean JSON object that follows the specification.`,
       },
       {
         type: 'image',
@@ -246,7 +247,7 @@ export class DesignCritiqueService {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
-        text: `Ниша бизнеса: ${input.niche || 'не указана'}\nОценка доступности (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nВремя LCP: ${input.lcpSeconds ?? 'N/A'} сек\n\nПроанализируй приложенный скриншот первого экрана и верни чистый JSON объект по спецификации.`,
+        text: `Business niche: ${input.niche || 'not specified'}\nAccessibility score (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nLCP: ${input.lcpSeconds ?? 'N/A'} s\n\nAnalyze the attached above-the-fold screenshot and return a clean JSON object that follows the specification.`,
       },
       {
         type: 'image_url',
@@ -354,30 +355,30 @@ export class DesignCritiqueService {
     // Niche-specific flaw customization
     const nicheFlawTitle =
       niche === 'dental'
-        ? 'Сложная запись на прием к врачу'
+        ? 'Booking an appointment is hard'
         : niche === 'auto'
-          ? 'Отсутствует быстрый расчет стоимости ремонта'
+          ? 'No quick repair cost estimate'
           : niche === 'legal'
-            ? 'Размытая специализация и юридический профиль'
-            : 'Основное целевое действие теряется на первом экране';
+            ? 'Unclear specialization and legal focus'
+            : 'The main call to action gets lost above the fold';
 
     const nicheFlawImpact =
       niche === 'dental'
-        ? 'Пациенты со смартфонов не видят кнопку онлайн-записи и уходят в клиники конкурентов.'
+        ? 'Patients on smartphones cannot find the online booking button and go to competing clinics.'
         : niche === 'auto'
-          ? 'Автовладельцы не находят мгновенный расчет цены и звонят другим автосервисам.'
+          ? 'Car owners cannot get an instant price estimate and call other garages instead.'
           : niche === 'legal'
-            ? 'Потенциальные доверители не считывают первичную выгоду консультации за первые 3 секунды.'
-            : 'Посетители с мобильных устройств испытывают трудности с поиском кнопки связи.';
+            ? 'Prospective clients do not grasp the value of a consultation within the first 3 seconds.'
+            : 'Mobile visitors struggle to find a way to get in touch.';
 
     const nicheRecommendation =
       niche === 'dental'
-        ? 'Закрепить плашку "Записаться на прием" в шапке и первом экране смартфона.'
+        ? 'Pin a "Book an appointment" bar in the header and on the first mobile screen.'
         : niche === 'auto'
-          ? 'Добавить интерактивный 2-шаговый виджет расчета ТО прямо в hero-секцию.'
+          ? 'Add an interactive 2-step service cost estimator right in the hero section.'
           : niche === 'legal'
-            ? 'Вынести форму экспресс-оценки дела и ключевой результат в главный заголовок.'
-            : 'Разместить контрастную кнопку целевого действия над линией сгиба (above-the-fold).';
+            ? 'Bring a quick case-evaluation form and the key outcome into the main headline.'
+            : 'Place a high-contrast call-to-action button above the fold.';
 
     const fallback: DesignCritiqueOutput = {
       visualHierarchyRating,
@@ -393,36 +394,36 @@ export class DesignCritiqueService {
         {
           title:
             a11y < 75
-              ? 'Низкий цветовой контраст текста и фона'
-              : 'Визуальный шум и перегруженность первого экрана',
+              ? 'Low text-to-background color contrast'
+              : 'Visual noise and an overloaded first screen',
           impact:
             a11y < 75
-              ? 'Текст сложно читать при ярком дневном свете на смартфонах, нарушается WCAG 2.1 AA.'
-              : 'Внимание посетителя рассеивается между несколькими несогласованными графическими блоками.',
+              ? 'Text is hard to read in bright daylight on phones and fails WCAG 2.1 AA.'
+              : 'Visitor attention is split across several inconsistent visual blocks.',
           recommendation:
             a11y < 75
-              ? 'Увеличить контрастность шрифтов до коэффициента 4.5:1 и обновить типографику.'
-              : 'Использовать современную карточную Bento-сетку с четкой иерархией акцентов.',
+              ? 'Raise text contrast to at least 4.5:1 and refresh the typography.'
+              : 'Use a modern Bento card grid with a clear visual hierarchy.',
         },
         {
           title:
             lcp > 2.5
-              ? 'Задержка отрисовки главного контента (LCP)'
-              : 'Отсутствие мгновенных триггеров доверия (Social Proof)',
+              ? 'Slow rendering of the main content (LCP)'
+              : 'No immediate trust signals (social proof)',
           impact:
             lcp > 2.5
-              ? `Время загрузки ключевого элемента составляет ${lcp}s, что повышает показатель отказов.`
-              : 'Первый экран не сообщает о рейтинге, отзывах или гарантиях, снижая первичное доверие.',
+              ? `The largest element takes ${lcp}s to load, which increases the bounce rate.`
+              : 'The first screen shows no ratings, reviews or guarantees, which lowers initial trust.',
           recommendation:
             lcp > 2.5
-              ? 'Сжать графические ассеты в WebP и внедрить адаптивные размеры картинок.'
-              : 'Добавить плашку с рейтингом в геосервисах (Яндекс/Google Карты) и числом довольных клиентов.',
+              ? 'Compress images to WebP and serve responsive image sizes.'
+              : 'Surface existing ratings and customer testimonials near the top of the page.',
         },
       ],
       quickWins: [
-        'Закрепить мобильную панель быстрой связи (Call-to-Action) внизу экрана смартфона.',
-        'Переработать первый экран в чистый Bento-стиль с контрастным предложением ценности.',
-        'Добавить плашку социальных доказательств с рейтингом 4.9+ и отзывами клиентов.',
+        'Pin a quick-contact call-to-action bar to the bottom of the mobile screen.',
+        'Rebuild the first screen in a clean Bento style with a high-contrast value proposition.',
+        'Add a social-proof strip with real ratings and customer reviews.',
       ],
     };
 

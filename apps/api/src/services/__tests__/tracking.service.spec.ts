@@ -238,7 +238,7 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
       const res = await service.recordMvpEvent({
         token: 'tok-cta',
         eventType: 'cta_click',
-        metadata: { button: 'Записаться на прием' },
+        metadata: { button: 'Book an appointment' },
       });
 
       expect(res.success).toBe(true);

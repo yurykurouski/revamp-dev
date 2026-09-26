@@ -22,25 +22,25 @@ describe('DesignCritiqueService', () => {
     datedDesignFactors: ['low-contrast', 'unresponsive-table'],
     criticalFlaws: [
       {
-        title: 'Неконтрастный номер телефона в шапке',
-        impact: 'Пациенты со смартфонов не видят способ быстрой связи.',
-        recommendation: 'Сделать телефон фиксированной крупной кнопкой.',
+        title: 'Low-contrast phone number in the header',
+        impact: 'Patients on smartphones cannot find a quick way to get in touch.',
+        recommendation: 'Turn the phone number into a large sticky button.',
       },
       {
-        title: 'Тяжелый баннер блокирует первый экран',
-        impact: 'LCP 3.2s приводит к уходу мобильных пользователей.',
-        recommendation: 'Оптимизировать hero-изображение и сжать в WebP.',
+        title: 'A heavy banner blocks the first screen',
+        impact: 'LCP 3.2s drives mobile visitors away.',
+        recommendation: 'Optimize the hero image and compress it to WebP.',
       },
       {
-        title: 'Мелкий шрифт в карточках услуг',
-        impact: 'На смартфонах текст не читается без масштабирования.',
-        recommendation: 'Увеличить размер шрифта до 16px по WCAG 2.1 AA.',
+        title: 'Small font in service cards',
+        impact: 'Text is unreadable on phones without zooming.',
+        recommendation: 'Increase font size to 16px per WCAG 2.1 AA.',
       },
     ],
     quickWins: [
-      'Добавить липкую кнопку быстрой записи на прием.',
-      'Переработать первый экран в чистый Bento-стиль.',
-      'Разместить блок с рейтингом 4.9 из Яндекс Карт.',
+      'Add a sticky quick-booking button.',
+      'Rebuild the first screen in a clean Bento style.',
+      'Add a block with the 4.9 Google Maps rating.',
     ],
   };
 
@@ -65,16 +65,16 @@ describe('DesignCritiqueService', () => {
       const service = new DesignCritiqueService();
 
       const dental = service.generateDeterministicFallback({ ...baseInput, niche: 'dental' });
-      expect(dental.criticalFlaws[0].title).toContain('запись на прием');
+      expect(dental.criticalFlaws[0].title).toContain('Booking an appointment');
 
       const auto = service.generateDeterministicFallback({ ...baseInput, niche: 'auto' });
-      expect(auto.criticalFlaws[0].title).toContain('расчет стоимости ремонта');
+      expect(auto.criticalFlaws[0].title).toContain('repair cost estimate');
 
       const legal = service.generateDeterministicFallback({ ...baseInput, niche: 'legal' });
-      expect(legal.criticalFlaws[0].title).toContain('юридический профиль');
+      expect(legal.criticalFlaws[0].title).toContain('legal focus');
 
       const other = service.generateDeterministicFallback({ ...baseInput, niche: 'restaurant' });
-      expect(other.criticalFlaws[0].title).toContain('целевое действие');
+      expect(other.criticalFlaws[0].title).toContain('call to action');
     });
 
     it('should tailor flaws based on a11y and lcp thresholds', () => {
@@ -86,7 +86,7 @@ describe('DesignCritiqueService', () => {
         a11yScore: 50,
         lcpSeconds: 4.5,
       });
-      expect(poorMetrics.criticalFlaws[1].title).toContain('цветовой контраст');
+      expect(poorMetrics.criticalFlaws[1].title).toContain('color contrast');
       expect(poorMetrics.criticalFlaws[2].title).toContain('LCP');
 
       // Good a11y (>= 75) and good LCP (<= 2.5)
@@ -95,8 +95,8 @@ describe('DesignCritiqueService', () => {
         a11yScore: 90,
         lcpSeconds: 1.2,
       });
-      expect(goodMetrics.criticalFlaws[1].title).toContain('Визуальный шум');
-      expect(goodMetrics.criticalFlaws[2].title).toContain('триггеров доверия');
+      expect(goodMetrics.criticalFlaws[1].title).toContain('Visual noise');
+      expect(goodMetrics.criticalFlaws[2].title).toContain('trust signals');
     });
   });
 

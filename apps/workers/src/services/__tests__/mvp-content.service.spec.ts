@@ -5,25 +5,25 @@ import { getSupportedIconNames } from '../../templates/icons.js';
 
 describe('MvpContentService (@revamp/workers)', () => {
   const sampleInput: GenerateMvpContentInput = {
-    businessName: 'Стоматология Дент-Престиж',
+    businessName: 'Dent-Prestige Dental',
     niche: 'dental',
-    city: 'Санкт-Петербург',
+    city: 'Saint Petersburg',
     originalUrl: 'https://dent-prestige.spb.ru',
     extractedServices: [
-      'Имплантация зубов',
-      'Профессиональная гигиена',
-      'Отбеливание эмали Zoom',
-      'Лечение кариеса под микроскопом',
+      'Dental implants',
+      'Professional hygiene',
+      'Zoom enamel whitening',
+      'Microscope-assisted cavity treatment',
     ],
     contacts: {
       phone: '+7 (812) 345-67-89',
       email: 'info@dent-prestige.spb.ru',
-      address: 'Лиговский пр., 45',
+      address: '45 Ligovsky Ave',
     },
     critiqueQuickWins: [
-      'Добавить 1-click форму записи на первом экране',
-      'Подчеркнуть гарантию 5 лет и безболезненность',
-      'Вынести отзывы реальных пациентов наверх',
+      'Add a 1-click booking form above the fold',
+      'Highlight the 5-year guarantee and pain-free care',
+      'Move real patient reviews to the top',
     ],
   };
 
@@ -37,7 +37,7 @@ describe('MvpContentService (@revamp/workers)', () => {
 
     // Validate with Zod schema
     const validated = MvpContentOutputSchema.parse(result.content);
-    expect(validated.hero.headline).toContain('Дент-Престиж');
+    expect(validated.hero.headline).toContain('Dent-Prestige');
     expect(validated.services.length).toBeGreaterThanOrEqual(3);
     expect(validated.services.length).toBeLessThanOrEqual(6);
     expect(validated.trustSignals).toHaveLength(3);
@@ -48,22 +48,22 @@ describe('MvpContentService (@revamp/workers)', () => {
     const result = await service.generateContent(sampleInput);
 
     const serviceTitles = result.content.services.map((s) => s.title);
-    expect(serviceTitles).toContain('Имплантация зубов');
-    expect(serviceTitles).toContain('Профессиональная гигиена');
+    expect(serviceTitles).toContain('Dental implants');
+    expect(serviceTitles).toContain('Professional hygiene');
   });
 
   it('should generate niche-specific copy for auto repair when services are empty', async () => {
     const service = new MvpContentService({ provider: 'mock' });
     const autoInput: GenerateMvpContentInput = {
-      businessName: 'Автосервис Мотор-Про',
+      businessName: 'Motor-Pro Auto Service',
       niche: 'auto',
-      city: 'Москва',
+      city: 'Moscow',
     };
 
     const result = await service.generateContent(autoInput);
-    expect(result.content.hero.headline).toContain('Мотор-Про');
-    expect(result.content.hero.badge).toContain('Ремонт');
-    expect(result.content.services[0]?.title).toContain('диагностика');
+    expect(result.content.hero.headline).toContain('Motor-Pro');
+    expect(result.content.hero.badge).toContain('repairs');
+    expect(result.content.services[0]?.title).toContain('diagnostics');
   });
 
   it('should successfully parse and validate Anthropic API response', async () => {
@@ -72,35 +72,35 @@ describe('MvpContentService (@revamp/workers)', () => {
         {
           text: JSON.stringify({
             hero: {
-              badge: '✨ Лечение без боли',
-              headline: 'Здоровая и красивая улыбка в Санкт-Петербурге за 1 визит',
-              subheadline: 'Европейские стандарты стоматологии и чуткий подход к каждому пациенту.',
-              primaryCtaText: 'Записаться на прием',
-              secondaryCtaText: 'Консультация врача',
+              badge: '✨ Pain-free treatment',
+              headline: 'A healthy, beautiful smile in Saint Petersburg in 1 visit',
+              subheadline: 'European dental standards and a caring approach to every patient.',
+              primaryCtaText: 'Book an appointment',
+              secondaryCtaText: 'Talk to a dentist',
             },
             services: [
               {
-                title: 'Швейцарская имплантация',
-                description: 'Пожизненная гарантия на импланты и безболезненная установка.',
+                title: 'Swiss implants',
+                description: 'A lifetime guarantee on implants and pain-free placement.',
                 lucideIconName: 'shield-check',
               },
               {
-                title: 'Лазерное отбеливание Zoom 4',
-                description: 'Осветление эмали до 8 тонов всего за одну комфортную процедуру.',
+                title: 'Zoom 4 laser whitening',
+                description: 'Whitens enamel up to 8 shades in one comfortable session.',
                 lucideIconName: 'sparkles',
               },
               {
-                title: 'Исправление прикуса элайнерами',
-                description: 'Прозрачные каппы для идеального выравнивания зубов без брекетов.',
+                title: 'Bite correction with aligners',
+                description: 'Clear aligners that straighten teeth without braces.',
                 lucideIconName: 'smile',
               },
             ],
             trustSignals: [
-              { metric: '4.9 ★', label: 'Рейтинг в Яндекс Картах' },
-              { metric: '14 лет', label: 'Безупречной практики' },
-              { metric: '5,000+', label: 'Довольных пациентов' },
+              { metric: '4.9 ★', label: 'Rating on Google Maps' },
+              { metric: '14 yrs', label: 'Of flawless practice' },
+              { metric: '5,000+', label: 'Happy patients' },
             ],
-            offerNotice: 'Бесплатная 3D-диагностика при первой консультации',
+            offerNotice: 'Free 3D diagnostics at your first consultation',
           }),
         },
       ],
@@ -121,7 +121,7 @@ describe('MvpContentService (@revamp/workers)', () => {
 
     expect(result.aiFallbackUsed).toBe(false);
     expect(result.modelUsed).toBe('anthropic');
-    expect(result.content.hero.headline).toBe('Здоровая и красивая улыбка в Санкт-Петербурге за 1 визит');
+    expect(result.content.hero.headline).toBe('A healthy, beautiful smile in Saint Petersburg in 1 visit');
     expect(result.content.services).toHaveLength(3);
     expect(mockFetch).toHaveBeenCalledTimes(1);
   });
@@ -133,35 +133,35 @@ describe('MvpContentService (@revamp/workers)', () => {
           message: {
             content: JSON.stringify({
               hero: {
-                badge: '⚡ Гарантия качества',
-                headline: 'Премиальная стоматология Дент-Престиж без страха',
-                subheadline: 'Инновационные методы лечения и протезирования.',
-                primaryCtaText: 'Забронировать визит',
-                secondaryCtaText: 'Узнать цены',
+                badge: '⚡ Quality guarantee',
+                headline: 'Premium, fear-free dentistry at Dent-Prestige',
+                subheadline: 'Innovative treatment and prosthetics.',
+                primaryCtaText: 'Book a visit',
+                secondaryCtaText: 'See prices',
               },
               services: [
                 {
-                  title: 'Имплантация Straumann',
-                  description: 'Надежная установка под контролем 3D-хирургического шаблона.',
+                  title: 'Straumann implants',
+                  description: 'Reliable placement guided by a 3D surgical template.',
                   lucideIconName: 'shield-check',
                 },
                 {
-                  title: 'Лечение кариеса под микроскопом',
-                  description: 'Максимальное сохранение здоровых тканей зуба.',
+                  title: 'Microscope-assisted cavity treatment',
+                  description: 'Preserves as much healthy tooth tissue as possible.',
                   lucideIconName: 'activity',
                 },
                 {
-                  title: 'Эстетическая реставрация',
-                  description: 'Керамические виниры с идеальной анатомической формой.',
+                  title: 'Aesthetic restoration',
+                  description: 'Ceramic veneers with a perfect anatomical shape.',
                   lucideIconName: 'sparkles',
                 },
               ],
               trustSignals: [
-                { metric: '5.0 ★', label: 'Оценка на Google Maps' },
-                { metric: '10 лет', label: 'Гарантии на работы' },
-                { metric: '100%', label: 'Безопасность и стерильность' },
+                { metric: '5.0 ★', label: 'Google Maps rating' },
+                { metric: '10 yrs', label: 'Warranty on work' },
+                { metric: '100%', label: 'Safety and sterility' },
               ],
-              offerNotice: 'Скидка 15% на комплексную гигиену для всей семьи',
+              offerNotice: '15% off full hygiene for the whole family',
             }),
           },
         },
@@ -242,7 +242,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     expect(result.attempts).toBe(3);
     expect(result.aiFallbackUsed).toBe(true);
     expect(result.modelUsed).toBe('deterministic-fallback');
-    expect(result.content.hero.headline).toContain('Дент-Престиж');
+    expect(result.content.hero.headline).toContain('Dent-Prestige');
   });
 
   it('should fallback gracefully when network throws an error', async () => {

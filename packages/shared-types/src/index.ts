@@ -287,7 +287,7 @@ export interface IBentoReviewItem {
   rating: number; // 1-5
   comment: string;
   date?: string;
-  source?: 'Яндекс Карты' | 'Google Карты' | '2ГИС' | 'Прямой отзыв';
+  source?: 'Google Maps' | 'Yandex Maps' | '2GIS' | 'Website' | 'Direct';
 }
 
 export interface IBentoServiceCard {

@@ -60,7 +60,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Всего лидов в воронке
+                  Total leads in pipeline
                 </Typography>
                 <CheckCircleOutlineIcon sx={{ color: 'primary.main', fontSize: 22 }} />
               </Box>
@@ -76,7 +76,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Ожидают аппрува (HITL)
+                  Awaiting approval (HITL)
                 </Typography>
                 <PendingActionsIcon sx={{ color: '#F59E0B', fontSize: 22 }} />
               </Box>
@@ -92,7 +92,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Отправлено писем
+                  Emails sent
                 </Typography>
                 <SendIcon sx={{ color: '#10B981', fontSize: 22 }} />
               </Box>
@@ -108,7 +108,7 @@ export const LeadsPage: React.FC = () => {
             <CardContent sx={{ p: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
                 <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  Изучили демо (Engaged)
+                  Viewed demo (Engaged)
                 </Typography>
                 <VisibilityIcon sx={{ color: '#06B6D4', fontSize: 22 }} />
               </Box>
@@ -124,7 +124,7 @@ export const LeadsPage: React.FC = () => {
       <Card sx={{ mb: 3 }}>
         <CardContent sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
-            placeholder="Поиск по сайту, названию или городу..."
+            placeholder="Search by website, name or city..."
             size="small"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -139,39 +139,39 @@ export const LeadsPage: React.FC = () => {
           />
 
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 180 } }}>
-            <InputLabel id="status-select-label">Статус воронки</InputLabel>
+            <InputLabel id="status-select-label">Pipeline status</InputLabel>
             <Select
               labelId="status-select-label"
-              label="Статус воронки"
+              label="Pipeline status"
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value as LeadStatus | 'ALL')}
             >
-              <MenuItem value="ALL">Все статусы</MenuItem>
-              <MenuItem value="QUEUED">В очереди</MenuItem>
-              <MenuItem value="NEEDS_APPROVAL">Ожидает ревью</MenuItem>
-              <MenuItem value="SCHEDULED">Запланировано</MenuItem>
-              <MenuItem value="SENT">Отправлено</MenuItem>
-              <MenuItem value="OPENED">Открыто</MenuItem>
-              <MenuItem value="CLICKED">Изучает демо</MenuItem>
+              <MenuItem value="ALL">All statuses</MenuItem>
+              <MenuItem value="QUEUED">Queued</MenuItem>
+              <MenuItem value="NEEDS_APPROVAL">Awaiting review</MenuItem>
+              <MenuItem value="SCHEDULED">Scheduled</MenuItem>
+              <MenuItem value="SENT">Sent</MenuItem>
+              <MenuItem value="OPENED">Opened</MenuItem>
+              <MenuItem value="CLICKED">Viewing demo</MenuItem>
             </Select>
           </FormControl>
 
           <FormControl size="small" sx={{ width: { xs: '100%', sm: 190 } }}>
-            <InputLabel id="niche-select-label">Ниша бизнеса</InputLabel>
+            <InputLabel id="niche-select-label">Business niche</InputLabel>
             <Select
               labelId="niche-select-label"
-              label="Ниша бизнеса"
+              label="Business niche"
               value={selectedNiche}
               onChange={(e) => setSelectedNiche(e.target.value as NicheType | 'ALL')}
             >
-              <MenuItem value="ALL">Все ниши</MenuItem>
-              <MenuItem value="dental">🦷 Стоматология</MenuItem>
-              <MenuItem value="auto">🚗 Автосервис</MenuItem>
-              <MenuItem value="legal">⚖️ Юристы</MenuItem>
-              <MenuItem value="beauty">💇 Салоны красоты</MenuItem>
-              <MenuItem value="restaurant">🍽️ Рестораны</MenuItem>
-              <MenuItem value="fitness">🏋️ Фитнес</MenuItem>
-              <MenuItem value="other">📦 Прочий бизнес</MenuItem>
+              <MenuItem value="ALL">All niches</MenuItem>
+              <MenuItem value="dental">🦷 Dental</MenuItem>
+              <MenuItem value="auto">🚗 Auto repair</MenuItem>
+              <MenuItem value="legal">⚖️ Legal</MenuItem>
+              <MenuItem value="beauty">💇 Beauty salons</MenuItem>
+              <MenuItem value="restaurant">🍽️ Restaurants</MenuItem>
+              <MenuItem value="fitness">🏋️ Fitness</MenuItem>
+              <MenuItem value="other">📦 Other business</MenuItem>
             </Select>
           </FormControl>
 
@@ -184,14 +184,14 @@ export const LeadsPage: React.FC = () => {
               onClick={resetFilters}
               sx={{ color: 'text.secondary' }}
             >
-              Сбросить
+              Reset
             </Button>
           )}
 
           <Box sx={{ flexGrow: 1 }} />
 
           <Typography variant="body2" color="text.secondary">
-            Найдено: <strong>{leads.length}</strong>
+            Found: <strong>{leads.length}</strong>
           </Typography>
         </CardContent>
       </Card>
@@ -203,7 +203,7 @@ export const LeadsPage: React.FC = () => {
         </Box>
       ) : isError ? (
         <Box sx={{ textAlign: 'center', py: 6, color: 'error.main' }}>
-          <Typography variant="h6">Не удалось загрузить лиды</Typography>
+          <Typography variant="h6">Failed to load leads</Typography>
         </Box>
       ) : viewMode === 'kanban' ? (
         <KanbanBoard leads={leads} />
