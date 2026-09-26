@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BrowserService, FULL_PAGE_MAX_HEIGHT, REVEAL_ANIMATIONS_CSS } from '../browser.service.js';
+import { BrowserService, FULL_PAGE_MAX_HEIGHT, REVEAL_ANIMATIONS_CSS, EVALUATE_NAME_SHIM } from '../browser.service.js';
 import { chromium } from 'playwright';
 
 vi.mock('../axe.service.js', () => ({
@@ -64,6 +64,7 @@ describe('BrowserService', () => {
     mockContext = {
       newPage: vi.fn().mockResolvedValue(mockPage),
       close: vi.fn().mockResolvedValue(undefined),
+      addInitScript: vi.fn().mockResolvedValue(undefined),
     };
 
     mockBrowser = {
@@ -228,6 +229,14 @@ describe('BrowserService', () => {
       fullPage: true,
       clip: { x: 0, y: 0, width: 1440, height: 8000 },
     });
+  });
+
+  it('should install the __name evaluation shim in every crawl context', async () => {
+    const service = new BrowserService(20);
+    await service.captureFullAudit('https://shim-test.com');
+
+    expect(mockContext.addInitScript).toHaveBeenCalledTimes(2);
+    expect(mockContext.addInitScript).toHaveBeenCalledWith({ content: EVALUATE_NAME_SHIM });
   });
 
   it('should close browser gracefully on close()', async () => {

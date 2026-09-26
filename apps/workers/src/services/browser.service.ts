@@ -48,6 +48,13 @@ export const REVEAL_ANIMATIONS_CSS = `
   }
 `;
 
+/**
+ * Dev runners (tsx/esbuild with keepNames) wrap named inner functions in `__name(...)` calls.
+ * Functions passed to page.evaluate() are serialized into the page, where that helper does not
+ * exist, so the evaluation throws. This shim makes the helper a no-op inside every page.
+ */
+export const EVALUATE_NAME_SHIM = 'globalThis.__name = globalThis.__name || ((fn) => fn);';
+
 export class BrowserService {
   private browser: Browser | null = null;
   private jobCount: number = 0;
@@ -95,6 +102,17 @@ export class BrowserService {
     })();
 
     return this.isLaunching;
+  }
+
+  /**
+   * Creates a browser context with the page-evaluation shim installed
+   */
+  private async createContext(browser: Browser, options: BrowserContextOptions) {
+    const context = await browser.newContext(options);
+    if (typeof context.addInitScript === 'function') {
+      await context.addInitScript({ content: EVALUATE_NAME_SHIM });
+    }
+    return context;
   }
 
   /**
@@ -398,7 +416,7 @@ export class BrowserService {
       deviceScaleFactor: 1,
     };
 
-    const desktopContext = await browser.newContext(desktopOptions);
+    const desktopContext = await this.createContext(browser, desktopOptions);
     try {
       const page = await desktopContext.newPage();
       await this.navigateWithFallback(page, url, 25000);
@@ -425,7 +443,7 @@ export class BrowserService {
       hasTouch: true,
     };
 
-    const mobileContext = await browser.newContext(mobileOptions);
+    const mobileContext = await this.createContext(browser, mobileOptions);
     try {
       const page = await mobileContext.newPage();
       await this.navigateWithFallback(page, url, 25000);
