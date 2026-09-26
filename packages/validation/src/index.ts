@@ -159,6 +159,24 @@ export const StartDiscoverySchema = z
 export type StartDiscoveryDto = z.infer<typeof StartDiscoverySchema>;
 export type StartDiscoveryInput = z.input<typeof StartDiscoverySchema>;
 
+/** Query-string coordinate: empty values count as missing rather than coercing to 0 */
+const coordinate = (min: number, max: number) =>
+  z.preprocess((val) => (val === '' ? undefined : val), z.coerce.number().min(min).max(max));
+
+/**
+ * Schema for GET /api/v1/discovery/reverse-geocode (REV-28)
+ */
+export const ReverseGeocodeQuerySchema = z.object({
+  lat: coordinate(-90, 90),
+  lng: coordinate(-180, 180),
+  lang: z
+    .string()
+    .regex(/^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i)
+    .optional(),
+});
+
+export type ReverseGeocodeQuery = z.infer<typeof ReverseGeocodeQuerySchema>;
+
 /**
  * A business listing normalised from a maps provider; validated before it becomes a lead
  */

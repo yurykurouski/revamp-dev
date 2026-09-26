@@ -336,6 +336,14 @@ export interface IDiscoveryJobResult {
   leadIds: string[];
 }
 
+/** A browser position resolved to a searchable place name (REV-28) */
+export interface IReverseGeocodeResult {
+  /** "City, Country" ready for the discovery location field */
+  location: string;
+  city?: string;
+  country?: string;
+}
+
 /** BullMQ job states as reported by GET /api/v1/discovery/:jobId */
 export type DiscoveryJobState =
   | 'waiting'

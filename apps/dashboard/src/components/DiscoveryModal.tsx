@@ -17,15 +17,20 @@ import {
   CircularProgress,
   InputAdornment,
   LinearProgress,
+  IconButton,
+  Tooltip,
   alpha,
 } from '@mui/material';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import SearchIcon from '@mui/icons-material/Search';
+import MyLocationIcon from '@mui/icons-material/MyLocation';
 import { DiscoveryProvider, IDiscoveryJobResult, NicheType } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import {
+  detectLocation,
+  LocationDetectError,
   discoveryStateBucket,
   isDiscoveryFinished,
   useDiscoveryStatusQuery,
@@ -55,7 +60,7 @@ export const DiscoveryModal: React.FC = () => {
   const { isOpen, close, activeJobId, setActiveJob, startNewSearch } = useDiscoveryStore();
   const startMutation = useStartDiscoveryMutation();
   const statusQuery = useDiscoveryStatusQuery(activeJobId);
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [provider, setProvider] = useState<DiscoveryProvider>('osm');
   const [niche, setNiche] = useState<NicheType>('dental');
@@ -63,6 +68,7 @@ export const DiscoveryModal: React.FC = () => {
   const [keyword, setKeyword] = useState('');
   const [limit, setLimit] = useState('20');
   const [formError, setFormError] = useState<string | null>(null);
+  const [isDetecting, setIsDetecting] = useState(false);
 
   const status = statusQuery.data;
   const finished = isDiscoveryFinished(status);
@@ -89,6 +95,18 @@ export const DiscoveryModal: React.FC = () => {
       setActiveJob(jobId);
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : t('discovery.errors.submitFailed'));
+    }
+  };
+
+  const handleDetectLocation = async () => {
+    setFormError(null);
+    setIsDetecting(true);
+    try {
+      setLocation(await detectLocation(i18n.language));
+    } catch (err: unknown) {
+      setFormError(t(err instanceof LocationDetectError ? err.errorKey : 'discovery.errors.geoLookupFailed'));
+    } finally {
+      setIsDetecting(false);
     }
   };
 
@@ -139,11 +157,27 @@ export const DiscoveryModal: React.FC = () => {
         fullWidth
         required
         autoFocus
-        disabled={startMutation.isPending}
+        disabled={startMutation.isPending || isDetecting}
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
               <PlaceOutlinedIcon color="action" />
+            </InputAdornment>
+          ),
+          endAdornment: (
+            <InputAdornment position="end">
+              <Tooltip title={t('discovery.detectLocation')}>
+                <span>
+                  <IconButton
+                    edge="end"
+                    onClick={handleDetectLocation}
+                    disabled={startMutation.isPending || isDetecting}
+                    aria-label={t('discovery.detectLocation')}
+                  >
+                    {isDetecting ? <CircularProgress size={20} /> : <MyLocationIcon />}
+                  </IconButton>
+                </span>
+              </Tooltip>
             </InputAdornment>
           ),
         }}

@@ -29,6 +29,9 @@ const EnvSchema = z.object({
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('Revamp Team <outreach@revampdemo.com>'),
+  // Reverse geocoding for discovery location auto-detect (REV-28)
+  NOMINATIM_REVERSE_URL: z.string().url().default('https://nominatim.openstreetmap.org/reverse'),
+  DISCOVERY_USER_AGENT: z.string().default('RevampBot/0.1 (+https://revampdemo.com)'),
 });
 
 export const env = EnvSchema.parse(process.env);

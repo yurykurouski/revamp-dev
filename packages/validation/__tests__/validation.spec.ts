@@ -14,6 +14,7 @@ import {
   MvpTrackEventSchema,
   StartDiscoverySchema,
   DiscoveredBusinessSchema,
+  ReverseGeocodeQuerySchema,
 } from '../src/index.js';
 
 describe('Validation Schemas (@revamp/validation)', () => {
@@ -592,6 +593,31 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(DiscoveredBusinessSchema.safeParse({ ...base, phone: '1'.repeat(31) }).success).toBe(false);
       expect(DiscoveredBusinessSchema.safeParse({ ...base, lat: 91 }).success).toBe(false);
       expect(DiscoveredBusinessSchema.safeParse({ ...base, name: 'A' }).success).toBe(false);
+    });
+  });
+
+  describe('ReverseGeocodeQuerySchema', () => {
+    it('should coerce query-string coordinates and accept a language tag', () => {
+      expect(ReverseGeocodeQuerySchema.parse({ lat: '54.6872', lng: '25.2797', lang: 'be' })).toEqual({
+        lat: 54.6872,
+        lng: 25.2797,
+        lang: 'be',
+      });
+      expect(ReverseGeocodeQuerySchema.parse({ lat: '-90', lng: '180' })).toEqual({ lat: -90, lng: 180 });
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: 1, lng: 2, lang: 'pt-BR' }).success).toBe(true);
+    });
+
+    it('should reject out-of-range, missing, empty, and non-numeric coordinates', () => {
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: '90.1', lng: '0' }).success).toBe(false);
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: '0', lng: '-180.5' }).success).toBe(false);
+      expect(ReverseGeocodeQuerySchema.safeParse({ lng: '10' }).success).toBe(false);
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: '', lng: '10' }).success).toBe(false);
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: 'north', lng: '10' }).success).toBe(false);
+    });
+
+    it('should reject malformed language tags', () => {
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: 1, lng: 2, lang: 'english!' }).success).toBe(false);
+      expect(ReverseGeocodeQuerySchema.safeParse({ lat: 1, lng: 2, lang: 'e' }).success).toBe(false);
     });
   });
 });

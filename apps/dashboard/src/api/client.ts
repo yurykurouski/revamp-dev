@@ -4,7 +4,7 @@ import {
   StartDiscoveryInput,
   StartDiscoverySchema,
 } from '@revamp/validation';
-import { IDiscoveryJobStatus, LeadStatus, NicheType } from '@revamp/shared-types';
+import { IDiscoveryJobStatus, IReverseGeocodeResult, LeadStatus, NicheType } from '@revamp/shared-types';
 
 export interface ILeadItem {
   id: string;
@@ -602,6 +602,18 @@ export const apiClient = {
       headers: { Accept: 'application/json' },
     });
     return readDataOrThrow<IDiscoveryJobStatus>(res);
+  },
+
+  /**
+   * Resolves browser coordinates to a "City, Country" name in the given language (REV-28)
+   */
+  async reverseGeocode(lat: number, lng: number, lang?: string): Promise<IReverseGeocodeResult> {
+    const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
+    if (lang) params.set('lang', lang);
+    const res = await fetch(`${API_BASE_URL}/discovery/reverse-geocode?${params.toString()}`, {
+      headers: { Accept: 'application/json' },
+    });
+    return readDataOrThrow<IReverseGeocodeResult>(res);
   },
 };
 
