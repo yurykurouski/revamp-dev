@@ -13,6 +13,8 @@ export interface UploadOptions {
   contentType: string;
 }
 
+export type ScreenshotType = 'desktop' | 'mobile' | 'desktop-full' | 'mobile-full';
+
 export class StorageService {
   private client: S3Client;
   private defaultBucket: string;
@@ -69,8 +71,9 @@ export class StorageService {
 
   /**
    * Uploads screenshot to the assets bucket under screenshots/{leadId}/{type}.webp
+   * (`desktop-full` / `mobile-full` hold the full-page captures)
    */
-  async uploadScreenshot(leadId: string, type: 'desktop' | 'mobile', buffer: Buffer): Promise<string> {
+  async uploadScreenshot(leadId: string, type: ScreenshotType, buffer: Buffer): Promise<string> {
     const key = `screenshots/${leadId}/${type}.webp`;
     return this.uploadBuffer({
       bucket: this.defaultBucket,

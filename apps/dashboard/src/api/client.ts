@@ -361,6 +361,8 @@ export const apiClient = {
               a.screenshotUrls?.mobileOriginal ||
               a.mobileScreenshotUrl ||
               'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp',
+            desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
+            mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
             lcpSeconds: a.lighthouseMetrics?.lcp ? a.lighthouseMetrics.lcp / 1000 : a.lcp || 3.4,
             a11yScore: a.scores?.accessibility || a.scores?.a11y || a.a11yScore || 100,
             a11yViolationsCount: a.a11ySummary?.violationsCount || 0,
@@ -603,6 +605,9 @@ export interface IAuditDetail {
   leadId: string;
   desktopScreenshotUrl: string;
   mobileScreenshotUrl: string;
+  /** Full-page captures of the original site; absent for audits made before REV-21 */
+  desktopFullScreenshotUrl?: string;
+  mobileFullScreenshotUrl?: string;
   lcpSeconds: number;
   a11yScore: number;
   a11yViolationsCount: number;

@@ -13,6 +13,9 @@ import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 
+// A lead can be re-audited, which creates a new Audit document; always write to the latest one
+const LATEST_AUDIT = { sort: { createdAt: -1 } } as const;
+
 export const createAuditWorker = (): Worker => {
   const worker = new Worker<IAuditJobData>(
     QUEUE_NAMES.AUDIT,
@@ -30,7 +33,7 @@ export const createAuditWorker = (): Worker => {
         Audit.findOneAndUpdate(
           { leadId },
           { status: 'PROCESSING' },
-          { new: true },
+          { new: true, ...LATEST_AUDIT },
         ).exec(),
       ]);
 
@@ -45,6 +48,8 @@ export const createAuditWorker = (): Worker => {
         const {
           desktopBuffer,
           mobileBuffer,
+          desktopFullBuffer,
+          mobileFullBuffer,
           a11yResult,
           vitalsResult,
           rawBrandData,
@@ -52,17 +57,23 @@ export const createAuditWorker = (): Worker => {
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
-        const [desktopWebp, mobileWebp] = await Promise.all([
+        const [desktopWebp, mobileWebp, desktopFullWebp, mobileFullWebp] = await Promise.all([
           ImageService.compressToWebp(desktopBuffer, { quality: 80, maxWidth: 1024, maxDimension: 1024 }),
           ImageService.compressToWebp(mobileBuffer, { quality: 80, maxWidth: 1024, maxDimension: 1024 }),
+          // Full-page captures keep their native width so the operator preview stays legible
+          ImageService.compressFullPageToWebp(desktopFullBuffer, { maxWidth: 1440 }),
+          ImageService.compressFullPageToWebp(mobileFullBuffer, { maxWidth: 750 }),
         ]);
 
         // 5. Upload WebP images to S3 / MinIO
         console.log(`[AuditWorker] Uploading WebP screenshots to object storage for lead ${leadId}...`);
-        const [desktopScreenshotUrl, mobileScreenshotUrl] = await Promise.all([
-          storageService.uploadScreenshot(leadId, 'desktop', desktopWebp),
-          storageService.uploadScreenshot(leadId, 'mobile', mobileWebp),
-        ]);
+        const [desktopScreenshotUrl, mobileScreenshotUrl, desktopFullScreenshotUrl, mobileFullScreenshotUrl] =
+          await Promise.all([
+            storageService.uploadScreenshot(leadId, 'desktop', desktopWebp),
+            storageService.uploadScreenshot(leadId, 'mobile', mobileWebp),
+            storageService.uploadScreenshot(leadId, 'desktop-full', desktopFullWebp),
+            storageService.uploadScreenshot(leadId, 'mobile-full', mobileFullWebp),
+          ]);
 
         // 6. Brand DNA Extraction (REV-10: K-Means palette, logo/monogram, factual contacts)
         console.log(`[AuditWorker] Extracting Brand DNA & clustering palette for lead ${leadId}...`);
@@ -119,6 +130,8 @@ export const createAuditWorker = (): Worker => {
             screenshotUrls: {
               desktopOriginal: desktopScreenshotUrl,
               mobileOriginal: mobileScreenshotUrl,
+              desktopFull: desktopFullScreenshotUrl,
+              mobileFull: mobileFullScreenshotUrl,
             },
             a11yScore: a11yResult.a11yScore,
             lcp: vitalsResult.lcpSeconds,
@@ -130,7 +143,7 @@ export const createAuditWorker = (): Worker => {
             extractedBrandTokens: brandResult.tokens,
             extractedServices: brandResult.services,
           },
-          { new: true },
+          { new: true, ...LATEST_AUDIT },
         ).exec();
 
         // 10. Update Lead status to AUDITED, save totalScore, and enrich contacts if found
@@ -168,7 +181,8 @@ export const createAuditWorker = (): Worker => {
             `   - Performance:    ${scores.performance}/100 (LCP: ${vitalsResult.lcpSeconds}s)\n` +
             `   - Standards:      ${scores.standards}/100 (SSL: ${vitalsResult.standards.hasSsl})\n` +
             `   - Desktop URL:    ${desktopScreenshotUrl}\n` +
-            `   - Mobile URL:     ${mobileScreenshotUrl}`,
+            `   - Mobile URL:     ${mobileScreenshotUrl}\n` +
+            `   - Full-page URLs: ${desktopFullScreenshotUrl}, ${mobileFullScreenshotUrl}`,
         );
 
         return {
@@ -179,6 +193,8 @@ export const createAuditWorker = (): Worker => {
           lcp: vitalsResult.lcpSeconds,
           desktopScreenshotUrl,
           mobileScreenshotUrl,
+          desktopFullScreenshotUrl,
+          mobileFullScreenshotUrl,
           totalScore: scores.total,
           scores,
           designCritique: critiqueResult.critique,
@@ -201,6 +217,7 @@ export const createAuditWorker = (): Worker => {
             status: 'FAILED',
             errorMessage,
           },
+          LATEST_AUDIT,
         ).exec();
 
         throw error;

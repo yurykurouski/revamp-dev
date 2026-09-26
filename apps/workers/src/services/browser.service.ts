@@ -4,15 +4,49 @@ import { vitalsService, VitalsAuditResult } from './vitals.service.js';
 import { RawBrandExtractionData } from './brand-extractor.service.js';
 
 export interface ScreenshotResult {
+  /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
   desktopBuffer: Buffer;
   mobileBuffer: Buffer;
+  /** Full-page screenshots of the entire site (used for operator preview) */
+  desktopFullBuffer: Buffer;
+  mobileFullBuffer: Buffer;
 }
+
+/**
+ * Maximum captured full-page height in CSS pixels. Keeps screenshots within
+ * Playwright memory thresholds and below the WebP 16383px dimension limit
+ * (mobile is rendered at deviceScaleFactor 2).
+ */
+export const FULL_PAGE_MAX_HEIGHT = {
+  desktop: 12000,
+  mobile: 8000,
+} as const;
 
 export interface FullAuditCrawlingResult extends ScreenshotResult {
   a11yResult: AxeAuditResult;
   vitalsResult: VitalsAuditResult;
   rawBrandData: RawBrandExtractionData;
 }
+
+/**
+ * Forces common scroll-reveal libraries (AOS, WOW.js, Animate.css, SAL, ScrollReveal-style
+ * classes) into their final visible state and freezes transitions, so content that only
+ * animates in while inside the viewport is not blank in full-page captures.
+ */
+export const REVEAL_ANIMATIONS_CSS = `
+  [data-aos], .aos-init, .wow, .animate__animated, [data-sal], [data-scroll], [data-animate],
+  .reveal, .fade-in, .fadeIn, .fade-up, .fadeInUp {
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+  }
+  *, *::before, *::after {
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+`;
 
 export class BrowserService {
   private browser: Browser | null = null;
@@ -114,6 +148,52 @@ export class BrowserService {
 
     // Short stabilization wait for web fonts and layout shifts
     await page.waitForTimeout(600);
+  }
+
+  /**
+   * Scrolls through the page in viewport-sized steps to trigger lazy-loaded
+   * images and scroll-reveal content, then returns to the top.
+   * Returns the resulting document height in CSS pixels.
+   */
+  async autoScroll(page: Page, maxHeight: number): Promise<number> {
+    const height = await page
+      .evaluate(async (limit: number) => {
+        const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+        const step = Math.max(window.innerHeight, 400);
+        let y = 0;
+        while (y < Math.min(document.documentElement.scrollHeight, limit)) {
+          y += step;
+          window.scrollTo(0, y);
+          await sleep(120);
+        }
+        window.scrollTo(0, 0);
+        await sleep(200);
+        return Math.max(document.documentElement.scrollHeight, document.body?.scrollHeight || 0);
+      }, maxHeight)
+      .catch(() => 0);
+    return typeof height === 'number' && Number.isFinite(height) ? height : 0;
+  }
+
+  /**
+   * Captures a full-page screenshot, capped at maxHeight CSS pixels.
+   */
+  async captureFullPageScreenshot(page: Page, maxHeight: number): Promise<Buffer> {
+    const pageHeight = await this.autoScroll(page, maxHeight);
+    await page.waitForLoadState('networkidle', { timeout: 2500 }).catch(() => {});
+    if (typeof page.addStyleTag === 'function') {
+      await page.addStyleTag({ content: REVEAL_ANIMATIONS_CSS }).catch(() => {});
+      await page.waitForTimeout(150);
+    }
+
+    const viewport = typeof page.viewportSize === 'function' ? page.viewportSize() : null;
+    const exceedsCap = pageHeight > maxHeight && viewport;
+
+    const buffer = await page.screenshot({
+      type: 'png',
+      fullPage: true,
+      ...(exceedsCap ? { clip: { x: 0, y: 0, width: viewport.width, height: maxHeight } } : {}),
+    });
+    return Buffer.from(buffer);
   }
 
   /**
@@ -283,13 +363,15 @@ export class BrowserService {
   }
 
   /**
-   * Captures Desktop (1440x900) and Mobile (375x812) screenshots
+   * Captures Desktop (1440px) and Mobile (375px) screenshots: above-the-fold and full-page
    */
   async captureScreenshots(url: string): Promise<ScreenshotResult> {
     const full = await this.captureFullAudit(url);
     return {
       desktopBuffer: full.desktopBuffer,
       mobileBuffer: full.mobileBuffer,
+      desktopFullBuffer: full.desktopFullBuffer,
+      mobileFullBuffer: full.mobileFullBuffer,
     };
   }
 
@@ -302,6 +384,8 @@ export class BrowserService {
 
     let desktopBuffer: Buffer;
     let mobileBuffer: Buffer;
+    let desktopFullBuffer: Buffer;
+    let mobileFullBuffer: Buffer;
     let a11yResult: AxeAuditResult;
     let vitalsResult: VitalsAuditResult;
     let rawBrandData: RawBrandExtractionData;
@@ -324,6 +408,9 @@ export class BrowserService {
       });
       // Extract brand data on Desktop viewport where full layout is present
       rawBrandData = await this.extractRawBrandData(page);
+
+      // Full-page desktop screenshot (after lazy-load auto-scroll)
+      desktopFullBuffer = await this.captureFullPageScreenshot(page, FULL_PAGE_MAX_HEIGHT.desktop);
     } finally {
       await desktopContext.close();
     }
@@ -354,6 +441,9 @@ export class BrowserService {
 
       // Deterministic WCAG 2.1 AA Axe-core audit
       a11yResult = await axeService.scanPage(page);
+
+      // Full-page mobile screenshot last, so scrolling does not skew vitals collection
+      mobileFullBuffer = await this.captureFullPageScreenshot(page, FULL_PAGE_MAX_HEIGHT.mobile);
     } finally {
       await mobileContext.close();
     }
@@ -361,6 +451,8 @@ export class BrowserService {
     return {
       desktopBuffer,
       mobileBuffer,
+      desktopFullBuffer,
+      mobileFullBuffer,
       a11yResult,
       vitalsResult,
       rawBrandData,

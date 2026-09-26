@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { apiClient } from '../client.js';
 
 describe('Dashboard apiClient', () => {
@@ -85,6 +85,51 @@ describe('Dashboard apiClient', () => {
     expect(audit.desktopScreenshotUrl).toBeDefined();
     expect(audit.mobileScreenshotUrl).toBeDefined();
     expect(audit.colorPalette.primary).toBe('#5c5bed');
+  });
+
+  describe('Full-page screenshots (REV-21)', () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    const stubAuditResponse = (screenshotUrls: Record<string, string>) =>
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            success: true,
+            data: { _id: 'audit-full-1', leadId: 'lead-full-1', screenshotUrls },
+          }),
+        }),
+      );
+
+    it('should map full-page screenshot URLs from the audit API', async () => {
+      stubAuditResponse({
+        desktopOriginal: 'http://minio/screenshots/l1/desktop.webp',
+        mobileOriginal: 'http://minio/screenshots/l1/mobile.webp',
+        desktopFull: 'http://minio/screenshots/l1/desktop-full.webp',
+        mobileFull: 'http://minio/screenshots/l1/mobile-full.webp',
+      });
+
+      const audit = await apiClient.getAudit('audit-full-1');
+
+      expect(audit.desktopScreenshotUrl).toBe('http://minio/screenshots/l1/desktop.webp');
+      expect(audit.desktopFullScreenshotUrl).toBe('http://minio/screenshots/l1/desktop-full.webp');
+      expect(audit.mobileFullScreenshotUrl).toBe('http://minio/screenshots/l1/mobile-full.webp');
+    });
+
+    it('should leave full-page URLs undefined for legacy audits', async () => {
+      stubAuditResponse({
+        desktopOriginal: 'http://minio/screenshots/l2/desktop.webp',
+        mobileOriginal: 'http://minio/screenshots/l2/mobile.webp',
+      });
+
+      const audit = await apiClient.getAudit('audit-full-2');
+
+      expect(audit.desktopFullScreenshotUrl).toBeUndefined();
+      expect(audit.mobileFullScreenshotUrl).toBeUndefined();
+    });
   });
 
   describe('HITL Approval Gate & Outreach Actions (REV-16)', () => {

@@ -130,6 +130,9 @@ export interface IExtractedBrandTokens {
 export interface IScreenshotUrls {
   desktopOriginal: string;
   mobileOriginal: string;
+  /** Full-page captures of the original site (whole scrollable page) */
+  desktopFull?: string;
+  mobileFull?: string;
   comparisonBanner?: string;
 }
 

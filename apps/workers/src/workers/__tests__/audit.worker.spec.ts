@@ -84,6 +84,8 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('raw-desktop-png'),
       mobileBuffer: Buffer.from('raw-mobile-png'),
+      desktopFullBuffer: Buffer.from('raw-desktop-full-png'),
+      mobileFullBuffer: Buffer.from('raw-mobile-full-png'),
       a11yResult: {
         a11yScore: 82,
         summary: {
@@ -120,9 +122,14 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(ImageService.compressToWebp)
       .mockResolvedValueOnce(Buffer.from('webp-desktop'))
       .mockResolvedValueOnce(Buffer.from('webp-mobile'));
+    vi.mocked(ImageService.compressFullPageToWebp)
+      .mockResolvedValueOnce(Buffer.from('webp-desktop-full'))
+      .mockResolvedValueOnce(Buffer.from('webp-mobile-full'));
     vi.mocked(storageService.uploadScreenshot)
       .mockResolvedValueOnce('http://localhost:9000/revamp-assets/screenshots/lead-123/desktop.webp')
-      .mockResolvedValueOnce('http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp');
+      .mockResolvedValueOnce('http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp')
+      .mockResolvedValueOnce('http://localhost:9000/revamp-assets/screenshots/lead-123/desktop-full.webp')
+      .mockResolvedValueOnce('http://localhost:9000/revamp-assets/screenshots/lead-123/mobile-full.webp');
 
     vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
       critique: {
@@ -153,7 +160,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
       { leadId: 'lead-123' },
       { status: 'PROCESSING' },
-      { new: true },
+      { new: true, sort: { createdAt: -1 } },
     );
     expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
       'lead-123',
@@ -164,6 +171,23 @@ describe('AuditWorker (@revamp/workers)', () => {
     // Browser capture and WebP compression
     expect(browserService.captureFullAudit).toHaveBeenCalledWith('https://test-dental.com');
     expect(ImageService.compressToWebp).toHaveBeenCalledTimes(2);
+    // Full-page captures keep native width (REV-21)
+    expect(ImageService.compressFullPageToWebp).toHaveBeenCalledWith(Buffer.from('raw-desktop-full-png'), {
+      maxWidth: 1440,
+    });
+    expect(ImageService.compressFullPageToWebp).toHaveBeenCalledWith(Buffer.from('raw-mobile-full-png'), {
+      maxWidth: 750,
+    });
+    expect(storageService.uploadScreenshot).toHaveBeenCalledWith('lead-123', 'desktop-full', Buffer.from('webp-desktop-full'));
+    expect(storageService.uploadScreenshot).toHaveBeenCalledWith('lead-123', 'mobile-full', Buffer.from('webp-mobile-full'));
+
+    // Vision LLM must still receive the above-the-fold shots, not the tall full-page ones
+    expect(designCritiqueService.analyzeDesign).toHaveBeenCalledWith(
+      expect.objectContaining({
+        desktopScreenshotWebp: Buffer.from('webp-desktop'),
+        mobileScreenshotWebp: Buffer.from('webp-mobile'),
+      }),
+    );
 
     // S3 upload
     expect(storageService.uploadScreenshot).toHaveBeenCalledWith(
@@ -197,6 +221,12 @@ describe('AuditWorker (@revamp/workers)', () => {
         status: 'COMPLETED',
         desktopScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/lead-123/desktop.webp',
         mobileScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp',
+        screenshotUrls: {
+          desktopOriginal: 'http://localhost:9000/revamp-assets/screenshots/lead-123/desktop.webp',
+          mobileOriginal: 'http://localhost:9000/revamp-assets/screenshots/lead-123/mobile.webp',
+          desktopFull: 'http://localhost:9000/revamp-assets/screenshots/lead-123/desktop-full.webp',
+          mobileFull: 'http://localhost:9000/revamp-assets/screenshots/lead-123/mobile-full.webp',
+        },
         a11yScore: 82,
         lcp: 2.1,
         aiFallbackUsed: false,
@@ -219,7 +249,7 @@ describe('AuditWorker (@revamp/workers)', () => {
           accentColor: expect.any(String),
         }),
       }),
-      { new: true },
+      { new: true, sort: { createdAt: -1 } },
     );
 
     // Lead score and status update
@@ -300,6 +330,8 @@ describe('AuditWorker (@revamp/workers)', () => {
         status: 'FAILED',
         errorMessage: 'ERR_CONNECTION_REFUSED',
       },
+      // Re-audits create a new Audit doc; the latest one must be marked FAILED
+      { sort: { createdAt: -1 } },
     );
   });
 });
