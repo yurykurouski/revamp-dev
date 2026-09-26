@@ -1,5 +1,11 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MvpContentService, GenerateMvpContentInput, clipText } from '../mvp-content.service.js';
+import {
+  MvpContentService,
+  GenerateMvpContentInput,
+  MVP_CONTENT_SYSTEM_PROMPT,
+  clipText,
+  clipToSchemaLimits,
+} from '../mvp-content.service.js';
 import { ISiteContent } from '@revamp/shared-types';
 import { MvpContentOutputSchema } from '@revamp/validation';
 import { getSupportedIconNames } from '../../templates/icons.js';
@@ -334,6 +340,82 @@ describe('MvpContentService (@revamp/workers)', () => {
       const result = await service.generateContent(sampleInput);
 
       expect(result.content.trustSignals).toEqual([]);
+    });
+  });
+
+  describe('over-long LLM fields (REV-34)', () => {
+    const validCopy = () => ({
+      hero: {
+        badge: 'Dental clinic',
+        headline: 'Dental implants and whitening at Dent-Prestige',
+        subheadline: 'Professional hygiene and microscope-assisted treatment in one clinic.',
+        primaryCtaText: 'Book an appointment',
+        secondaryCtaText: 'Talk to a dentist',
+      },
+      services: [
+        { title: 'Dental implants', description: 'Implants placed with care.', lucideIconName: 'shield-check' },
+        { title: 'Professional hygiene', description: 'Thorough, gentle cleaning.', lucideIconName: 'sparkles' },
+        { title: 'Zoom enamel whitening', description: 'A brighter smile in one visit.', lucideIconName: 'sparkles' },
+      ],
+      trustSignals: [],
+      offerNotice: 'Book your first consultation online',
+    });
+
+    it('should keep an answer whose text fields run over their limits, clipped to the schema', async () => {
+      const copy = validCopy();
+      copy.offerNotice =
+        'Call us today to book your first consultation with our friendly team of experienced dentists in the heart of Saint Petersburg';
+      copy.hero.badge = 'Trusted family dental clinic in Saint Petersburg';
+      copy.hero.primaryCtaText = 'Book your appointment with us online today';
+      const runner = vi.fn().mockResolvedValue(JSON.stringify(copy));
+      const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(result.aiFallbackUsed).toBe(false);
+      expect(result.attempts).toBe(1);
+      expect(result.content.offerNotice.length).toBeLessThanOrEqual(100);
+      expect(result.content.offerNotice).toMatch(/^Call us today to book your first consultation/);
+      expect(result.content.hero.badge.length).toBeLessThanOrEqual(40);
+      expect(result.content.hero.primaryCtaText.length).toBeLessThanOrEqual(35);
+      // Clipped at a word boundary, not mid-word
+      expect(copy.offerNotice.split(' ')).toContain(result.content.offerNotice.split(' ').pop());
+    });
+
+    it('should still fall back when the answer is structurally invalid', async () => {
+      const copy: Record<string, unknown> = validCopy();
+      delete copy.offerNotice;
+      copy.services = [];
+      const runner = vi.fn().mockResolvedValue(JSON.stringify(copy));
+      const service = new MvpContentService({ provider: 'claude-cli', claudeCliRunner: runner });
+
+      const result = await service.generateContent(sampleInput);
+
+      expect(runner).toHaveBeenCalledTimes(3);
+      expect(result.aiFallbackUsed).toBe(true);
+    });
+
+    it('clipToSchemaLimits should clip nested strings and leave everything else alone', () => {
+      const copy = validCopy();
+      const longDescription = 'word '.repeat(40).trim();
+      copy.services[0]!.description = longDescription;
+      const withExtras = { ...copy, about: undefined, unknownField: 'x'.repeat(500) };
+
+      const clipped = clipToSchemaLimits(withExtras, MvpContentOutputSchema) as typeof withExtras;
+
+      expect(clipped.services[0]!.description.length).toBeLessThanOrEqual(120);
+      expect(clipped.services[0]!.description.endsWith('word')).toBe(true);
+      expect(clipped.services[1]).toEqual(copy.services[1]);
+      expect(clipped.hero).toEqual(copy.hero);
+      expect(clipped.about).toBeUndefined();
+      expect(clipped.unknownField).toHaveLength(500);
+      expect(clipToSchemaLimits('not an object', MvpContentOutputSchema)).toBe('not an object');
+    });
+
+    it('should state a length limit for every short text field in the system prompt', () => {
+      for (const field of ['hero.badge', 'servicesHeading', 'primaryCtaText', 'secondaryCtaText', 'offerNotice']) {
+        expect(MVP_CONTENT_SYSTEM_PROMPT).toMatch(new RegExp(`${field.replace('.', '\\.')}[^\\n]*up to \\d+ characters`));
+      }
     });
   });
 
