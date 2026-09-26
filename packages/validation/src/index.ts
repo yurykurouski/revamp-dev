@@ -139,6 +139,44 @@ export type QuickAddLeadInput = z.infer<typeof QuickAddLeadSchema>;
 export type CreateLeadDto = z.infer<typeof CreateLeadSchema>;
 
 /**
+ * Schema for POST /api/v1/discovery (REV-26)
+ */
+export const DiscoveryProviderSchema = z.enum(['osm', 'google']);
+
+export const StartDiscoverySchema = z
+  .object({
+    provider: DiscoveryProviderSchema.default('osm'),
+    niche: NicheEnumSchema.default('other'),
+    location: z.string().trim().min(2).max(100),
+    keyword: z.string().trim().min(2).max(100).optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+  })
+  .refine((data) => data.niche !== 'other' || Boolean(data.keyword), {
+    message: 'A keyword is required when niche is "other"',
+    path: ['keyword'],
+  });
+
+export type StartDiscoveryDto = z.infer<typeof StartDiscoverySchema>;
+
+/**
+ * A business listing normalised from a maps provider; validated before it becomes a lead
+ */
+export const DiscoveredBusinessSchema = z.object({
+  provider: DiscoveryProviderSchema,
+  externalId: z.string().min(1),
+  name: z.string().trim().min(2).max(100),
+  website: z.string().url().regex(/^https?:\/\//i).optional(),
+  phone: z.string().trim().max(30).optional(),
+  email: z.string().email().optional(),
+  address: z.string().max(200).optional(),
+  city: z.string().max(100).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+});
+
+export type DiscoveredBusinessDto = z.infer<typeof DiscoveredBusinessSchema>;
+
+/**
  * Schema for POST /api/v1/audits/trigger
  */
 export const TriggerAuditSchema = z.object({

@@ -302,6 +302,40 @@ export interface IAuditJobData {
   niche: NicheType;
 }
 
+// Local business discovery from maps providers (REV-26)
+export type DiscoveryProvider = 'osm' | 'google';
+
+export interface IDiscoveryJobData {
+  provider: DiscoveryProvider;
+  niche: NicheType;
+  location: string;
+  keyword?: string;
+  /** Maximum number of new leads to create */
+  limit: number;
+}
+
+export interface IDiscoveredBusiness {
+  provider: DiscoveryProvider;
+  externalId: string;
+  name: string;
+  website?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  city?: string;
+  lat?: number;
+  lng?: number;
+}
+
+export interface IDiscoveryJobResult {
+  found: number;
+  created: number;
+  skippedNoWebsite: number;
+  skippedDuplicate: number;
+  skippedInvalid: number;
+  leadIds: string[];
+}
+
 export interface IAiGenerationJobData {
   leadId: string;
   auditId: string;
