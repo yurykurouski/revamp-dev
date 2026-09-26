@@ -4,6 +4,7 @@ import { vitalsService, VitalsAuditResult } from './vitals.service.js';
 import { RawBrandExtractionData } from './brand-extractor.service.js';
 import { extractSiteContentInPage, RawSiteContent } from './site-content.extractor.js';
 import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.service.js';
+import { collectComplexitySignalsInPage, RawComplexitySignals } from './site-complexity.service.js';
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -30,6 +31,8 @@ export interface FullAuditCrawlingResult extends ScreenshotResult {
   rawBrandData: RawBrandExtractionData;
   /** How each capture context handled the site's cookie consent UI (REV-33) */
   cookieConsent: { desktop: CookieConsentOutcome; mobile: CookieConsentOutcome };
+  /** Raw DOM facts for the site complexity estimate; absent when collection failed (REV-38) */
+  complexitySignals?: RawComplexitySignals;
 }
 
 /**
@@ -228,6 +231,20 @@ export class BrowserService {
       return content && typeof content === 'object' && Array.isArray(content.paragraphs) ? content : undefined;
     } catch (err) {
       console.warn('[BrowserService] Site content extraction failed:', err);
+      return undefined;
+    }
+  }
+
+  /**
+   * Collects the DOM facts the site complexity class is derived from (REV-38).
+   * Never throws: a failed collection just leaves the complexity unknown.
+   */
+  async extractComplexitySignals(page: Page): Promise<RawComplexitySignals | undefined> {
+    try {
+      const signals = await page.evaluate(collectComplexitySignalsInPage);
+      return signals && typeof signals === 'object' && Array.isArray(signals.links) ? signals : undefined;
+    } catch (err) {
+      console.warn('[BrowserService] Site complexity signal collection failed:', err);
       return undefined;
     }
   }
@@ -438,6 +455,7 @@ export class BrowserService {
     let rawBrandData: RawBrandExtractionData;
     let desktopConsent: CookieConsentOutcome;
     let mobileConsent: CookieConsentOutcome;
+    let complexitySignals: RawComplexitySignals | undefined;
 
     // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
@@ -464,6 +482,7 @@ export class BrowserService {
       rawBrandData = await this.extractRawBrandData(page);
       const content = await this.extractSiteContent(page);
       if (content) rawBrandData.content = content;
+      complexitySignals = await this.extractComplexitySignals(page);
     } finally {
       await desktopContext.close();
     }
@@ -514,6 +533,7 @@ export class BrowserService {
       vitalsResult,
       rawBrandData,
       cookieConsent: { desktop: desktopConsent, mobile: mobileConsent },
+      complexitySignals,
     };
   }
 

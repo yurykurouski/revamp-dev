@@ -95,6 +95,8 @@ const AuditSchema = new Schema<IAuditDocument>(
     // REV-23: contacts and original content extracted from the site (free-form, deterministic)
     extractedContacts: { type: Schema.Types.Mixed },
     extractedContent: { type: Schema.Types.Mixed },
+    // REV-38: deterministic complexity class, the DOM signals behind it, and reason codes
+    siteComplexity: { type: Schema.Types.Mixed },
     desktopScreenshotUrl: { type: String },
     mobileScreenshotUrl: { type: String },
     lcp: { type: Number },

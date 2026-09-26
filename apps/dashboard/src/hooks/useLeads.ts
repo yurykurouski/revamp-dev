@@ -7,15 +7,16 @@ import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 export const LEADS_QUERY_KEY = ['leads'];
 
 export const useLeadsQuery = () => {
-  const { searchQuery, selectedStatus, selectedNiche } = useLeadFilterStore();
+  const { searchQuery, selectedStatus, selectedNiche, selectedComplexity } = useLeadFilterStore();
 
   return useQuery<{ leads: ILeadItem[]; kpi: KpiMetrics }>({
-    queryKey: [...LEADS_QUERY_KEY, searchQuery, selectedStatus, selectedNiche],
+    queryKey: [...LEADS_QUERY_KEY, searchQuery, selectedStatus, selectedNiche, selectedComplexity],
     queryFn: () =>
       apiClient.getLeads({
         search: searchQuery,
         status: selectedStatus,
         niche: selectedNiche,
+        complexity: selectedComplexity,
       }),
     refetchInterval: 10000, // Background poll every 10 seconds for live worker updates
   });

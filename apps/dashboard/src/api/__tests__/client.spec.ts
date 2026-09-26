@@ -34,6 +34,21 @@ describe('Dashboard apiClient', () => {
     expect(leads.every((l) => l.niche === 'dental')).toBe(true);
   });
 
+  it('should filter leads by site complexity (REV-38)', async () => {
+    const { leads } = await apiClient.getLeads({ complexity: 'ONE_PAGE_BROCHURE' });
+    expect(leads.length).toBeGreaterThan(0);
+    expect(leads.every((l) => l.siteComplexity === 'ONE_PAGE_BROCHURE')).toBe(true);
+
+    const all = await apiClient.getLeads({ complexity: 'ALL' });
+    expect(all.leads.length).toBeGreaterThan(leads.length);
+  });
+
+  it('should treat leads without a complexity class as not estimated (REV-38)', async () => {
+    const { leads } = await apiClient.getLeads({ complexity: 'UNKNOWN' });
+    expect(leads.length).toBeGreaterThan(0);
+    expect(leads.every((l) => l.siteComplexity === undefined || l.siteComplexity === 'UNKNOWN')).toBe(true);
+  });
+
   it('should create new lead with valid URL and niche', async () => {
     const newLead = await apiClient.createLead({
       url: 'https://new-test-clinic.com',

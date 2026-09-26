@@ -18,6 +18,7 @@ describe('Zustand Dashboard Stores', () => {
       expect(state.searchQuery).toBe('');
       expect(state.selectedStatus).toBe('ALL');
       expect(state.selectedNiche).toBe('ALL');
+      expect(state.selectedComplexity).toBe('ALL');
       expect(state.viewMode).toBe('kanban');
       expect(state.page).toBe(0);
       expect(state.pageSize).toBe(10);
@@ -54,6 +55,14 @@ describe('Zustand Dashboard Stores', () => {
       expect(useLeadFilterStore.getState().pageSize).toBe(25);
     });
 
+    it('should update the site complexity filter (REV-38)', () => {
+      useLeadFilterStore.getState().setSelectedComplexity('ONE_PAGE_BROCHURE');
+      expect(useLeadFilterStore.getState().selectedComplexity).toBe('ONE_PAGE_BROCHURE');
+
+      useLeadFilterStore.getState().setSelectedComplexity('ALL');
+      expect(useLeadFilterStore.getState().selectedComplexity).toBe('ALL');
+    });
+
     it('should toggle add lead modal state', () => {
       useLeadFilterStore.getState().openAddModal();
       expect(useLeadFilterStore.getState().isAddModalOpen).toBe(true);
@@ -66,6 +75,7 @@ describe('Zustand Dashboard Stores', () => {
       useLeadFilterStore.getState().setSearchQuery('Test Query');
       useLeadFilterStore.getState().setSelectedStatus('SENT');
       useLeadFilterStore.getState().setSelectedNiche('auto');
+      useLeadFilterStore.getState().setSelectedComplexity('COMPLEX');
       useLeadFilterStore.getState().setPage(4);
 
       useLeadFilterStore.getState().resetFilters();
@@ -74,6 +84,7 @@ describe('Zustand Dashboard Stores', () => {
       expect(state.searchQuery).toBe('');
       expect(state.selectedStatus).toBe('ALL');
       expect(state.selectedNiche).toBe('ALL');
+      expect(state.selectedComplexity).toBe('ALL');
       expect(state.page).toBe(0);
     });
   });

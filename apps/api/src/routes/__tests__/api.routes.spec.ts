@@ -108,6 +108,28 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data).toHaveLength(1);
       expect(res.body.pagination.total).toBe(1);
     });
+
+    it('should pass a validated complexity filter to the service (REV-38)', async () => {
+      const spy = vi.spyOn(LeadService, 'getLeads').mockResolvedValue({
+        leads: [],
+        pagination: { total: 0, page: 1, limit: 20, totalPages: 0 },
+      });
+
+      const res = await request(app).get('/api/v1/leads?complexity=ONE_PAGE_BROCHURE&page=2&status=');
+
+      expect(res.status).toBe(200);
+      expect(spy).toHaveBeenCalledWith({ complexity: 'ONE_PAGE_BROCHURE', page: 2 });
+    });
+
+    it('should return 400 for an unknown complexity class (REV-38)', async () => {
+      const spy = vi.spyOn(LeadService, 'getLeads');
+      spy.mockClear();
+
+      const res = await request(app).get('/api/v1/leads?complexity=HUGE');
+
+      expect(res.status).toBe(400);
+      expect(spy).not.toHaveBeenCalled();
+    });
   });
 
   describe('GET /api/v1/leads/:id', () => {

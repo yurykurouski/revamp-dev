@@ -17,7 +17,9 @@ import {
   IReverseGeocodeResult,
   LeadStatus,
   NicheType,
+  SiteComplexityClass,
 } from '@revamp/shared-types';
+import { ComplexityFilter, matchesComplexityFilter } from '../utils/siteComplexity.js';
 
 export interface ILeadItem {
   id: string;
@@ -38,6 +40,8 @@ export interface ILeadItem {
   generationError?: string;
   /** How much of the original site's key data the MVP kept (REV-36) */
   completeness?: IMvpCompletenessSummary;
+  /** Complexity class from the latest audit (REV-38) */
+  siteComplexity?: SiteComplexityClass;
   createdAt: string;
 }
 
@@ -64,6 +68,7 @@ export const initialMockLeads: ILeadItem[] = [
     auditId: 'audit-listonosz-001',
     previewUrl: 'http://localhost:9000/revamp-demos/v/listonosz-courier-mvp/index.html',
     comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/listonosz-courier-mvp.webp',
+    siteComplexity: 'COMPLEX',
     createdAt: new Date(Date.now() - 3600 * 1000 * 2).toISOString(),
   },
   {
@@ -79,6 +84,7 @@ export const initialMockLeads: ILeadItem[] = [
     auditId: 'audit-dental-002',
     previewUrl: 'http://localhost:9000/revamp-demos/v/dental-lux-002/index.html',
     comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/dental-lux-002.webp',
+    siteComplexity: 'ONE_PAGE_BROCHURE',
     createdAt: new Date(Date.now() - 3600 * 1000 * 5).toISOString(),
   },
   {
@@ -182,12 +188,14 @@ export const apiClient = {
     search?: string;
     status?: string;
     niche?: string;
+    complexity?: ComplexityFilter;
   }): Promise<{ leads: ILeadItem[]; kpi: KpiMetrics }> {
     if (!isTestEnv) {
       try {
         const params = new URLSearchParams();
         if (filters?.status && filters.status !== 'ALL') params.append('status', filters.status);
         if (filters?.niche && filters.niche !== 'ALL') params.append('niche', filters.niche);
+        if (filters?.complexity && filters.complexity !== 'ALL') params.append('complexity', filters.complexity);
 
       const res = await fetch(`${API_BASE_URL}/leads?${params.toString()}`, {
         headers: { Accept: 'application/json' },
@@ -220,6 +228,7 @@ export const apiClient = {
             mvpGeneratedAt?: string;
             generationError?: string;
             completeness?: IMvpCompletenessSummary;
+            siteComplexity?: SiteComplexityClass;
             createdAt: string;
           }
 
@@ -250,6 +259,7 @@ export const apiClient = {
               mvpGeneratedAt: l.mvpGeneratedAt,
               generationError: l.generationError,
               completeness: l.completeness,
+              siteComplexity: l.siteComplexity,
               createdAt: l.createdAt,
             };
           });
@@ -284,6 +294,8 @@ export const apiClient = {
     if (filters?.niche && filters.niche !== 'ALL') {
       result = result.filter((lead) => lead.niche === filters.niche);
     }
+
+    result = result.filter((lead) => matchesComplexityFilter(lead, filters?.complexity));
 
     const kpi: KpiMetrics = {
       totalLeads: localLeadsCache.length,

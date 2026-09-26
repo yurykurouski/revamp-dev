@@ -11,6 +11,7 @@ import { storageService } from '../services/storage.service.js';
 import { designCritiqueService } from '../services/design-critique.service.js';
 import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
+import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 
@@ -55,7 +56,11 @@ export const createAuditWorker = (): Worker => {
           vitalsResult,
           rawBrandData,
           cookieConsent,
+          complexitySignals,
         } = await browserService.captureFullAudit(url);
+
+        // Deterministic complexity estimate: one-page brochure sites are the easiest to replace (REV-38)
+        const siteComplexity = classifySiteComplexity(complexitySignals);
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
@@ -147,6 +152,7 @@ export const createAuditWorker = (): Worker => {
             extractedContacts: brandResult.contacts,
             extractedContent: brandResult.siteContent,
             cookieBannerHandled: cookieConsent,
+            siteComplexity,
           },
           { new: true, ...LATEST_AUDIT },
         ).exec();
@@ -155,6 +161,8 @@ export const createAuditWorker = (): Worker => {
         const leadUpdate: Record<string, unknown> = {
           status: 'AUDITED',
           totalScore: scores.total,
+          siteComplexity: siteComplexity.class,
+          onePageBrochure: isOnePageBrochure(siteComplexity.class),
         };
         if (!existingLead?.contactPhone && brandResult.contacts.phone) {
           leadUpdate['contactPhone'] = brandResult.contacts.phone;
@@ -188,6 +196,7 @@ export const createAuditWorker = (): Worker => {
             `   - a11yScore:      ${scores.accessibility}/100 (${a11yResult.summary.violationsCount} violations)\n` +
             `   - Performance:    ${scores.performance}/100 (LCP: ${vitalsResult.lcpSeconds}s)\n` +
             `   - Standards:      ${scores.standards}/100 (SSL: ${vitalsResult.standards.hasSsl})\n` +
+            `   - Complexity:     ${siteComplexity.class} (${siteComplexity.reasons.join(', ')})\n` +
             `   - Desktop URL:    ${desktopScreenshotUrl}\n` +
             `   - Mobile URL:     ${mobileScreenshotUrl}\n` +
             `   - Full-page URLs: ${desktopFullScreenshotUrl}, ${mobileFullScreenshotUrl}`,
@@ -210,6 +219,7 @@ export const createAuditWorker = (): Worker => {
           extractedBrandTokens: brandResult.tokens,
           contacts: brandResult.contacts,
           services: brandResult.services,
+          siteComplexity,
           processedAt: new Date().toISOString(),
         };
       } catch (error: unknown) {

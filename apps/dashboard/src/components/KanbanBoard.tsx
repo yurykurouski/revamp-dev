@@ -26,6 +26,7 @@ import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { withPreviewVersion } from '../hooks/useLeads.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { GenerateMvpButton } from './GenerateMvpButton.js';
+import { SiteComplexityChip } from './SiteComplexityChip.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
@@ -280,6 +281,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         variant="outlined"
                         sx={{ fontSize: '0.72rem', height: 20 }}
                       />
+                      <SiteComplexityChip complexity={lead.siteComplexity} />
                       {lead.city && (
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.3, color: 'text.secondary' }}>
                           <LocationOnOutlinedIcon sx={{ fontSize: 14 }} />

@@ -259,6 +259,8 @@ describe('AuditWorker (@revamp/workers)', () => {
           socialLinks: [{ platform: 'telegram', url: 'https://t.me/test' }],
         }),
         extractedContent: expect.objectContaining({ serviceItems: [{ title: 'General Dentistry' }] }),
+        // REV-38: no complexity signals were collected, so the class is unknown
+        siteComplexity: { class: 'UNKNOWN', reasons: ['signals_unavailable'] },
       }),
       { new: true, sort: { createdAt: -1 } },
     );
@@ -270,6 +272,8 @@ describe('AuditWorker (@revamp/workers)', () => {
         status: 'AUDITED',
         totalScore: 85,
         contactPhone: '+1 555-1234',
+        siteComplexity: 'UNKNOWN',
+        onePageBrochure: false,
       }),
     );
     // The street address is not written into the lead's city (REV-23)
@@ -375,6 +379,98 @@ describe('AuditWorker (@revamp/workers)', () => {
         $pull: { tags: 'email-guessed' },
       }),
     );
+  });
+
+  it('should classify site complexity and flag one-page brochure sites on the audit and the lead (REV-38)', async () => {
+    createAuditWorker();
+
+    vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ businessName: 'Brochure Dental', contactPhone: '+48 1', tags: [] }),
+    } as any);
+    vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+    vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+      desktopBuffer: Buffer.from('d'),
+      mobileBuffer: Buffer.from('m'),
+      desktopFullBuffer: Buffer.from('df'),
+      mobileFullBuffer: Buffer.from('mf'),
+      a11yResult: {
+        a11yScore: 80,
+        summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
+        rawViolations: [],
+      },
+      vitalsResult: {
+        lcpSeconds: 2,
+        lighthouseMetrics: { lcp: 2000, cls: 0.01 },
+        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        performanceScore: 90,
+        standardsScore: 100,
+      },
+      rawBrandData: { colors: ['rgb(79, 70, 229)'], fontFamilies: ['Inter'], socialLinks: [], services: [] },
+      complexitySignals: {
+        pageUrl: 'https://brochure-dental.pl/',
+        links: [
+          'https://brochure-dental.pl/#services',
+          'https://brochure-dental.pl/#contact',
+          'tel:+48123456789',
+          'https://brochure-dental.pl/polityka-prywatnosci',
+          'https://facebook.com/brochure-dental',
+        ],
+        hasEcommerce: false,
+        hasBooking: false,
+        hasLogin: false,
+        hasSearch: false,
+        hasAppShell: false,
+        sectionCount: 6,
+        pageHeight: 5200,
+      },
+    } as any);
+    vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+    vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+    vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+    vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+      critique: {
+        visualHierarchyRating: 60,
+        mobileFriendlinessRating: 60,
+        primaryCtaFound: false,
+        datedDesignFactors: [],
+        criticalFlaws: [
+          { title: 'F1', impact: 'I1', recommendation: 'R1' },
+          { title: 'F2', impact: 'I2', recommendation: 'R2' },
+          { title: 'F3', impact: 'I3', recommendation: 'R3' },
+        ],
+        quickWins: ['W1', 'W2', 'W3'],
+      },
+      aiFallbackUsed: true,
+      modelUsed: 'fallback',
+      attempts: 1,
+    } as any);
+
+    const result = await capturedProcessor!({
+      id: 'job-brochure',
+      data: { leadId: 'lead-brochure', url: 'https://brochure-dental.pl', niche: 'dental' },
+    });
+
+    expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
+      { leadId: 'lead-brochure' },
+      expect.objectContaining({
+        status: 'COMPLETED',
+        siteComplexity: expect.objectContaining({
+          class: 'ONE_PAGE_BROCHURE',
+          signals: expect.objectContaining({ internalPageCount: 0, sectionCount: 6, pageHeight: 5200 }),
+        }),
+      }),
+      { new: true, sort: { createdAt: -1 } },
+    );
+    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+      'lead-brochure',
+      expect.objectContaining({
+        status: 'AUDITED',
+        siteComplexity: 'ONE_PAGE_BROCHURE',
+        onePageBrochure: true,
+      }),
+    );
+    expect(result.siteComplexity.class).toBe('ONE_PAGE_BROCHURE');
   });
 
   it('should record errorMessage and FAILED status on Audit and throw error when pipeline fails', async () => {

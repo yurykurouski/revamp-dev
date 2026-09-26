@@ -278,6 +278,22 @@ export const pl: Translation = {
     backToInspector: 'Wróć do inspektora strony',
     closeButton: 'Zamknij',
   },
+  siteComplexity: {
+    label: 'Typ strony',
+    all: 'Wszystkie typy stron',
+    classes: {
+      ONE_PAGE_BROCHURE: 'Jednostronicowa',
+      SMALL_MULTI_PAGE: 'Mała wielostronicowa',
+      COMPLEX: 'Złożona',
+      UNKNOWN: 'Nieoceniona',
+    },
+    hints: {
+      ONE_PAGE_BROCHURE: 'Jednostronicowa wizytówka: MVP może ją w całości zastąpić. Takie leady są pokazywane jako pierwsze.',
+      SMALL_MULTI_PAGE: 'Kilka podstron, rezerwacja online lub wyszukiwarka: część strony może nie zmieścić się w jednostronicowym MVP.',
+      COMPLEX: 'Sklep, konta klientów, aplikacja webowa lub wiele podstron: trudno ją zastąpić jednostronicowym MVP.',
+      UNKNOWN: 'Audyt nie zdołał ocenić złożoności tej strony.',
+    },
+  },
   completeness: {
     title: '📋 Kontrola danych MVP',
     score: 'Wynik {{score}}/100',

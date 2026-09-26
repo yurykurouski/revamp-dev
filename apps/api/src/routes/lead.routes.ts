@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { CreateLeadSchema } from '@revamp/validation';
-import { validateBody } from '../middlewares/validate.js';
+import { CreateLeadSchema, GetLeadsQuerySchema } from '@revamp/validation';
+import { validateBody, validateQuery } from '../middlewares/validate.js';
 import { createLead, getLeads, getLeadById } from '../controllers/lead.controller.js';
 
 const router = Router();
@@ -9,7 +9,7 @@ const router = Router();
 router.post('/', validateBody(CreateLeadSchema), createLead);
 
 // GET /leads - List leads with filters and pagination
-router.get('/', getLeads);
+router.get('/', validateQuery(GetLeadsQuerySchema), getLeads);
 
 // GET /leads/:id - Get lead details and audit status
 router.get('/:id', getLeadById);

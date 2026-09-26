@@ -79,6 +79,10 @@ export interface ILead {
   mvpGeneratedAt?: string | Date;
   /** Why the last MVP generation failed; cleared when a new run starts (REV-31) */
   generationError?: string;
+  /** Complexity class from the latest audit, copied here for list sorting and filtering (REV-38) */
+  siteComplexity?: SiteComplexityClass;
+  /** Set when the latest audit found a one-page brochure site; these leads sort first (REV-38) */
+  onePageBrochure?: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -167,6 +171,39 @@ export interface ISiteContent {
   foundingYear?: number;
 }
 
+// Site complexity estimated deterministically during the audit (REV-38)
+export const SITE_COMPLEXITY_CLASSES = [
+  'ONE_PAGE_BROCHURE',
+  'SMALL_MULTI_PAGE',
+  'COMPLEX',
+  'UNKNOWN',
+] as const;
+
+export type SiteComplexityClass = (typeof SITE_COMPLEXITY_CLASSES)[number];
+
+/** The DOM facts the complexity class was derived from */
+export interface ISiteComplexitySignals {
+  /** Distinct same-origin pages linked from the home page (anchors, legal pages, language switches and assets excluded) */
+  internalPageCount: number;
+  /** A sample of those internal paths, for the operator */
+  internalPages: string[];
+  hasEcommerce: boolean;
+  hasBooking: boolean;
+  hasLogin: boolean;
+  hasSearch: boolean;
+  /** Client-side routed web app (hash routes or an app framework shell) */
+  hasAppShell: boolean;
+  sectionCount: number;
+  pageHeight: number;
+}
+
+export interface ISiteComplexity {
+  class: SiteComplexityClass;
+  signals?: ISiteComplexitySignals;
+  /** Why the class was chosen, as short machine-readable codes (e.g. `internal_pages:4`, `ecommerce`) */
+  reasons: string[];
+}
+
 export interface IScreenshotUrls {
   desktopOriginal: string;
   mobileOriginal: string;
@@ -193,6 +230,8 @@ export interface IAudit {
   extractedContent?: ISiteContent;
   /** How the audit crawler handled the site's cookie banner per capture context (REV-33) */
   cookieBannerHandled?: { desktop?: string; mobile?: string };
+  /** How hard the site is to replace with a one-page MVP; absent on audits before REV-38 */
+  siteComplexity?: ISiteComplexity;
   generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;

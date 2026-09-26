@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { LeadStatus, NicheType } from '@revamp/shared-types';
+import { ComplexityFilter } from '../utils/siteComplexity.js';
 
 export type ViewMode = 'kanban' | 'table';
 
@@ -7,6 +8,8 @@ interface LeadFilterState {
   searchQuery: string;
   selectedStatus: LeadStatus | 'ALL';
   selectedNiche: NicheType | 'ALL';
+  /** Site complexity class from the audit; ONE_PAGE_BROCHURE shows the easiest targets (REV-38) */
+  selectedComplexity: ComplexityFilter;
   viewMode: ViewMode;
   page: number;
   pageSize: number;
@@ -15,6 +18,7 @@ interface LeadFilterState {
   setSearchQuery: (query: string) => void;
   setSelectedStatus: (status: LeadStatus | 'ALL') => void;
   setSelectedNiche: (niche: NicheType | 'ALL') => void;
+  setSelectedComplexity: (complexity: ComplexityFilter) => void;
   setViewMode: (mode: ViewMode) => void;
   setPage: (page: number) => void;
   setPageSize: (pageSize: number) => void;
@@ -27,6 +31,7 @@ export const useLeadFilterStore = create<LeadFilterState>((set) => ({
   searchQuery: '',
   selectedStatus: 'ALL',
   selectedNiche: 'ALL',
+  selectedComplexity: 'ALL',
   viewMode: 'kanban',
   page: 0,
   pageSize: 10,
@@ -35,6 +40,7 @@ export const useLeadFilterStore = create<LeadFilterState>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   setSelectedStatus: (status) => set({ selectedStatus: status }),
   setSelectedNiche: (niche) => set({ selectedNiche: niche }),
+  setSelectedComplexity: (complexity) => set({ selectedComplexity: complexity }),
   setViewMode: (mode) => set({ viewMode: mode }),
   setPage: (page) => set({ page }),
   setPageSize: (pageSize) => set({ pageSize }),
@@ -45,6 +51,7 @@ export const useLeadFilterStore = create<LeadFilterState>((set) => ({
       searchQuery: '',
       selectedStatus: 'ALL',
       selectedNiche: 'ALL',
+      selectedComplexity: 'ALL',
       page: 0,
     }),
 }));

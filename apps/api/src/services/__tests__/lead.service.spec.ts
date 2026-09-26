@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { LeadService } from '../lead.service.js';
+import { LeadService, LEAD_LIST_SORT } from '../lead.service.js';
 import { Lead } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
@@ -194,6 +194,45 @@ describe('LeadService', () => {
           ]),
         }),
       );
+    });
+  });
+
+  describe('getLeads site complexity (REV-38)', () => {
+    const mockList = () => {
+      const mockFind = {
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue([]),
+      };
+      vi.spyOn(Lead, 'find').mockReturnValue(mockFind as any);
+      vi.spyOn(Lead, 'countDocuments').mockReturnValue({ exec: vi.fn().mockResolvedValue(0) } as any);
+      return mockFind;
+    };
+
+    it('sorts one-page brochure sites first, newest first within each group', async () => {
+      const mockFind = mockList();
+      await LeadService.getLeads({});
+      expect(mockFind.sort).toHaveBeenCalledWith({ onePageBrochure: -1, createdAt: -1 });
+      expect(LEAD_LIST_SORT).toEqual({ onePageBrochure: -1, createdAt: -1 });
+    });
+
+    it('filters on the complexity class', async () => {
+      mockList();
+      await LeadService.getLeads({ complexity: 'ONE_PAGE_BROCHURE' });
+      expect(Lead.find).toHaveBeenCalledWith({ siteComplexity: 'ONE_PAGE_BROCHURE' });
+    });
+
+    it('matches leads audited before REV-38 when filtering on UNKNOWN', async () => {
+      mockList();
+      await LeadService.getLeads({ complexity: 'UNKNOWN' });
+      expect(Lead.find).toHaveBeenCalledWith({ siteComplexity: { $in: [null, 'UNKNOWN'] } });
+    });
+
+    it('does not filter on complexity when none is given', async () => {
+      mockList();
+      await LeadService.getLeads({ niche: 'dental' });
+      expect(Lead.find).toHaveBeenCalledWith({ niche: 'dental' });
     });
   });
 
