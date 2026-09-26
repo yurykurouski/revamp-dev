@@ -197,6 +197,57 @@ describe('LeadService', () => {
     });
   });
 
+  describe('getLeads search escaping (REV-43)', () => {
+    it('should match regex metacharacters in the search text literally', async () => {
+      vi.spyOn(Lead, 'find').mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue([]),
+      } as any);
+      vi.spyOn(Lead, 'countDocuments').mockReturnValue({ exec: vi.fn().mockResolvedValue(0) } as any);
+
+      await expect(LeadService.getLeads({ search: 'Dr. Smile (Main+)' })).resolves.toBeDefined();
+
+      const filter = vi.mocked(Lead.find).mock.calls[0]?.[0] as { $or: Array<{ businessName?: RegExp }> };
+      const regex = filter.$or.find((clause) => clause.businessName)!.businessName!;
+      expect(regex.test('dr. smile (main+) clinic')).toBe(true);
+      expect(regex.test('Dr5 Smile Main')).toBe(false);
+      expect(regex.flags).toContain('i');
+    });
+  });
+
+  describe('getLeadStats (REV-43)', () => {
+    it('should total the per-status counts from the aggregation', async () => {
+      vi.spyOn(Lead, 'aggregate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue([
+          { _id: 'QUEUED', count: 30 },
+          { _id: 'NEEDS_APPROVAL', count: 8 },
+          { _id: 'SENT', count: 3 },
+        ]),
+      } as any);
+
+      const stats = await LeadService.getLeadStats();
+
+      expect(Lead.aggregate).toHaveBeenCalledWith([{ $group: { _id: '$status', count: { $sum: 1 } } }]);
+      expect(stats).toEqual({ total: 41, byStatus: { QUEUED: 30, NEEDS_APPROVAL: 8, SENT: 3 } });
+    });
+
+    it('should count leads without a status in the total only', async () => {
+      vi.spyOn(Lead, 'aggregate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue([{ _id: null, count: 2 }, { _id: 'QUEUED', count: 1 }]),
+      } as any);
+
+      expect(await LeadService.getLeadStats()).toEqual({ total: 3, byStatus: { QUEUED: 1 } });
+    });
+
+    it('should return zero for an empty pipeline', async () => {
+      vi.spyOn(Lead, 'aggregate').mockReturnValue({ exec: vi.fn().mockResolvedValue([]) } as any);
+
+      expect(await LeadService.getLeadStats()).toEqual({ total: 0, byStatus: {} });
+    });
+  });
+
   describe('getLeads site complexity (REV-38)', () => {
     const mockList = () => {
       const mockFind = {

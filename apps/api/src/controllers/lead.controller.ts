@@ -32,6 +32,15 @@ export const getLeads = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+export const getLeadStats = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const stats = await LeadService.getLeadStats();
+    res.status(200).json({ success: true, data: stats });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getLeadById = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await LeadService.getLeadById(req.params['id'] as string);

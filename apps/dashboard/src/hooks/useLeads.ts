@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { apiClient, ILeadItem, KpiMetrics } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
 import { LeadStatus, LlmProviderId } from '@revamp/shared-types';
@@ -9,7 +9,7 @@ export const LEADS_QUERY_KEY = ['leads'];
 export const useLeadsQuery = () => {
   const { searchQuery, selectedStatus, selectedNiche, selectedComplexity } = useLeadFilterStore();
 
-  return useQuery<{ leads: ILeadItem[]; kpi: KpiMetrics }>({
+  return useQuery<{ leads: ILeadItem[]; kpi: KpiMetrics; total: number }>({
     queryKey: [...LEADS_QUERY_KEY, searchQuery, selectedStatus, selectedNiche, selectedComplexity],
     queryFn: () =>
       apiClient.getLeads({
@@ -19,6 +19,8 @@ export const useLeadsQuery = () => {
         complexity: selectedComplexity,
       }),
     refetchInterval: 10000, // Background poll every 10 seconds for live worker updates
+    // Search runs on the server now (REV-43); keep the board on screen while the next result loads
+    placeholderData: keepPreviousData,
   });
 };
 

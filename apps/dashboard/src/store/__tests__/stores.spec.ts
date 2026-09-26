@@ -55,6 +55,27 @@ describe('Zustand Dashboard Stores', () => {
       expect(useLeadFilterStore.getState().pageSize).toBe(25);
     });
 
+    it('should return the table to the first page when any filter changes (REV-43)', () => {
+      const store = useLeadFilterStore.getState();
+      const setters: Array<() => void> = [
+        () => store.setSearchQuery('dental'),
+        () => store.setSelectedStatus('NEEDS_APPROVAL'),
+        () => store.setSelectedNiche('dental'),
+        () => store.setSelectedComplexity('ONE_PAGE_BROCHURE'),
+      ];
+      for (const applyFilter of setters) {
+        useLeadFilterStore.getState().setPage(3);
+        applyFilter();
+        expect(useLeadFilterStore.getState().page).toBe(0);
+      }
+    });
+
+    it('should keep the page when only the page size changes', () => {
+      useLeadFilterStore.getState().setPage(2);
+      useLeadFilterStore.getState().setPageSize(25);
+      expect(useLeadFilterStore.getState().page).toBe(2);
+    });
+
     it('should update the site complexity filter (REV-38)', () => {
       useLeadFilterStore.getState().setSelectedComplexity('ONE_PAGE_BROCHURE');
       expect(useLeadFilterStore.getState().selectedComplexity).toBe('ONE_PAGE_BROCHURE');

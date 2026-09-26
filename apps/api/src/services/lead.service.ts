@@ -1,4 +1,4 @@
-import { LeadSource, SiteComplexityClass } from '@revamp/shared-types';
+import { ILeadStats, LeadSource, SiteComplexityClass } from '@revamp/shared-types';
 import {
   CreateLeadDto,
   MvpCompletenessReportDto,
@@ -24,7 +24,26 @@ export interface GetLeadsQuery {
 /** One-page brochure sites are the easiest to replace, so they lead the list; newest first within (REV-38) */
 export const LEAD_LIST_SORT = { onePageBrochure: -1, createdAt: -1 } as const;
 
+const escapeRegex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 export class LeadService {
+  /**
+   * Counts every lead by status, regardless of list filters, for the dashboard KPI cards (REV-43)
+   */
+  static async getLeadStats(): Promise<ILeadStats> {
+    const rows: Array<{ _id: string | null; count: number }> = await Lead.aggregate([
+      { $group: { _id: '$status', count: { $sum: 1 } } },
+    ]).exec();
+
+    const byStatus: ILeadStats['byStatus'] = {};
+    let total = 0;
+    for (const row of rows) {
+      total += row.count;
+      if (row._id) byStatus[row._id as keyof ILeadStats['byStatus']] = row.count;
+    }
+    return { total, byStatus };
+  }
+
   /**
    * Creates a new lead, creates initial audit record, and enqueues audit job
    */
@@ -104,7 +123,8 @@ export class LeadService {
     }
 
     if (query.search) {
-      const searchRegex = new RegExp(query.search, 'i');
+      // The operator types plain text; escape it so "(" or "+" cannot break the regex (REV-43)
+      const searchRegex = new RegExp(escapeRegex(query.search), 'i');
       filter['$or'] = [
         { businessName: searchRegex },
         { domain: searchRegex },
