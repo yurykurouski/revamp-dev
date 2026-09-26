@@ -157,6 +157,7 @@ export const StartDiscoverySchema = z
   });
 
 export type StartDiscoveryDto = z.infer<typeof StartDiscoverySchema>;
+export type StartDiscoveryInput = z.input<typeof StartDiscoverySchema>;
 
 /**
  * A business listing normalised from a maps provider; validated before it becomes a lead

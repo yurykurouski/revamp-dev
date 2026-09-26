@@ -1,5 +1,10 @@
-import { QuickAddLeadInput, QuickAddLeadSchema } from '@revamp/validation';
-import { LeadStatus, NicheType } from '@revamp/shared-types';
+import {
+  QuickAddLeadInput,
+  QuickAddLeadSchema,
+  StartDiscoveryInput,
+  StartDiscoverySchema,
+} from '@revamp/validation';
+import { IDiscoveryJobStatus, LeadStatus, NicheType } from '@revamp/shared-types';
 
 export interface ILeadItem {
   id: string;
@@ -574,7 +579,48 @@ export const apiClient = {
     }
     return { success: true, status: 'GENERATING' };
   },
+
+  /**
+   * Queues a maps-provider search that imports local businesses as leads (REV-26/27)
+   */
+  async startDiscovery(input: StartDiscoveryInput): Promise<{ jobId: string }> {
+    const validated = StartDiscoverySchema.parse(input);
+    const res = await fetch(`${API_BASE_URL}/discovery`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validated),
+    });
+    const data = await readDataOrThrow<{ jobId: string }>(res);
+    return { jobId: data.jobId };
+  },
+
+  /**
+   * Polls a discovery job for its state and import summary
+   */
+  async getDiscoveryStatus(jobId: string): Promise<IDiscoveryJobStatus> {
+    const res = await fetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}`, {
+      headers: { Accept: 'application/json' },
+    });
+    return readDataOrThrow<IDiscoveryJobStatus>(res);
+  },
 };
+
+/** Returns the `data` of a JSON API response, turning non-2xx responses into an Error with the server's message */
+async function readDataOrThrow<T>(res: Response): Promise<T> {
+  let body: { message?: string; errors?: Array<{ message?: string }>; data?: T } | null = null;
+  try {
+    body = await res.json();
+  } catch {
+    // Non-JSON body; fall through to the status-based message
+  }
+  if (!res.ok) {
+    throw new Error(body?.errors?.[0]?.message || body?.message || `Server error (${res.status})`);
+  }
+  if (body?.data === undefined) {
+    throw new Error('Malformed server response');
+  }
+  return body.data;
+}
 
 export interface IMvpProjectDetail {
   id?: string;

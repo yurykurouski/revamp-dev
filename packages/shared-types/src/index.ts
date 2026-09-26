@@ -336,6 +336,28 @@ export interface IDiscoveryJobResult {
   leadIds: string[];
 }
 
+/** BullMQ job states as reported by GET /api/v1/discovery/:jobId */
+export type DiscoveryJobState =
+  | 'waiting'
+  | 'waiting-children'
+  | 'delayed'
+  | 'prioritized'
+  | 'active'
+  | 'completed'
+  | 'failed'
+  | 'unknown';
+
+export interface IDiscoveryJobStatus {
+  jobId: string;
+  state: DiscoveryJobState;
+  params: IDiscoveryJobData;
+  result: IDiscoveryJobResult | null;
+  error: string | null;
+  attemptsMade: number;
+  createdAt: string;
+  finishedAt: string | null;
+}
+
 export interface IAiGenerationJobData {
   leadId: string;
   auditId: string;

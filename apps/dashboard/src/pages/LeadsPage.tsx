@@ -25,6 +25,7 @@ import { useLeadsQuery } from '../hooks/useLeads.js';
 import { KanbanBoard } from '../components/KanbanBoard.js';
 import { LeadsDataGrid } from '../components/LeadsDataGrid.js';
 import { AddLeadModal } from '../components/AddLeadModal.js';
+import { DiscoveryModal } from '../components/DiscoveryModal.js';
 import { SideBySideInspectorModal } from '../components/SideBySideInspectorModal.js';
 import { LeadStatus, NicheType } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
@@ -214,6 +215,9 @@ export const LeadsPage: React.FC = () => {
 
       {/* Quick Add Lead Modal Dialog */}
       <AddLeadModal />
+
+      {/* Maps-provider business discovery (REV-27) */}
+      <DiscoveryModal />
 
       {/* Side-by-Side Split Screen Inspector Dialog */}
       <SideBySideInspectorModal />

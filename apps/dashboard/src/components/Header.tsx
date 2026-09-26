@@ -17,6 +17,7 @@ import {
 import TranslateIcon from '@mui/icons-material/Translate';
 import { useTranslation } from 'react-i18next';
 import AddIcon from '@mui/icons-material/Add';
+import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import BoltIcon from '@mui/icons-material/Bolt';
 import LightModeIcon from '@mui/icons-material/LightMode';
 import DarkModeIcon from '@mui/icons-material/DarkMode';
@@ -25,11 +26,13 @@ import TableRowsIcon from '@mui/icons-material/TableRows';
 import { useThemeStore } from '../store/useThemeStore.js';
 import { useLeadFilterStore, ViewMode } from '../store/useLeadFilterStore.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
+import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import { AppLanguage, LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/languages.js';
 
 export const Header: React.FC = () => {
   const { mode, toggleTheme } = useThemeStore();
   const { viewMode, setViewMode, openAddModal } = useLeadFilterStore();
+  const openDiscovery = useDiscoveryStore((s) => s.open);
   const { language, setLanguage } = useLanguageStore();
   const { t } = useTranslation();
 
@@ -56,7 +59,7 @@ export const Header: React.FC = () => {
       <Toolbar sx={{ justifyContent: 'space-between', px: 3, minHeight: 68 }}>
         {/* Left branding / title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary' }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary', whiteSpace: 'nowrap' }}>
             {t('header.title')}
           </Typography>
           <Chip
@@ -65,7 +68,8 @@ export const Header: React.FC = () => {
             size="small"
             color="primary"
             variant="outlined"
-            sx={{ fontWeight: 600 }}
+            // Static badge; gives way to the action buttons on narrower screens
+            sx={{ fontWeight: 600, display: { xs: 'none', xl: 'inline-flex' } }}
           />
         </Box>
 
@@ -98,7 +102,7 @@ export const Header: React.FC = () => {
               <Tooltip title={t('header.kanbanBoard')}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <ViewKanbanIcon sx={{ fontSize: 18 }} />
-                  <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                  <Typography variant="caption" sx={{ display: { xs: 'none', xl: 'inline' } }}>
                     {t('header.kanban')}
                   </Typography>
                 </Box>
@@ -108,7 +112,7 @@ export const Header: React.FC = () => {
               <Tooltip title={t('header.leadsTableTooltip')}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                   <TableRowsIcon sx={{ fontSize: 18 }} />
-                  <Typography variant="caption" sx={{ display: { xs: 'none', sm: 'inline' } }}>
+                  <Typography variant="caption" sx={{ display: { xs: 'none', xl: 'inline' } }}>
                     {t('header.table')}
                   </Typography>
                 </Box>
@@ -116,13 +120,30 @@ export const Header: React.FC = () => {
             </ToggleButton>
           </ToggleButtonGroup>
 
+          {/* Local business discovery from maps providers (REV-27) */}
+          <Tooltip title={t('header.findBusinesses')}>
+            <Button
+              variant="outlined"
+              color="primary"
+              onClick={openDiscovery}
+              aria-label={t('header.findBusinesses')}
+              sx={{ px: 1.5, py: 0.9, minWidth: 0, gap: 1, fontWeight: 600, whiteSpace: 'nowrap' }}
+            >
+              <TravelExploreIcon sx={{ fontSize: 20 }} />
+              {/* Icon-only until there is room for the label next to the other header controls */}
+              <Box component="span" sx={{ display: { xs: 'none', xl: 'inline' } }}>
+                {t('header.findBusinesses')}
+              </Box>
+            </Button>
+          </Tooltip>
+
           {/* Quick Add Lead Button */}
           <Button
             variant="contained"
             color="primary"
             startIcon={<AddIcon />}
             onClick={openAddModal}
-            sx={{ px: 2, py: 0.9, fontWeight: 600 }}
+            sx={{ px: 2, py: 0.9, fontWeight: 600, whiteSpace: 'nowrap' }}
           >
             {t('header.newAudit')}
           </Button>

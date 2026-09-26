@@ -179,4 +179,83 @@ describe('Dashboard apiClient', () => {
       expect(result.data.primaryColor).toBe('#7C3AED');
     });
   });
+
+  describe('discovery (REV-27)', () => {
+    const jsonResponse = (body: unknown, status = 200) =>
+      ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('startDiscovery should POST the validated, defaulted payload and return the job id', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonResponse({ success: true, data: { jobId: 'disc-1', params: {} } }, 202),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await apiClient.startDiscovery({ niche: 'dental', location: '  Vilnius ' });
+
+      expect(result).toEqual({ jobId: 'disc-1' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toMatch(/\/discovery$/);
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body)).toEqual({ provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 20 });
+    });
+
+    it('startDiscovery should reject invalid input without calling the API', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(apiClient.startDiscovery({ niche: 'other', location: 'Vilnius' })).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('startDiscovery should surface the server validation message', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonResponse({ success: false, message: 'Validation Error', errors: [{ message: 'Location too short' }] }, 400),
+        ),
+      );
+      await expect(apiClient.startDiscovery({ niche: 'dental', location: 'Riga' })).rejects.toThrow('Location too short');
+    });
+
+    it('getDiscoveryStatus should return the job status and encode the id', async () => {
+      const status = {
+        jobId: 'a/b',
+        state: 'completed',
+        params: { provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 3 },
+        result: { found: 9, created: 3, skippedNoWebsite: 0, skippedDuplicate: 6, skippedInvalid: 0, leadIds: ['1', '2', '3'] },
+        error: null,
+        attemptsMade: 1,
+        createdAt: '2026-09-26T14:58:31.234Z',
+        finishedAt: '2026-09-26T14:58:32.955Z',
+      };
+      const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ success: true, data: status }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      expect(await apiClient.getDiscoveryStatus('a/b')).toEqual(status);
+      expect(fetchMock.mock.calls[0][0]).toMatch(/\/discovery\/a%2Fb$/);
+    });
+
+    it('getDiscoveryStatus should surface 404 messages and fall back to the status code', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonResponse({ success: false, message: 'Discovery job not found' }, 404)),
+      );
+      await expect(apiClient.getDiscoveryStatus('missing')).rejects.toThrow('Discovery job not found');
+
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue({ ok: false, status: 502, json: async () => { throw new Error('not json'); } }),
+      );
+      await expect(apiClient.getDiscoveryStatus('x')).rejects.toThrow('Server error (502)');
+    });
+
+    it('getDiscoveryStatus should reject a 200 response without data', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonResponse({ success: true })));
+      await expect(apiClient.getDiscoveryStatus('x')).rejects.toThrow('Malformed server response');
+    });
+  });
 });
