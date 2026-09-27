@@ -8,6 +8,7 @@ import {
   filterQueue,
   formatAge,
   isLeadBucket,
+  keepSelectedLead,
   isTypingTarget,
   leadScoreBand,
   NO_QUEUE_FILTERS,
@@ -74,6 +75,44 @@ describe('queue selection (REV-79)', () => {
   it('selects nothing when the list empties', () => {
     expect(resolveSelection([], 'a', ['a'])).toBeNull();
     expect(resolveSelection([], null, [])).toBeNull();
+  });
+
+  describe('keeping the selected lead listed (REV-86)', () => {
+    const a = at('2026-09-25T10:00:00Z', 'a');
+    const b = at('2026-09-26T10:00:00Z', 'b');
+    const c = at('2026-09-27T10:00:00Z', 'c');
+    const all = [a, b, c];
+    const ids = (leads: readonly { id: string }[]) => leads.map((l) => l.id);
+
+    it('keeps the selected lead a worker moved out of the bucket, in its sorted place', () => {
+      const shown = [a, c];
+      const kept = keepSelectedLead(shown, all, 'b', ['a', 'b', 'c'], null, 'needs_you');
+      expect(ids(kept)).toEqual(['a', 'b', 'c']);
+      expect(resolveSelection(ids(kept), 'b', ['a', 'b', 'c'])).toBe('b');
+      expect(ids(keepSelectedLead(shown, all, 'b', ['c', 'b', 'a'], null, 'in_progress'))).toEqual(['c', 'b', 'a']);
+    });
+
+    it('returns the list untouched when the selected lead is still in it', () => {
+      const shown = [a, b, c];
+      expect(keepSelectedLead(shown, all, 'b', ['a', 'b', 'c'], null, 'needs_you')).toBe(shown);
+    });
+
+    it('lets a lead the operator decided on leave, so the next one is selected', () => {
+      const shown = [a, c];
+      const kept = keepSelectedLead(shown, all, 'b', ['a', 'b', 'c'], 'b', 'needs_you');
+      expect(kept).toBe(shown);
+      expect(resolveSelection(ids(kept), 'b', ['a', 'b', 'c'])).toBe('c');
+    });
+
+    it('keeps only a lead that was shown and still exists', () => {
+      const shown = [a, c];
+      // A link to a lead of another bucket: never shown here
+      expect(keepSelectedLead(shown, all, 'b', ['a', 'c'], null, 'needs_you')).toBe(shown);
+      // Deleted
+      expect(keepSelectedLead(shown, [a, c], 'b', ['a', 'b', 'c'], null, 'needs_you')).toBe(shown);
+      // Nothing selected
+      expect(keepSelectedLead(shown, all, null, ['a', 'b', 'c'], null, 'needs_you')).toBe(shown);
+    });
   });
 
   it('steps through the list and stops at its ends', () => {

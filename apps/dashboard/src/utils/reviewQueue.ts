@@ -33,7 +33,7 @@ export function sortQueue<T extends { createdAt: string }>(leads: readonly T[], 
 
 /**
  * The lead to select in the list `ids`. The requested lead stays selected while it is in the list. When
- * it leaves (approved, rejected, or moved on by a worker), the lead that followed it in the previous
+ * it leaves (approved or rejected; see `keepSelectedLead` for one a worker moved on), the lead that followed it in the previous
  * list takes its place, else the one before it, so the operator moves on without losing their place.
  * With nothing requested, or a lead that was never in the list, the first lead is selected.
  */
@@ -54,6 +54,29 @@ export function resolveSelection(
     if (before) return before;
   }
   return ids[0] ?? null;
+}
+
+/**
+ * A bucket's leads, with the operator's selected lead kept in them (REV-86). A lead the operator is
+ * looking at stays listed, in its sorted place, while a worker or their own regenerate moves it to
+ * another bucket (Needs you → In progress → Needs you), so the review never swaps out from under them.
+ * Only a lead that was already shown is kept: a link to a lead of another bucket still selects the
+ * first one. `released` is a lead the operator decided on (approved, rejected); it leaves the list as
+ * usual and the next lead is selected. A lead gone from the leads altogether leaves too. Quick filters
+ * apply after this, so a filter the operator picks still hides the lead.
+ */
+export function keepSelectedLead<T extends { id: string; createdAt: string }>(
+  shown: readonly T[],
+  allLeads: readonly T[],
+  requested: string | null,
+  previousIds: readonly string[],
+  released: string | null,
+  bucket: LeadBucket,
+): readonly T[] {
+  if (!requested || requested === released || !previousIds.includes(requested)) return shown;
+  if (shown.some((lead) => lead.id === requested)) return shown;
+  const lead = allLeads.find((l) => l.id === requested);
+  return lead ? sortQueue([...shown, lead], bucket) : shown;
 }
 
 /** The lead `delta` places from the selected one, clamped to the list; the first lead when none is selected */

@@ -41,6 +41,7 @@ import {
   filterQueue,
   formatAge,
   isLeadBucket,
+  keepSelectedLead,
   NO_QUEUE_FILTERS,
   queueStatusOptions,
   resolveSelection,
@@ -176,7 +177,8 @@ const FilterChips = <T extends string>({ label, group, options, picked, optionLa
  * Review queue home (REV-79): the leads in four buckets (Needs you, In progress, Outreach, Closed), a
  * 380px list of the current bucket, and the selected lead's review (REV-77) next to it. The bucket and
  * the selected lead live in the URL (`?bucket=…&lead=…`), so a reload keeps the operator's place. When
- * the selected lead leaves the bucket (approved, rejected, moved on by a worker) the next one is selected.
+ * the operator approves or rejects the selected lead the next one is selected; a lead a worker moves to
+ * another bucket while it is selected stays listed and selected until the operator moves on (REV-86).
  * J / K move through the list and Enter opens the lead as its own page. Quick filters (REV-80) narrow the
  * bucket's list by status and score band; they belong to the bucket and reset when it changes.
  */
@@ -196,10 +198,16 @@ export const ReviewQueuePage: React.FC = () => {
   const linkedLeadBucket = requestedLead ? leadBucket(allLeads.find((l) => l.id === requestedLead)?.status ?? '') : undefined;
   const bucket: LeadBucket = isLeadBucket(bucketParam) ? bucketParam : (linkedLeadBucket ?? DEFAULT_QUEUE_BUCKET);
 
-  const bucketLeads = useMemo(
+  // The list as last shown, to find the lead that followed one that just left it
+  const shownIds = useRef<string[]>([]);
+  // The lead the operator approved or rejected: it may leave the list, unlike one a worker moved on
+  const [decidedId, setDecidedId] = useState<string | null>(null);
+  const sortedBucketLeads = useMemo(
     () => sortQueue(allLeads.filter((lead) => matchesBucket(lead.status, bucket)), bucket),
     [allLeads, bucket],
   );
+  // The selected lead stays in its bucket's list while a worker moves it elsewhere (REV-86)
+  const bucketLeads = keepSelectedLead(sortedBucketLeads, allLeads, requestedLead, shownIds.current, decidedId, bucket);
 
   // Filters belong to the bucket they were set in: a new bucket, by tab or by URL, starts unfiltered
   const [filterState, setFilterState] = useState<{ bucket: LeadBucket; filters: QueueFilters }>({ bucket, filters: NO_QUEUE_FILTERS });
@@ -214,8 +222,6 @@ export const ReviewQueuePage: React.FC = () => {
   const leads = useMemo(() => filterQueue(bucketLeads, filters), [bucketLeads, filters]);
   const ids = useMemo(() => leads.map((lead) => lead.id), [leads]);
 
-  // The list as last shown, to find the lead that followed one that just left it
-  const shownIds = useRef<string[]>([]);
   const selectedId = data ? resolveSelection(ids, requestedLead, shownIds.current) : requestedLead;
   const selectedLead = leads.find((lead) => lead.id === selectedId);
 
@@ -262,7 +268,9 @@ export const ReviewQueuePage: React.FC = () => {
   });
 
   const handleDecision = (decision: ReviewDecision) => {
-    if (selectedLead) setNotice(t(`queue.${decision}`, { name: selectedLead.businessName }));
+    if (!selectedLead) return;
+    setDecidedId(selectedLead.id);
+    setNotice(t(`queue.${decision}`, { name: selectedLead.businessName }));
   };
 
   // Ages are relative to the last time the list loaded
