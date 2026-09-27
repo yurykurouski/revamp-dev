@@ -33,7 +33,7 @@ Before implementing tasks, refer to the specialized documents in `../Revamp-docs
    * Interaction diagrams (Sequence & State diagrams), Docker topology, and S3/MinIO storage layout.
 
 2. [**`spec.md`**](../Revamp-docs/spec.md) — **Software Requirements Specification (SRS):**
-   * Lead lifecycle (`LeadStatus`: `QUEUED` ➔ `AUDITING` ➔ `AUDITED` ➔ `GENERATING` ➔ `NEEDS_APPROVAL` ➔ `APPROVED` ➔ `DISPATCHED` ➔ `OPENED` ➔ `CLICKED` ➔ `REPLIED` ➔ `REJECTED`).
+   * Lead lifecycle (`LeadStatus`: `QUEUED` ➔ `AUDITING` ➔ `AUDITED` ➔ `GENERATING` ➔ `NEEDS_APPROVAL` ➔ `SCHEDULED` ➔ `SENT` ➔ `OPENED` ➔ `CLICKED` ➔ `ENGAGED`, plus `AUDIT_FAILED`, `REJECTED` and `UNSUBSCRIBED`; the allowed transitions are `LEAD_TRANSITIONS` in `@revamp/validation`, see §3.2.8).
    * REST API endpoint specifications (request/response DTOs, status codes, validation rules).
    * Non-functional requirements (timeouts, Playwright memory thresholds, security policies).
 
