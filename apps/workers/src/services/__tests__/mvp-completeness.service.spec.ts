@@ -72,6 +72,22 @@ describe('MvpCompletenessService (REV-36)', () => {
       expect(findPhoneInText('abc', 'abc')).toBeUndefined();
     });
 
+    it('allows up to three separators between digits, but no letters (REV-42)', () => {
+      expect(findPhoneInText('8200175', 'Call 8 - 200 175')).toBe('8 - 200 175');
+      expect(findPhoneInText('8200175', 'Call 8 -- 200 175')).toBeUndefined();
+      expect(findPhoneInText('8200175', 'Call 8a200175')).toBeUndefined();
+      expect(findPhoneInText('8200175', 'Call 8\u{1F4DE}200175')).toBe('8\u{1F4DE}200175');
+      expect(findPhoneInText('8200175', 'Call 88200175')).toBe('8200175');
+      expect(findPhoneInText('8200175', 'Call 8200175٣')).toBeUndefined();
+    });
+
+    it('stays fast for many distinct numbers (REV-42)', () => {
+      // A per-number Unicode regex took ~0.6 s to compile for each number, failing tests on a busy machine
+      const start = performance.now();
+      for (let i = 0; i < 20; i++) findPhoneInText(`+48 22 555 12 ${10 + i}`, 'Warszawa ul. Modlińska 330 B kom. 602 34 24 00');
+      expect(performance.now() - start).toBeLessThan(1000);
+    });
+
     it('compares emails case-insensitively and strips mailto: and query strings', () => {
       expect(normalizeEmail('MAILTO:Info@Smile.PL?subject=Hi')).toBe('info@smile.pl');
       expect(normalizeEmail('  Kontakt@Firma.com ')).toBe('kontakt@firma.com');
