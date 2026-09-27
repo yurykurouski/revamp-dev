@@ -8,7 +8,7 @@ import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { bentoTemplateService } from '../services/template.service.js';
+import { MvpPaletteOverride, bentoTemplateService } from '../services/template.service.js';
 import { buildLayoutSignals, selectMvpLayout } from '../services/layout-selection.service.js';
 import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
@@ -78,13 +78,31 @@ async function publishMvp(
   return { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl };
 }
 
-/** How many times a relayout re-renders when the operator keeps switching while it publishes */
+/** How many times a relayout re-renders when the operator keeps changing the MVP while it publishes */
 const MAX_RELAYOUT_PASSES = 3;
 
+type SavedMvpDesign = { layout?: { variant?: MvpLayoutVariant } | null; colorPalette?: MvpPaletteOverride | null };
+
+/** The layout and palette the operator saved on the MVP (Bento for an MVP saved without a layout) */
+const savedDesign = (project: SavedMvpDesign) => ({
+  variant: (project.layout?.variant ?? 'bento') as MvpLayoutVariant,
+  palette: {
+    primary: project.colorPalette?.primary || undefined,
+    secondary: project.colorPalette?.secondary || undefined,
+    accent: project.colorPalette?.accent || undefined,
+  },
+});
+
+const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof savedDesign>) =>
+  a.variant === b.variant &&
+  a.palette.primary === b.palette.primary &&
+  a.palette.secondary === b.palette.secondary &&
+  a.palette.accent === b.palette.accent;
+
 /**
- * Re-publishes an existing MVP in the layout the operator saved (REV-84): the stored copy rendered by
- * the deterministic template, with no LLM call, no completeness re-check and no lead status change,
- * so the page a lead is sent is the one the operator approved.
+ * Re-publishes an existing MVP in the layout (REV-84) and palette (REV-90) the operator saved: the
+ * stored copy rendered by the deterministic template, with no LLM call, no completeness re-check and
+ * no lead status change, so the page a lead is sent is the one the operator approved.
  */
 async function relayoutMvp(job: Job<IDeployJobData>) {
   const { leadId } = job.data;
@@ -94,7 +112,7 @@ async function relayoutMvp(job: Job<IDeployJobData>) {
   }
   // A regeneration started since, or outreach went out: that run owns the bundle now
   if (!canChangeMvpLayout(lead.status)) {
-    const reason = `Lead ${leadId} is ${lead.status}; its MVP layout is no longer re-published.`;
+    const reason = `Lead ${leadId} is ${lead.status}; its MVP layout and palette are no longer re-published.`;
     console.warn(`[DeployWorker] ${reason}`);
     return { success: false, skipped: true, leadId, reason };
   }
@@ -111,22 +129,31 @@ async function relayoutMvp(job: Job<IDeployJobData>) {
   const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>;
   const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
   let published: Awaited<ReturnType<typeof publishMvp>> | undefined;
-  let variant: MvpLayoutVariant = project.layout?.variant ?? 'bento';
+  let design = savedDesign(project);
 
-  // The saved layout is read again after each upload: a switch made meanwhile gets its own pass,
-  // so an older job can never leave an outdated layout published
+  // The saved layout and palette are read again after each upload: a change made meanwhile gets its
+  // own pass, so an older job can never leave an outdated look published
   for (let pass = 0; pass < MAX_RELAYOUT_PASSES; pass++) {
-    const html = bentoTemplateService.renderFromAudit(leadData, auditData, project.generatedContent, variant);
+    const html = bentoTemplateService.renderFromAudit(
+      leadData,
+      auditData,
+      project.generatedContent,
+      design.variant,
+      design.palette,
+    );
     published = await publishMvp(project.previewSlug, html, lead, audit);
     const latest = await MvpProject.findById(project._id).exec();
-    const latestVariant: MvpLayoutVariant = latest?.layout?.variant ?? 'bento';
-    if (!latest || latestVariant === variant) break;
+    if (!latest) break;
+    const latestDesign = savedDesign(latest);
+    if (sameDesign(latestDesign, design)) break;
     project = latest;
-    variant = latestVariant;
+    design = latestDesign;
   }
 
-  console.log(`[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${variant} layout`);
-  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: variant, ...published };
+  console.log(
+    `[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${design.variant} layout, primary ${design.palette.primary ?? 'from the audit'}`,
+  );
+  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: design.variant, ...published };
 }
 
 export const createDeployWorker = (): Worker => {

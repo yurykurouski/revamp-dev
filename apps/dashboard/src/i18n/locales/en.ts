@@ -542,6 +542,7 @@ export const en = {
     custom: 'Pick a custom HEX color',
     restore: 'Restore original color ({{color}})',
     reset: 'Reset',
+    locked: 'The palette can be changed only while the MVP awaits review',
   },
   email: {
     variables: {

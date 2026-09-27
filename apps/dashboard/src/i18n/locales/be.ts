@@ -541,6 +541,7 @@ export const be: Translation = {
     custom: 'Выбраць свой HEX-колер',
     restore: 'Вярнуць зыходны колер ({{color}})',
     reset: 'Скінуць',
+    locked: 'Палітру можна змяніць, толькі пакуль MVP чакае праверкі',
   },
   email: {
     variables: {

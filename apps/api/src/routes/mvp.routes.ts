@@ -149,7 +149,8 @@ router.get('/preview/:slug', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// PATCH /mvp/:id/tokens: saves the palette on the MVP record by its _id; the published MVP is not rebuilt
+// PATCH /mvp/:id/tokens: saves the palette on the MVP record by its _id, then the published bundle is
+// re-rendered in it (REV-90), under the same rule as a layout change; no LLM call.
 router.patch(
   '/:id/tokens',
   validateBody(UpdateMvpTokensSchema),
@@ -167,15 +168,39 @@ router.patch(
       if (accentColor) palette['colorPalette.accent'] = accentColor;
 
       // An unknown id used to answer 200 without writing anything (REV-65)
-      const project = await MvpProject.findByIdAndUpdate(id, { $set: palette }, { new: true }).exec();
+      const project = await MvpProject.findById(id).exec();
       if (!project) {
         throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
       }
+      const lead = await Lead.findById(project.leadId).exec();
+      if (!lead) {
+        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
+      }
+      // The published page changes, so the same rule as a layout change applies (HITL)
+      if (!canChangeMvpLayout(lead.status)) {
+        throw new AppError(
+          409,
+          'MVP_PALETTE_CHANGE_NOT_ALLOWED',
+          `The MVP palette cannot be changed while the lead is ${lead.status}`,
+          { status: lead.status },
+        );
+      }
+
+      const saved = await MvpProject.findByIdAndUpdate(id, { $set: palette }, { new: true }).exec();
+      if (!saved) {
+        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
+      }
+
+      await addMvpRelayoutJob({
+        leadId: lead._id.toString(),
+        auditId: saved.auditId.toString(),
+        mvpProjectId: saved._id.toString(),
+      });
 
       res.status(200).json({
         success: true,
-        message: 'Palette saved on the MVP record; the published MVP is not rebuilt',
-        data: project,
+        message: 'Palette saved; the published MVP is being re-rendered in it',
+        data: saved,
       });
     } catch (error) {
       next(error);

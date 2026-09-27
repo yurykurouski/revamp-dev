@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Alert, Box, Button, ButtonGroup, Card, Chip, CircularProgress, IconButton, Snackbar, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -56,9 +56,15 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   const [tokensError, setTokensError] = useState<string | null>(null);
   const liveLayout = useLiveMvpLayout({ lead, mvp, iframeRef });
 
-  useEffect(() => {
-    if (audit?.colorPalette?.primary) setCurrentColor(audit.colorPalette.primary);
-  }, [audit?.colorPalette?.primary]);
+  // The palette saved on the MVP (REV-90), else the audit's brand color. Taken again only when another
+  // MVP version or audit arrives, so a late save response never pulls back a newer pick.
+  const savedPrimary = mvp?.colorPalette?.primary || audit?.colorPalette?.primary;
+  const paletteSource = `${mvpRecordId(mvp) ?? ''}|${mvp?.generatedAt ?? ''}|${audit?.colorPalette?.primary ?? ''}`;
+  const [syncedPaletteSource, setSyncedPaletteSource] = useState<string | null>(null);
+  if (syncedPaletteSource !== paletteSource) {
+    setSyncedPaletteSource(paletteSource);
+    if (savedPrimary) setCurrentColor(savedPrimary);
+  }
 
   const handleColorChange = (newColor: string) => {
     setCurrentColor(newColor);
@@ -222,6 +228,9 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
               originalPrimary={audit?.colorPalette?.primary}
               onColorChange={handleColorChange}
               onReset={handleColorReset}
+              // A palette change re-publishes the MVP, so it follows the layout picker's lock (REV-90)
+              disabled={!liveLayout.canChange || !previewUrl || isPreviewBusy}
+              disabledReason={t('colorPicker.locked')}
             />
             {mvp && (
               <MvpLayoutPicker

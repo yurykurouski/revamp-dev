@@ -26,6 +26,9 @@ interface ColorPickerToolbarProps {
   originalPrimary?: string;
   onColorChange: (color: string) => void;
   onReset: () => void;
+  disabled?: boolean;
+  /** Why the picker is disabled, shown as its tooltip */
+  disabledReason?: string;
 }
 
 export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
@@ -33,11 +36,15 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
   originalPrimary,
   onColorChange,
   onReset,
+  disabled,
+  disabledReason,
 }) => {
   const { t } = useTranslation();
 
-  return (
+  const toolbar = (
     <Box
+      data-testid="color-picker-toolbar"
+      aria-disabled={disabled || undefined}
       sx={{
         display: 'flex',
         alignItems: 'center',
@@ -48,6 +55,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
         border: '1px solid',
         borderColor: 'divider',
         flexWrap: 'wrap',
+        ...(disabled ? { opacity: 0.5, pointerEvents: 'none' } : {}),
       }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
@@ -64,7 +72,9 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
           return (
             <Tooltip key={preset.hex} title={t(`colorPicker.presets.${preset.name}`)}>
               <Box
-                onClick={() => onColorChange(preset.hex)}
+                onClick={() => {
+                  if (!disabled) onColorChange(preset.hex);
+                }}
                 sx={{
                   width: 22,
                   height: 22,
@@ -92,6 +102,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
         <input
           type="color"
           value={currentPrimary}
+          disabled={disabled}
           onChange={(e) => onColorChange(e.target.value)}
           id="brand-color-picker-input"
           style={{
@@ -119,7 +130,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
       </Box>
 
       {/* Reset button if changed */}
-      {originalPrimary && originalPrimary.toLowerCase() !== currentPrimary.toLowerCase() && (
+      {!disabled && originalPrimary && originalPrimary.toLowerCase() !== currentPrimary.toLowerCase() && (
         <Tooltip title={t('colorPicker.restore', { color: originalPrimary })}>
           <Button
             size="small"
@@ -134,5 +145,15 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
         </Tooltip>
       )}
     </Box>
+  );
+
+  return disabled && disabledReason ? (
+    <Tooltip title={disabledReason}>
+      <Box component="span" sx={{ display: 'block' }}>
+        {toolbar}
+      </Box>
+    </Tooltip>
+  ) : (
+    toolbar
   );
 };

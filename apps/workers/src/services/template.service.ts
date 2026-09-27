@@ -13,6 +13,13 @@ import { getSupportedIconNames } from '../templates/icons.js';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { env } from '../config/env.js';
 
+/** The colors saved on an MVP record; any one left out falls back to the audit's brand tokens */
+export interface MvpPaletteOverride {
+  primary?: string;
+  secondary?: string;
+  accent?: string;
+}
+
 export class BentoTemplateService {
   /**
    * Maximum allowed bundle size in bytes (300 KB).
@@ -44,12 +51,14 @@ export class BentoTemplateService {
   /**
    * Convenience helper to construct and render a Bento landing page directly
    * from MongoDB Lead and Audit documents, in the given layout (Bento when omitted, REV-54).
+   * A palette the operator saved on the MVP (REV-90) takes the place of the audit's brand colors.
    */
   public renderFromAudit(
     lead: Partial<ILead>,
     audit?: Partial<IAudit>,
     generatedContent?: Partial<IMvpGeneratedContent>,
     layout?: MvpLayoutVariant,
+    savedPalette?: MvpPaletteOverride,
   ): string {
     const site = audit?.extractedContent;
     // The MVP speaks the original site's language (REV-25)
@@ -100,9 +109,9 @@ export class BentoTemplateService {
       logoUrl,
       monogramSvg: !logoUrl && tokens?.logoUrl?.startsWith('<svg') ? tokens.logoUrl : undefined,
       palette: {
-        primary: tokens?.primaryColor || '#2563eb',
-        secondary: tokens?.secondaryColor || '#1e293b',
-        accent: tokens?.accentColor || tokens?.primaryColor || '#2563eb',
+        primary: savedPalette?.primary || tokens?.primaryColor || '#2563eb',
+        secondary: savedPalette?.secondary || tokens?.secondaryColor || '#1e293b',
+        accent: savedPalette?.accent || tokens?.accentColor || tokens?.primaryColor || '#2563eb',
       },
       contacts: {
         phone: (contacts?.phone || lead.contactPhone)?.slice(0, 30),

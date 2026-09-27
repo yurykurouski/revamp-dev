@@ -528,7 +528,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect(result).toMatchObject({ success: true, relayout: true, layout: 'editorial', mvpProjectId: projectId });
       // Deterministic render of the copy saved on the MVP; the LLM is never involved
       expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledTimes(1);
-      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'editorial');
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'editorial', { primary: undefined, secondary: undefined, accent: undefined });
       expect(findGenerationAudit).toHaveBeenCalledWith(leadId, auditId);
       expect(storageService.uploadHtml).toHaveBeenCalledWith('smile-dental-456789', '<html>editorial</html>', expect.any(String));
       // The banner shows the new look
@@ -547,7 +547,48 @@ describe('DeployWorker (@revamp/workers)', () => {
       vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(legacy) } as any);
 
       await capturedProcessor!(job);
-      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'bento');
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'bento', { primary: undefined, secondary: undefined, accent: undefined });
+    });
+
+    it('renders the palette the operator saved on the MVP (REV-90)', async () => {
+      setUp();
+      const recolored = {
+        ...project('split'),
+        colorPalette: { primary: '#059669', secondary: '#b8c4fe', accent: '#059669' },
+      };
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(recolored) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(recolored) } as any);
+
+      await capturedProcessor!(job);
+
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledTimes(1);
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'split', {
+        primary: '#059669',
+        secondary: '#b8c4fe',
+        accent: '#059669',
+      });
+    });
+
+    it('publishes again when the palette changed while it was publishing (REV-90)', async () => {
+      setUp();
+      const withPrimary = (primary: string) => ({
+        ...project('bento'),
+        colorPalette: { primary, secondary: '#b8c4fe', accent: primary },
+      });
+      vi.mocked(bentoTemplateService.renderFromAudit).mockImplementation(
+        (_lead, _audit, _content, layout, palette) => `<html>${layout} ${palette?.primary}</html>`,
+      );
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(withPrimary('#111111')) } as any);
+      vi.mocked(MvpProject.findById)
+        .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(withPrimary('#222222')) } as any)
+        .mockReturnValue({ exec: vi.fn().mockResolvedValue(withPrimary('#222222')) } as any);
+
+      await capturedProcessor!(job);
+
+      expect(vi.mocked(storageService.uploadHtml).mock.calls.map((call) => call[1])).toEqual([
+        '<html>bento #111111</html>',
+        '<html>bento #222222</html>',
+      ]);
     });
 
     it('publishes again when the operator switched once more while it was publishing', async () => {
