@@ -10,7 +10,8 @@ import { SiteComplexityChip } from './SiteComplexityChip.js';
 import { ScoreChip } from './ScoreChip.js';
 import { AuditFailedActions } from './AuditFailedActions.js';
 import { isAuditFailed } from '../utils/auditFailure.js';
-import { useHitlModalStore } from '../store/useHitlModalStore.js';
+import { useOpenLead } from '../hooks/useOpenLead.js';
+import { LeadLink } from './LeadLink.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useTranslation } from 'react-i18next';
 import { useLanguageStore } from '../store/useLanguageStore.js';
@@ -47,7 +48,7 @@ interface LeadsDataGridProps {
 }
 
 export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }) => {
-  const { openModal } = useHitlModalStore();
+  const openLead = useOpenLead();
   const { page, pageSize, setPage, setPageSize } = useLeadFilterStore();
   const { t } = useTranslation();
   const { language } = useLanguageStore();
@@ -61,7 +62,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
       renderCell: (params: GridRenderCellParams<ILeadItem>) => (
         <Box sx={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', height: '100%' }}>
           <Typography variant="body2" sx={{ fontWeight: 600, color: 'text.primary', lineHeight: 1.2 }}>
-            {params.row.businessName}
+            <LeadLink leadId={params.row.id}>{params.row.businessName}</LeadLink>
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
             <Typography variant="caption" sx={{ color: 'text.secondary' }}>
@@ -189,7 +190,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                 color="warning"
                 size="small"
                 startIcon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
-                onClick={() => openModal(params.row.id, params.row.auditId || `audit-${params.row.id}`)}
+                onClick={() => openLead(params.row.id)}
               >
                 {t('grid.hitlReview')}
               </Button>
@@ -229,6 +230,12 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
         }}
         pageSizeOptions={[5, 10, 25]}
         disableRowSelectionOnClick
+        // A row opens the lead (REV-76); links and buttons inside it keep their own action
+        onRowClick={(params, event) => {
+          if ((event.target as HTMLElement).closest('a, button')) return;
+          openLead(String(params.id));
+        }}
+        sx={{ '& .MuiDataGrid-row': { cursor: 'pointer' } }}
         autoHeight
       />
     </Box>

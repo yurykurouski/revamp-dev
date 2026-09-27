@@ -30,7 +30,7 @@ import {
   visibleCandidates,
 } from '../hooks/useDiscovery.js';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
-import { useHitlModalStore } from '../store/useHitlModalStore.js';
+import { useOpenLead } from '../hooks/useOpenLead.js';
 
 const STATUS_ORDER: DiscoveryCandidateStatus[] = ['new', 'existing_lead', 'duplicate', 'no_website', 'invalid'];
 
@@ -57,7 +57,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
   const { t } = useTranslation();
   const importMutation = useImportDiscoveryMutation(jobId);
   const closeDiscovery = useDiscoveryStore((s) => s.close);
-  const openLead = useHitlModalStore((s) => s.openModal);
+  const openLead = useOpenLead();
   const { candidates } = result;
 
   const counts = useMemo(() => countCandidates(candidates), [candidates]);

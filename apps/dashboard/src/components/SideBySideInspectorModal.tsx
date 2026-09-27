@@ -59,7 +59,12 @@ import { isDashboardNiche } from '../i18n/niches.js';
 /** Shown for a metric the audit did not measure */
 const NOT_MEASURED = '—';
 
-export const SideBySideInspectorModal: React.FC = () => {
+interface SideBySideInspectorModalProps {
+  /** Called after the inspector closes; the lead route uses it to leave `/leads/:id` (REV-76) */
+  onClose?: () => void;
+}
+
+export const SideBySideInspectorModal: React.FC<SideBySideInspectorModalProps> = ({ onClose }) => {
   const {
     isOpen,
     selectedLeadId,
@@ -67,11 +72,16 @@ export const SideBySideInspectorModal: React.FC = () => {
     activeBreakpoint,
     originalScreenTab,
     activeTab,
-    closeModal,
+    closeModal: closeStore,
     setBreakpoint,
     setOriginalScreenTab,
     setActiveTab,
   } = useHitlModalStore();
+
+  const closeModal = () => {
+    closeStore();
+    onClose?.();
+  };
 
   const { data: leadsData } = useLeadsQuery();
   const { t } = useTranslation();

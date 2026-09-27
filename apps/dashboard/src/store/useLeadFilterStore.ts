@@ -1,12 +1,14 @@
 import { create } from 'zustand';
-import { LeadStatus, NicheType } from '@revamp/shared-types';
+import { NicheType } from '@revamp/shared-types';
 import { ComplexityFilter } from '../utils/siteComplexity.js';
+import { BucketFilter } from '../utils/leadStages.js';
 
 export type ViewMode = 'kanban' | 'table';
 
 interface LeadFilterState {
   searchQuery: string;
-  selectedStatus: LeadStatus | 'ALL';
+  /** Review-queue bucket (REV-76); replaces the single-status filter */
+  selectedBucket: BucketFilter;
   selectedNiche: NicheType | 'ALL';
   /** Site complexity class from the audit; ONE_PAGE_BROCHURE shows the easiest targets (REV-38) */
   selectedComplexity: ComplexityFilter;
@@ -16,7 +18,7 @@ interface LeadFilterState {
   isAddModalOpen: boolean;
 
   setSearchQuery: (query: string) => void;
-  setSelectedStatus: (status: LeadStatus | 'ALL') => void;
+  setSelectedBucket: (bucket: BucketFilter) => void;
   setSelectedNiche: (niche: NicheType | 'ALL') => void;
   setSelectedComplexity: (complexity: ComplexityFilter) => void;
   setViewMode: (mode: ViewMode) => void;
@@ -29,7 +31,7 @@ interface LeadFilterState {
 
 export const useLeadFilterStore = create<LeadFilterState>((set) => ({
   searchQuery: '',
-  selectedStatus: 'ALL',
+  selectedBucket: 'ALL',
   selectedNiche: 'ALL',
   selectedComplexity: 'ALL',
   viewMode: 'kanban',
@@ -39,7 +41,7 @@ export const useLeadFilterStore = create<LeadFilterState>((set) => ({
 
   // A new filter yields a new result set, so the table goes back to its first page (REV-43)
   setSearchQuery: (query) => set({ searchQuery: query, page: 0 }),
-  setSelectedStatus: (status) => set({ selectedStatus: status, page: 0 }),
+  setSelectedBucket: (bucket) => set({ selectedBucket: bucket, page: 0 }),
   setSelectedNiche: (niche) => set({ selectedNiche: niche, page: 0 }),
   setSelectedComplexity: (complexity) => set({ selectedComplexity: complexity, page: 0 }),
   setViewMode: (mode) => set({ viewMode: mode }),
@@ -50,7 +52,7 @@ export const useLeadFilterStore = create<LeadFilterState>((set) => ({
   resetFilters: () =>
     set({
       searchQuery: '',
-      selectedStatus: 'ALL',
+      selectedBucket: 'ALL',
       selectedNiche: 'ALL',
       selectedComplexity: 'ALL',
       page: 0,

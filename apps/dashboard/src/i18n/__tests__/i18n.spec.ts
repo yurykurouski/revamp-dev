@@ -16,7 +16,7 @@ describe('i18next wiring (REV-24)', () => {
   it('follows language changes made through the store', () => {
     useLanguageStore.getState().setLanguage('pl');
     expect(i18n.language).toBe('pl');
-    expect(i18n.t('header.newAudit')).toBe('Nowy audyt strony');
+    expect(i18n.t('topBar.addLead')).toBe('Dodaj lead');
 
     useLanguageStore.getState().setLanguage('be');
     expect(i18n.t('inspector.violations', { count: 3 })).toBe('Парушэнняў: 3');

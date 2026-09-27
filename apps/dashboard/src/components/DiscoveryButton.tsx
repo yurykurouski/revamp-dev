@@ -52,8 +52,8 @@ export const DiscoveryButton: React.FC<DiscoveryButtonProps> = ({ indicator, new
         ) : (
           icon
         )}
-        {/* Icon-only until there is room for the label next to the other header controls */}
-        <Box component="span" sx={{ display: { xs: 'none', xl: 'inline' } }}>
+        {/* Icon-only on phone widths */}
+        <Box component="span" sx={{ display: { xs: 'none', sm: 'inline' } }}>
           {t('header.findBusinesses')}
         </Box>
       </Button>

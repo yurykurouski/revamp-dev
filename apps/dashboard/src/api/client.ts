@@ -52,14 +52,6 @@ export interface ILeadItem {
   createdAt: string;
 }
 
-export interface KpiMetrics {
-  totalLeads: number;
-  needsApproval: number;
-  scheduled: number;
-  sent: number;
-  engaged: number;
-}
-
 // Initial realistic dataset including the real Listonosz target from REV-7 -> REV-13
 const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined' && (window as unknown as { __REVAMP_API_URL__?: string }).__REVAMP_API_URL__) {
@@ -187,27 +179,23 @@ export async function fetchAllLeadPages(filters?: LeadListFilters): Promise<{ le
   return { leads, total };
 }
 
-/** Pipeline-wide counts by status, independent of the list filters (REV-43) */
+/** Pipeline-wide counts by status, independent of the list filters (REV-43); feeds the rail's Needs-you badge (REV-76) */
 export async function fetchLeadStats(): Promise<ILeadStats> {
   const res = await fetch(`${API_BASE_URL}/leads/stats`, { headers: { Accept: 'application/json' } });
   return readDataOrThrow<ILeadStats>(res);
 }
 
-export const kpiFromStats = ({ total, byStatus }: ILeadStats): KpiMetrics => ({
-  totalLeads: total,
-  needsApproval: byStatus.NEEDS_APPROVAL ?? 0,
-  scheduled: byStatus.SCHEDULED ?? 0,
-  sent: byStatus.SENT ?? 0,
-  engaged: (byStatus.CLICKED ?? 0) + (byStatus.OPENED ?? 0),
-});
-
 export const apiClient = {
   /**
    * Fetches every lead matching the status, niche, complexity and text filters, plus the pipeline KPIs
    */
-  async getLeads(filters?: LeadListFilters): Promise<{ leads: ILeadItem[]; kpi: KpiMetrics; total: number }> {
-    const [{ leads, total }, stats] = await Promise.all([fetchAllLeadPages(filters), fetchLeadStats()]);
-    return { leads, kpi: kpiFromStats(stats), total };
+  async getLeads(filters?: LeadListFilters): Promise<{ leads: ILeadItem[]; total: number }> {
+    return fetchAllLeadPages(filters);
+  },
+
+  /** Pipeline-wide counts by status (REV-43) */
+  async getLeadStats(): Promise<ILeadStats> {
+    return fetchLeadStats();
   },
 
   /**

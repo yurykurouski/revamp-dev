@@ -22,7 +22,8 @@ import BlockIcon from '@mui/icons-material/Block';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
 import { ILeadItem } from '../api/client.js';
-import { useHitlModalStore } from '../store/useHitlModalStore.js';
+import { useOpenLead } from '../hooks/useOpenLead.js';
+import { LeadLink } from './LeadLink.js';
 import { withPreviewVersion } from '../hooks/useLeads.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { GenerateMvpButton } from './GenerateMvpButton.js';
@@ -60,7 +61,7 @@ interface KanbanBoardProps {
 }
 
 export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
-  const { openModal } = useHitlModalStore();
+  const openLead = useOpenLead();
   const { t } = useTranslation();
   const { language } = useLanguageStore();
 
@@ -168,7 +169,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           variant="subtitle2"
                           sx={{ lineHeight: 1.3, color: 'text.primary' }}
                         >
-                          {lead.businessName}
+                          <LeadLink leadId={lead.id}>{lead.businessName}</LeadLink>
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 0.5 }}>
                           <Typography
@@ -301,7 +302,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           color="warning"
                           size="small"
                           startIcon={<AutoAwesomeIcon sx={{ fontSize: 15 }} />}
-                          onClick={() => openModal(lead.id, lead.auditId || `audit-${lead.id}`)}
+                          onClick={() => openLead(lead.id)}
                         >
                           {t('kanban.hitlReview')}
                         </Button>

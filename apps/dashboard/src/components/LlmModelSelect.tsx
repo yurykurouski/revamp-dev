@@ -22,7 +22,12 @@ const SERVER_DEFAULT = '__default__';
  * Provider and model picker for MVP generation (REV-32). Options the workers can't run are
  * disabled with the reason; the choice is remembered in the Zustand store.
  */
-export const LlmModelSelect: React.FC = () => {
+interface LlmModelSelectProps {
+  /** Explains that the workers are offline; Settings shows that in its own Workers row (REV-76) */
+  showOfflineNotice?: boolean;
+}
+
+export const LlmModelSelect: React.FC<LlmModelSelectProps> = ({ showOfflineNotice = true }) => {
   const { t } = useTranslation();
   const { data, isLoading, isError } = useLlmProvidersQuery();
   const choice = useLlmChoiceStore();
@@ -39,7 +44,7 @@ export const LlmModelSelect: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      {(isError || (data && !data.workersOnline)) && (
+      {showOfflineNotice && (isError || (data && !data.workersOnline)) && (
         <Alert severity="info">
           {t('llm.workersOffline')}
         </Alert>
