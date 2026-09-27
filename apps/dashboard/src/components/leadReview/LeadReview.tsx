@@ -45,7 +45,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
   const { t } = useTranslation();
   const [step, setStep] = useState<ReviewStep>('audit');
 
-  const { data: audit, isLoading: isAuditLoading, error: auditError } = useAuditQuery(lead.auditId || `audit-${lead.id}`);
+  const { data: audit, isLoading: isAuditLoading, error: auditError } = useAuditQuery(lead.auditId || lead.id);
   const { data: mvp } = useMvpQuery(lead.id);
   const draft = useEmailDraft(lead, audit);
 

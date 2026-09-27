@@ -10,14 +10,16 @@ import {
 import {
   ApiErrorCode,
   IApiError,
+  IAudit,
+  ICriticalFlaw,
+  ILead,
+  IMvpProject,
+  Serialized,
   IDiscoveryImportResult,
   IDiscoveryJobStatus,
   ILlmProvidersResponse,
   LlmProviderId,
-  MvpCopyProvider,
-  IMvpCompletenessReport,
   IMvpCompletenessSummary,
-  IMvpLayoutSelection,
   MvpLayoutVariant,
   IReverseGeocodeResult,
   ILeadStats,
@@ -70,57 +72,26 @@ const getApiBaseUrl = (): string => {
 
 const API_BASE_URL = getApiBaseUrl();
 
-interface IServerLead {
-  _id?: string;
-  id?: string;
-  businessName?: string;
-  domain?: string;
-  originalUrl?: string;
-  url?: string;
-  niche?: NicheType;
-  city?: string;
-  contactPhone?: string;
-  contactEmail?: string;
-  contacts?: {
-    city?: string;
-    phone?: string;
-  };
-  totalScore?: number;
-  score?: number;
-  status: LeadStatus;
-  auditId?: string;
-  previewUrl?: string;
-  comparisonBannerUrl?: string;
-  mvpGeneratedAt?: string;
-  generationError?: string;
-  auditError?: string;
-  completeness?: IMvpCompletenessSummary;
-  siteComplexity?: SiteComplexityClass;
-  createdAt: string;
-}
+/**
+ * A lead as `GET /leads` returns it: the serialized document plus the MVP completeness summary the
+ * list adds for the card (REV-36, REV-67)
+ */
+export type IServerLead = Serialized<ILead> & { completeness?: IMvpCompletenessSummary };
 
-const mapServerLead = (l: IServerLead): ILeadItem => {
-  const rawUrl = l.originalUrl || l.url || '';
-  let domain = l.domain || '';
-  if (!domain && rawUrl) {
-    try {
-      domain = new URL(rawUrl).hostname.replace(/^www\./, '');
-    } catch {
-      domain = '';
-    }
-  }
+/** Maps a lead from the API; a lead without an id is a malformed response, never given a made-up one (REV-67) */
+export const mapServerLead = (l: IServerLead): ILeadItem => {
+  if (!l._id) throw new Error('Malformed server response: lead without an id');
 
   return {
-    id: l._id || l.id || `lead-${Math.random()}`,
-    businessName: l.businessName || domain || 'Business',
-    domain,
-    originalUrl: rawUrl,
-    niche: l.niche || 'other',
-    city: l.city || l.contacts?.city,
-    phone: l.contactPhone || l.contacts?.phone,
-    totalScore: l.totalScore ?? l.score,
+    id: l._id,
+    businessName: l.businessName,
+    domain: l.domain,
+    originalUrl: l.originalUrl,
+    niche: l.niche,
+    city: l.city,
+    phone: l.contactPhone,
+    totalScore: l.totalScore,
     status: l.status,
-    auditId: l.auditId || l._id || l.id,
     previewUrl: l.previewUrl,
     comparisonBannerUrl: l.comparisonBannerUrl,
     mvpGeneratedAt: l.mvpGeneratedAt,
@@ -227,8 +198,8 @@ export const apiClient = {
         niche: validated.niche || 'other',
       }),
     });
-    const data = await readDataOrThrow<{ id?: string; auditId?: string; lead?: { _id?: string; id?: string } }>(res);
-    const createdId = data.id || data.lead?._id || data.lead?.id;
+    const data = await readDataOrThrow<{ id?: string; auditId?: string }>(res);
+    const createdId = data.id;
     if (!createdId) throw new Error('Malformed server response');
 
     return {
@@ -482,40 +453,15 @@ async function readDataOrThrow<T>(res: Response): Promise<T> {
   return body.data;
 }
 
-export interface IMvpProjectDetail {
-  id?: string;
-  _id?: string;
-  leadId: string;
-  auditId?: string;
-  previewSlug?: string;
-  fullPreviewUrl: string;
-  comparisonBannerUrl?: string;
-  storageHtmlPath?: string;
-  colorPalette?: {
-    primary?: string;
-    secondary?: string;
-    accent?: string;
+/**
+ * An MVP project as `GET /mvp/:id` returns it (REV-67). Only the lead and the preview URL are certain;
+ * the rest is optional so a record written by an older version still renders.
+ */
+export type IMvpProjectDetail = Pick<Serialized<IMvpProject>, 'leadId' | 'fullPreviewUrl'> &
+  Partial<Serialized<IMvpProject>> & {
+    /** Copy of `_id` the API's JSON transform adds */
+    id?: string;
   };
-  generatedContent?: Record<string, unknown>;
-  isPublished?: boolean;
-  generatedAt?: string;
-  generationCount?: number;
-  /** The MVP compared with the original site's key business data (REV-36) */
-  completenessReport?: IMvpCompletenessReport;
-  /** Provider and model that wrote the copy, and the operator's choice for the run (REV-32) */
-  provider?: MvpCopyProvider;
-  modelUsed?: string;
-  requestedProvider?: LlmProviderId;
-  requestedModel?: string;
-  /** Layout the MVP was rendered with; absent on MVPs generated before REV-54 (Bento) */
-  layout?: IMvpLayoutSelection;
-}
-
-export interface ICriticalFlaw {
-  title: string;
-  impact: string;
-  recommendation: string;
-}
 
 /**
  * An audit as the inspector shows it. Values the audit did not measure stay undefined, so the UI
@@ -545,40 +491,23 @@ export interface IAuditDetail {
   originalServiceCount?: number;
 }
 
-/** The fields of `GET /audits/:id` the inspector reads */
-export interface IServerAudit {
-  _id?: string;
-  leadId: string;
-  screenshotUrls?: { desktopOriginal?: string; mobileOriginal?: string; desktopFull?: string; mobileFull?: string };
-  desktopScreenshotUrl?: string;
-  mobileScreenshotUrl?: string;
-  lighthouseMetrics?: { lcp?: number };
-  lcp?: number;
-  scores?: { accessibility?: number; a11y?: number };
-  a11yScore?: number;
-  a11ySummary?: { violationsCount?: number };
-  designCritique?: {
-    visualHierarchyRating?: number;
-    mobileFriendlinessRating?: number;
-    criticalFlaws?: ICriticalFlaw[];
-    quickWins?: string[];
-  };
-  extractedBrandTokens?: { primaryColor?: string; secondaryColor?: string; accentColor?: string };
-  extractedServices?: string[];
-  extractedContent?: { serviceItems?: unknown[] };
-}
+/**
+ * An audit as `GET /audits/:id` returns it (REV-67). A queued or failed audit has not filled in its
+ * sections yet, so everything but the lead is optional.
+ */
+export type IServerAudit = Pick<Serialized<IAudit>, 'leadId'> & Partial<Serialized<IAudit>>;
 
 /** Maps an audit from the API, keeping unmeasured values undefined */
 export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail => ({
   id: a._id || auditId,
   leadId: a.leadId,
-  desktopScreenshotUrl: a.screenshotUrls?.desktopOriginal || a.desktopScreenshotUrl || undefined,
-  mobileScreenshotUrl: a.screenshotUrls?.mobileOriginal || a.mobileScreenshotUrl || undefined,
+  desktopScreenshotUrl: a.screenshotUrls?.desktopOriginal || undefined,
+  mobileScreenshotUrl: a.screenshotUrls?.mobileOriginal || undefined,
   desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
   mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
-  // lighthouseMetrics.lcp is in milliseconds, the legacy `lcp` field in seconds
-  lcpSeconds: a.lighthouseMetrics?.lcp != null ? a.lighthouseMetrics.lcp / 1000 : a.lcp ?? undefined,
-  a11yScore: a.scores?.accessibility ?? a.scores?.a11y ?? a.a11yScore ?? undefined,
+  // lighthouseMetrics.lcp is in milliseconds
+  lcpSeconds: a.lighthouseMetrics?.lcp != null ? a.lighthouseMetrics.lcp / 1000 : undefined,
+  a11yScore: a.scores?.accessibility ?? undefined,
   a11yViolationsCount: a.a11ySummary?.violationsCount ?? undefined,
   visualHierarchyRating: a.designCritique?.visualHierarchyRating ?? undefined,
   mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating ?? undefined,

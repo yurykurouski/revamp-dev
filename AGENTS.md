@@ -111,6 +111,7 @@ Revamp-dev/
 9. **One API Error Format (REV-63):**
    * Every API error is `{ success: false, error: { code, message, details? } }`. Routes and services throw `AppError(statusCode, code, message, details?)`; only `errorHandler` writes error JSON. Never call `res.status(4xx/5xx).json(...)` in a route.
    * Codes come from `API_ERROR_CODES` in `@revamp/shared-types`; add a new code there (and to blueprint.md §5) instead of inventing a string. The dashboard reads only `error.code` / `error.message`, through `ApiError` in `apps/dashboard/src/api/client.ts`.
+   * The dashboard types API responses as `Serialized<T>` of the shared-types entities (`ILead`, `IAudit`, `IMvpProject`; dates arrive as strings) instead of redeclaring server shapes (REV-67). Mappers read only fields the API returns, with no legacy fallbacks, and a record without an id is a malformed response, never given a made-up id.
 
 ---
 

@@ -2,6 +2,20 @@
 // Revamp SaaS Shared Types & Interfaces
 // ==============================================================================
 
+// 0. JSON transport
+/**
+ * A domain type as it arrives over the API's JSON (REV-67): every `Date` becomes its ISO string,
+ * recursively. Ids are already strings in the domain types. Clients type responses with it instead
+ * of redeclaring the server shapes.
+ */
+export type Serialized<T> = T extends Date
+  ? string
+  : T extends ReadonlyArray<infer U>
+    ? Serialized<U>[]
+    : T extends object
+      ? { [K in keyof T]: Serialized<T[K]> }
+      : T;
+
 // 1. Common Enums and Statuses
 export type NicheType =
   | 'dental'
