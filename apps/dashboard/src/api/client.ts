@@ -8,6 +8,8 @@ import {
   TriggerAuditSchema,
 } from '@revamp/validation';
 import {
+  ApiErrorCode,
+  IApiError,
   IDiscoveryImportResult,
   IDiscoveryJobStatus,
   ILlmProvidersResponse,
@@ -448,18 +450,29 @@ export interface ITestEmailResult {
   sentAt: string;
 }
 
+/** An error response from the API, with its `error.code` for callers that branch on it (REV-63) */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly code?: ApiErrorCode,
+    public readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
 async function readDataOrThrow<T>(res: Response): Promise<T> {
-  let body: { message?: string; error?: { message?: string }; errors?: Array<{ message?: string }>; data?: T } | null =
-    null;
+  let body: { error?: Partial<IApiError>; data?: T } | null = null;
   try {
     body = await res.json();
   } catch {
     // Non-JSON body; fall through to the status-based message
   }
   if (!res.ok) {
-    throw new Error(
-      body?.errors?.[0]?.message || body?.error?.message || body?.message || `Server error (${res.status})`,
-    );
+    const error = body?.error;
+    throw new ApiError(error?.message || `Server error (${res.status})`, res.status, error?.code, error?.details);
   }
   if (body?.data === undefined) {
     throw new Error('Malformed server response');

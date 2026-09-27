@@ -113,7 +113,8 @@ describe('Track Routes Integration Tests (REV-18 Telemetry)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.errors).toBeDefined();
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details.issues.length).toBeGreaterThan(0);
       expect(trackingService.recordMvpEvent).not.toHaveBeenCalled();
     });
   });

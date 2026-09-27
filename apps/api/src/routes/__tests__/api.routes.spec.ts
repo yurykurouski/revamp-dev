@@ -107,7 +107,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
-      expect(res.body.errors).toBeDefined();
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(res.body.error.details.issues.length).toBeGreaterThan(0);
     });
 
     it('should return 201 and created lead when payload is valid', async () => {
@@ -253,13 +254,13 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
 
     it('should return 404 when lead is not found', async () => {
-      vi.spyOn(LeadService, 'getLeadById').mockRejectedValue(new AppError('Lead not found', 404));
+      vi.spyOn(LeadService, 'getLeadById').mockRejectedValue(new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found'));
 
       const res = await request(app).get('/api/v1/leads/unknown-id');
 
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
-      expect(res.body.message).toBe('Lead not found');
+      expect(res.body.error).toEqual({ code: 'LEAD_NOT_FOUND', message: 'Lead not found' });
     });
   });
 
@@ -277,7 +278,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: 'lead-missing' });
       expect(res.status).toBe(404);
-      expect(res.body.message).toBe('Lead not found');
+      expect(res.body.error).toEqual({ code: 'LEAD_NOT_FOUND', message: 'Lead not found' });
     });
 
     it('should return 202 and queue job when lead exists', async () => {
@@ -361,7 +362,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
         const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
 
         expect(res.status).toBe(409);
-        expect(res.body.details).toEqual({ code: 'LEAD_NOT_AUDITABLE', status });
+        expect(res.body.error.code).toBe('LEAD_NOT_AUDITABLE');
+        expect(res.body.error.details).toEqual({ status });
         expect(updateSpy).not.toHaveBeenCalled();
         expect(createSpy).not.toHaveBeenCalled();
         expect(queueSpy).not.toHaveBeenCalled();
@@ -415,7 +417,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).get(`/api/v1/audits/${auditId}`);
       expect(res.status).toBe(404);
       expect(res.body.success).toBe(false);
-      expect(res.body.message).toBe('Audit not found');
+      expect(res.body.error).toEqual({ code: 'AUDIT_NOT_FOUND', message: 'Audit not found' });
     });
   });
 
@@ -930,7 +932,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
 
       expect(res.status).toBe(409);
-      expect(res.body.details.code).toBe('MVP_GENERATION_NOT_ALLOWED');
+      expect(res.body.error.code).toBe('MVP_GENERATION_NOT_ALLOWED');
       expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
 
@@ -940,7 +942,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
 
       expect(res.status).toBe(409);
-      expect(res.body.details.code).toBe('MVP_ALREADY_GENERATED');
+      expect(res.body.error.code).toBe('MVP_ALREADY_GENERATED');
+      expect(res.body.error.details).toEqual({ status: 'NEEDS_APPROVAL' });
       expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
       expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
@@ -956,7 +959,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
         expect(res.status).toBe(409);
         expect(res.body.success).toBe(false);
-        expect(res.body.details).toEqual({ code: 'MVP_GENERATION_NOT_ALLOWED', status });
+        expect(res.body.error.code).toBe('MVP_GENERATION_NOT_ALLOWED');
+        expect(res.body.error.details).toEqual({ status });
         expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
         expect(addAiGenerationJob).not.toHaveBeenCalled();
       },
@@ -1001,7 +1005,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
 
         expect(res.status).toBe(404);
-        expect(res.body.message).toBe('No completed audit found for this lead');
+        expect(res.body.error).toEqual({ code: 'NO_COMPLETED_AUDIT', message: 'No completed audit found for this lead' });
         expect(addAiGenerationJob).not.toHaveBeenCalled();
       });
     });
@@ -1190,7 +1194,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
         expect(res.status).toBe(404);
         expect(res.body.success).toBe(false);
-        expect(res.body.message).toBe('MVP not found');
+        expect(res.body.error).toEqual({ code: 'MVP_NOT_FOUND', message: 'MVP not found' });
         expect(res.body.data).toBeUndefined();
       },
     );
@@ -1199,6 +1203,26 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockRejectedValue(new Error('db down')) } as any);
       const res = await request(app).get('/api/v1/mvp/some-slug');
       expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('INTERNAL');
+    });
+  });
+
+  describe('GET /api/v1/mvp/preview/:slug', () => {
+    it('should redirect to the stored preview', async () => {
+      vi.spyOn(MvpProject, 'findOne').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ fullPreviewUrl: 'http://minio/revamp-demos/smile/index.html' }),
+      } as any);
+      const res = await request(app).get('/api/v1/mvp/preview/smile');
+      expect(res.status).toBe(302);
+      expect(res.headers['location']).toBe('http://minio/revamp-demos/smile/index.html');
+    });
+
+    it('should return 404 in the standard error format for an unknown slug (REV-63)', async () => {
+      vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      const res = await request(app).get('/api/v1/mvp/preview/missing');
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ success: false, error: { code: 'PREVIEW_NOT_FOUND', message: 'Preview not found' } });
     });
   });
 
@@ -1238,7 +1262,19 @@ describe('API Routes Integration Tests (Supertest)', () => {
     it('should return 404 for non-existent endpoint', async () => {
       const res = await request(app).get('/api/v1/non-existent-route');
       expect(res.status).toBe(404);
-      expect(res.body.success).toBe(false);
+      expect(res.body).toEqual({ success: false, error: { code: 'NOT_FOUND', message: 'Endpoint not found' } });
+    });
+
+    it('should return 400 INVALID_JSON for a malformed JSON body (REV-63)', async () => {
+      const res = await request(app)
+        .post('/api/v1/leads')
+        .set('Content-Type', 'application/json')
+        .send('{"businessName": ');
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({
+        success: false,
+        error: { code: 'INVALID_JSON', message: 'The request body is not valid JSON' },
+      });
     });
   });
 });

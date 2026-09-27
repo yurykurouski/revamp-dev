@@ -74,7 +74,7 @@ export class DiscoveryService {
   static async getDiscoveryStatus(jobId: string): Promise<IDiscoveryJobStatus> {
     const job = await getDiscoveryJob(jobId);
     if (!job) {
-      throw new AppError('Discovery job not found', 404);
+      throw new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found');
     }
 
     const state = (await job.getState()) as DiscoveryJobState;
@@ -114,10 +114,10 @@ export class DiscoveryService {
   static async importCandidates(jobId: string, dto: ImportDiscoveryDto): Promise<IDiscoveryImportResult> {
     const job = await getDiscoveryJob(jobId);
     if (!job) {
-      throw new AppError('Discovery job not found', 404);
+      throw new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found');
     }
     if ((await job.getState()) !== 'completed') {
-      throw new AppError('Discovery job has not completed yet', 409);
+      throw new AppError(409, 'DISCOVERY_JOB_NOT_COMPLETED', 'Discovery job has not completed yet');
     }
 
     const byId = new Map((job.returnvalue?.candidates ?? []).map((c) => [c.externalId, c]));
@@ -193,14 +193,14 @@ export class DiscoveryService {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       body = (await res.json()) as NominatimReverseResponse;
     } catch {
-      throw new AppError('Reverse geocoding service is unavailable', 502);
+      throw new AppError(502, 'GEOCODING_UNAVAILABLE', 'Reverse geocoding service is unavailable');
     }
 
     const address = body.address ?? {};
     const city = SETTLEMENT_KEYS.map((key) => address[key]).find(Boolean);
     const country = address['country'];
     if (body.error || (!city && !country)) {
-      throw new AppError('No place found at these coordinates', 404);
+      throw new AppError(404, 'PLACE_NOT_FOUND', 'No place found at these coordinates');
     }
 
     return {

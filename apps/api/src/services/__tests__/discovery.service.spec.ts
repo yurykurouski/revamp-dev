@@ -62,6 +62,7 @@ describe('DiscoveryService (API)', () => {
     const error = await DiscoveryService.getDiscoveryStatus('nope').catch((e) => e);
     expect(error).toBeInstanceOf(AppError);
     expect(error.statusCode).toBe(404);
+    expect(error.code).toBe('DISCOVERY_JOB_NOT_FOUND');
   });
 
   it('getDiscoveryStatus should report a completed job with its result', async () => {
@@ -166,6 +167,7 @@ describe('DiscoveryService (API)', () => {
         const error = await DiscoveryService.reverseGeocode({ lat: 0, lng: -30 }, fetchFn).catch((e) => e);
         expect(error).toBeInstanceOf(AppError);
         expect(error.statusCode).toBe(404);
+        expect(error.code).toBe('PLACE_NOT_FOUND');
       }
     });
 
@@ -178,6 +180,7 @@ describe('DiscoveryService (API)', () => {
         const error = await DiscoveryService.reverseGeocode({ lat: 1, lng: 1 }, fetchFn).catch((e) => e);
         expect(error).toBeInstanceOf(AppError);
         expect(error.statusCode).toBe(502);
+        expect(error.code).toBe('GEOCODING_UNAVAILABLE');
       }
     });
   });
@@ -346,10 +349,12 @@ describe('DiscoveryService (API)', () => {
       const missing = await DiscoveryService.importCandidates('x', { externalIds: ['node/1'] }).catch((e) => e);
       expect(missing).toBeInstanceOf(AppError);
       expect(missing.statusCode).toBe(404);
+      expect(missing.code).toBe('DISCOVERY_JOB_NOT_FOUND');
 
       vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1')], 'active') as any);
       const running = await DiscoveryService.importCandidates('x', { externalIds: ['node/1'] }).catch((e) => e);
       expect(running.statusCode).toBe(409);
+      expect(running.code).toBe('DISCOVERY_JOB_NOT_COMPLETED');
       expect(LeadService.createLead).not.toHaveBeenCalled();
     });
 

@@ -11,6 +11,7 @@ import {
 } from '@revamp/validation';
 import { EMAIL_PROVIDER_NOT_CONFIGURED, LeadStatus, draftToHtml } from '@revamp/shared-types';
 import { validateBody } from '../middlewares/validate.js';
+import { AppError } from '../middlewares/errorHandler.js';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { addEmailDispatchJob, calculateDispatchDelay } from '../queues/email.queue.js';
@@ -19,35 +20,26 @@ import { env } from '../config/env.js';
 
 const router = Router();
 
-const notAwaitingApproval = (res: Response, status?: LeadStatus): void => {
-  res.status(409).json({
-    success: false,
-    error: {
-      code: 'LEAD_NOT_AWAITING_APPROVAL',
-      message: `Only a lead awaiting approval can be approved; this lead is ${status ?? 'no longer awaiting approval'}.`,
-    },
-  });
-};
+const notAwaitingApproval = (status?: LeadStatus): AppError =>
+  new AppError(
+    409,
+    'LEAD_NOT_AWAITING_APPROVAL',
+    `Only a lead awaiting approval can be approved; this lead is ${status ?? 'no longer awaiting approval'}.`,
+  );
 
-const notRejectable = (res: Response, status?: LeadStatus): void => {
-  res.status(409).json({
-    success: false,
-    error: {
-      code: 'LEAD_NOT_REJECTABLE',
-      message: `A lead can only be rejected before its outreach is approved; this lead is ${status ?? 'no longer rejectable'}.`,
-    },
-  });
-};
+const notRejectable = (status?: LeadStatus): AppError =>
+  new AppError(
+    409,
+    'LEAD_NOT_REJECTABLE',
+    `A lead can only be rejected before its outreach is approved; this lead is ${status ?? 'no longer rejectable'}.`,
+  );
 
-const leadNotFound = (res: Response, id: string): void => {
-  res.status(404).json({
-    success: false,
-    error: {
-      code: 'LEAD_NOT_FOUND',
-      message: `Lead ${id} not found`,
-    },
-  });
-};
+const leadNotFound = (id: string): AppError => new AppError(404, 'LEAD_NOT_FOUND', `Lead ${id} not found`);
+
+const invalidId = (): AppError =>
+  new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
+
+const providerMissing = (): AppError => new AppError(503, 'EMAIL_PROVIDER_NOT_CONFIGURED', EMAIL_PROVIDER_NOT_CONFIGURED);
 
 // GET /outreach/pending - Pending approval drafts
 router.get('/pending', async (_req: Request, res: Response, next: NextFunction) => {
@@ -77,38 +69,18 @@ router.post(
     try {
       const id = req.params['id'] || '';
       if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_ID',
-            message: 'A valid 24-character hexadecimal ObjectId is required',
-          },
-        });
-        return;
+        throw invalidId();
       }
 
       const existing = await Lead.findById(id).exec();
-      if (!existing) {
-        leadNotFound(res, id);
-        return;
-      }
+      if (!existing) throw leadNotFound(id);
 
       // Outreach is approved only from the review state (REV-59)
-      if (!canApproveOutreach(existing.status)) {
-        notAwaitingApproval(res, existing.status);
-        return;
-      }
+      if (!canApproveOutreach(existing.status)) throw notAwaitingApproval(existing.status);
 
       // Outreach needs a real recipient; none is invented (REV-45)
       if (!existing.contactEmail) {
-        res.status(409).json({
-          success: false,
-          error: {
-            code: 'NO_CONTACT_EMAIL',
-            message: 'This lead has no contact email. Add one before approving outreach.',
-          },
-        });
-        return;
+        throw new AppError(409, 'NO_CONTACT_EMAIL', 'This lead has no contact email. Add one before approving outreach.');
       }
 
       // 1. Move the lead to SCHEDULED only if it is still awaiting approval, so two approvals at
@@ -119,10 +91,7 @@ router.post(
         { new: true },
       ).exec();
 
-      if (!lead) {
-        notAwaitingApproval(res);
-        return;
-      }
+      if (!lead) throw notAwaitingApproval();
 
       // 2. Store the draft exactly as the operator approved it; there is no default copy (REV-61).
       // It is sent as escaped HTML with its line breaks, plus the same text as the plain-text part,
@@ -192,14 +161,7 @@ router.post(
     try {
       const id = req.params['id'] || '';
       if (!id || !mongoose.Types.ObjectId.isValid(id)) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_ID',
-            message: 'A valid 24-character hexadecimal ObjectId is required',
-          },
-        });
-        return;
+        throw invalidId();
       }
 
       // Reject only before outreach is approved; the status filter makes check and update atomic (REV-59)
@@ -211,9 +173,7 @@ router.post(
 
       if (!lead) {
         const existing = await Lead.findById(id).exec();
-        if (existing) notRejectable(res, existing.status);
-        else leadNotFound(res, id);
-        return;
+        throw existing ? notRejectable(existing.status) : leadNotFound(id);
       }
 
       await EmailCampaign.findOneAndUpdate(
@@ -249,60 +209,30 @@ router.post(
     try {
       const id = req.params['id'] || '';
       if (!mongoose.Types.ObjectId.isValid(id)) {
-        res.status(400).json({
-          success: false,
-          error: {
-            code: 'INVALID_ID',
-            message: 'A valid 24-character hexadecimal ObjectId is required',
-          },
-        });
-        return;
+        throw invalidId();
       }
 
       const lead = await Lead.findById(id).exec();
-      if (!lead) {
-        leadNotFound(res, id);
-        return;
-      }
-
-      const providerMissing = (): void => {
-        res.status(503).json({
-          success: false,
-          error: { code: 'EMAIL_PROVIDER_NOT_CONFIGURED', message: EMAIL_PROVIDER_NOT_CONFIGURED },
-        });
-      };
+      if (!lead) throw leadNotFound(id);
 
       // Say so up front instead of reporting a send that cannot happen (REV-45)
-      if (!env.EMAIL_PROVIDER) {
-        providerMissing();
-        return;
-      }
+      if (!env.EMAIL_PROVIDER) throw providerMissing();
 
       const { testEmail, subject, preheader, body } = req.body;
       const outcome = await sendTestEmailJob({ leadId: id, to: testEmail, subject, preheader, body });
 
       if (outcome.status === 'timeout') {
-        res.status(504).json({
-          success: false,
-          error: {
-            code: 'EMAIL_TEST_TIMEOUT',
-            message: 'The workers did not send the test email in time. Check that the workers are running.',
-          },
-        });
-        return;
+        throw new AppError(
+          504,
+          'EMAIL_TEST_TIMEOUT',
+          'The workers did not send the test email in time. Check that the workers are running.',
+        );
       }
 
       if (outcome.status === 'failed') {
         // The workers may be configured differently from the API
-        if (outcome.reason === EMAIL_PROVIDER_NOT_CONFIGURED) {
-          providerMissing();
-          return;
-        }
-        res.status(502).json({
-          success: false,
-          error: { code: 'EMAIL_SEND_FAILED', message: `The test email was not sent: ${outcome.reason}` },
-        });
-        return;
+        if (outcome.reason === EMAIL_PROVIDER_NOT_CONFIGURED) throw providerMissing();
+        throw new AppError(502, 'EMAIL_SEND_FAILED', `The test email was not sent: ${outcome.reason}`);
       }
 
       res.status(200).json({

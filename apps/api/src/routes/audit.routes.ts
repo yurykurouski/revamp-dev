@@ -18,14 +18,13 @@ router.post(
       const { leadId } = req.body;
       const lead = await Lead.findById(leadId).exec();
       if (!lead) {
-        throw new AppError('Lead not found', 404);
+        throw new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found');
       }
 
       // Only a queued lead or a failed audit can be (re)run; an audit never moves a lead that is
       // further along back to AUDITING (REV-62)
       if (lead.status !== 'QUEUED' && !canTransition(lead.status, 'QUEUED')) {
-        throw new AppError(`An audit cannot be started while the lead is ${lead.status}`, 409, {
-          code: 'LEAD_NOT_AUDITABLE',
+        throw new AppError(409, 'LEAD_NOT_AUDITABLE', `An audit cannot be started while the lead is ${lead.status}`, {
           status: lead.status,
         });
       }
@@ -37,9 +36,7 @@ router.post(
           { $set: { status: 'QUEUED' }, $unset: { auditError: '' } },
         ).exec();
         if (!requeued) {
-          throw new AppError('The lead changed while the audit was being queued; try again', 409, {
-            code: 'LEAD_NOT_AUDITABLE',
-          });
+          throw new AppError(409, 'LEAD_NOT_AUDITABLE', 'The lead changed while the audit was being queued; try again');
         }
       }
 
@@ -84,7 +81,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     }
 
     if (!audit) {
-      throw new AppError('Audit not found', 404);
+      throw new AppError(404, 'AUDIT_NOT_FOUND', 'Audit not found');
     }
 
     res.status(200).json({
