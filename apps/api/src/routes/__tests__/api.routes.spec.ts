@@ -1232,12 +1232,29 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('PATCH /api/v1/mvp/:id/tokens', () => {
-    it('should save the palette and return the updated MVP from the database', async () => {
-      const projectId = new mongoose.Types.ObjectId().toString();
-      const saved = { _id: projectId, colorPalette: { primary: '#4F46E5', secondary: '#A5B4FC', accent: '#4F46E5' } };
-      const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue(saved),
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const auditId = new mongoose.Types.ObjectId().toString();
+    const project = (colorPalette: Record<string, string> = { primary: '#d0001c' }) => ({
+      _id: projectId,
+      leadId,
+      auditId,
+      colorPalette,
+    });
+    const mockProject = (doc: unknown) =>
+      vi.spyOn(MvpProject, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
+    const mockLead = (status: string | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
       } as any);
+    const mockSave = (doc: unknown) =>
+      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
+
+    it('should save the palette, return the updated MVP and re-render the published MVP (REV-90)', async () => {
+      mockProject(project());
+      mockLead('NEEDS_APPROVAL');
+      const saved = project({ primary: '#4F46E5', secondary: '#A5B4FC', accent: '#4F46E5' });
+      const updateSpy = mockSave(saved);
 
       const res = await request(app)
         .patch(`/api/v1/mvp/${projectId}/tokens`)
@@ -1261,13 +1278,16 @@ describe('API Routes Integration Tests (Supertest)', () => {
         },
         { new: true },
       );
+      // The same debounced re-publish as a layout change; never a new generation
+      expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
     it('should only set the colors present in the body (REV-65)', async () => {
-      const projectId = new mongoose.Types.ObjectId().toString();
-      const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId, colorPalette: { primary: '#123456' } }),
-      } as any);
+      mockProject(project());
+      mockLead('NEEDS_APPROVAL');
+      const updateSpy = mockSave(project({ primary: '#123456' }));
 
       const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#123456' });
 
@@ -1275,7 +1295,31 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(updateSpy).toHaveBeenCalledWith(projectId, { $set: { 'colorPalette.primary': '#123456' } }, { new: true });
     });
 
+    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED', 'AUDITED'])(
+      'should return 409 MVP_PALETTE_CHANGE_NOT_ALLOWED while the lead is %s (REV-90)',
+      async (status) => {
+        mockProject(project());
+        mockLead(status);
+        const updateSpy = mockSave(null);
+
+        const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
+
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({
+          success: false,
+          error: {
+            code: 'MVP_PALETTE_CHANGE_NOT_ALLOWED',
+            message: `The MVP palette cannot be changed while the lead is ${status}`,
+            details: { status },
+          },
+        });
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      },
+    );
+
     it('should return 400 INVALID_ID for an id that is not an ObjectId and write nothing (REV-65)', async () => {
+      const findSpy = vi.spyOn(MvpProject, 'findById');
       const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate');
 
       const res = await request(app).patch('/api/v1/mvp/demo/tokens').send({ primaryColor: '#4F46E5' });
@@ -1285,19 +1329,43 @@ describe('API Routes Integration Tests (Supertest)', () => {
         success: false,
         error: { code: 'INVALID_ID', message: 'A valid 24-character hexadecimal ObjectId is required' },
       });
+      expect(findSpy).not.toHaveBeenCalled();
       expect(updateSpy).not.toHaveBeenCalled();
     });
 
     it('should return 404 MVP_NOT_FOUND for an unknown MVP id (REV-65)', async () => {
-      const projectId = new mongoose.Types.ObjectId().toString();
-      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue(null),
-      } as any);
+      mockProject(null);
+      const updateSpy = mockSave(null);
 
       const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
 
       expect(res.status).toBe(404);
       expect(res.body).toEqual({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } });
+      expect(updateSpy).not.toHaveBeenCalled();
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 LEAD_NOT_FOUND when the MVP has no lead', async () => {
+      mockProject(project());
+      mockLead(null);
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+    });
+
+    it('should return 500 when the re-render cannot be queued', async () => {
+      mockProject(project());
+      mockLead('NEEDS_APPROVAL');
+      mockSave(project({ primary: '#4F46E5' }));
+      vi.mocked(addMvpRelayoutJob).mockRejectedValueOnce(new Error('Redis down'));
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
     });
 
     it('should return 400 when primaryColor is an invalid hex string', async () => {

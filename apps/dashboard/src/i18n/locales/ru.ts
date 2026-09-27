@@ -541,6 +541,7 @@ export const ru: Translation = {
     custom: 'Выбрать свой HEX-цвет',
     restore: 'Вернуть исходный цвет ({{color}})',
     reset: 'Сбросить',
+    locked: 'Палитру можно менять, только пока MVP ждёт проверки',
   },
   email: {
     variables: {

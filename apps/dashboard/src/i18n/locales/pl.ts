@@ -541,6 +541,7 @@ export const pl: Translation = {
     custom: 'Wybierz własny kolor HEX',
     restore: 'Przywróć oryginalny kolor ({{color}})',
     reset: 'Przywróć',
+    locked: 'Paletę można zmienić tylko wtedy, gdy MVP czeka na przegląd',
   },
   email: {
     variables: {

@@ -541,6 +541,7 @@ export const lt: Translation = {
     custom: 'Pasirinkti savo HEX spalvą',
     restore: 'Atkurti originalią spalvą ({{color}})',
     reset: 'Atstatyti',
+    locked: 'Paletę galima keisti tik kol MVP laukia peržiūros',
   },
   email: {
     variables: {

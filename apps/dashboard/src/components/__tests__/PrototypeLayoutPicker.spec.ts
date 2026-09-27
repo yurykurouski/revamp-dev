@@ -306,10 +306,73 @@ describe('Prototype step layout picker (REV-84)', () => {
       await vi.waitFor(() => expect(save).toHaveBeenCalledWith('mvp-1', 'split'));
     });
 
-    it('offers the color picker before an MVP exists, without the layout picker', () => {
+    it('shows the color picker locked before an MVP exists, without the layout picker', () => {
       render(null, { previewUrl: undefined });
-      expect(toolsPanel().querySelector('#brand-color-picker-input')).not.toBeNull();
+      expect(toolsPanel().querySelector<HTMLInputElement>('#brand-color-picker-input')!.disabled).toBe(true);
       expect(toolsPanel().querySelector('[data-testid="mvp-layout-picker"]')).toBeNull();
+    });
+  });
+
+  describe('palette saved on the MVP (REV-90)', () => {
+    const palette = (primary: string) => ({ primary, secondary: '#b8c4fe', accent: primary });
+    const colorInput = () => container.querySelector<HTMLInputElement>('#brand-color-picker-input')!;
+    const pick = (hex: string) =>
+      act(() => {
+        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setValue.call(colorInput(), hex);
+        colorInput().dispatchEvent(new Event('input', { bubbles: true }));
+      });
+
+    it('starts from the palette saved on the MVP', () => {
+      render({ ...mvpWith('bento'), colorPalette: { primary: '#059669', secondary: '#b8c4fe', accent: '#059669' } });
+      expect(colorInput().value).toBe('#059669');
+      // Reset still offers the audit's brand color
+      expect(document.body.textContent).toContain(en.colorPicker.reset);
+    });
+
+    it("falls back to the audit's brand color", () => {
+      render(mvpWith('bento'));
+      expect(colorInput().value).toBe('#123456');
+    });
+
+    it('keeps the latest pick when an earlier save answers late', async () => {
+      render({ ...mvpWith('bento'), colorPalette: palette('#111111') });
+      const first = deferred<IMvpProjectDetail>();
+      vi.spyOn(apiClient, 'updateMvpTokens')
+        .mockImplementationOnce(() => first.promise)
+        .mockResolvedValueOnce({ ...mvpWith('bento'), colorPalette: palette('#333333') });
+
+      pick('#222222');
+      pick('#333333');
+      await flush();
+      first.resolve({ ...mvpWith('bento'), colorPalette: palette('#222222') });
+      await flush();
+      expect(colorInput().value).toBe('#333333');
+    });
+
+    it('takes the palette of a regenerated MVP', async () => {
+      render({ ...mvpWith('bento'), generatedAt: '2026-09-27T10:00:00.000Z', colorPalette: palette('#111111') });
+      vi.spyOn(apiClient, 'updateMvpTokens').mockImplementation(() => new Promise(() => undefined));
+      pick('#222222');
+      act(() => {
+        queryClient.setQueryData(['mvp', 'lead-1'], {
+          ...mvpWith('bento'),
+          generatedAt: '2026-09-27T11:00:00.000Z',
+          colorPalette: palette('#444444'),
+        });
+      });
+      await vi.waitFor(() => expect(colorInput().value).toBe('#444444'));
+    });
+
+    it.each(['SCHEDULED', 'SENT', 'GENERATING'] as const)('locks the color picker while the lead is %s', (status) => {
+      render(mvpWith('bento'), { status });
+      const save = vi.spyOn(apiClient, 'updateMvpTokens');
+      expect(colorInput().disabled).toBe(true);
+      expect(container.querySelector('[data-testid="color-picker-toolbar"]')!.getAttribute('aria-disabled')).toBe('true');
+      const swatch = container.querySelector<HTMLElement>('[data-testid="color-picker-toolbar"] [aria-label="Rose"]');
+      act(() => swatch?.click());
+      expect(save).not.toHaveBeenCalled();
+      expect(posted.filter((m) => (m as { type?: string }).type === 'REVAMP_UPDATE_THEME')).toEqual([]);
     });
   });
 });

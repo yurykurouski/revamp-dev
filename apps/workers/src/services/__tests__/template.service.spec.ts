@@ -296,6 +296,35 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     expect(html).toContain('class="bento-grid"');
   });
 
+  describe('saved palette (REV-90)', () => {
+    const lead: Partial<ILead> = { businessName: 'Listonosz Auto Service' };
+    const audit: Partial<IAudit> = {
+      extractedBrandTokens: { primaryColor: '#5c5bed', secondaryColor: '#b8c4fe', accentColor: '#4338ca', fontFamilies: [] },
+    };
+
+    it('renders the colors saved on the MVP instead of the audit brand tokens', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, audit, undefined, 'bento', {
+        primary: '#059669',
+        secondary: '#0f172a',
+        accent: '#047857',
+      });
+      expect(html).toContain('--brand-primary: #059669;');
+      expect(html).toContain('--brand-secondary: #0f172a;');
+      expect(html).not.toContain('--brand-primary: #5c5bed;');
+    });
+
+    it('falls back to the audit brand tokens for colors not saved', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, audit, undefined, 'bento', { primary: '#059669' });
+      expect(html).toContain('--brand-primary: #059669;');
+      expect(html).toContain('--brand-secondary: #b8c4fe;');
+    });
+
+    it('uses the audit brand tokens without a saved palette', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, audit, undefined, 'bento', {});
+      expect(html).toContain('--brand-primary: #5c5bed;');
+    });
+  });
+
   describe('MVP language (REV-25)', () => {
     it('declares the site language and localises the template chrome', () => {
       const html = bentoTemplateService.render({ ...sampleTemplateData, language: 'pl' });
