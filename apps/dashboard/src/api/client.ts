@@ -300,19 +300,19 @@ export const apiClient = {
   },
 
   /**
-   * Updates MVP brand design tokens (primaryColor, accentColor, etc.)
+   * Saves the MVP's palette (primaryColor, accentColor, etc.) by the MVP's own id and returns the saved
+   * MVP; an invalid or unknown id throws (REV-65)
    */
   async updateMvpTokens(
     mvpId: string,
     tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string },
-  ): Promise<{ success: boolean; data: typeof tokens }> {
+  ): Promise<IMvpProjectDetail> {
     const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/tokens`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tokens),
     });
-    await readDataOrThrow<unknown>(res);
-    return { success: true, data: tokens };
+    return readDataOrThrow<IMvpProjectDetail>(res);
   },
 
   /**

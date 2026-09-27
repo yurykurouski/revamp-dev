@@ -478,6 +478,7 @@ export const pl: Translation = {
   },
   colorPicker: {
     brandPalette: 'Paleta marki:',
+    saveFailed: 'Nie udało się zapisać palety: {{message}}',
     presets: {
       Indigo: 'Indygo',
       Violet: 'Fiolet',

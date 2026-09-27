@@ -141,29 +141,33 @@ router.get('/preview/:slug', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// PATCH /mvp/:id/tokens
+// PATCH /mvp/:id/tokens: saves the palette on the MVP record by its _id; the published MVP is not rebuilt
 router.patch(
   '/:id/tokens',
   validateBody(UpdateMvpTokensSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = req.params['id'] || '';
-      const updates = req.body;
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
+      }
 
-      if (id && mongoose.Types.ObjectId.isValid(id)) {
-        await MvpProject.findByIdAndUpdate(id, {
-          $set: {
-            'colorPalette.primary': updates.primaryColor,
-            'colorPalette.secondary': updates.secondaryColor,
-            'colorPalette.accent': updates.accentColor,
-          },
-        }).exec();
+      const { primaryColor, secondaryColor, accentColor } = req.body;
+      const palette: Record<string, string> = {};
+      if (primaryColor) palette['colorPalette.primary'] = primaryColor;
+      if (secondaryColor) palette['colorPalette.secondary'] = secondaryColor;
+      if (accentColor) palette['colorPalette.accent'] = accentColor;
+
+      // An unknown id used to answer 200 without writing anything (REV-65)
+      const project = await MvpProject.findByIdAndUpdate(id, { $set: palette }, { new: true }).exec();
+      if (!project) {
+        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
       }
 
       res.status(200).json({
         success: true,
-        message: 'Tokens updated successfully',
-        data: updates,
+        message: 'Palette saved on the MVP record; the published MVP is not rebuilt',
+        data: project,
       });
     } catch (error) {
       next(error);

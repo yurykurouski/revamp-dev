@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { apiClient } from '../../api/client.js';
-import { canRegenerateMvp, generateMvpRequest, withPreviewVersion } from '../useLeads.js';
+import { canRegenerateMvp, generateMvpRequest, mvpRecordId, withPreviewVersion } from '../useLeads.js';
 
 describe('MVP regeneration helpers (REV-31)', () => {
   afterEach(() => {
@@ -60,5 +60,18 @@ describe('MVP regeneration helpers (REV-31)', () => {
     expect(withPreviewVersion(url, 'not-a-date')).toBe(url);
     expect(withPreviewVersion(undefined, at)).toBe('');
     expect(withPreviewVersion('/relative/index.html', at)).toBe(`/relative/index.html?v=${Date.parse(at)}`);
+  });
+});
+
+describe('mvpRecordId (REV-65)', () => {
+  it('returns the MVP record id, preferring id over _id', () => {
+    expect(mvpRecordId({ id: 'mvp-1', _id: 'mvp-raw' })).toBe('mvp-1');
+    expect(mvpRecordId({ _id: 'mvp-raw' })).toBe('mvp-raw');
+  });
+
+  it('returns undefined when there is no MVP yet, so nothing is saved against the lead id', () => {
+    expect(mvpRecordId(null)).toBeUndefined();
+    expect(mvpRecordId(undefined)).toBeUndefined();
+    expect(mvpRecordId({})).toBeUndefined();
   });
 });

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
-import { apiClient, ILeadItem, IEmailDraft } from '../api/client.js';
+import { apiClient, ILeadItem, IEmailDraft, IMvpProjectDetail } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
 import { ILeadStats, LeadStatus, LlmProviderId } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
@@ -115,15 +115,25 @@ export const useRetryAuditMutation = () => {
   });
 };
 
+/** The MVP record's own id, which PATCH /mvp/:id/tokens expects; never the lead id (REV-65) */
+export const mvpRecordId = (mvp?: Pick<IMvpProjectDetail, 'id' | '_id'> | null): string | undefined =>
+  mvp?.id || mvp?._id || undefined;
+
 export const useUpdateMvpTokensMutation = () => {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: ({
       mvpId,
       tokens,
     }: {
       mvpId: string;
+      leadId: string;
       tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string };
     }) => apiClient.updateMvpTokens(mvpId, tokens),
+    // The saved MVP comes back from the server; keep the lead's cached MVP in step with it
+    onSuccess: (saved, { leadId }) => {
+      queryClient.setQueryData(['mvp', leadId], saved);
+    },
   });
 };
 

@@ -478,6 +478,7 @@ export const be: Translation = {
   },
   colorPicker: {
     brandPalette: 'Палітра брэнда:',
+    saveFailed: 'Не ўдалося захаваць палітру: {{message}}',
     presets: {
       Indigo: 'Індыга',
       Violet: 'Фіялетавы',

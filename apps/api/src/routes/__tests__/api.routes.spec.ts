@@ -1227,10 +1227,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('PATCH /api/v1/mvp/:id/tokens', () => {
-    it('should update MVP brand design tokens and return 200', async () => {
+    it('should save the palette and return the updated MVP from the database', async () => {
       const projectId = new mongoose.Types.ObjectId().toString();
-      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId }),
+      const saved = { _id: projectId, colorPalette: { primary: '#4F46E5', secondary: '#A5B4FC', accent: '#4F46E5' } };
+      const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(saved),
       } as any);
 
       const res = await request(app)
@@ -1243,7 +1244,55 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
-      expect(res.body.data.primaryColor).toBe('#4F46E5');
+      expect(res.body.data.colorPalette).toEqual(saved.colorPalette);
+      expect(updateSpy).toHaveBeenCalledWith(
+        projectId,
+        {
+          $set: {
+            'colorPalette.primary': '#4F46E5',
+            'colorPalette.secondary': '#A5B4FC',
+            'colorPalette.accent': '#4F46E5',
+          },
+        },
+        { new: true },
+      );
+    });
+
+    it('should only set the colors present in the body (REV-65)', async () => {
+      const projectId = new mongoose.Types.ObjectId().toString();
+      const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: projectId, colorPalette: { primary: '#123456' } }),
+      } as any);
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#123456' });
+
+      expect(res.status).toBe(200);
+      expect(updateSpy).toHaveBeenCalledWith(projectId, { $set: { 'colorPalette.primary': '#123456' } }, { new: true });
+    });
+
+    it('should return 400 INVALID_ID for an id that is not an ObjectId and write nothing (REV-65)', async () => {
+      const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+
+      const res = await request(app).patch('/api/v1/mvp/demo/tokens').send({ primaryColor: '#4F46E5' });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({
+        success: false,
+        error: { code: 'INVALID_ID', message: 'A valid 24-character hexadecimal ObjectId is required' },
+      });
+      expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it('should return 404 MVP_NOT_FOUND for an unknown MVP id (REV-65)', async () => {
+      const projectId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(null),
+      } as any);
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
+
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } });
     });
 
     it('should return 400 when primaryColor is an invalid hex string', async () => {
