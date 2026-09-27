@@ -3,6 +3,7 @@ import { useLeadFilterStore } from '../useLeadFilterStore.js';
 import { useThemeStore } from '../useThemeStore.js';
 import { useLanguageStore, LANGUAGE_STORAGE_KEY } from '../useLanguageStore.js';
 import { useDiscoveryStore } from '../useDiscoveryStore.js';
+import { discoveryStep } from '../../hooks/useDiscovery.js';
 
 describe('Zustand Dashboard Stores', () => {
   describe('useLeadFilterStore', () => {
@@ -190,7 +191,7 @@ describe('Zustand Dashboard Stores', () => {
 
   describe('useDiscoveryStore (REV-27)', () => {
     beforeEach(() => {
-      useDiscoveryStore.setState({ isOpen: false, activeJobId: null, resultsSeen: false, notifiedJobId: null });
+      useDiscoveryStore.setState({ isOpen: false, activeJobId: null, resultsSeen: false, notifiedJobId: null, importResult: null });
     });
 
     it('should start closed with no active job', () => {
@@ -199,14 +200,14 @@ describe('Zustand Dashboard Stores', () => {
       expect(state.activeJobId).toBeNull();
     });
 
-    it('should open and close the modal', () => {
+    it('should open and close the drawer', () => {
       useDiscoveryStore.getState().open();
       expect(useDiscoveryStore.getState().isOpen).toBe(true);
       useDiscoveryStore.getState().close();
       expect(useDiscoveryStore.getState().isOpen).toBe(false);
     });
 
-    it('should keep the active job while the modal is closed and reopened', () => {
+    it('should keep the active job while the drawer is closed and reopened', () => {
       useDiscoveryStore.getState().open();
       useDiscoveryStore.getState().setActiveJob('disc-7');
       useDiscoveryStore.getState().close();
@@ -214,7 +215,7 @@ describe('Zustand Dashboard Stores', () => {
       expect(useDiscoveryStore.getState().activeJobId).toBe('disc-7');
     });
 
-    it('should clear the active job on a new search without closing the modal', () => {
+    it('should clear the active job on a new search without closing the drawer', () => {
       useDiscoveryStore.getState().open();
       useDiscoveryStore.getState().setActiveJob('disc-7');
       useDiscoveryStore.getState().startNewSearch();
@@ -227,7 +228,7 @@ describe('Zustand Dashboard Stores', () => {
       useDiscoveryStore.getState().setActiveJob('disc-7');
       useDiscoveryStore.getState().markResultsSeen();
       expect(useDiscoveryStore.getState().resultsSeen).toBe(true);
-      // Closing the modal keeps the job and the seen flag
+      // Closing the drawer keeps the job and the seen flag
       useDiscoveryStore.getState().close();
       expect(useDiscoveryStore.getState()).toMatchObject({ activeJobId: 'disc-7', resultsSeen: true });
     });
@@ -243,7 +244,7 @@ describe('Zustand Dashboard Stores', () => {
       expect(useDiscoveryStore.getState()).toMatchObject({ activeJobId: null, resultsSeen: false });
     });
 
-    it('should record a background job as notified without opening the modal (REV-41)', () => {
+    it('should record a background job as notified without opening the drawer (REV-41)', () => {
       useDiscoveryStore.getState().setActiveJob('disc-7');
       useDiscoveryStore.getState().markJobNotified('disc-7');
       expect(useDiscoveryStore.getState()).toMatchObject({ isOpen: false, notifiedJobId: 'disc-7' });
@@ -264,6 +265,65 @@ describe('Zustand Dashboard Stores', () => {
       useDiscoveryStore.getState().markJobNotified('disc-8');
       useDiscoveryStore.getState().startNewSearch();
       expect(useDiscoveryStore.getState().notifiedJobId).toBeNull();
+    });
+
+    describe('drawer steps (REV-78)', () => {
+      const imported = { imported: 2, results: [] };
+      const step = () => discoveryStep(useDiscoveryStore.getState());
+
+      it('should start on Where with no import', () => {
+        expect(useDiscoveryStore.getState().importResult).toBeNull();
+        expect(step()).toBe('where');
+      });
+
+      it('should move Where → Review → Import → Review → Where', () => {
+        const s = useDiscoveryStore.getState();
+        s.open();
+        s.setActiveJob('disc-7');
+        expect(step()).toBe('review');
+        s.setImportResult('disc-7', imported);
+        expect(step()).toBe('import');
+        expect(useDiscoveryStore.getState().importResult).toEqual(imported);
+        s.backToReview();
+        expect(step()).toBe('review');
+        s.startNewSearch();
+        expect(step()).toBe('where');
+        expect(useDiscoveryStore.getState().isOpen).toBe(true);
+      });
+
+      it('should ignore an import that finishes after the operator moved to another job', () => {
+        useDiscoveryStore.getState().setActiveJob('disc-8');
+        useDiscoveryStore.getState().setImportResult('disc-7', imported);
+        expect(useDiscoveryStore.getState().importResult).toBeNull();
+        expect(step()).toBe('review');
+      });
+
+      it('should drop the import for a new job and on a new search', () => {
+        useDiscoveryStore.getState().setActiveJob('disc-7');
+        useDiscoveryStore.getState().setImportResult('disc-7', imported);
+        useDiscoveryStore.getState().setActiveJob('disc-8');
+        expect(useDiscoveryStore.getState().importResult).toBeNull();
+
+        useDiscoveryStore.getState().setImportResult('disc-8', imported);
+        useDiscoveryStore.getState().startNewSearch();
+        expect(useDiscoveryStore.getState().importResult).toBeNull();
+      });
+
+      it('should return to the same step after running a search in the background', () => {
+        const s = useDiscoveryStore.getState();
+        s.open();
+        s.setActiveJob('disc-7');
+        // "Run in background" closes the drawer; the job and its step stay
+        s.close();
+        expect(useDiscoveryStore.getState()).toMatchObject({ isOpen: false, activeJobId: 'disc-7' });
+        s.open();
+        expect(step()).toBe('review');
+
+        s.setImportResult('disc-7', imported);
+        s.close();
+        s.open();
+        expect(step()).toBe('import');
+      });
     });
   });
 });

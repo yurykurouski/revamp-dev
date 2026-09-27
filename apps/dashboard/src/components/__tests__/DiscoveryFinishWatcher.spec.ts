@@ -59,7 +59,7 @@ describe('DiscoveryFinishWatcher (REV-41)', () => {
   const notice = () => document.body.querySelector<HTMLElement>('[data-testid="discovery-finish-notice"]');
   const button = (label: string) => [...document.body.querySelectorAll('button')].find((b) => b.textContent === label);
 
-  it('announces new businesses without opening the modal', async () => {
+  it('announces new businesses without opening the drawer', async () => {
     await mount(jobStatus('completed', [candidate('a', 'new'), candidate('b', 'new'), candidate('c', 'existing_lead')]));
     expect(useDiscoveryStore.getState()).toMatchObject({ isOpen: false, notifiedJobId: 'disc-1' });
     expect(page()).toContain(en.discovery.backgroundReady.replace('{{count}}', '2'));
@@ -67,19 +67,19 @@ describe('DiscoveryFinishWatcher (REV-41)', () => {
     expect(button(en.discovery.backgroundReview)).toBeDefined();
   });
 
-  it('opens the modal when the operator clicks the notification', async () => {
+  it('opens the drawer when the operator clicks the notification', async () => {
     await mount(jobStatus('completed', [candidate('a', 'new')]));
     act(() => notice()!.click());
     expect(useDiscoveryStore.getState().isOpen).toBe(true);
   });
 
-  it('opens the modal from the Review button', async () => {
+  it('opens the drawer from the Review button', async () => {
     await mount(jobStatus('completed', [candidate('a', 'new')]));
     act(() => button(en.discovery.backgroundReview)!.click());
     expect(useDiscoveryStore.getState().isOpen).toBe(true);
   });
 
-  it('dismisses the notification without opening the modal', async () => {
+  it('dismisses the notification without opening the drawer', async () => {
     await mount(jobStatus('completed', [candidate('a', 'new')]));
     const close = document.body.querySelector<HTMLButtonElement>(`button[aria-label="${en.discovery.backgroundDismiss}"]`);
     act(() => close!.click());
@@ -119,7 +119,7 @@ describe('DiscoveryFinishWatcher (REV-41)', () => {
     expect(page()).toContain(en.discovery.backgroundFailed);
   });
 
-  it('stays quiet when the modal is already open', async () => {
+  it('stays quiet when the drawer is already open', async () => {
     useDiscoveryStore.setState({ isOpen: true });
     await mount(jobStatus('completed', [candidate('a', 'new')]));
     expect(useDiscoveryStore.getState()).toMatchObject({ isOpen: true, notifiedJobId: null });

@@ -11,7 +11,7 @@ const SEVERITY = { notifyReady: 'success', notifyEmpty: 'info', notifyFailed: 'e
 
 /**
  * Announces a discovery job sent to the background when it finishes, on every page (REV-41).
- * The notification never opens the modal by itself; clicking it does. New businesses stay on screen
+ * The notification never opens the drawer by itself; clicking it does. New businesses stay on screen
  * until the operator acts, while an empty or failed search hides after a few seconds.
  */
 export const DiscoveryFinishWatcher: React.FC = () => {
@@ -38,7 +38,7 @@ export const DiscoveryFinishWatcher: React.FC = () => {
     setNoticeOpen(true);
   }, [action, activeJobId, markJobNotified]);
 
-  // Opening the modal any other way makes the notification redundant
+  // Opening the drawer any other way makes the notification redundant
   useEffect(() => {
     if (isOpen) setNoticeOpen(false);
   }, [isOpen]);
@@ -62,7 +62,7 @@ export const DiscoveryFinishWatcher: React.FC = () => {
       onClose={(_, reason) => reason !== 'clickaway' && dismiss()}
       anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
     >
-      {/* The whole notification opens the modal; the button spells that out */}
+      {/* The whole notification opens the drawer; the button spells that out */}
       <Alert
         severity={SEVERITY[notice]}
         variant="filled"
@@ -79,7 +79,7 @@ export const DiscoveryFinishWatcher: React.FC = () => {
               size="small"
               aria-label={t('discovery.backgroundDismiss')}
               onClick={(e) => {
-                // Closing must not also open the modal through the notification's click
+                // Closing must not also open the drawer through the notification's click
                 e.stopPropagation();
                 dismiss();
               }}
