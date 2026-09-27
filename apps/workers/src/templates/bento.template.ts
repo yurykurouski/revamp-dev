@@ -93,9 +93,17 @@ const LAYOUT_CSS: Record<MvpLayoutVariant, string> = {
     }
     .layout-split .gallery-section { padding-top: 1rem; }
     .layout-split .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 200px; }
+    /* Odd counts: a full-width lead image keeps the 2-column mobile grid gap-free (REV-58) */
+    .layout-split .gallery-count-3 .gallery-image:first-child,
+    .layout-split .gallery-count-5 .gallery-image:first-child { grid-column: span 2; }
     @media (min-width: 768px) {
       .layout-split .gallery-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .layout-split .gallery-image:first-child { grid-column: span 2; grid-row: span 2; }
+      /* Per-count spans keep the 4-column mosaic a full rectangle for 2-6 images (REV-58) */
+      .layout-split .gallery-count-2 .gallery-image:last-child { grid-column: span 2; grid-row: span 2; }
+      .layout-split .gallery-count-3 .gallery-image:not(:first-child) { grid-column: span 2; }
+      .layout-split .gallery-count-4 .gallery-image:last-child { grid-column: span 2; }
+      .layout-split .gallery-count-6 .gallery-image:nth-child(n+4) { grid-column: span 2; }
     }
     .layout-split .gallery-image { height: 100%; aspect-ratio: auto; border-radius: 14px; }
     .layout-split .section-header { text-align: left; margin-inline: 0; }
@@ -381,7 +389,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     <!-- MODULE 3b: GALLERY (images from the original site) -->
     <section class="gallery-section" id="gallery">
       <div class="container">
-        <div class="gallery-grid">
+        <div class="gallery-grid${layout === 'split' ? ` gallery-count-${galleryImages.length}` : ''}">
           ${galleryImages
             .map((src) => `<img class="gallery-image" src="${escapeHtml(src)}" alt="${businessName}" loading="lazy" />`)
             .join('\n')}

@@ -665,6 +665,37 @@ describe('MVP layout variants (REV-54)', () => {
     expect(html).not.toContain('class="hero-split-image"');
   });
 
+  describe('split gallery fill (REV-58)', () => {
+    const images = (count: number) => Array.from({ length: count }, (_, i) => `https://wdc.example/g${i + 1}.jpg`);
+    const galleryGrid = (html: string) => html.match(/<div class="(gallery-grid[^"]*)">/)?.[1];
+
+    it.each([2, 3, 4, 5, 6])('tags the split gallery grid with its image count (%i images)', (count) => {
+      const html = bentoTemplateService.render({ ...data, layout: 'split', about: undefined, gallery: images(count) });
+      expect(galleryGrid(html)).toBe(`gallery-grid gallery-count-${count}`);
+      expect(html.match(/class="gallery-image"/g)).toHaveLength(count);
+    });
+
+    it('counts only the gallery images left after the About block takes the first one', () => {
+      const html = bentoTemplateService.render({ ...data, layout: 'split', gallery: images(5) });
+      expect(galleryGrid(html)).toBe('gallery-grid gallery-count-4');
+    });
+
+    it('ships a span rule for every count that would leave a gap', () => {
+      const html = render('split');
+      expect(html).toContain('.layout-split .gallery-count-2 .gallery-image:last-child { grid-column: span 2; grid-row: span 2; }');
+      expect(html).toContain('.layout-split .gallery-count-3 .gallery-image:not(:first-child) { grid-column: span 2; }');
+      expect(html).toContain('.layout-split .gallery-count-4 .gallery-image:last-child { grid-column: span 2; }');
+      expect(html).toContain('.layout-split .gallery-count-6 .gallery-image:nth-child(n+4) { grid-column: span 2; }');
+      expect(html).toContain('.layout-split .gallery-count-5 .gallery-image:first-child { grid-column: span 2; }');
+    });
+
+    it.each(['bento', 'editorial', 'compact'] as const)('leaves the %s gallery markup unchanged', (layout) => {
+      const html = bentoTemplateService.render({ ...data, layout, about: undefined, gallery: images(4) });
+      expect(galleryGrid(html)).toBe('gallery-grid');
+      expect(html).not.toContain('gallery-count-');
+    });
+  });
+
   it('rejects an unknown layout', () => {
     expect(() => bentoTemplateService.render({ ...data, layout: 'grid' as never })).toThrow();
   });
