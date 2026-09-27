@@ -17,8 +17,8 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { useTranslation } from 'react-i18next';
 
-export const DRAWER_WIDTH = 240;
-export const COLLAPSED_DRAWER_WIDTH = 72;
+export const DRAWER_WIDTH = 224;
+export const COLLAPSED_DRAWER_WIDTH = 64;
 
 /** Views the dashboard can show; add one here only once its page exists */
 export type DashboardView = 'leads';
@@ -51,16 +51,15 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, collapsed, onToggl
           boxSizing: 'border-box',
           overflowX: 'hidden',
           transition: (theme) => theme.transitions.create('width'),
-          backgroundColor: '#0F172A',
-          color: '#F8FAFC',
-          borderRight: 'none',
         },
       }}
     >
       <Box
         sx={{
-          py: 3,
-          px: collapsed ? 0 : 3,
+          height: 56,
+          px: collapsed ? 0 : 2.5,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
           display: 'flex',
           alignItems: 'center',
           justifyContent: collapsed ? 'center' : 'flex-start',
@@ -69,26 +68,27 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, collapsed, onToggl
       >
         <Box
           sx={{
-            width: 32,
-            height: 32,
+            width: 28,
+            height: 28,
             flexShrink: 0,
-            borderRadius: '8px',
-            background: 'linear-gradient(135deg, #4F46E5 0%, #06B6D4 100%)',
+            borderRadius: 1,
+            backgroundColor: 'primary.main',
+            color: 'primary.contrastText',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
           }}
         >
-          <AutoAwesomeIcon sx={{ color: '#FFFFFF', fontSize: 18 }} />
+          <AutoAwesomeIcon sx={{ fontSize: 16 }} />
         </Box>
         {!collapsed && (
-          <Typography variant="h6" noWrap sx={{ fontWeight: 700, letterSpacing: '-0.02em' }}>
+          <Typography variant="subtitle1" noWrap sx={{ color: 'text.primary', letterSpacing: '-0.01em' }}>
             Revamp SaaS
           </Typography>
         )}
       </Box>
 
-      <List sx={{ px: 1.5 }}>
+      <List sx={{ px: 1, py: 1.5 }}>
         {NAV_ITEMS.map((item) => {
           const active = item.view === activeView;
           const label = t(`sidebar.${item.view}`);
@@ -96,33 +96,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, collapsed, onToggl
             <ListItem key={item.view} disablePadding sx={{ mb: 0.5 }}>
               <Tooltip title={collapsed ? label : ''} placement="right">
                 <ListItemButton
+                  selected={active}
                   aria-current={active ? 'page' : undefined}
                   aria-label={collapsed ? label : undefined}
-                  sx={{
-                    borderRadius: '8px',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    backgroundColor: active ? 'rgba(79, 70, 229, 0.2)' : 'transparent',
-                    color: active ? '#818CF8' : '#94A3B8',
-                    '&:hover': {
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      color: '#FFFFFF',
-                    },
-                  }}
+                  sx={{ py: 0.75, justifyContent: collapsed ? 'center' : 'flex-start' }}
                 >
-                  <ListItemIcon
-                    sx={{
-                      color: active ? '#818CF8' : '#94A3B8',
-                      minWidth: collapsed ? 0 : 40,
-                    }}
-                  >
+                  <ListItemIcon sx={{ minWidth: collapsed ? 0 : 34, '& svg': { fontSize: 20 } }}>
                     {item.icon}
                   </ListItemIcon>
                   {!collapsed && (
                     <ListItemText
                       primary={label}
                       primaryTypographyProps={{
-                        fontSize: '0.875rem',
-                        fontWeight: active ? 600 : 500,
+                        fontSize: '0.8125rem',
+                        fontWeight: 600,
                         noWrap: true,
                       }}
                     />
@@ -137,7 +124,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, collapsed, onToggl
       <Box
         sx={{
           mt: 'auto',
-          p: 1.5,
+          p: 1,
+          borderTop: '1px solid',
+          borderColor: 'divider',
           display: 'flex',
           justifyContent: collapsed ? 'center' : 'flex-end',
         }}
@@ -147,10 +136,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activeView, collapsed, onToggl
             onClick={onToggleCollapsed}
             aria-label={toggleLabel}
             aria-expanded={!collapsed}
-            sx={{
-              color: '#94A3B8',
-              '&:hover': { color: '#FFFFFF', backgroundColor: 'rgba(255, 255, 255, 0.05)' },
-            }}
+            size="small"
+            sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}
           >
             {collapsed ? <ChevronRightIcon /> : <ChevronLeftIcon />}
           </IconButton>

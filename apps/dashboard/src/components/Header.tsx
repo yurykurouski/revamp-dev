@@ -58,20 +58,11 @@ export const Header: React.FC = () => {
   };
 
   return (
-    <AppBar
-      position="static"
-      color="inherit"
-      elevation={0}
-      sx={{
-        borderBottom: '1px solid',
-        borderColor: 'divider',
-        backgroundColor: 'background.paper',
-      }}
-    >
-      <Toolbar sx={{ justifyContent: 'space-between', px: 3, minHeight: 68 }}>
+    <AppBar position="static">
+      <Toolbar sx={{ justifyContent: 'space-between', px: 2.5, minHeight: { xs: 56 } }}>
         {/* Left branding / title */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: 'text.primary', whiteSpace: 'nowrap' }}>
+          <Typography variant="h6" sx={{ color: 'text.primary', whiteSpace: 'nowrap' }}>
             {t('header.title')}
           </Typography>
           <Chip
@@ -81,34 +72,18 @@ export const Header: React.FC = () => {
             color="primary"
             variant="outlined"
             // Static badge; gives way to the action buttons on narrower screens
-            sx={{ fontWeight: 600, display: { xs: 'none', xl: 'inline-flex' } }}
+            sx={{ display: { xs: 'none', xl: 'inline-flex' } }}
           />
         </Box>
 
         {/* Center / Right actions */}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           {/* View Switcher: Kanban vs Table */}
           <ToggleButtonGroup
             value={viewMode}
             exclusive
             onChange={handleViewModeChange}
             size="small"
-            sx={{
-              backgroundColor: 'background.default',
-              borderRadius: 2,
-              '& .MuiToggleButton-root': {
-                px: 1.5,
-                py: 0.5,
-                border: 'none',
-                color: 'text.secondary',
-                '&.Mui-selected': {
-                  backgroundColor: 'background.paper',
-                  color: 'primary.main',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.08)',
-                  fontWeight: 700,
-                },
-              },
-            }}
           >
             <ToggleButton value="kanban" aria-label={t('header.kanbanBoard')}>
               <Tooltip title={t('header.kanbanBoard')}>
@@ -141,7 +116,7 @@ export const Header: React.FC = () => {
             color="primary"
             startIcon={<AddIcon />}
             onClick={openAddModal}
-            sx={{ px: 2, py: 0.9, fontWeight: 600, whiteSpace: 'nowrap' }}
+            sx={{ whiteSpace: 'nowrap' }}
           >
             {t('header.newAudit')}
           </Button>
@@ -153,7 +128,7 @@ export const Header: React.FC = () => {
             onChange={(e) => setLanguage(e.target.value as AppLanguage)}
             inputProps={{ 'aria-label': t('language.label') }}
             startAdornment={<TranslateIcon sx={{ fontSize: 18, mr: 1, color: 'text.secondary' }} />}
-            sx={{ minWidth: 150, fontSize: '0.875rem' }}
+            sx={{ minWidth: 140, fontSize: '0.8125rem' }}
           >
             {SUPPORTED_LANGUAGES.map((code) => (
               <MenuItem key={code} value={code} lang={code}>
@@ -164,12 +139,8 @@ export const Header: React.FC = () => {
 
           {/* Dark / Light Mode Toggle */}
           <Tooltip title={mode === 'dark' ? t('header.switchToLight') : t('header.switchToDark')}>
-            <IconButton onClick={toggleTheme} color="inherit" sx={{ p: 1 }}>
-              {mode === 'dark' ? (
-                <LightModeIcon sx={{ color: '#F59E0B', fontSize: 22 }} />
-              ) : (
-                <DarkModeIcon sx={{ color: '#64748B', fontSize: 22 }} />
-              )}
+            <IconButton onClick={toggleTheme} sx={{ color: 'text.secondary', '&:hover': { color: 'text.primary' } }}>
+              {mode === 'dark' ? <LightModeIcon sx={{ fontSize: 20 }} /> : <DarkModeIcon sx={{ fontSize: 20 }} />}
             </IconButton>
           </Tooltip>
 
@@ -179,12 +150,15 @@ export const Header: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               gap: 1.5,
-              pl: 2,
+              pl: 1.5,
               borderLeft: '1px solid',
               borderColor: 'divider',
             }}
           >
-            <Avatar sx={{ width: 34, height: 34, bgcolor: 'primary.main', fontSize: '0.875rem', fontWeight: 700 }}>
+            <Avatar
+              variant="rounded"
+              sx={{ width: 30, height: 30, bgcolor: 'primary.soft', color: 'primary.main', fontSize: '0.75rem', fontWeight: 600 }}
+            >
               {t('header.operatorInitials')}
             </Avatar>
             <Box sx={{ display: { xs: 'none', md: 'block' } }}>

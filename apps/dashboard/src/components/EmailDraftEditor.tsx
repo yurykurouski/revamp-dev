@@ -14,6 +14,7 @@ import {
   DialogActions,
   CircularProgress,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import SendIcon from '@mui/icons-material/Send';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import DoDisturbIcon from '@mui/icons-material/DoDisturb';
@@ -26,6 +27,10 @@ import { ILeadItem, IAuditDetail } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import { auditSummarySentence, renderEmailTemplate } from '../utils/emailTemplate.js';
+import { RADIUS, TOKENS } from '../theme/theme.js';
+
+/** The recipient preview mimics a light inbox in both dashboard modes, colored by the light tokens */
+const INBOX = TOKENS.light;
 
 interface EmailDraftEditorProps {
   lead: ILeadItem;
@@ -164,13 +169,13 @@ Best regards, the Revamp SaaS team`;
         <Alert
           severity="success"
           onClose={() => setSuccessAlert(null)}
-          sx={{ borderRadius: 2 }}
+         
         >
           {successAlert}
         </Alert>
       )}
       {errorAlert && (
-        <Alert severity="error" onClose={() => setErrorAlert(null)} sx={{ borderRadius: 2 }}>
+        <Alert severity="error" onClose={() => setErrorAlert(null)}>
           {errorAlert}
         </Alert>
       )}
@@ -260,27 +265,23 @@ Best regards, the Revamp SaaS team`;
           {/* Email client shell */}
           <Card
             sx={{
-              borderRadius: 3,
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
               overflow: 'hidden',
-              backgroundColor: '#FFFFFF',
-              color: '#0F172A',
+              backgroundColor: INBOX.background.paper,
+              color: INBOX.text.primary,
             }}
           >
             {/* Mail client header bar */}
             <Box
               sx={{
                 p: 2,
-                backgroundColor: '#F8FAFC',
-                borderBottom: '1px solid #E2E8F0',
+                backgroundColor: INBOX.surface.raised,
+                borderBottom: `1px solid ${INBOX.border.subtle}`,
                 display: 'flex',
                 flexDirection: 'column',
                 gap: 1,
               }}
             >
-              <Typography variant="subtitle2" sx={{ fontWeight: 800, color: '#0F172A' }}>
+              <Typography variant="subtitle2" sx={{ fontWeight: 700, color: INBOX.text.primary }}>
                 {renderSubstitutedText(subject)}
               </Typography>
 
@@ -291,8 +292,8 @@ Best regards, the Revamp SaaS team`;
                       width: 28,
                       height: 28,
                       borderRadius: '50%',
-                      backgroundColor: '#4F46E5',
-                      color: '#FFFFFF',
+                      backgroundColor: INBOX.tones.primary,
+                      color: INBOX.onTone.primary,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -303,16 +304,16 @@ Best regards, the Revamp SaaS team`;
                     R
                   </Box>
                   <Box>
-                    <Typography variant="caption" sx={{ fontWeight: 700, color: '#0F172A', display: 'block' }}>
+                    <Typography variant="caption" sx={{ fontWeight: 700, color: INBOX.text.primary, display: 'block' }}>
                       Revamp SaaS &lt;outreach@revampdemo.com&gt;
                     </Typography>
-                    <Typography variant="caption" sx={{ color: '#64748B' }}>
+                    <Typography variant="caption" sx={{ color: INBOX.text.secondary }}>
                       {t('email.to')} {lead.phone || t('email.businessOwner')} &lt;info@{lead.domain}&gt;
                     </Typography>
                   </Box>
                 </Box>
 
-                <Typography variant="caption" sx={{ color: '#94A3B8' }}>
+                <Typography variant="caption" sx={{ color: INBOX.text.secondary }}>
                   {t('email.justNow')}
                 </Typography>
               </Box>
@@ -325,7 +326,7 @@ Best regards, the Revamp SaaS team`;
                 sx={{
                   whiteSpace: 'pre-wrap',
                   lineHeight: 1.7,
-                  color: '#334155',
+                  color: INBOX.text.primary,
                   fontSize: '0.925rem',
                 }}
               >
@@ -335,7 +336,7 @@ Best regards, the Revamp SaaS team`;
               {/* Embedded Comparison Banner Collage Preview */}
               {lead.comparisonBannerUrl && (
                 <Box sx={{ my: 1 }}>
-                  <Typography variant="caption" sx={{ color: '#64748B', fontWeight: 600, mb: 0.5, display: 'block' }}>
+                  <Typography variant="caption" sx={{ color: INBOX.text.secondary, fontWeight: 600, mb: 0.5, display: 'block' }}>
                     {t('email.attachment')}
                   </Typography>
                   <Box
@@ -346,8 +347,8 @@ Best regards, the Revamp SaaS team`;
                       width: '100%',
                       maxHeight: 180,
                       objectFit: 'cover',
-                      borderRadius: 2,
-                      border: '1px solid #CBD5E1',
+                      borderRadius: `${RADIUS.md}px`,
+                      border: `1px solid ${INBOX.border.strong}`,
                     }}
                   />
                 </Box>
@@ -363,15 +364,12 @@ Best regards, the Revamp SaaS team`;
                   rel="noopener noreferrer"
                   endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}
                   sx={{
-                    backgroundColor: '#4F46E5',
-                    color: '#FFFFFF',
+                    backgroundColor: INBOX.tones.primary,
+                    color: INBOX.onTone.primary,
                     px: 3,
                     py: 1,
-                    fontWeight: 700,
-                    textTransform: 'none',
-                    borderRadius: 2,
                     '&:hover': {
-                      backgroundColor: '#4338CA',
+                      backgroundColor: alpha(INBOX.tones.primary, 0.88),
                     },
                   }}
                 >
@@ -388,9 +386,9 @@ Best regards, the Revamp SaaS team`;
         sx={{
           p: 2,
           backgroundColor: 'background.paper',
-          borderTop: '1px solid',
+          border: '1px solid',
           borderColor: 'divider',
-          borderRadius: 2,
+          borderRadius: 1,
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
@@ -443,7 +441,7 @@ Best regards, the Revamp SaaS team`;
             }
             onClick={handleApproveSubmit}
             disabled={isActionLoading}
-            sx={{ px: 3, py: 1, fontWeight: 700 }}
+            sx={{ px: 2 }}
           >
             {t('email.approve')}
           </Button>

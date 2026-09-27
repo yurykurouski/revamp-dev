@@ -8,6 +8,7 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
@@ -27,6 +28,8 @@ import { withPreviewVersion } from '../hooks/useLeads.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { GenerateMvpButton } from './GenerateMvpButton.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
+import { ScoreChip } from './ScoreChip.js';
+import { RADIUS } from '../theme/theme.js';
 import { AuditFailedActions } from './AuditFailedActions.js';
 import { isAuditFailed } from '../utils/auditFailure.js';
 import { useTranslation } from 'react-i18next';
@@ -40,8 +43,6 @@ interface KanbanColumnConfig {
   id: keyof Translation['kanban']['columns'];
   status: LeadStatus | LeadStatus[];
   icon: React.ReactNode;
-  color: string;
-  bgColor: string;
 }
 
 const COLUMNS: KanbanColumnConfig[] = [
@@ -49,57 +50,41 @@ const COLUMNS: KanbanColumnConfig[] = [
     id: 'queued',
     status: ['QUEUED', 'PENDING', 'AUDITING', 'AUDIT_FAILED', 'AUDITED', 'GENERATING'],
     icon: <PendingActionsIcon sx={{ fontSize: 18 }} />,
-    color: '#64748B',
-    bgColor: 'rgba(100, 116, 139, 0.08)',
   },
   {
     id: 'needs_approval',
     status: ['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'],
     icon: <AutoAwesomeIcon sx={{ fontSize: 18 }} />,
-    color: '#F59E0B',
-    bgColor: 'rgba(245, 158, 11, 0.08)',
   },
   {
     id: 'scheduled',
     status: ['SCHEDULED', 'APPROVED'],
     icon: <ScheduleIcon sx={{ fontSize: 18 }} />,
-    color: '#6366F1',
-    bgColor: 'rgba(99, 102, 241, 0.08)',
   },
   {
     id: 'sent',
     status: ['SENT', 'DISPATCHED'],
     icon: <SendIcon sx={{ fontSize: 18 }} />,
-    color: '#3B82F6',
-    bgColor: 'rgba(59, 130, 246, 0.08)',
   },
   {
     id: 'opened',
     status: ['OPENED'],
     icon: <MarkEmailReadIcon sx={{ fontSize: 18 }} />,
-    color: '#8B5CF6',
-    bgColor: 'rgba(139, 92, 246, 0.08)',
   },
   {
     id: 'clicked',
     status: ['CLICKED'],
     icon: <TouchAppIcon sx={{ fontSize: 18 }} />,
-    color: '#10B981',
-    bgColor: 'rgba(16, 185, 129, 0.08)',
   },
   {
     id: 'engaged',
     status: ['ENGAGED', 'REPLIED'],
     icon: <WhatshotIcon sx={{ fontSize: 18 }} />,
-    color: '#EC4899',
-    bgColor: 'rgba(236, 72, 153, 0.08)',
   },
   {
     id: 'rejected',
     status: ['REJECTED', 'UNSUBSCRIBED'],
     icon: <BlockIcon sx={{ fontSize: 18 }} />,
-    color: '#EF4444',
-    bgColor: 'rgba(239, 68, 68, 0.08)',
   },
 ];
 
@@ -116,7 +101,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
     <Box
       sx={{
         display: 'flex',
-        gap: 2.5,
+        gap: 1.5,
         overflowX: 'auto',
         pb: 3,
         pt: 1,
@@ -133,17 +118,19 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
           <Box
             key={col.id}
             sx={{
-              width: 320,
-              minWidth: 320,
-              backgroundColor: 'background.paper',
-              borderRadius: 3,
-              p: 2,
+              width: 300,
+              minWidth: 300,
+              backgroundColor: 'surface.sunken',
+              borderRadius: `${RADIUS.lg}px`,
+              p: 1.25,
               display: 'flex',
               flexDirection: 'column',
-              gap: 1.5,
+              gap: 1.25,
               border: '1px solid',
               borderColor: 'divider',
-              boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
+              // The stage color runs along the top edge of the column
+              borderTop: '2px solid',
+              borderTopColor: `stage.${col.id}`,
             }}
           >
             {/* Column Header */}
@@ -152,44 +139,41 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                pb: 1,
-                borderBottom: '2px solid',
-                borderColor: col.color,
+                px: 0.5,
+                pt: 0.25,
               }}
             >
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Box sx={{ color: col.color, display: 'flex', alignItems: 'center' }}>
+                <Box sx={{ color: `stage.${col.id}`, display: 'flex', alignItems: 'center' }}>
                   {col.icon}
                 </Box>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+                <Typography variant="subtitle2">
                   {t(`kanban.columns.${col.id}`)}
                 </Typography>
               </Box>
               <Chip
                 label={columnLeads.length}
                 size="small"
-                sx={{
-                  height: 22,
-                  fontWeight: 700,
-                  fontSize: '0.75rem',
-                  backgroundColor: col.bgColor,
-                  color: col.color,
-                }}
+                sx={(theme) => ({
+                  minWidth: 28,
+                  backgroundColor: alpha(theme.palette.stage[col.id], theme.palette.mode === 'dark' ? 0.14 : 0.1),
+                  color: theme.palette.stage[col.id],
+                })}
               />
             </Box>
 
             {/* Column Cards */}
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {columnLeads.length === 0 ? (
                 <Box
                   sx={{
                     py: 4,
                     textAlign: 'center',
                     color: 'text.secondary',
-                    fontSize: '0.85rem',
+                    fontSize: '0.8125rem',
                     border: '1px dashed',
-                    borderColor: 'divider',
-                    borderRadius: 2,
+                    borderColor: 'border.strong',
+                    borderRadius: 1,
                   }}
                 >
                   {t('kanban.empty')}
@@ -199,20 +183,14 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                   <Card
                     key={lead.id}
                     sx={{
-                      p: 2,
+                      p: 1.5,
                       display: 'flex',
                       flexDirection: 'column',
-                      gap: 1.5,
-                      transition: 'transform 0.15s ease, box-shadow 0.15s ease',
-                      '&:hover': {
-                        transform: 'translateY(-2px)',
-                        boxShadow: '0 4px 12px rgba(0, 0, 0, 0.08)',
-                      },
-                      ...(col.id === 'needs_approval' && {
-                        borderLeft: '4px solid #F59E0B',
-                      }),
-                      ...(col.id === 'rejected' && {
-                        borderLeft: '4px solid #EF4444',
+                      gap: 1.25,
+                      transition: 'border-color 0.15s ease',
+                      '&:hover': { borderColor: 'border.strong' },
+                      ...((col.id === 'needs_approval' || col.id === 'rejected') && {
+                        boxShadow: (theme) => `inset 2px 0 0 ${theme.palette.stage[col.id]}`,
                       }),
                     }}
                   >
@@ -221,11 +199,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       <Box sx={{ pr: 1 }}>
                         <Typography
                           variant="subtitle2"
-                          sx={{
-                            fontWeight: 700,
-                            lineHeight: 1.3,
-                            color: 'text.primary',
-                          }}
+                          sx={{ lineHeight: 1.3, color: 'text.primary' }}
                         >
                           {lead.businessName}
                         </Typography>
@@ -251,27 +225,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                       </Box>
 
                       {lead.totalScore !== undefined && (
-                        <Chip
-                          label={`${lead.totalScore}/100`}
-                          size="small"
-                          sx={{
-                            height: 22,
-                            fontWeight: 700,
-                            fontSize: '0.75rem',
-                            backgroundColor:
-                              lead.totalScore >= 70
-                                ? 'success.light'
-                                : lead.totalScore >= 40
-                                ? 'warning.light'
-                                : 'error.light',
-                            color:
-                              lead.totalScore >= 70
-                                ? 'success.main'
-                                : lead.totalScore >= 40
-                                ? 'warning.main'
-                                : 'error.main',
-                          }}
-                        />
+                        <ScoreChip score={lead.totalScore} />
                       )}
                     </Box>
 
@@ -281,7 +235,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         label={isDashboardNiche(lead.niche) ? t(`niches.${lead.niche}`) : lead.niche}
                         size="small"
                         variant="outlined"
-                        sx={{ fontSize: '0.72rem', height: 20 }}
                       />
                       <SiteComplexityChip complexity={lead.siteComplexity} />
                       {lead.city && (
@@ -302,7 +255,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           width: '100%',
                           height: 70,
                           objectFit: 'cover',
-                          borderRadius: 1.5,
+                          borderRadius: 1,
                           border: '1px solid',
                           borderColor: 'divider',
                         }}
@@ -318,7 +271,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           color="error"
                           variant="outlined"
-                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                          sx={{ alignSelf: 'flex-start' }}
                         />
                       </Tooltip>
                     )}
@@ -332,7 +285,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           color="error"
                           variant="outlined"
-                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                          sx={{ alignSelf: 'flex-start' }}
                         />
                       </Tooltip>
                     )}
@@ -352,7 +305,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           color="warning"
                           variant="outlined"
-                          sx={{ alignSelf: 'flex-start', fontSize: '0.7rem', height: 22, fontWeight: 600 }}
+                          sx={{ alignSelf: 'flex-start' }}
                         />
                       </Tooltip>
                     )}
@@ -382,13 +335,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           startIcon={<AutoAwesomeIcon sx={{ fontSize: 15 }} />}
                           onClick={() => openModal(lead.id, lead.auditId || `audit-${lead.id}`)}
-                          sx={{
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            py: 0.5,
-                            px: 1.5,
-                            color: '#000000',
-                          }}
                         >
                           {t('kanban.hitlReview')}
                         </Button>
@@ -398,11 +344,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         <Chip
                           label={t('kanban.queued')}
                           size="small"
-                          sx={{
-                            fontSize: '0.7rem',
-                            height: 20,
-                            backgroundColor: 'rgba(100, 116, 139, 0.1)',
-                          }}
                         />
                       )}
 
@@ -412,11 +353,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           color="info"
                           variant="outlined"
-                          sx={{
-                            fontSize: '0.7rem',
-                            height: 20,
-                            fontWeight: 600,
-                          }}
                         />
                       )}
 
@@ -430,11 +366,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           color="warning"
                           variant="outlined"
-                          sx={{
-                            fontSize: '0.7rem',
-                            height: 20,
-                            fontWeight: 600,
-                          }}
                         />
                       )}
 
@@ -444,11 +375,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           size="small"
                           color="error"
                           variant="outlined"
-                          sx={{
-                            fontSize: '0.7rem',
-                            height: 20,
-                            fontWeight: 600,
-                          }}
                         />
                       )}
 
@@ -460,7 +386,6 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                           href={withPreviewVersion(lead.previewUrl, lead.mvpGeneratedAt)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          sx={{ fontSize: '0.75rem', py: 0.3, px: 1 }}
                         >
                           {t('kanban.openMvp')}
                         </Button>

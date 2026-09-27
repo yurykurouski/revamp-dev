@@ -17,6 +17,7 @@ import {
   CircularProgress,
   Alert,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
@@ -198,7 +199,7 @@ export const SideBySideInspectorModal: React.FC = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-              <Typography variant="h6" sx={{ fontWeight: 800, lineHeight: 1.2 }}>
+              <Typography variant="h6" sx={{ fontWeight: 700, lineHeight: 1.2 }}>
                 {currentLead?.businessName || t('inspector.fallbackTitle')}
               </Typography>
               {currentLead?.niche && (
@@ -259,11 +260,7 @@ export const SideBySideInspectorModal: React.FC = () => {
             <Chip
               label={t('inspector.originalScore', { score: currentLead?.totalScore ?? NOT_MEASURED })}
               size="small"
-              sx={{
-                backgroundColor: 'error.light',
-                color: 'error.main',
-                fontWeight: 700,
-              }}
+              color="error"
             />
           </Box>
           <Tooltip title={t('inspector.close')}>
@@ -335,24 +332,24 @@ export const SideBySideInspectorModal: React.FC = () => {
               {/* Diagnostic Metrics Pills: a value the audit did not measure shows as missing (REV-45) */}
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
                 <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                  <SpeedIcon sx={{ color: '#EF4444', fontSize: 24 }} />
+                  <SpeedIcon sx={{ color: 'error.main', fontSize: 20 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       {t('inspector.lcp')}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 800, color: '#EF4444' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'error.main' }}>
                       {audit?.lcpSeconds != null ? t('inspector.seconds', { value: audit.lcpSeconds.toFixed(1) }) : NOT_MEASURED}
                     </Typography>
                   </Box>
                 </Card>
 
                 <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                  <AccessibilityNewIcon sx={{ color: '#F59E0B', fontSize: 24 }} />
+                  <AccessibilityNewIcon sx={{ color: 'warning.main', fontSize: 20 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       {t('inspector.a11yIssues')}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 800, color: '#F59E0B' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'warning.main' }}>
                       {audit?.a11yViolationsCount != null
                         ? t('inspector.violations', { count: audit.a11yViolationsCount })
                         : NOT_MEASURED}
@@ -361,12 +358,12 @@ export const SideBySideInspectorModal: React.FC = () => {
                 </Card>
 
                 <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
-                  <SmartphoneIcon sx={{ color: '#6366F1', fontSize: 24 }} />
+                  <SmartphoneIcon sx={{ color: 'info.main', fontSize: 20 }} />
                   <Box>
                     <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
                       {t('inspector.mobileFriendliness')}
                     </Typography>
-                    <Typography variant="body2" sx={{ fontWeight: 800, color: '#6366F1' }}>
+                    <Typography variant="body2" sx={{ fontWeight: 600, color: 'info.main' }}>
                       {audit?.mobileFriendlinessRating != null ? `${audit.mobileFriendlinessRating}/100` : NOT_MEASURED}
                     </Typography>
                   </Box>
@@ -399,7 +396,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   sx={{
                     border: '1px solid',
                     borderColor: 'divider',
-                    borderRadius: 2,
+                    borderRadius: 1,
                     overflowY: 'auto',
                     overflowX: 'hidden',
                     backgroundColor: 'background.default',
@@ -408,7 +405,6 @@ export const SideBySideInspectorModal: React.FC = () => {
                     display: 'flex',
                     alignItems: 'flex-start',
                     justifyContent: 'center',
-                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.06)',
                     position: 'relative',
                   }}
                 >
@@ -441,7 +437,7 @@ export const SideBySideInspectorModal: React.FC = () => {
               {/* 3 Critical Flaws from Vision LLM Design Critique */}
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <ErrorOutlineIcon sx={{ color: '#EF4444', fontSize: 18 }} />
+                  <ErrorOutlineIcon sx={{ color: 'error.main', fontSize: 18 }} />
                   {t('inspector.criticalFlaws')}
                 </Typography>
 
@@ -451,7 +447,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       key={idx}
                       sx={{
                         p: 1.5,
-                        borderLeft: '4px solid #EF4444',
+                        boxShadow: (theme) => `inset 2px 0 0 ${theme.palette.error.main}`,
                         backgroundColor: 'background.default',
                       }}
                     >
@@ -472,14 +468,14 @@ export const SideBySideInspectorModal: React.FC = () => {
               {/* 3 Quick Wins */}
               <Box>
                 <Typography variant="subtitle2" sx={{ fontWeight: 700, mb: 1, display: 'flex', alignItems: 'center', gap: 1 }}>
-                  <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 18 }} />
+                  <CheckCircleOutlineIcon sx={{ color: 'success.main', fontSize: 18 }} />
                   {t('inspector.quickWins')}
                 </Typography>
 
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.8 }}>
                   {audit?.quickWins.map((win, idx) => (
                     <Box key={idx} sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <CheckCircleOutlineIcon sx={{ color: '#10B981', fontSize: 16, flexShrink: 0 }} />
+                      <CheckCircleOutlineIcon sx={{ color: 'success.main', fontSize: 16, flexShrink: 0 }} />
                       <Typography variant="caption" color="text.primary" sx={{ fontWeight: 500 }}>
                         {win}
                       </Typography>
@@ -630,7 +626,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                   alignItems: 'center',
                   justifyContent: 'center',
                   overflow: 'hidden',
-                  backgroundColor: 'rgba(15, 23, 42, 0.03)',
+                  backgroundColor: 'surface.sunken',
                 }}
               >
                 <Box
@@ -652,14 +648,16 @@ export const SideBySideInspectorModal: React.FC = () => {
                     border:
                       activeBreakpoint === 'desktop'
                         ? 'none'
-                        : '10px solid #1E293B',
+                        : '10px solid',
+                    borderColor: 'border.strong',
                     boxShadow:
                       activeBreakpoint === 'desktop'
                         ? 'none'
-                        : '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
+                        : (theme) => `0 24px 48px -12px ${alpha(theme.palette.common.black, 0.4)}`,
                     overflow: 'hidden',
                     position: 'relative',
-                    backgroundColor: '#FFFFFF',
+                    // The MVP is a light page of its own, whatever the dashboard theme
+                    backgroundColor: 'common.white',
                   }}
                 >
                   {/* Mobile Speaker / Camera Notch Simulator */}
@@ -672,7 +670,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                         transform: 'translateX(-50%)',
                         width: 120,
                         height: 18,
-                        backgroundColor: '#1E293B',
+                        backgroundColor: 'border.strong',
                         borderBottomLeftRadius: 10,
                         borderBottomRightRadius: 10,
                         zIndex: 10,
@@ -763,7 +761,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                 color="primary"
                 startIcon={<AutoAwesomeIcon />}
                 onClick={() => setActiveTab('email_editor')}
-                sx={{ px: 2.5, fontWeight: 700 }}
+                sx={{ px: 2 }}
               >
                 {t('inspector.goToApproval')}
               </Button>

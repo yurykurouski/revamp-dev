@@ -92,8 +92,8 @@ export const AddLeadModal: React.FC = () => {
             sx={{
               width: 38,
               height: 38,
-              borderRadius: '10px',
-              backgroundColor: 'primary.light',
+              borderRadius: 1,
+              backgroundColor: 'primary.soft',
               color: 'primary.main',
               display: 'flex',
               alignItems: 'center',
@@ -114,7 +114,7 @@ export const AddLeadModal: React.FC = () => {
 
         <DialogContent sx={{ pt: 2 }}>
           {formError && (
-            <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }}>
+            <Alert severity="error" sx={{ mb: 2.5 }}>
               {formError}
             </Alert>
           )}
@@ -195,7 +195,7 @@ export const AddLeadModal: React.FC = () => {
                 <AutoAwesomeIcon />
               )
             }
-            sx={{ px: 2.5, py: 1, fontWeight: 700 }}
+            sx={{ px: 2 }}
           >
             {createLeadMutation.isPending ? t('addLead.starting') : t('addLead.start')}
           </Button>

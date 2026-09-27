@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import PaletteIcon from '@mui/icons-material/Palette';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
+import { RADIUS } from '../theme/theme.js';
 import { useTranslation } from 'react-i18next';
 
 const COLOR_PRESETS = [
@@ -43,7 +44,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
         gap: 1.5,
         p: 1.5,
         backgroundColor: 'background.paper',
-        borderRadius: 2,
+        borderRadius: 1,
         border: '1px solid',
         borderColor: 'divider',
         flexWrap: 'wrap',
@@ -70,7 +71,9 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
                   borderRadius: '50%',
                   backgroundColor: preset.hex,
                   cursor: 'pointer',
-                  border: isSelected ? '2px solid #FFFFFF' : '1px solid rgba(0,0,0,0.1)',
+                  border: isSelected ? '2px solid' : '1px solid',
+                  // A selected swatch gets a gap ring in the surface color, then its own color
+                  borderColor: isSelected ? 'background.paper' : 'border.strong',
                   outline: isSelected ? '2px solid' : 'none',
                   outlineColor: preset.hex,
                   transition: 'transform 0.15s ease',
@@ -96,7 +99,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
             height: 26,
             padding: 0,
             border: 'none',
-            borderRadius: 6,
+            borderRadius: RADIUS.md,
             cursor: 'pointer',
             backgroundColor: 'transparent',
           }}
@@ -106,7 +109,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
           variant="caption"
           sx={{
             fontFamily: 'monospace',
-            fontWeight: 700,
+            fontWeight: 600,
             color: 'text.secondary',
             textTransform: 'uppercase',
           }}
