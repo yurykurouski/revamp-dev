@@ -85,6 +85,7 @@ describe('Prototype step layout picker (REV-84)', () => {
     act(() => root.unmount());
     container.remove();
     document.body.innerHTML = '';
+    window.sessionStorage.clear();
     vi.restoreAllMocks();
   });
 
@@ -256,5 +257,59 @@ describe('Prototype step layout picker (REV-84)', () => {
     expect(savedMvpLayout(mvpWith(undefined))).toBe('bento');
     expect(savedMvpLayout({ ...mvpWith(undefined), layout: { variant: 'masonry' as never, reasons: [] } })).toBe('bento');
     expect(savedMvpLayout(null)).toBeUndefined();
+  });
+
+  describe('floating over the preview (REV-88)', () => {
+    const toolsPanel = () => container.querySelector<HTMLElement>('[data-testid="mvp-tools-panel"]')!;
+
+    it('holds both pickers in a panel over the preview, outside the sandboxed iframe', () => {
+      render(mvpWith('bento'));
+      const viewport = container.querySelector('[data-testid="prototype-viewport"]')!;
+      const frame = container.querySelector('iframe')!;
+      expect(toolsPanel().parentElement).toBe(viewport);
+      expect(viewport.contains(frame)).toBe(true);
+      expect(toolsPanel().contains(frame)).toBe(false);
+      expect(frame.getAttribute('sandbox')).toBe('allow-scripts allow-same-origin');
+      expect(toolsPanel().querySelector('[data-testid="mvp-layout-picker"]')).not.toBeNull();
+      expect(toolsPanel().querySelector('#brand-color-picker-input')).not.toBeNull();
+      // No other copy of the pickers above the preview
+      expect(container.querySelectorAll('[data-testid="mvp-layout-picker"]')).toHaveLength(1);
+      expect(container.querySelectorAll('#brand-color-picker-input')).toHaveLength(1);
+    });
+
+    it('still applies a color live and saves it on the MVP', async () => {
+      render(mvpWith('bento'));
+      const save = vi.spyOn(apiClient, 'updateMvpTokens').mockResolvedValue(undefined as never);
+      const input = toolsPanel().querySelector<HTMLInputElement>('#brand-color-picker-input')!;
+      act(() => {
+        const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+        setValue.call(input, '#e11d48');
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      expect(posted).toContainEqual({ type: 'REVAMP_UPDATE_THEME', palette: { primary: '#e11d48', accent: '#e11d48' } });
+      await vi.waitFor(() =>
+        expect(save).toHaveBeenCalledWith('mvp-1', { primaryColor: '#e11d48', accentColor: '#e11d48' }),
+      );
+    });
+
+    it('keeps the layout picker working after the panel is collapsed and expanded', async () => {
+      render(mvpWith('bento'));
+      const toggle = (label: string) =>
+        act(() => toolsPanel().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!.click());
+      toggle(en.mvpTools.collapse);
+      expect(container.querySelector('[data-testid="mvp-layout-picker"]')).toBeNull();
+      toggle(en.mvpTools.expand);
+
+      const save = vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('split', ['rule:manual']));
+      click('split');
+      expect(setLayoutMessages()).toContainEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
+      await vi.waitFor(() => expect(save).toHaveBeenCalledWith('mvp-1', 'split'));
+    });
+
+    it('offers the color picker before an MVP exists, without the layout picker', () => {
+      render(null, { previewUrl: undefined });
+      expect(toolsPanel().querySelector('#brand-color-picker-input')).not.toBeNull();
+      expect(toolsPanel().querySelector('[data-testid="mvp-layout-picker"]')).toBeNull();
+    });
   });
 });

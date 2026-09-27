@@ -518,6 +518,13 @@ export const lt: Translation = {
       guidance: 'Gairės',
     },
   },
+  mvpTools: {
+    title: 'Dizaino įrankiai',
+    move: 'Perkelti dizaino įrankių skydelį. Rodyklės jį perkelia, Home grąžina į vietą',
+    resetPosition: 'Grąžinti į vietą',
+    collapse: 'Suskleisti dizaino įrankius',
+    expand: 'Išskleisti dizaino įrankius',
+  },
   colorPicker: {
     brandPalette: 'Prekės ženklo paletė:',
     saveFailed: 'Nepavyko išsaugoti paletės: {{message}}',

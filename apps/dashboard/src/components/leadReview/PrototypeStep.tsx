@@ -17,6 +17,7 @@ import { ColorPickerToolbar } from '../ColorPickerToolbar.js';
 import { MvpLayoutPicker } from '../MvpLayoutPicker.js';
 import { useLiveMvpLayout } from '../../hooks/useLiveMvpLayout.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
+import { FloatingToolsPanel } from './FloatingToolsPanel.js';
 
 type PreviewBreakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -41,8 +42,8 @@ interface PrototypeStepProps {
 
 /**
  * Step 2 of a lead review (REV-77): the generated MVP in its sandboxed iframe (AGENTS.md §3.2.3) with the
- * device breakpoints, regenerate, the live color toolbar (REV-16), the live layout picker (REV-84) and the
- * "What changed" summary (REV-81).
+ * device breakpoints, regenerate, the live color toolbar (REV-16) and layout picker (REV-84) in a panel
+ * floating over the preview (REV-88), and the "What changed" summary (REV-81).
  */
 export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }) => {
   const { t } = useTranslation();
@@ -163,37 +164,6 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
         </Box>
       </Box>
 
-      {/* Live color (REV-16) and layout (REV-84) toolbars */}
-      <Box
-        sx={{
-          px: 2,
-          py: 1,
-          borderBottom: '1px solid',
-          borderColor: 'divider',
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'stretch',
-          gap: 1,
-        }}
-      >
-        <Box sx={{ flex: '1 1 360px', minWidth: 0 }}>
-          <ColorPickerToolbar
-            currentPrimary={currentColor}
-            originalPrimary={audit?.colorPalette?.primary}
-            onColorChange={handleColorChange}
-            onReset={handleColorReset}
-          />
-        </Box>
-        {mvp && (
-          <MvpLayoutPicker
-            value={liveLayout.layout}
-            onChange={liveLayout.changeLayout}
-            disabled={!liveLayout.canChange || !previewUrl || isPreviewBusy}
-            disabledReason={t('mvpLayout.locked')}
-          />
-        )}
-      </Box>
-
       {/* What the MVP changed compared with the original site (REV-81) */}
       <MvpChangeSummary mvp={mvp} audit={audit} />
 
@@ -244,6 +214,24 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
               }}
             />
           )}
+
+          {/* Live color (REV-16) and layout (REV-84) pickers, floating over the preview (REV-88) */}
+          <FloatingToolsPanel>
+            <ColorPickerToolbar
+              currentPrimary={currentColor}
+              originalPrimary={audit?.colorPalette?.primary}
+              onColorChange={handleColorChange}
+              onReset={handleColorReset}
+            />
+            {mvp && (
+              <MvpLayoutPicker
+                value={liveLayout.layout}
+                onChange={liveLayout.changeLayout}
+                disabled={!liveLayout.canChange || !previewUrl || isPreviewBusy}
+                disabledReason={t('mvpLayout.locked')}
+              />
+            )}
+          </FloatingToolsPanel>
 
           {previewUrl ? (
             <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} onLoad={liveLayout.onFrameLoad} />
