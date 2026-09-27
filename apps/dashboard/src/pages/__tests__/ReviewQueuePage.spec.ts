@@ -23,6 +23,7 @@ vi.mock('../../components/leadReview/LeadReview.js', () => ({
       'div',
       { 'data-testid': 'review', 'data-lead': lead.id },
       React.createElement('button', { 'data-testid': 'decide-approve', onClick: () => onDecision?.('approved') }, 'approve'),
+      React.createElement('button', { 'data-testid': 'decide-reject', onClick: () => onDecision?.('rejected') }, 'reject'),
     ),
 }));
 
@@ -216,8 +217,41 @@ describe('review queue home (REV-79)', () => {
 
   it('selects the lead before when the last one is rejected', async () => {
     await mount('/?bucket=needs_you&lead=n3');
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="decide-reject"]')!.click());
     await refetchWith(LEADS.map((l) => (l.id === 'n3' ? { ...l, status: 'REJECTED' as const } : l)));
     expect(selected()).toBe('n2');
+  });
+
+  it('keeps the selected lead while its regeneration moves it to In progress and back (REV-86)', async () => {
+    await mount();
+    expect(reviewed()).toBe('n1');
+
+    // Regenerate MVP: the lead is GENERATING, an In progress status, on the next poll
+    await refetchWith(LEADS.map((l) => (l.id === 'n1' ? { ...l, status: 'GENERATING' as const } : l)));
+    expect(tab('needs_you').getAttribute('aria-selected')).toBe('true');
+    expect(listed()).toEqual(['n1', 'n2', 'n3']);
+    expect(selected()).toBe('n1');
+    expect(reviewed()).toBe('n1');
+    expect(query().get('lead')).toBe('n1');
+    // The counts stay honest: the lead is counted in the bucket it is in
+    expect(tab('needs_you').textContent).toBe(`${en.buckets.needs_you}2`);
+    expect(tab('in_progress').textContent).toBe(`${en.buckets.in_progress}2`);
+
+    // The new MVP is ready: back in Needs you, still selected
+    await refetchWith(LEADS);
+    expect(listed()).toEqual(['n1', 'n2', 'n3']);
+    expect(selected()).toBe('n1');
+    expect(reviewed()).toBe('n1');
+  });
+
+  it('walks the list as shown with J and lets a lead a worker moved on leave once the operator moves away', async () => {
+    await mount();
+    await refetchWith(LEADS.map((l) => (l.id === 'n1' ? { ...l, status: 'GENERATING' as const } : l)));
+    expect(listed()).toEqual(['n1', 'n2', 'n3']);
+
+    await key('j');
+    expect(selected()).toBe('n2');
+    expect(listed()).toEqual(['n2', 'n3']);
   });
 
   it('moves with J / K and opens the selected lead with Enter', async () => {
