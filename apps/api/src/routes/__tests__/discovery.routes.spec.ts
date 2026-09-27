@@ -78,10 +78,13 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
     });
 
     it('should return 404 for an unknown job', async () => {
-      vi.mocked(DiscoveryService.getDiscoveryStatus).mockRejectedValue(new AppError('Discovery job not found', 404));
+      vi.mocked(DiscoveryService.getDiscoveryStatus).mockRejectedValue(new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found'));
       const res = await request(app).get('/api/v1/discovery/missing');
       expect(res.status).toBe(404);
-      expect(res.body.success).toBe(false);
+      expect(res.body).toEqual({
+        success: false,
+        error: { code: 'DISCOVERY_JOB_NOT_FOUND', message: 'Discovery job not found' },
+      });
     });
   });
 
@@ -115,13 +118,13 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
     );
 
     it.each([
-      [404, 'No place found at these coordinates'],
-      [502, 'Reverse geocoding service is unavailable'],
-    ])('should pass through %i errors', async (status, message) => {
-      vi.mocked(DiscoveryService.reverseGeocode).mockRejectedValue(new AppError(message, status));
+      [404, 'PLACE_NOT_FOUND', 'No place found at these coordinates'],
+      [502, 'GEOCODING_UNAVAILABLE', 'Reverse geocoding service is unavailable'],
+    ] as const)('should pass through %i errors', async (status, code, message) => {
+      vi.mocked(DiscoveryService.reverseGeocode).mockRejectedValue(new AppError(status, code, message));
       const res = await request(app).get('/api/v1/discovery/reverse-geocode?lat=1&lng=1');
       expect(res.status).toBe(status);
-      expect(res.body.message).toBe(message);
+      expect(res.body.error).toEqual({ code, message });
     });
   });
 
@@ -156,13 +159,13 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
     });
 
     it.each([
-      [404, 'Discovery job not found'],
-      [409, 'Discovery job has not completed yet'],
-    ])('should pass through %i errors', async (status, message) => {
-      vi.mocked(DiscoveryService.importCandidates).mockRejectedValue(new AppError(message, status));
+      [404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found'],
+      [409, 'DISCOVERY_JOB_NOT_COMPLETED', 'Discovery job has not completed yet'],
+    ] as const)('should pass through %i errors', async (status, code, message) => {
+      vi.mocked(DiscoveryService.importCandidates).mockRejectedValue(new AppError(status, code, message));
       const res = await request(app).post('/api/v1/discovery/disc-1/import').send({ externalIds: ['node/1'] });
       expect(res.status).toBe(status);
-      expect(res.body.message).toBe(message);
+      expect(res.body.error).toEqual({ code, message });
     });
   });
 });

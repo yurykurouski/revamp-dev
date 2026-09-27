@@ -2,7 +2,7 @@ import express, { Express } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import routes from './routes/index.js';
-import { errorHandler } from './middlewares/errorHandler.js';
+import { errorHandler, notFoundHandler } from './middlewares/errorHandler.js';
 import { env } from './config/env.js';
 import { createCorsOptionsDelegate } from './config/cors.js';
 
@@ -19,12 +19,7 @@ export const createApp = (): Express => {
   app.use(env.API_PREFIX, routes);
 
   // 404 Not Found Handler
-  app.use((_req, res) => {
-    res.status(404).json({
-      success: false,
-      message: 'Endpoint not found',
-    });
-  });
+  app.use(notFoundHandler);
 
   // Global Error Handler
   app.use(errorHandler);

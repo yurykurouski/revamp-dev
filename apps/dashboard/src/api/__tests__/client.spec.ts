@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
+  ApiError,
   apiClient,
   fetchAllLeadPages,
   fetchLeadStats,
@@ -125,7 +126,7 @@ describe('Dashboard apiClient', () => {
     it('surfaces the server validation message', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue(jsonRes({ success: false, errors: [{ message: 'Duplicate domain' }] }, 409)),
+        vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'DUPLICATE', message: 'Duplicate domain' } }, 409)),
       );
       await expect(apiClient.createLead({ url: 'https://dup.com', niche: 'other' })).rejects.toThrow('Duplicate domain');
     });
@@ -217,7 +218,7 @@ describe('Dashboard apiClient', () => {
     });
 
     it('throws when the audit is missing or the backend is unreachable (REV-45)', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Audit not found' }, 404)));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'AUDIT_NOT_FOUND', message: 'Audit not found' } }, 404)));
       await expect(apiClient.getAudit('missing')).rejects.toThrow('Audit not found');
 
       vi.stubGlobal('fetch', unreachable());
@@ -233,12 +234,12 @@ describe('Dashboard apiClient', () => {
     });
 
     it('returns null when the lead has no MVP yet (404)', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'MVP not found' }, 404)));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } }, 404)));
       await expect(apiClient.getMvp('lead-1')).resolves.toBeNull();
     });
 
     it('throws on other failures', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'boom' }, 500)));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'INTERNAL', message: 'boom' } }, 500)));
       await expect(apiClient.getMvp('lead-1')).rejects.toThrow('boom');
 
       vi.stubGlobal('fetch', unreachable());
@@ -357,8 +358,25 @@ describe('Dashboard apiClient', () => {
       expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ testEmail: 'operator@revamp.io', ...testDraft });
     });
 
+    it('throws an ApiError carrying the error code, status and details (REV-63)', async () => {
+      const error = { code: 'LEAD_NOT_AWAITING_APPROVAL', message: 'Only a lead awaiting approval can be approved', details: { status: 'SENT' } };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error }, 409)));
+      const thrown = await apiClient.approveOutreach('lead-1', draft).catch((e: unknown) => e);
+      expect(thrown).toBeInstanceOf(ApiError);
+      expect(thrown).toMatchObject({ message: error.message, status: 409, code: error.code, details: error.details });
+    });
+
+    it('ignores legacy error fields and falls back to the HTTP status (REV-63)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'old', errors: [{ message: 'older' }] }, 502)),
+      );
+      const thrown = await apiClient.approveOutreach('lead-1', draft).catch((e: unknown) => e);
+      expect(thrown).toMatchObject({ message: 'Server error (502)', status: 502, code: undefined });
+    });
+
     it('surfaces a failed test email', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Lead not found' }, 404)));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'LEAD_NOT_FOUND', message: 'Lead not found' } }, 404)));
       await expect(apiClient.sendTestEmail('missing', 'op@revamp.io', testDraft)).rejects.toThrow('Lead not found');
     });
 
@@ -396,7 +414,7 @@ describe('Dashboard apiClient', () => {
     });
 
     it('surfaces a failed token update', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Invalid color' }, 400)));
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid color' } }, 400)));
       await expect(apiClient.updateMvpTokens('lead-1', { primaryColor: 'x' })).rejects.toThrow('Invalid color');
     });
   });
@@ -436,7 +454,7 @@ describe('Dashboard apiClient', () => {
       vi.stubGlobal(
         'fetch',
         vi.fn().mockResolvedValue(
-          jsonResponse({ success: false, message: 'Validation Error', errors: [{ message: 'Location too short' }] }, 400),
+          jsonResponse({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Location too short' } }, 400),
         ),
       );
       await expect(apiClient.startDiscovery({ niche: 'dental', location: 'Riga' })).rejects.toThrow('Location too short');
@@ -463,7 +481,7 @@ describe('Dashboard apiClient', () => {
     it('getDiscoveryStatus should surface 404 messages and fall back to the status code', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue(jsonResponse({ success: false, message: 'Discovery job not found' }, 404)),
+        vi.fn().mockResolvedValue(jsonResponse({ success: false, error: { code: 'DISCOVERY_JOB_NOT_FOUND', message: 'Discovery job not found' } }, 404)),
       );
       await expect(apiClient.getDiscoveryStatus('missing')).rejects.toThrow('Discovery job not found');
 
@@ -493,7 +511,7 @@ describe('Dashboard apiClient', () => {
     it('reverseGeocode should surface a 404 message', async () => {
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue(jsonResponse({ success: false, message: 'No place found at these coordinates' }, 404)),
+        vi.fn().mockResolvedValue(jsonResponse({ success: false, error: { code: 'PLACE_NOT_FOUND', message: 'No place found at these coordinates' } }, 404)),
       );
       await expect(apiClient.reverseGeocode(0, -30)).rejects.toThrow('No place found at these coordinates');
     });
@@ -518,7 +536,7 @@ describe('Dashboard apiClient', () => {
 
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue(jsonResponse({ success: false, message: 'Discovery job has not completed yet' }, 409)),
+        vi.fn().mockResolvedValue(jsonResponse({ success: false, error: { code: 'DISCOVERY_JOB_NOT_COMPLETED', message: 'Discovery job has not completed yet' } }, 409)),
       );
       await expect(apiClient.importDiscoveryCandidates('d', ['node/1'])).rejects.toThrow('has not completed yet');
     });
@@ -586,14 +604,14 @@ describe('Dashboard apiClient', () => {
     });
 
     it('surfaces a failed provider request (REV-32)', async () => {
-      vi.stubGlobal('fetch', respond(500, { success: false, message: 'boom' }));
+      vi.stubGlobal('fetch', respond(500, { success: false, error: { code: 'INTERNAL', message: 'boom' } }));
       await expect(apiClient.getLlmProviders()).rejects.toThrow('boom');
     });
 
     it('surfaces a 409 from the API instead of pretending the job started', async () => {
       vi.stubGlobal(
         'fetch',
-        respond(409, { success: false, message: 'MVP generation is not allowed while the lead is SCHEDULED' }),
+        respond(409, { success: false, error: { code: 'MVP_GENERATION_NOT_ALLOWED', message: 'MVP generation is not allowed while the lead is SCHEDULED' } }),
       );
 
       await expect(apiClient.generateMvp('audit-1', { forceRegenerate: true })).rejects.toThrow(
@@ -602,7 +620,7 @@ describe('Dashboard apiClient', () => {
     });
 
     it('surfaces a 404 from the API', async () => {
-      vi.stubGlobal('fetch', respond(404, { success: false, message: 'Audit not found' }));
+      vi.stubGlobal('fetch', respond(404, { success: false, error: { code: 'AUDIT_NOT_FOUND', message: 'Audit not found' } }));
       await expect(apiClient.generateMvp('missing')).rejects.toThrow('Audit not found');
     });
 
@@ -660,7 +678,7 @@ describe('Dashboard apiClient', () => {
     });
 
     it('surfaces an API error instead of pretending the audit was queued', async () => {
-      vi.stubGlobal('fetch', respond(404, { success: false, message: 'Lead not found' }));
+      vi.stubGlobal('fetch', respond(404, { success: false, error: { code: 'LEAD_NOT_FOUND', message: 'Lead not found' } }));
       await expect(apiClient.retryAudit('missing')).rejects.toThrow('Lead not found');
     });
 

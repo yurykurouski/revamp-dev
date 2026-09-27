@@ -32,35 +32,31 @@ router.post(
       const { auditId, forceRegenerate, provider, model } = req.body;
 
       if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
-        throw new AppError(`Provider "${provider}" is not available in production`, 400, {
-          code: 'LLM_PROVIDER_NOT_ALLOWED',
-        });
+        throw new AppError(400, 'LLM_PROVIDER_NOT_ALLOWED', `Provider "${provider}" is not available in production`);
       }
 
       // A lead can have several audits (one per retry); never build from a failed or stale one (REV-55)
       const audit = await findGenerationAudit(auditId);
 
       if (!audit) {
-        throw new AppError('No completed audit found for this lead', 404);
+        throw new AppError(404, 'NO_COMPLETED_AUDIT', 'No completed audit found for this lead');
       }
 
       const lead = await Lead.findById(audit.leadId).exec();
       if (!lead) {
-        throw new AppError('Associated lead not found', 404);
+        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
       }
 
       // REV-31: generate once from AUDITED; regenerating needs forceRegenerate and is never
       // allowed once outreach is scheduled or dispatched (Human-In-The-Loop)
       const mode = mvpGenerationMode(lead.status);
       if (mode === 'blocked') {
-        throw new AppError(`MVP generation is not allowed while the lead is ${lead.status}`, 409, {
-          code: 'MVP_GENERATION_NOT_ALLOWED',
+        throw new AppError(409, 'MVP_GENERATION_NOT_ALLOWED', `MVP generation is not allowed while the lead is ${lead.status}`, {
           status: lead.status,
         });
       }
       if (mode === 'regenerate' && !forceRegenerate) {
-        throw new AppError('This lead already has an MVP. Set forceRegenerate to replace it.', 409, {
-          code: 'MVP_ALREADY_GENERATED',
+        throw new AppError(409, 'MVP_ALREADY_GENERATED', 'This lead already has an MVP. Set forceRegenerate to replace it.', {
           status: lead.status,
         });
       }
@@ -72,9 +68,7 @@ router.post(
         { $set: { status: 'GENERATING' }, $unset: { generationError: '' } },
       ).exec();
       if (!claimed) {
-        throw new AppError('The lead changed while generation was being queued; try again', 409, {
-          code: 'MVP_GENERATION_NOT_ALLOWED',
-        });
+        throw new AppError(409, 'MVP_GENERATION_NOT_ALLOWED', 'The lead changed while generation was being queued; try again');
       }
 
       const job = await addAiGenerationJob({
@@ -116,7 +110,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction): Prom
     }
 
     if (!project) {
-      throw new AppError('MVP not found', 404);
+      throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
     }
 
     res.status(200).json({
@@ -141,10 +135,7 @@ router.get('/preview/:slug', async (req: Request, res: Response, next: NextFunct
       return;
     }
 
-    res.status(404).json({
-      success: false,
-      error: 'Preview not found',
-    });
+    throw new AppError(404, 'PREVIEW_NOT_FOUND', 'Preview not found');
   } catch (error) {
     next(error);
   }

@@ -58,7 +58,7 @@ export class LeadService {
       domain = undefined;
     }
     if (!domain) {
-      throw new AppError('Invalid original URL format', 400);
+      throw new AppError(400, 'INVALID_URL', 'Invalid original URL format');
     }
 
     // 1. Create Lead in MongoDB with status QUEUED
@@ -185,7 +185,7 @@ export class LeadService {
   static async getLeadById(id: string) {
     const lead = await Lead.findById(id).exec();
     if (!lead) {
-      throw new AppError('Lead not found', 404);
+      throw new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found');
     }
 
     const audit = await Audit.findOne({ leadId: lead._id }).sort({ createdAt: -1 }).exec();

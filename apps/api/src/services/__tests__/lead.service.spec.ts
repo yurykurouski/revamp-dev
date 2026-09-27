@@ -80,7 +80,7 @@ describe('LeadService', () => {
           contactEmail: 'bad@example.com',
           niche: 'other',
         }),
-      ).rejects.toThrow(AppError);
+      ).rejects.toSatisfy((e) => e instanceof AppError && e.statusCode === 400 && e.code === 'INVALID_URL');
     });
   });
 
@@ -416,7 +416,11 @@ describe('LeadService', () => {
         exec: vi.fn().mockResolvedValue(null),
       } as any);
 
-      await expect(LeadService.getLeadById('non-existent')).rejects.toThrow('Lead not found');
+      await expect(LeadService.getLeadById('non-existent')).rejects.toMatchObject({
+        statusCode: 404,
+        code: 'LEAD_NOT_FOUND',
+        message: 'Lead not found',
+      });
     });
   });
 });

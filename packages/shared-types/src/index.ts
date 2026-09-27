@@ -821,3 +821,58 @@ export interface IBentoTemplateData {
   customHeadSnippet?: string;
 }
 
+
+// 9. API Errors (REV-63)
+/**
+ * Every `error.code` the API can return. Each error response has the same shape,
+ * `{ success: false, error: { code, message, details? } }`; clients branch on the code and show the message.
+ */
+export const API_ERROR_CODES = [
+  // Written by the error handler for errors no route raised on purpose
+  'VALIDATION_ERROR',
+  'INVALID_ID',
+  'INVALID_JSON',
+  'PAYLOAD_TOO_LARGE',
+  'DUPLICATE',
+  'NOT_FOUND',
+  'INTERNAL',
+  // Leads and audits
+  'INVALID_URL',
+  'LEAD_NOT_FOUND',
+  'LEAD_NOT_AUDITABLE',
+  'AUDIT_NOT_FOUND',
+  // MVP generation and previews
+  'LLM_PROVIDER_NOT_ALLOWED',
+  'NO_COMPLETED_AUDIT',
+  'MVP_GENERATION_NOT_ALLOWED',
+  'MVP_ALREADY_GENERATED',
+  'MVP_NOT_FOUND',
+  'PREVIEW_NOT_FOUND',
+  // Outreach
+  'LEAD_NOT_AWAITING_APPROVAL',
+  'LEAD_NOT_REJECTABLE',
+  'NO_CONTACT_EMAIL',
+  'EMAIL_PROVIDER_NOT_CONFIGURED',
+  'EMAIL_TEST_TIMEOUT',
+  'EMAIL_SEND_FAILED',
+  // Discovery
+  'DISCOVERY_JOB_NOT_FOUND',
+  'DISCOVERY_JOB_NOT_COMPLETED',
+  'GEOCODING_UNAVAILABLE',
+  'PLACE_NOT_FOUND',
+] as const;
+
+export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
+
+export interface IApiError {
+  code: ApiErrorCode;
+  /** Readable text for the operator */
+  message: string;
+  /** Extra machine-readable context, e.g. the lead's status or the failed validation issues */
+  details?: unknown;
+}
+
+export interface IApiErrorResponse {
+  success: false;
+  error: IApiError;
+}
