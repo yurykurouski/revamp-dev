@@ -302,13 +302,8 @@ export const ru: Translation = {
     },
   },
   inspector: {
-    fallbackTitle: 'Инспектор сайта',
     original: 'Оригинал: {{url}}',
-    tabInspector: 'Инспектор сайта (сравнение)',
-    tabEmail: 'Черновик письма и одобрение (HITL)',
     originalScore: 'Исходная оценка: {{score}}/100',
-    close: 'Закрыть инспектор',
-    originalAndIssues: '🔍 Исходный сайт и проблемы',
     desktop: 'Десктоп (1440px)',
     mobile: 'Мобильный (375px)',
     lcp: 'LCP (скорость)',
@@ -340,9 +335,26 @@ export const ru: Translation = {
     regeneratingTitle: 'ИИ пересобирает MVP…',
     regeneratingBody: 'Переписываем тексты и заново публикуем страницу. Новая версия появится здесь, как только будет готова.',
     hitlNotice: '🔒 Режим human-in-the-loop: рассылка заблокирована до явного одобрения оператором',
-    goToApproval: 'Перейти к одобрению и отправке',
-    backToInspector: 'Назад к инспектору сайта',
-    closeButton: 'Закрыть',
+  },
+  review: {
+    close: 'Закрыть лид',
+    back: 'Назад',
+    stepsLabel: 'Шаги проверки',
+    steps: {
+      audit: 'Аудит',
+      prototype: 'Прототип',
+      email: 'Письмо',
+    },
+    stepOf: 'Шаг {{step}} из {{total}}',
+    hints: {
+      audit: 'Убедитесь, что аудит верен, прежде чем смотреть прототип.',
+      prototype: 'Сравните прототип с исходным сайтом, прежде чем писать письмо.',
+    },
+    next: {
+      audit: 'Далее: прототип',
+      prototype: 'Далее: письмо',
+    },
+    originalSite: 'Исходный сайт',
   },
   siteComplexity: {
     label: 'Тип сайта',

@@ -1,6 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { useLeadFilterStore } from '../useLeadFilterStore.js';
-import { useHitlModalStore, BREAKPOINT_WIDTHS } from '../useHitlModalStore.js';
 import { useThemeStore } from '../useThemeStore.js';
 import { useLanguageStore, LANGUAGE_STORAGE_KEY } from '../useLanguageStore.js';
 import { useDiscoveryStore } from '../useDiscoveryStore.js';
@@ -107,74 +106,6 @@ describe('Zustand Dashboard Stores', () => {
       expect(state.selectedNiche).toBe('ALL');
       expect(state.selectedComplexity).toBe('ALL');
       expect(state.page).toBe(0);
-    });
-  });
-
-  describe('useHitlModalStore', () => {
-    beforeEach(() => {
-      useHitlModalStore.getState().closeModal();
-      useHitlModalStore.getState().setBreakpoint('desktop');
-    });
-
-    it('should initialize with closed modal state and desktop breakpoint', () => {
-      const state = useHitlModalStore.getState();
-      expect(state.isOpen).toBe(false);
-      expect(state.selectedLeadId).toBeNull();
-      expect(state.selectedAuditId).toBeNull();
-      expect(state.activeBreakpoint).toBe('desktop');
-    });
-
-    it('should open modal with leadId and auditId', () => {
-      useHitlModalStore.getState().openModal('lead-123', 'audit-456');
-
-      const state = useHitlModalStore.getState();
-      expect(state.isOpen).toBe(true);
-      expect(state.selectedLeadId).toBe('lead-123');
-      expect(state.selectedAuditId).toBe('audit-456');
-    });
-
-    it('should change active breakpoint', () => {
-      useHitlModalStore.getState().setBreakpoint('mobile');
-      expect(useHitlModalStore.getState().activeBreakpoint).toBe('mobile');
-
-      useHitlModalStore.getState().setBreakpoint('tablet');
-      expect(useHitlModalStore.getState().activeBreakpoint).toBe('tablet');
-    });
-
-    it('should switch original screenshot tabs between desktop and mobile', () => {
-      expect(useHitlModalStore.getState().originalScreenTab).toBe('desktop');
-
-      useHitlModalStore.getState().setOriginalScreenTab('mobile');
-      expect(useHitlModalStore.getState().originalScreenTab).toBe('mobile');
-
-      useHitlModalStore.getState().setOriginalScreenTab('desktop');
-      expect(useHitlModalStore.getState().originalScreenTab).toBe('desktop');
-    });
-
-    it('should switch active modal tabs between inspector and email editor', () => {
-      expect(useHitlModalStore.getState().activeTab).toBe('inspector');
-
-      useHitlModalStore.getState().setActiveTab('email_editor');
-      expect(useHitlModalStore.getState().activeTab).toBe('email_editor');
-
-      useHitlModalStore.getState().setActiveTab('inspector');
-      expect(useHitlModalStore.getState().activeTab).toBe('inspector');
-    });
-
-    it('should correctly map breakpoint widths', () => {
-      expect(BREAKPOINT_WIDTHS.mobile).toBe('375px');
-      expect(BREAKPOINT_WIDTHS.tablet).toBe('768px');
-      expect(BREAKPOINT_WIDTHS.desktop).toBe('100%');
-    });
-
-    it('should close modal and clear selected ids', () => {
-      useHitlModalStore.getState().openModal('lead-1', 'audit-1');
-      useHitlModalStore.getState().closeModal();
-
-      const state = useHitlModalStore.getState();
-      expect(state.isOpen).toBe(false);
-      expect(state.selectedLeadId).toBeNull();
-      expect(state.selectedAuditId).toBeNull();
     });
   });
 

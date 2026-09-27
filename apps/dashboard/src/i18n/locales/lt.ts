@@ -302,13 +302,8 @@ export const lt: Translation = {
     },
   },
   inspector: {
-    fallbackTitle: 'Svetainės inspektorius',
     original: 'Originalas: {{url}}',
-    tabInspector: 'Svetainės inspektorius (palyginimas)',
-    tabEmail: 'Laiško juodraštis ir patvirtinimas (HITL)',
     originalScore: 'Originalo įvertinimas: {{score}}/100',
-    close: 'Uždaryti inspektorių',
-    originalAndIssues: '🔍 Originali svetainė ir problemos',
     desktop: 'Kompiuteris (1440px)',
     mobile: 'Mobilusis (375px)',
     lcp: 'LCP (greitis)',
@@ -340,9 +335,26 @@ export const lt: Translation = {
     regeneratingTitle: 'DI perkuria MVP…',
     regeneratingBody: 'Perrašome tekstus ir iš naujo publikuojame puslapį. Nauja versija atsiras čia, kai tik bus paruošta.',
     hitlNotice: '🔒 Human-in-the-loop režimas: siuntimas užblokuotas, kol operatorius aiškiai nepatvirtins',
-    goToApproval: 'Pereiti prie patvirtinimo ir siuntimo',
-    backToInspector: 'Atgal į svetainės inspektorių',
-    closeButton: 'Uždaryti',
+  },
+  review: {
+    close: 'Uždaryti potencialų klientą',
+    back: 'Atgal',
+    stepsLabel: 'Peržiūros žingsniai',
+    steps: {
+      audit: 'Auditas',
+      prototype: 'Prototipas',
+      email: 'Laiškas',
+    },
+    stepOf: '{{step}} žingsnis iš {{total}}',
+    hints: {
+      audit: 'Prieš žiūrėdami prototipą patikrinkite, ar auditas teisingas.',
+      prototype: 'Prieš rašydami laišką palyginkite prototipą su originalia svetaine.',
+    },
+    next: {
+      audit: 'Toliau: prototipas',
+      prototype: 'Toliau: laiškas',
+    },
+    originalSite: 'Originali svetainė',
   },
   siteComplexity: {
     label: 'Svetainės tipas',

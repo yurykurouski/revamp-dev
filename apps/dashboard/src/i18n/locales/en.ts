@@ -303,13 +303,8 @@ export const en = {
     },
   },
   inspector: {
-    fallbackTitle: 'Site inspector',
     original: 'Original: {{url}}',
-    tabInspector: 'Site inspector (split view)',
-    tabEmail: 'Email draft & approval (HITL gate)',
     originalScore: 'Original score: {{score}}/100',
-    close: 'Close inspector',
-    originalAndIssues: '🔍 Original site & issues',
     desktop: 'Desktop (1440px)',
     mobile: 'Mobile (375px)',
     lcp: 'LCP (speed)',
@@ -341,9 +336,26 @@ export const en = {
     regeneratingTitle: 'AI is rebuilding the MVP…',
     regeneratingBody: 'Rewriting the copy and redeploying the page. The new version appears here as soon as it is ready.',
     hitlNotice: '🔒 Human-in-the-loop mode: outreach is blocked until the operator explicitly approves',
-    goToApproval: 'Go to approval & sending',
-    backToInspector: 'Back to site inspector',
-    closeButton: 'Close',
+  },
+  review: {
+    close: 'Close the lead',
+    back: 'Back',
+    stepsLabel: 'Review steps',
+    steps: {
+      audit: 'Audit',
+      prototype: 'Prototype',
+      email: 'Email',
+    },
+    stepOf: 'Step {{step}} of {{total}}',
+    hints: {
+      audit: 'Check that the audit is right before you look at the prototype.',
+      prototype: 'Compare the prototype with the original site before you write the email.',
+    },
+    next: {
+      audit: 'Next: Prototype',
+      prototype: 'Next: Email',
+    },
+    originalSite: 'Original site',
   },
   siteComplexity: {
     label: 'Site type',

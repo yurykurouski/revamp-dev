@@ -1,21 +1,23 @@
 import React, { useEffect } from 'react';
-import { Alert, Box, Button } from '@mui/material';
+import { Alert, Box, Button, CircularProgress } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useLeadsQuery } from '../hooks/useLeads.js';
-import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
-import { SideBySideInspectorModal } from '../components/SideBySideInspectorModal.js';
+import { LeadReview } from '../components/leadReview/LeadReview.js';
 import { openedInApp, ROUTES } from '../routes/paths.js';
 
 /** Whether the list is narrowed by a filter that could hide the requested lead */
 const hasListFilters = (s: { searchQuery: string; selectedNiche: string; selectedComplexity: string }) =>
   Boolean(s.searchQuery) || s.selectedNiche !== 'ALL' || s.selectedComplexity !== 'ALL';
 
+/** The top bar and the main area's vertical padding, which the review's fixed-height layout leaves out */
+const REVIEW_HEIGHT = 'calc(100vh - 64px - 48px)';
+
 /**
- * `/leads/:id` (REV-76): opens the lead inspector for the lead in the URL, so a lead can be linked to and
- * survives a reload. Closing the inspector steps back to the page the lead was opened from, or replaces a
- * direct link with All leads, so the back button never reopens a closed lead.
+ * `/leads/:id` (REV-76): the review of the lead in the URL (REV-77), so a lead can be linked to and
+ * survives a reload. Closing it steps back to the page the lead was opened from, or replaces a direct
+ * link with All leads, so the back button never reopens a closed lead.
  */
 export const LeadRoute: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -25,21 +27,10 @@ export const LeadRoute: React.FC = () => {
   const { data, isLoading, isError } = useLeadsQuery();
   const filtersActive = useLeadFilterStore(hasListFilters);
   const resetFilters = useLeadFilterStore((s) => s.resetFilters);
-  const openModal = useHitlModalStore((s) => s.openModal);
-  const closeModal = useHitlModalStore((s) => s.closeModal);
 
   const lead = data?.leads.find((l) => l.id === id);
-  const leadId = lead?.id;
-  const auditId = lead?.auditId;
 
-  useEffect(() => {
-    if (!leadId) return;
-    openModal(leadId, auditId || `audit-${leadId}`);
-    // Leaving the route (back button, rail) closes the inspector
-    return () => closeModal();
-  }, [leadId, auditId, openModal, closeModal]);
-
-  // The inspector reads the lead from the list; a lead hidden by the search or a filter needs them cleared
+  // The review reads the lead from the list; a lead hidden by the search or a filter needs them cleared
   const hiddenByFilters = Boolean(data) && !lead && filtersActive;
   useEffect(() => {
     if (hiddenByFilters) resetFilters();
@@ -67,5 +58,17 @@ export const LeadRoute: React.FC = () => {
     else navigate(ROUTES.leads, { replace: true });
   };
 
-  return <SideBySideInspectorModal onClose={handleClose} />;
+  if (!lead) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ height: { lg: REVIEW_HEIGHT }, minHeight: { lg: 560 } }}>
+      <LeadReview key={lead.id} lead={lead} onClose={handleClose} />
+    </Box>
+  );
 };
