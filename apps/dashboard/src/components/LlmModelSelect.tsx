@@ -40,7 +40,7 @@ export const LlmModelSelect: React.FC = () => {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
       {(isError || (data && !data.workersOnline)) && (
-        <Alert severity="info" sx={{ borderRadius: 2 }}>
+        <Alert severity="info">
           {t('llm.workersOffline')}
         </Alert>
       )}

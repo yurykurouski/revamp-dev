@@ -19,7 +19,7 @@ export const Layout: React.FC<LayoutProps> = ({ activeView, children }) => {
       <Sidebar activeView={activeView} collapsed={collapsed} onToggleCollapsed={toggleCollapsed} />
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <Header />
-        <Box component="main" sx={{ flexGrow: 1, p: 3, overflowX: 'auto' }}>
+        <Box component="main" sx={{ flexGrow: 1, p: 2.5, overflowX: 'auto' }}>
           {children}
         </Box>
       </Box>

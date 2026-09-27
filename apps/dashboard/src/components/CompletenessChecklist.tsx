@@ -139,7 +139,7 @@ export const CompletenessChecklist: React.FC<CompletenessChecklistProps> = ({ re
                     color={COMPLETENESS_STATUS_COLOR[check.status]}
                     size="small"
                     variant={check.status === 'present' ? 'outlined' : 'filled'}
-                    sx={{ height: 20, fontSize: '0.65rem', fontWeight: 700 }}
+                    sx={{ height: 20, fontSize: '0.65rem' }}
                   />
                 </Tooltip>
                 {check.judgedBy && (

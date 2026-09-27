@@ -57,78 +57,60 @@ export const LeadsPage: React.FC = () => {
     engaged: leads.filter((l) => l.status === 'CLICKED' || l.status === 'OPENED').length,
   };
 
+  const kpiCards: Array<{
+    label: string;
+    value: number;
+    icon: React.ReactNode;
+    tone: 'primary' | 'warning' | 'success' | 'info';
+    /** The value itself takes the tone color, for counts that call for action */
+    highlight?: boolean;
+  }> = [
+    { label: t('leadsPage.totalLeads'), value: kpi.totalLeads, icon: <CheckCircleOutlineIcon />, tone: 'primary' },
+    { label: t('leadsPage.awaitingApproval'), value: kpi.needsApproval, icon: <PendingActionsIcon />, tone: 'warning', highlight: true },
+    { label: t('leadsPage.emailsSent'), value: kpi.sent, icon: <SendIcon />, tone: 'success' },
+    { label: t('leadsPage.engaged'), value: kpi.engaged, icon: <VisibilityIcon />, tone: 'info', highlight: true },
+  ];
+
   return (
     <Box>
       {/* Top Metrics Cards */}
-      <Grid container spacing={2.5} sx={{ mb: 3.5 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  {t('leadsPage.totalLeads')}
+      <Grid container spacing={1.5} sx={{ mb: 2 }}>
+        {kpiCards.map((card) => (
+          <Grid item xs={12} sm={6} md={3} key={card.label}>
+            <Card>
+              <CardContent>
+                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="overline" color="text.secondary">
+                    {card.label}
+                  </Typography>
+                  <Box
+                    sx={{
+                      width: 26,
+                      height: 26,
+                      borderRadius: 1,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      backgroundColor: `${card.tone}.soft`,
+                      color: `${card.tone}.main`,
+                      '& svg': { fontSize: 16 },
+                    }}
+                  >
+                    {card.icon}
+                  </Box>
+                </Box>
+                <Typography variant="metric" sx={{ color: card.highlight ? `${card.tone}.main` : 'text.primary' }}>
+                  {card.value}
                 </Typography>
-                <CheckCircleOutlineIcon sx={{ color: 'primary.main', fontSize: 22 }} />
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary' }}>
-                {kpi.totalLeads}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderLeft: '4px solid #F59E0B' }}>
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  {t('leadsPage.awaitingApproval')}
-                </Typography>
-                <PendingActionsIcon sx={{ color: '#F59E0B', fontSize: 22 }} />
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 800, color: '#F59E0B' }}>
-                {kpi.needsApproval}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  {t('leadsPage.emailsSent')}
-                </Typography>
-                <SendIcon sx={{ color: '#10B981', fontSize: 22 }} />
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 800, color: 'text.primary' }}>
-                {kpi.sent}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={3}>
-          <Card>
-            <CardContent sx={{ p: 2.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 500 }}>
-                  {t('leadsPage.engaged')}
-                </Typography>
-                <VisibilityIcon sx={{ color: '#06B6D4', fontSize: 22 }} />
-              </Box>
-              <Typography variant="h4" sx={{ fontWeight: 800, color: '#06B6D4' }}>
-                {kpi.engaged}
-              </Typography>
-            </CardContent>
-          </Card>
-        </Grid>
+              </CardContent>
+            </Card>
+          </Grid>
+        ))}
       </Grid>
 
       {/* Filter Bar */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent sx={{ p: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+      <Card sx={{ mb: 2 }}>
+        <CardContent sx={{ p: 1.5, '&:last-child': { pb: 1.5 }, display: 'flex', gap: 1.5, alignItems: 'center', flexWrap: 'wrap' }}>
           <TextField
             placeholder={t('leadsPage.searchPlaceholder')}
             size="small"
@@ -137,7 +119,7 @@ export const LeadsPage: React.FC = () => {
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <SearchIcon sx={{ color: 'text.secondary', fontSize: 20 }} />
+                  <SearchIcon sx={{ color: 'text.secondary', fontSize: 18 }} />
                 </InputAdornment>
               ),
             }}

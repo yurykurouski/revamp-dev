@@ -121,7 +121,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
       </Box>
 
       {searchOutcome !== 'filled' && (
-        <Alert severity="info" sx={{ borderRadius: 2 }}>
+        <Alert severity="info">
           {t(searchOutcome === 'exhausted' ? 'discovery.searchExhausted' : 'discovery.searchCapped', {
             new: result.counts?.new ?? counts.new,
             limit,
@@ -143,20 +143,20 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
       )}
 
       {summary && (
-        <Alert severity={summary.failed > 0 ? 'warning' : 'success'} sx={{ borderRadius: 2 }} onClose={() => setLastImport(null)}>
+        <Alert severity={summary.failed > 0 ? 'warning' : 'success'} onClose={() => setLastImport(null)}>
           {t('discovery.importDone', { imported: summary.imported })}
           {summary.skipped > 0 && ` ${t('discovery.importSkipped', { skipped: summary.skipped })}`}
           {summary.failed > 0 && ` ${t('discovery.importFailedCount', { failed: summary.failed })}`}
         </Alert>
       )}
       {importError && (
-        <Alert severity="error" sx={{ borderRadius: 2 }}>
+        <Alert severity="error">
           {importError}
         </Alert>
       )}
 
       {counts.new === 0 && !summary ? (
-        <Alert severity="info" sx={{ borderRadius: 2 }}>
+        <Alert severity="info">
           {t('discovery.nothingNewHint')}
         </Alert>
       ) : (
@@ -168,7 +168,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
       )}
 
       {rows.length > 0 && (
-        <TableContainer sx={{ maxHeight: 360, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+        <TableContainer sx={{ maxHeight: 360, border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
           <Table size="small" stickyHeader>
             <TableHead>
               <TableRow>

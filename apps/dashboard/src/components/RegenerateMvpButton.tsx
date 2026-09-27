@@ -86,7 +86,7 @@ export const RegenerateMvpButton: React.FC<RegenerateMvpButtonProps> = ({ lead, 
         onClose={() => setError(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" onClose={() => setError(null)} sx={{ borderRadius: 2 }}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {t('regenerate.failed', { message: error ?? '' })}
         </Alert>
       </Snackbar>

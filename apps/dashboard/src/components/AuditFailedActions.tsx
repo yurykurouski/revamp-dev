@@ -51,7 +51,6 @@ export const AuditFailedActions: React.FC<AuditFailedActionsProps> = ({ lead }) 
           event.stopPropagation();
           retryAuditMutation.mutate({ leadId: lead.id }, { onError });
         }}
-        sx={{ fontSize: '0.72rem', fontWeight: 700, py: 0.4, px: 1.2 }}
       >
         {t('auditFailure.retry')}
       </Button>
@@ -103,7 +102,7 @@ export const AuditFailedActions: React.FC<AuditFailedActionsProps> = ({ lead }) 
         onClose={() => setError(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" onClose={() => setError(null)} sx={{ borderRadius: 2 }}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {t('auditFailure.failed', { message: error ?? '' })}
         </Alert>
       </Snackbar>

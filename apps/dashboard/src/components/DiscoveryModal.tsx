@@ -209,7 +209,7 @@ export const DiscoveryModal: React.FC = () => {
   const renderStatus = () => {
     if (statusQuery.isError) {
       return (
-        <Alert severity="error" sx={{ borderRadius: 2 }}>
+        <Alert severity="error">
           {statusQuery.error instanceof Error ? statusQuery.error.message : t('discovery.errors.statusFailed')}
         </Alert>
       );
@@ -240,7 +240,7 @@ export const DiscoveryModal: React.FC = () => {
 
         {!finished && (
           <Box>
-            <LinearProgress sx={{ borderRadius: 1 }} />
+            <LinearProgress />
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
               {t('discovery.runningHint')}
             </Typography>
@@ -248,7 +248,7 @@ export const DiscoveryModal: React.FC = () => {
         )}
 
         {bucket === 'failed' && (
-          <Alert severity="error" sx={{ borderRadius: 2 }}>
+          <Alert severity="error">
             {status.error ?? t('discovery.errors.statusFailed')}
           </Alert>
         )}
@@ -259,7 +259,7 @@ export const DiscoveryModal: React.FC = () => {
             <DiscoveryReview key={status.jobId} jobId={status.jobId} result={result} limit={params.limit} />
           ) : (
             // Searches from before REV-29 imported automatically and kept no candidate list
-            <Alert severity="info" sx={{ borderRadius: 2 }}>
+            <Alert severity="info">
               {t('discovery.legacyResult')}
             </Alert>
           ))}
@@ -284,8 +284,8 @@ export const DiscoveryModal: React.FC = () => {
             sx={{
               width: 38,
               height: 38,
-              borderRadius: '10px',
-              backgroundColor: 'primary.light',
+              borderRadius: 1,
+              backgroundColor: 'primary.soft',
               color: 'primary.main',
               display: 'flex',
               alignItems: 'center',
@@ -306,7 +306,7 @@ export const DiscoveryModal: React.FC = () => {
 
         <DialogContent sx={{ pt: 2 }}>
           {formError && !showStatus && (
-            <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }}>
+            <Alert severity="error" sx={{ mb: 2.5 }}>
               {formError}
             </Alert>
           )}
@@ -320,7 +320,7 @@ export const DiscoveryModal: React.FC = () => {
           {/* Distinct keys: reusing the DOM node would turn the clicked "New search" into a submit button mid-click */}
           {showStatus ? (
             (finished || statusQuery.isError) && (
-              <Button key="new-search" variant="contained" onClick={handleNewSearch} startIcon={<SearchIcon />} sx={{ px: 2.5, py: 1, fontWeight: 700 }}>
+              <Button key="new-search" variant="contained" onClick={handleNewSearch} startIcon={<SearchIcon />} sx={{ px: 2 }}>
                 {t('discovery.newSearch')}
               </Button>
             )
@@ -331,7 +331,7 @@ export const DiscoveryModal: React.FC = () => {
               variant="contained"
               disabled={startMutation.isPending}
               startIcon={startMutation.isPending ? <CircularProgress size={18} color="inherit" /> : <SearchIcon />}
-              sx={{ px: 2.5, py: 1, fontWeight: 700 }}
+              sx={{ px: 2 }}
             >
               {startMutation.isPending ? t('discovery.starting') : t('discovery.start')}
             </Button>

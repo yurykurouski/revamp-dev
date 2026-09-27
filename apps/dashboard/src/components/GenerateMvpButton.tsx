@@ -43,7 +43,6 @@ export const GenerateMvpButton: React.FC<GenerateMvpButtonProps> = ({ lead }) =>
           event.stopPropagation();
           setDialogOpen(true);
         }}
-        sx={{ fontSize: '0.72rem', fontWeight: 700, py: 0.4, px: 1.2 }}
       >
         {t('kanban.generateMvp')}
       </Button>
@@ -64,7 +63,7 @@ export const GenerateMvpButton: React.FC<GenerateMvpButtonProps> = ({ lead }) =>
         onClose={() => setError(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity="error" onClose={() => setError(null)} sx={{ borderRadius: 2 }}>
+        <Alert severity="error" onClose={() => setError(null)}>
           {t('generate.failed', { message: error ?? '' })}
         </Alert>
       </Snackbar>

@@ -24,9 +24,9 @@ export const DiscoveryButton: React.FC<DiscoveryButtonProps> = ({ indicator, new
 
   const icon =
     indicator === 'running' ? (
-      <CircularProgress size={20} color="inherit" data-testid="discovery-progress" />
+      <CircularProgress size={18} color="inherit" data-testid="discovery-progress" />
     ) : (
-      <TravelExploreIcon sx={{ fontSize: 20 }} />
+      <TravelExploreIcon sx={{ fontSize: 18 }} />
     );
 
   return (
@@ -37,7 +37,7 @@ export const DiscoveryButton: React.FC<DiscoveryButtonProps> = ({ indicator, new
         onClick={onClick}
         aria-label={label}
         data-indicator={indicator}
-        sx={{ px: 1.5, py: 0.9, minWidth: 0, gap: 1, fontWeight: 600, whiteSpace: 'nowrap' }}
+        sx={{ px: 1.25, minWidth: 0, gap: 1, whiteSpace: 'nowrap' }}
       >
         {indicator === 'ready' || indicator === 'failed' ? (
           <Badge

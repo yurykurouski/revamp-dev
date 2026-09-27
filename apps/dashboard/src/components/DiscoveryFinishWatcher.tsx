@@ -68,7 +68,7 @@ export const DiscoveryFinishWatcher: React.FC = () => {
         variant="filled"
         onClick={showResults}
         data-testid="discovery-finish-notice"
-        sx={{ borderRadius: 2, alignItems: 'center', cursor: 'pointer', boxShadow: 6 }}
+        sx={{ alignItems: 'center', cursor: 'pointer', boxShadow: 6 }}
         action={
           <>
             <Button color="inherit" size="small" sx={{ fontWeight: 700 }}>

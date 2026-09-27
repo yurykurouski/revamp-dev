@@ -7,6 +7,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
+import { ScoreChip } from './ScoreChip.js';
 import { AuditFailedActions } from './AuditFailedActions.js';
 import { isAuditFailed } from '../utils/auditFailure.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
@@ -95,7 +96,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
           }
           size="small"
           variant="outlined"
-          sx={{ fontWeight: 500, fontSize: '0.75rem' }}
+          sx={{ fontWeight: 500 }}
         />
       ),
     },
@@ -109,12 +110,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
           ? { label: t(`statuses.${status}`), color: STATUS_COLORS[status] }
           : { label: status, color: 'default' as const };
         const chip = (
-          <Chip
-            label={conf.label}
-            size="small"
-            color={conf.color}
-            sx={{ fontWeight: 600, fontSize: '0.75rem' }}
-          />
+          <Chip label={conf.label} size="small" color={conf.color} />
         );
         // REV-44: the reason a failed audit failed is in the tooltip
         return isAuditFailed(params.row) && params.row.auditError ? (
@@ -137,19 +133,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
             </Typography>
           );
         }
-        return (
-          <Chip
-            label={`${score}/100`}
-            size="small"
-            sx={{
-              fontWeight: 700,
-              fontSize: '0.75rem',
-              backgroundColor:
-                score >= 70 ? 'success.light' : score >= 40 ? 'warning.light' : 'error.light',
-              color: score >= 70 ? 'success.main' : score >= 40 ? 'warning.main' : 'error.main',
-            }}
-          />
-        );
+        return <ScoreChip score={score} />;
       },
     },
     {
@@ -207,13 +191,6 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                 size="small"
                 startIcon={<AutoAwesomeIcon sx={{ fontSize: 14 }} />}
                 onClick={() => openModal(params.row.id, params.row.auditId || `audit-${params.row.id}`)}
-                sx={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  py: 0.4,
-                  px: 1.2,
-                  color: '#000000',
-                }}
               >
                 {t('grid.hitlReview')}
               </Button>
@@ -226,7 +203,6 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
                 href={params.row.previewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                sx={{ fontSize: '0.75rem', py: 0.4, px: 1.2 }}
               >
                 {t('grid.mvpDemo')}
               </Button>
@@ -242,17 +218,7 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
   ];
 
   return (
-    <Box
-      sx={{
-        width: '100%',
-        backgroundColor: 'background.paper',
-        borderRadius: 3,
-        border: '1px solid',
-        borderColor: 'divider',
-        overflow: 'hidden',
-        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.04)',
-      }}
-    >
+    <Box sx={{ width: '100%' }}>
       <DataGrid
         rows={leads}
         columns={columns}
@@ -265,27 +231,6 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
         pageSizeOptions={[5, 10, 25]}
         disableRowSelectionOnClick
         autoHeight
-        sx={{
-          border: 'none',
-          '& .MuiDataGrid-columnHeaders': {
-            backgroundColor: 'background.default',
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            fontWeight: 700,
-            fontSize: '0.85rem',
-          },
-          '& .MuiDataGrid-row': {
-            borderBottom: '1px solid',
-            borderColor: 'divider',
-            '&:hover': {
-              backgroundColor: 'action.hover',
-            },
-          },
-          '& .MuiDataGrid-cell': {
-            display: 'flex',
-            alignItems: 'center',
-          },
-        }}
       />
     </Box>
   );
