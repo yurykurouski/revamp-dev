@@ -117,7 +117,8 @@ export const CreateLeadSchema = z.object({
     }
     return val;
   }, z.string().url()),
-  contactEmail: z.string().email(),
+  // Optional: without one the audit takes the email published on the site; none is invented (REV-45)
+  contactEmail: z.preprocess((v) => (typeof v === 'string' && v.trim() === '' ? undefined : v), z.string().email().optional()),
   niche: NicheEnumSchema.default('other'),
   city: z.string().max(100).optional(),
   contactPhone: z.string().max(30).optional(),

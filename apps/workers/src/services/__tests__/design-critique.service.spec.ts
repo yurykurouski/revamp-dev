@@ -101,19 +101,34 @@ describe('DesignCritiqueService', () => {
   });
 
   describe('analyzeDesign (Strict Fallback Policy & Multi-Provider)', () => {
-    it('should use deterministic fallback with aiFallbackUsed: true when no API keys are present', async () => {
-      const service = new DesignCritiqueService({
-        anthropicApiKey: undefined,
-        openaiApiKey: undefined,
-        provider: 'mock',
-      });
+    it('should fail with a clear error, not invent a critique, when no Vision LLM key is set (REV-45)', async () => {
+      const fetcher = vi.fn();
+      const service = new DesignCritiqueService({ anthropicApiKey: '', openaiApiKey: '', customFetcher: fetcher });
+
+      await expect(service.analyzeDesign(baseInput)).rejects.toThrow(
+        'No Vision LLM is configured for the design critique: set ANTHROPIC_API_KEY or OPENAI_API_KEY',
+      );
+      expect(fetcher).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['anthropic', 'ANTHROPIC_API_KEY'],
+      ['openai', 'OPENAI_API_KEY'],
+    ] as const)('should fail when the chosen provider %s has no key (REV-45)', async (provider, variable) => {
+      const service = new DesignCritiqueService({ provider, anthropicApiKey: '', openaiApiKey: '' });
+      await expect(service.analyzeDesign(baseInput)).rejects.toThrow(variable);
+    });
+
+    it('should still fall back to the deterministic critique after real LLM failures', async () => {
+      const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 529, text: async () => 'overloaded' });
+      const service = new DesignCritiqueService({ provider: 'anthropic', anthropicApiKey: 'k', customFetcher: fetcher });
 
       const result = await service.analyzeDesign(baseInput);
 
+      expect(fetcher).toHaveBeenCalledTimes(3);
       expect(result.aiFallbackUsed).toBe(true);
-      expect(result.modelUsed).toBe('deterministic-fallback');
+      expect(result.modelUsed).toBe('anthropic-fallback');
       expect(result.critique.criticalFlaws).toHaveLength(3);
-      expect(result.critique.quickWins).toHaveLength(3);
     });
 
     it('should parse valid response from Anthropic with aiFallbackUsed: false', async () => {

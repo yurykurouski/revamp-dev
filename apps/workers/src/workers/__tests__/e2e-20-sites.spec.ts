@@ -1,12 +1,12 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, vi } from 'vitest';
 import sharp from 'sharp';
 import { ImageService } from '../../services/image.service.js';
 import { BrandExtractorService, RawBrandExtractionData } from '../../services/brand-extractor.service.js';
 import { DesignCritiqueService } from '../../services/design-critique.service.js';
 import { ScoringService } from '../../services/scoring.service.js';
-import { mvpContentService } from '../../services/mvp-content.service.js';
+import { GenerateMvpContentInput, MvpContentService } from '../../services/mvp-content.service.js';
 import { bentoTemplateService } from '../../services/template.service.js';
-import { emailService, MockEmailProvider } from '../../services/email.service.js';
+import { emailService, IEmailProvider } from '../../services/email.service.js';
 import { AnalyticsEventType, ILead, IAudit } from '@revamp/shared-types';
 
 interface TestSiteConfig {
@@ -250,10 +250,28 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   },
 ];
 
+/** Test double for the outreach provider: accepts every email without sending it */
+const acceptingEmailProvider: IEmailProvider = {
+  name: 'test-double',
+  send: async () => ({ success: true, messageId: 'test-message', provider: 'test-double', sentAt: new Date() }),
+};
+
+/** A fake Anthropic Messages API that answers with the given JSON, with token usage (REV-45) */
+const anthropicReplying = (json: unknown) =>
+  vi.fn(
+    async () =>
+      ({
+        ok: true,
+        json: async () => ({
+          content: [{ type: 'text', text: JSON.stringify(json) }],
+          usage: { input_tokens: 900, output_tokens: 300 },
+        }),
+      }) as unknown as Response,
+  );
+
 describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimization', () => {
   beforeAll(() => {
-    // Setup Mock email provider
-    emailService.setProvider(new MockEmailProvider());
+    emailService.setProvider(acceptingEmailProvider);
   });
 
   it('should successfully execute the full SaaS lifecycle on ≥ 90% (18/20) sites', async () => {
@@ -272,7 +290,9 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
       error?: string;
     }> = [];
 
-    const designCritiqueService = new DesignCritiqueService({ provider: 'mock' });
+    // Canned model answers; no LLM is called and none is needed to be configured (REV-45)
+    const cannedCritique = new DesignCritiqueService();
+    const cannedCopy = new MvpContentService();
 
     for (const site of DATASET_20_SITES) {
       console.log(`\n======================================================`);
@@ -347,7 +367,7 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
         expect(brandResult.contacts.phone).toBeDefined();
 
         // --- 5. Vision UX/UI Critique & Token Tracking ---
-        const critiqueResult = await designCritiqueService.analyzeDesign({
+        const critiqueInput = {
           mobileScreenshotWebp: mobileWebp,
           desktopScreenshotWebp: desktopWebp,
           niche: site.niche,
@@ -355,7 +375,14 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
           lcpSeconds: site.edgeCaseType === 'slow_network' ? 4.1 : 1.9,
           businessName: site.businessName,
           originalUrl: site.url,
+        };
+        const designCritiqueService = new DesignCritiqueService({
+          provider: 'anthropic',
+          anthropicApiKey: 'test-key',
+          customFetcher: anthropicReplying(cannedCritique.generateDeterministicFallback(critiqueInput)),
         });
+        const critiqueResult = await designCritiqueService.analyzeDesign(critiqueInput);
+        expect(critiqueResult.aiFallbackUsed).toBe(false);
 
         expect(critiqueResult.critique.criticalFlaws).toHaveLength(3);
         expect(critiqueResult.critique.quickWins).toHaveLength(3);
@@ -373,7 +400,7 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
         expect(scores.total).toBeLessThanOrEqual(100);
 
         // --- 7. Bento Landing MVP Generation ---
-        const mvpResult = await mvpContentService.generateContent({
+        const contentInput: GenerateMvpContentInput = {
           businessName: site.businessName,
           niche: site.niche,
           city: site.city,
@@ -385,7 +412,15 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
           },
           critiqueQuickWins: critiqueResult.critique.quickWins,
           ownerName: site.ownerName,
+        };
+        const mvpContentService = new MvpContentService({
+          provider: 'anthropic',
+          model: 'claude-sonnet-5',
+          anthropicApiKey: 'test-key',
+          customFetcher: anthropicReplying(cannedCopy.generateDeterministicFallback(contentInput)),
         });
+        const mvpResult = await mvpContentService.generateContent(contentInput);
+        expect(mvpResult.aiFallbackUsed).toBe(false);
 
         expect(mvpResult.content.hero.headline).toBeTruthy();
         expect(mvpResult.content.services.length).toBeGreaterThanOrEqual(1);

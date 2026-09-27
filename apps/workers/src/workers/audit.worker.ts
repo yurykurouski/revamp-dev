@@ -169,10 +169,12 @@ export const createAuditWorker = (): Worker => {
         if (!existingLead?.contactPhone && brandResult.contacts.phone) {
           leadUpdate['contactPhone'] = brandResult.contacts.phone;
         }
-        // Discovered leads start with an info@<domain> guess; prefer the email published on the site
-        if (existingLead?.tags?.includes(EMAIL_GUESSED_TAG) && brandResult.contacts.email) {
+        // Discovered leads start with an info@<domain> guess and manual leads may have no email at
+        // all; either way the email published on the site takes its place (REV-45)
+        const emailGuessed = existingLead?.tags?.includes(EMAIL_GUESSED_TAG);
+        if ((emailGuessed || !existingLead?.contactEmail) && brandResult.contacts.email) {
           leadUpdate['contactEmail'] = brandResult.contacts.email;
-          leadUpdate['$pull'] = { tags: EMAIL_GUESSED_TAG };
+          if (emailGuessed) leadUpdate['$pull'] = { tags: EMAIL_GUESSED_TAG };
         }
         // The full street address is persisted on the Audit (extractedContacts), not as the lead's city
 

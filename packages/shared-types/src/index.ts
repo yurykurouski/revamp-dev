@@ -68,7 +68,8 @@ export interface ILead {
   domain: string;
   niche: NicheType;
   city?: string;
-  contactEmail: string;
+  /** Absent until the operator enters one or the audit finds one on the site (REV-45) */
+  contactEmail?: string;
   contactPhone?: string;
   /** contactPhone in E.164 form, when it is written internationally; used to match discovered businesses (REV-35) */
   phoneE164?: string;
@@ -375,7 +376,7 @@ export interface IMvpProject {
 }
 
 // LLM providers for MVP copy generation (REV-32)
-export type LlmProviderId = 'anthropic' | 'openai' | 'gemini' | 'claude-cli' | 'mock';
+export type LlmProviderId = 'anthropic' | 'openai' | 'gemini' | 'claude-cli';
 
 /** Who produced a run's copy: an LLM provider or the deterministic fallback */
 export type MvpCopyProvider = LlmProviderId | 'deterministic';
@@ -445,17 +446,9 @@ export const LLM_PROVIDER_CATALOG: readonly ILlmProviderOption[] = [
     ],
     defaultModel: 'sonnet',
   },
-  {
-    id: 'mock',
-    label: 'Mock (deterministic copy)',
-    local: true,
-    devOnly: true,
-    models: [{ id: 'mock', label: 'Deterministic copy' }],
-    defaultModel: 'mock',
-  },
 ];
 
-export const LLM_PROVIDER_IDS = ['anthropic', 'openai', 'gemini', 'claude-cli', 'mock'] as const satisfies readonly LlmProviderId[];
+export const LLM_PROVIDER_IDS = ['anthropic', 'openai', 'gemini', 'claude-cli'] as const satisfies readonly LlmProviderId[];
 
 export function findLlmProvider(id: string | undefined): ILlmProviderOption | undefined {
   return LLM_PROVIDER_CATALOG.find((p) => p.id === id);
@@ -472,9 +465,9 @@ export interface ILlmProviderStatus extends ILlmProviderOption {
 /** What the AI worker reports about its host, read by `GET /mvp/providers` */
 export interface ILlmCapabilities {
   checkedAt: string;
-  /** The env-based default the worker uses when a job names no provider */
-  defaultProvider: LlmProviderId;
-  defaultModel: string;
+  /** The env-based default the worker uses when a job names no provider; absent when none is configured */
+  defaultProvider?: LlmProviderId;
+  defaultModel?: string;
   providers: Array<{ id: LlmProviderId; available: boolean; reason?: LlmUnavailableReason }>;
 }
 

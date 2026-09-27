@@ -81,6 +81,7 @@ Revamp-dev/
 2. **Deterministic Metrics (Strict Grounding):**
    * All performance metrics (Lighthouse LCP/CLS), accessibility checks (`axe-core`), and business contact data (phone numbers, email addresses, physical addresses) must be extracted by deterministic code (Playwright / DOM parsers).
    * LLMs are strictly prohibited from calculating numerical metrics or hallucinating contact information.
+   * No mock data or mock providers in runtime code (REV-45). When the API is unreachable, a request fails, or a provider (LLM, Vision, email) is not configured, surface an error or an empty state; never substitute made-up leads, metrics, contacts or "sent" results. Mocks and test doubles live only in test files.
 3. **Sandboxed MVP Hosting:**
    * Generated MVPs are hosted as static HTML+CSS bundles in an isolated S3/MinIO bucket (`revamp-demos`).
    * Inside the dashboard, previews must be embedded exclusively through `<iframe sandbox="allow-scripts allow-same-origin">`.

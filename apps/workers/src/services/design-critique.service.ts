@@ -25,8 +25,10 @@ export interface DesignCritiqueResult {
   tokenUsage?: TokenUsage;
 }
 
+export type VisionProvider = 'anthropic' | 'openai';
+
 export interface DesignCritiqueServiceOptions {
-  provider?: 'anthropic' | 'openai' | 'mock';
+  provider?: VisionProvider;
   anthropicApiKey?: string;
   openaiApiKey?: string;
   customFetcher?: typeof fetch;
@@ -48,7 +50,8 @@ Analysis rules:
 - Respond with a raw JSON object only, with no preamble and no markdown around the JSON.`;
 
 export class DesignCritiqueService {
-  private provider: 'anthropic' | 'openai' | 'mock';
+  /** Undefined when no Vision LLM key is set; the critique then fails (REV-45) */
+  private provider: VisionProvider | undefined;
   private anthropicApiKey?: string;
   private openaiApiKey?: string;
   private fetcher: typeof fetch;
@@ -64,8 +67,6 @@ export class DesignCritiqueService {
       this.provider = 'anthropic';
     } else if (this.openaiApiKey) {
       this.provider = 'openai';
-    } else {
-      this.provider = 'mock';
     }
   }
 
@@ -74,19 +75,19 @@ export class DesignCritiqueService {
    * Complies with the Strict Fallback Policy:
    * - 2 retries on parsing error with temperature dropped to 0.0
    * - Deterministic fallback if repeated failure, setting aiFallbackUsed: true
+   * Throws when no Vision LLM can be called: no critique is invented without one (REV-45).
    */
   async analyzeDesign(input: AnalyzeDesignInput): Promise<DesignCritiqueResult> {
-    // If mock provider or no keys provided, immediately invoke deterministic fallback
-    if (this.provider === 'mock' || (!this.anthropicApiKey && !this.openaiApiKey)) {
-      console.log('[DesignCritiqueService] No Vision LLM API key detected. Using deterministic fallback.');
-      const critique = this.generateDeterministicFallback(input);
-      return {
-        critique,
-        aiFallbackUsed: true,
-        modelUsed: 'deterministic-fallback',
-        attempts: 1,
-        tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
-      };
+    const missingKey =
+      !this.provider ||
+      (this.provider === 'anthropic' && !this.anthropicApiKey) ||
+      (this.provider === 'openai' && !this.openaiApiKey);
+    if (missingKey) {
+      throw new Error(
+        this.provider
+          ? `Vision LLM provider "${this.provider}" has no API key: set ${this.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}`
+          : 'No Vision LLM is configured for the design critique: set ANTHROPIC_API_KEY or OPENAI_API_KEY',
+      );
     }
 
     const temperatures = [0.2, 0.0, 0.0]; // initial attempt + 2 retries with temp 0.0

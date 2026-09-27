@@ -66,6 +66,13 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => CreateLeadSchema.parse(input)).toThrow();
     });
 
+    it('should accept a lead without a contact email, treating an empty one as absent (REV-45)', () => {
+      const base = { businessName: 'No Email Clinic', originalUrl: 'https://no-email.com' };
+      expect(CreateLeadSchema.parse(base).contactEmail).toBeUndefined();
+      expect(CreateLeadSchema.parse({ ...base, contactEmail: '' }).contactEmail).toBeUndefined();
+      expect(CreateLeadSchema.parse({ ...base, contactEmail: '  ' }).contactEmail).toBeUndefined();
+    });
+
     it('should reject invalid email format', () => {
       const input = {
         businessName: 'Bad Email Clinic',
@@ -140,7 +147,6 @@ describe('Validation Schemas (@revamp/validation)', () => {
         ['claude-cli', 'sonnet'],
         ['claude-cli', 'opus'],
         ['claude-cli', 'haiku'],
-        ['mock', 'mock'],
       ])('accepts %s with its model %s', (provider, model) => {
         expect(GenerateMvpSchema.parse({ auditId: 'a', provider, model })).toMatchObject({ provider, model });
       });
@@ -155,6 +161,11 @@ describe('Validation Schemas (@revamp/validation)', () => {
       it('rejects an unknown provider', () => {
         expect(() => GenerateMvpSchema.parse({ auditId: 'a', provider: 'llama' })).toThrow();
         expect(() => GenerateMvpSchema.parse({ auditId: 'a', provider: '' })).toThrow();
+      });
+
+      it('rejects the removed mock provider (REV-45)', () => {
+        expect(GenerateMvpSchema.safeParse({ auditId: 'a', provider: 'mock' }).success).toBe(false);
+        expect(GenerateMvpSchema.safeParse({ auditId: 'a', provider: 'mock', model: 'mock' }).success).toBe(false);
       });
 
       it.each([

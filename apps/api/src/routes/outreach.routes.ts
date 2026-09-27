@@ -52,6 +52,19 @@ router.post(
         return;
       }
 
+      // 0. Outreach needs a real recipient; none is invented (REV-45)
+      const existing = await Lead.findById(id).exec();
+      if (existing && !existing.contactEmail) {
+        res.status(409).json({
+          success: false,
+          error: {
+            code: 'NO_CONTACT_EMAIL',
+            message: 'This lead has no contact email. Add one before approving outreach.',
+          },
+        });
+        return;
+      }
+
       // 1. Update Lead status to SCHEDULED
       const lead = await Lead.findByIdAndUpdate(
         id,
@@ -85,7 +98,7 @@ router.post(
           leadId: lead._id,
           status: 'SCHEDULED',
           senderEmail: env.EMAIL_FROM,
-          recipientEmail: lead.contactEmail || 'lead@example.com',
+          recipientEmail: lead.contactEmail,
           subject,
           previewText: req.body.preheader || 'A new mobile concept',
           bodyHtml,

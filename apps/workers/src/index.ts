@@ -11,6 +11,7 @@ import { Lead } from './models/Lead.model.js';
 import { Audit } from './models/Audit.model.js';
 import { addAiGenerationJob } from './queues/ai.queue.js';
 import { startLlmCapabilitiesReporter } from './services/llm-capabilities.js';
+import { providerConfigWarnings } from './services/provider-config.js';
 
 export async function recoverStalledAuditedLeads(): Promise<number> {
   try {
@@ -60,6 +61,7 @@ async function startWorkers(): Promise<void> {
     const discoveryWorker = createDiscoveryWorker();
 
     console.log('[Workers] All background workers are active and listening.');
+    for (const warning of providerConfigWarnings()) console.warn(`[Workers] ${warning}`);
 
     // Tell the API which LLM providers this host can run (REV-32)
     const stopLlmCapabilitiesReporter = startLlmCapabilitiesReporter(redisConnection);

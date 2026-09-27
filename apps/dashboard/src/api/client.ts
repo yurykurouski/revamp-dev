@@ -21,7 +21,7 @@ import {
   NicheType,
   SiteComplexityClass,
 } from '@revamp/shared-types';
-import { ComplexityFilter, matchesComplexityFilter } from '../utils/siteComplexity.js';
+import { ComplexityFilter } from '../utils/siteComplexity.js';
 
 export interface ILeadItem {
   id: string;
@@ -58,110 +58,6 @@ export interface KpiMetrics {
 }
 
 // Initial realistic dataset including the real Listonosz target from REV-7 -> REV-13
-export const initialMockLeads: ILeadItem[] = [
-  {
-    id: 'lead-listonosz-001',
-    businessName: 'Listonosz Courier & Logistics',
-    domain: 'listonosz.site',
-    originalUrl: 'https://listonosz.site/login',
-    niche: 'other',
-    city: 'Warszawa',
-    phone: '+48 22 123 45 67',
-    totalScore: 96,
-    status: 'NEEDS_APPROVAL',
-    auditId: 'audit-listonosz-001',
-    previewUrl: 'http://localhost:9000/revamp-demos/v/listonosz-courier-mvp/index.html',
-    comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/listonosz-courier-mvp.webp',
-    siteComplexity: 'COMPLEX',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 2).toISOString(),
-  },
-  {
-    id: 'lead-dental-002',
-    businessName: 'Denta Lux Dental Clinic',
-    domain: 'dental-lux-spb.ru',
-    originalUrl: 'https://dental-lux-spb.ru',
-    niche: 'dental',
-    city: 'Saint Petersburg',
-    phone: '+7 (812) 555-01-99',
-    totalScore: 42,
-    status: 'NEEDS_APPROVAL',
-    auditId: 'audit-dental-002',
-    previewUrl: 'http://localhost:9000/revamp-demos/v/dental-lux-002/index.html',
-    comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/dental-lux-002.webp',
-    siteComplexity: 'ONE_PAGE_BROCHURE',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 5).toISOString(),
-  },
-  {
-    id: 'lead-auto-003',
-    businessName: 'Motor Express Auto Service',
-    domain: 'motor-express-auto.ru',
-    originalUrl: 'https://motor-express-auto.ru',
-    niche: 'auto',
-    city: 'Moscow',
-    phone: '+7 (495) 777-22-33',
-    totalScore: 36,
-    status: 'QUEUED',
-    auditId: 'audit-auto-003',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 1).toISOString(),
-  },
-  {
-    id: 'lead-legal-004',
-    businessName: 'Shield & Law Legal Bureau',
-    domain: 'shield-legal.ru',
-    originalUrl: 'https://shield-legal.ru',
-    niche: 'legal',
-    city: 'Kazan',
-    phone: '+7 (843) 200-11-44',
-    totalScore: 58,
-    status: 'SCHEDULED',
-    auditId: 'audit-legal-004',
-    previewUrl: 'http://localhost:9000/revamp-demos/v/shield-legal-004/index.html',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 12).toISOString(),
-  },
-  {
-    id: 'lead-beauty-005',
-    businessName: 'Estetik Cosmetology Clinic',
-    domain: 'estetik-clinic.ru',
-    originalUrl: 'https://estetik-clinic.ru',
-    niche: 'beauty',
-    city: 'Yekaterinburg',
-    phone: '+7 (343) 310-88-00',
-    totalScore: 64,
-    status: 'SENT',
-    auditId: 'audit-beauty-005',
-    previewUrl: 'http://localhost:9000/revamp-demos/v/estetik-clinic-005/index.html',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 24).toISOString(),
-  },
-  {
-    id: 'lead-rest-006',
-    businessName: 'Panorama Grill Restaurant',
-    domain: 'panoramagrill.ru',
-    originalUrl: 'https://panoramagrill.ru',
-    niche: 'restaurant',
-    city: 'Sochi',
-    phone: '+7 (862) 220-40-50',
-    totalScore: 71,
-    status: 'CLICKED',
-    auditId: 'audit-rest-006',
-    previewUrl: 'http://localhost:9000/revamp-demos/v/panoramagrill-006/index.html',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 30).toISOString(),
-  },
-  {
-    id: 'lead-fit-007',
-    businessName: 'Titan Athletic Fitness Club',
-    domain: 'titan-athletic.ru',
-    originalUrl: 'https://titan-athletic.ru',
-    niche: 'fitness',
-    city: 'Novosibirsk',
-    phone: '+7 (383) 299-10-20',
-    totalScore: 52,
-    status: 'OPENED',
-    auditId: 'audit-fit-007',
-    previewUrl: 'http://localhost:9000/revamp-demos/v/titan-athletic-007/index.html',
-    createdAt: new Date(Date.now() - 3600 * 1000 * 36).toISOString(),
-  },
-];
-
 const getApiBaseUrl = (): string => {
   if (typeof window !== 'undefined' && (window as unknown as { __REVAMP_API_URL__?: string }).__REVAMP_API_URL__) {
     return (window as unknown as { __REVAMP_API_URL__?: string }).__REVAMP_API_URL__!;
@@ -171,18 +67,12 @@ const getApiBaseUrl = (): string => {
       return import.meta.env.VITE_API_URL;
     }
   } catch {
-    // fallback
+    // import.meta is unavailable outside Vite; use the local API
   }
   return 'http://localhost:4000/api/v1';
 };
 
 const API_BASE_URL = getApiBaseUrl();
-
-const isTestEnv =
-  typeof process !== 'undefined' &&
-  (process.env.NODE_ENV === 'test' || process.env.VITEST === 'true');
-
-let localLeadsCache: ILeadItem[] = isTestEnv ? [...initialMockLeads] : [];
 
 interface IServerLead {
   _id?: string;
@@ -313,50 +203,8 @@ export const apiClient = {
    * Fetches every lead matching the status, niche, complexity and text filters, plus the pipeline KPIs
    */
   async getLeads(filters?: LeadListFilters): Promise<{ leads: ILeadItem[]; kpi: KpiMetrics; total: number }> {
-    if (!isTestEnv) {
-      try {
-        const [{ leads, total }, stats] = await Promise.all([fetchAllLeadPages(filters), fetchLeadStats()]);
-        localLeadsCache = leads;
-        return { leads, kpi: kpiFromStats(stats), total };
-      } catch {
-        // Backend not running, use mock dataset
-        if (localLeadsCache.length === 0) {
-          localLeadsCache = [...initialMockLeads];
-        }
-      }
-    }
-
-    let result = [...localLeadsCache];
-
-    if (filters?.search) {
-      const q = filters.search.toLowerCase();
-      result = result.filter(
-        (lead) =>
-          lead.businessName.toLowerCase().includes(q) ||
-          lead.domain.toLowerCase().includes(q) ||
-          (lead.city && lead.city.toLowerCase().includes(q)),
-      );
-    }
-
-    if (filters?.status && filters.status !== 'ALL') {
-      result = result.filter((lead) => lead.status === filters.status);
-    }
-
-    if (filters?.niche && filters.niche !== 'ALL') {
-      result = result.filter((lead) => lead.niche === filters.niche);
-    }
-
-    result = result.filter((lead) => matchesComplexityFilter(lead, filters?.complexity));
-
-    const kpi: KpiMetrics = {
-      totalLeads: localLeadsCache.length,
-      needsApproval: localLeadsCache.filter((l) => l.status === 'NEEDS_APPROVAL').length,
-      scheduled: localLeadsCache.filter((l) => l.status === 'SCHEDULED').length,
-      sent: localLeadsCache.filter((l) => l.status === 'SENT').length,
-      engaged: localLeadsCache.filter((l) => l.status === 'CLICKED' || l.status === 'OPENED').length,
-    };
-
-    return { leads: result, kpi, total: result.length };
+    const [{ leads, total }, stats] = await Promise.all([fetchAllLeadPages(filters), fetchLeadStats()]);
+    return { leads, kpi: kpiFromStats(stats), total };
   },
 
   /**
@@ -375,145 +223,40 @@ export const apiClient = {
     const businessName =
       validated.businessName ||
       capitalizedDomain.charAt(0).toUpperCase() + capitalizedDomain.slice(1);
-    const fallbackDomain = domain.includes('.') ? domain : `${domain}.com`;
-    const contactEmail = validated.contactEmail || `info@${fallbackDomain}`;
 
-    let createdId = `lead-${Date.now()}`;
-    let auditId = `audit-${Date.now()}`;
+    const res = await fetch(`${API_BASE_URL}/leads`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        businessName,
+        originalUrl: targetUrl,
+        // Without an email the audit takes the one published on the site; none is invented (REV-45)
+        ...(validated.contactEmail ? { contactEmail: validated.contactEmail } : {}),
+        niche: validated.niche || 'other',
+      }),
+    });
+    const data = await readDataOrThrow<{ id?: string; auditId?: string; lead?: { _id?: string; id?: string } }>(res);
+    const createdId = data.id || data.lead?._id || data.lead?.id;
+    if (!createdId) throw new Error('Malformed server response');
 
-    if (!isTestEnv) {
-      try {
-        const res = await fetch(`${API_BASE_URL}/leads`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            businessName,
-            originalUrl: targetUrl,
-            contactEmail,
-            niche: validated.niche || 'other',
-          }),
-        });
-
-        if (!res.ok) {
-          let errorMsg = `Server error (${res.status})`;
-          try {
-            const errData = await res.json();
-            errorMsg = errData.message || errData.error?.message || errorMsg;
-          } catch {
-            // ignore
-          }
-          throw new Error(errorMsg);
-        }
-
-        const data = await res.json();
-        if (data.success && data.data) {
-          createdId = data.data.id || data.data.lead?._id || data.data.lead?.id || createdId;
-          auditId = data.data.auditId || auditId;
-        }
-      } catch (err) {
-        if (err instanceof Error && !err.message.includes('Failed to fetch') && !err.message.includes('ECONNREFUSED')) {
-          throw err;
-        }
-        // Fallback in case backend is offline
-      }
-    }
-
-    const newLead: ILeadItem = {
+    return {
       id: createdId,
       businessName,
       domain,
       originalUrl: targetUrl,
       niche: validated.niche || 'other',
       status: 'QUEUED',
-      auditId,
+      auditId: data.auditId,
       createdAt: new Date().toISOString(),
     };
-
-    localLeadsCache = [newLead, ...localLeadsCache];
-    return newLead;
   },
 
   /**
    * Fetches audit diagnostics and critique details for Side-by-Side Inspector
    */
   async getAudit(auditId: string): Promise<IAuditDetail> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/audits/${auditId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          const a = data.data;
-          return {
-            id: a._id || auditId,
-            leadId: a.leadId,
-            desktopScreenshotUrl:
-              a.screenshotUrls?.desktopOriginal ||
-              a.desktopScreenshotUrl ||
-              'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp',
-            mobileScreenshotUrl:
-              a.screenshotUrls?.mobileOriginal ||
-              a.mobileScreenshotUrl ||
-              'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp',
-            desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
-            mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
-            lcpSeconds: a.lighthouseMetrics?.lcp ? a.lighthouseMetrics.lcp / 1000 : a.lcp || 3.4,
-            a11yScore: a.scores?.accessibility || a.scores?.a11y || a.a11yScore || 100,
-            a11yViolationsCount: a.a11ySummary?.violationsCount || 0,
-            visualHierarchyRating: a.designCritique?.visualHierarchyRating || 80,
-            mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating || 80,
-            criticalFlaws: a.designCritique?.criticalFlaws || [],
-            quickWins: a.designCritique?.quickWins || [],
-            colorPalette: {
-              primary: a.extractedBrandTokens?.primaryColor || '#5c5bed',
-              secondary: a.extractedBrandTokens?.secondaryColor || '#b8c4fe',
-              accent: a.extractedBrandTokens?.accentColor || '#5c5bed',
-            },
-          };
-        }
-      }
-    } catch {
-      // Backend not running, use mock
-    }
-
-    // Default mock audit details (matching Listonosz Courier & Logistics from REV-10/11/12/13)
-    return {
-      id: auditId,
-      leadId: auditId.replace('audit-', 'lead-'),
-      desktopScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp',
-      mobileScreenshotUrl: 'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp',
-      lcpSeconds: 3.4,
-      a11yScore: 68,
-      a11yViolationsCount: 14,
-      visualHierarchyRating: 55,
-      mobileFriendlinessRating: 45,
-      criticalFlaws: [
-        {
-          title: 'No prominent call-to-action (CTA) button above the fold',
-          impact: 'Visitors do not see the next step, which cuts conversion by 40-50%',
-          recommendation: 'Add a high-contrast "Order delivery" button at the top of the page',
-        },
-        {
-          title: 'Low text contrast on dark background (WCAG 2.1 AA)',
-          impact: 'Text is hard to read in daylight, so visitors leave the site',
-          recommendation: 'Raise text contrast to 4.5:1 and use a modern light Bento grid',
-        },
-        {
-          title: 'Slow Largest Contentful Paint (LCP 3.4s)',
-          impact: 'Every second of delay increases mobile bounce by 10-20%',
-          recommendation: 'Optimize assets, trim scripts and serve lean, fast HTML',
-        },
-      ],
-      quickWins: [
-        'One-tap click-to-call button in the header',
-        'Interactive quick-request form with auto-validation',
-        'Trust badges with rating and years in business',
-      ],
-      colorPalette: {
-        primary: '#5c5bed',
-        secondary: '#b8c4fe',
-        accent: '#5c5bed',
-      },
-    };
+    const res = await fetch(`${API_BASE_URL}/audits/${encodeURIComponent(auditId)}`);
+    return mapServerAudit(await readDataOrThrow<IServerAudit>(res), auditId);
   },
 
   /**
@@ -523,28 +266,15 @@ export const apiClient = {
     leadId: string,
     emailData?: { subject: string; preheader: string; body: string },
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/outreach/${leadId}/approve`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          approvedBy: 'operator',
-          ...emailData,
-        }),
-      });
-
-      if (!res.ok) {
-        console.warn('API approve outreach non-200 response:', res.status);
-      }
-    } catch {
-      // Backend not running, local update
-    }
-
-    const target = localLeadsCache.find((l) => l.id === leadId);
-    if (target) {
-      target.status = 'SCHEDULED';
-    }
-
+    const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/approve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        approvedBy: 'operator',
+        ...emailData,
+      }),
+    });
+    await readDataOrThrow<unknown>(res);
     return { success: true, leadId, status: 'SCHEDULED' };
   },
 
@@ -552,20 +282,12 @@ export const apiClient = {
    * Sends a test preview email to the operator
    */
   async sendTestEmail(leadId: string, testEmail: string): Promise<{ success: boolean; message: string }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/outreach/${leadId}/test`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ testEmail }),
-      });
-
-      if (!res.ok) {
-        console.warn('API send test email non-200 response:', res.status);
-      }
-    } catch {
-      // Fallback
-    }
-
+    const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/test`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ testEmail }),
+    });
+    await readDataOrThrow<unknown>(res);
     return { success: true, message: `Test email sent to ${testEmail}` };
   },
 
@@ -576,25 +298,12 @@ export const apiClient = {
     leadId: string,
     reason: string,
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/outreach/${leadId}/reject`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason }),
-      });
-
-      if (!res.ok) {
-        console.warn('API reject outreach non-200 response:', res.status);
-      }
-    } catch {
-      // Fallback
-    }
-
-    const target = localLeadsCache.find((l) => l.id === leadId);
-    if (target) {
-      target.status = 'REJECTED';
-    }
-
+    const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
+    await readDataOrThrow<unknown>(res);
     return { success: true, leadId, status: 'REJECTED' };
   },
 
@@ -605,20 +314,12 @@ export const apiClient = {
     mvpId: string,
     tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string },
   ): Promise<{ success: boolean; data: typeof tokens }> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/mvp/${mvpId}/tokens`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(tokens),
-      });
-
-      if (!res.ok) {
-        console.warn('API update tokens non-200 response:', res.status);
-      }
-    } catch {
-      // Fallback
-    }
-
+    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/tokens`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(tokens),
+    });
+    await readDataOrThrow<unknown>(res);
     return { success: true, data: tokens };
   },
 
@@ -626,91 +327,49 @@ export const apiClient = {
    * Fetches MVP project details by leadId, mvpId, or slug
    */
   async getMvp(idOrLeadId: string): Promise<IMvpProjectDetail | null> {
-    try {
-      const res = await fetch(`${API_BASE_URL}/mvp/${idOrLeadId}`);
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success && data.data) {
-          return data.data;
-        }
-      }
-    } catch {
-      // Fallback
-    }
-    return null;
+    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(idOrLeadId)}`);
+    // No MVP generated yet for this lead
+    if (res.status === 404) return null;
+    return readDataOrThrow<IMvpProjectDetail>(res);
   },
 
   /**
    * Triggers MVP generation for an audited lead, or regenerates an existing MVP with
-   * `forceRegenerate` (REV-31). Server rejections (e.g. 409 once outreach is scheduled) are thrown;
-   * only an unreachable backend falls back to the local demo data.
+   * `forceRegenerate` (REV-31). Server rejections (e.g. 409 once outreach is scheduled) and an
+   * unreachable backend are thrown.
    */
   async generateMvp(
     auditId: string,
-    leadId?: string,
     options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string } = {},
   ): Promise<{ success: boolean; status: LeadStatus }> {
-    // Validated before the request, so an invalid provider/model is an error, not a demo fallback
+    // Validated before the request, so an invalid provider/model never reaches the API
     const payload = GenerateMvpSchema.parse({
       auditId,
       forceRegenerate: options.forceRegenerate ?? false,
       provider: options.provider,
       model: options.model,
     });
-    let res: Response | null = null;
-    try {
-      res = await fetch(`${API_BASE_URL}/mvp/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      // Backend unreachable: fall through to the demo fallback below
-    }
-
-    if (res) {
-      await readDataOrThrow<unknown>(res);
-      if (leadId) {
-        const target = localLeadsCache.find((l) => l.id === leadId);
-        if (target) {
-          target.status = 'GENERATING';
-          target.generationError = undefined;
-        }
-      }
-      return { success: true, status: 'GENERATING' };
-    }
-
-    if (leadId) {
-      const target = localLeadsCache.find((l) => l.id === leadId);
-      if (target) target.status = 'GENERATING';
-    }
+    const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await readDataOrThrow<unknown>(res);
     return { success: true, status: 'GENERATING' };
   },
 
   /**
    * Re-queues the audit of a lead whose audit failed (REV-44). The lead goes back to QUEUED;
-   * server rejections are thrown, and only an unreachable backend falls back to the demo data.
+   * server rejections and an unreachable backend are thrown.
    */
   async retryAudit(leadId: string): Promise<{ success: boolean; status: LeadStatus }> {
     const payload = TriggerAuditSchema.parse({ leadId });
-    let res: Response | null = null;
-    try {
-      res = await fetch(`${API_BASE_URL}/audits/trigger`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-    } catch {
-      // Backend unreachable: fall through to the demo fallback below
-    }
-
-    if (res) await readDataOrThrow<unknown>(res);
-
-    const target = localLeadsCache.find((l) => l.id === leadId);
-    if (target) {
-      target.status = 'QUEUED';
-      target.auditError = undefined;
-    }
+    const res = await fetch(`${API_BASE_URL}/audits/trigger`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    await readDataOrThrow<unknown>(res);
     return { success: true, status: 'QUEUED' };
   },
 
@@ -773,14 +432,17 @@ export const apiClient = {
 
 /** Returns the `data` of a JSON API response, turning non-2xx responses into an Error with the server's message */
 async function readDataOrThrow<T>(res: Response): Promise<T> {
-  let body: { message?: string; errors?: Array<{ message?: string }>; data?: T } | null = null;
+  let body: { message?: string; error?: { message?: string }; errors?: Array<{ message?: string }>; data?: T } | null =
+    null;
   try {
     body = await res.json();
   } catch {
     // Non-JSON body; fall through to the status-based message
   }
   if (!res.ok) {
-    throw new Error(body?.errors?.[0]?.message || body?.message || `Server error (${res.status})`);
+    throw new Error(
+      body?.errors?.[0]?.message || body?.error?.message || body?.message || `Server error (${res.status})`,
+    );
   }
   if (body?.data === undefined) {
     throw new Error('Malformed server response');
@@ -821,24 +483,72 @@ export interface ICriticalFlaw {
   recommendation: string;
 }
 
+/**
+ * An audit as the inspector shows it. Values the audit did not measure stay undefined, so the UI
+ * shows them as missing instead of a made-up number (REV-45).
+ */
 export interface IAuditDetail {
   id: string;
   leadId: string;
-  desktopScreenshotUrl: string;
-  mobileScreenshotUrl: string;
+  desktopScreenshotUrl?: string;
+  mobileScreenshotUrl?: string;
   /** Full-page captures of the original site; absent for audits made before REV-21 */
   desktopFullScreenshotUrl?: string;
   mobileFullScreenshotUrl?: string;
-  lcpSeconds: number;
-  a11yScore: number;
-  a11yViolationsCount: number;
-  visualHierarchyRating: number;
-  mobileFriendlinessRating: number;
+  lcpSeconds?: number;
+  a11yScore?: number;
+  a11yViolationsCount?: number;
+  visualHierarchyRating?: number;
+  mobileFriendlinessRating?: number;
   criticalFlaws: ICriticalFlaw[];
   quickWins: string[];
   colorPalette: {
-    primary: string;
-    secondary: string;
-    accent: string;
+    primary?: string;
+    secondary?: string;
+    accent?: string;
   };
 }
+
+/** The fields of `GET /audits/:id` the inspector reads */
+export interface IServerAudit {
+  _id?: string;
+  leadId: string;
+  screenshotUrls?: { desktopOriginal?: string; mobileOriginal?: string; desktopFull?: string; mobileFull?: string };
+  desktopScreenshotUrl?: string;
+  mobileScreenshotUrl?: string;
+  lighthouseMetrics?: { lcp?: number };
+  lcp?: number;
+  scores?: { accessibility?: number; a11y?: number };
+  a11yScore?: number;
+  a11ySummary?: { violationsCount?: number };
+  designCritique?: {
+    visualHierarchyRating?: number;
+    mobileFriendlinessRating?: number;
+    criticalFlaws?: ICriticalFlaw[];
+    quickWins?: string[];
+  };
+  extractedBrandTokens?: { primaryColor?: string; secondaryColor?: string; accentColor?: string };
+}
+
+/** Maps an audit from the API, keeping unmeasured values undefined */
+export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail => ({
+  id: a._id || auditId,
+  leadId: a.leadId,
+  desktopScreenshotUrl: a.screenshotUrls?.desktopOriginal || a.desktopScreenshotUrl || undefined,
+  mobileScreenshotUrl: a.screenshotUrls?.mobileOriginal || a.mobileScreenshotUrl || undefined,
+  desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
+  mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
+  // lighthouseMetrics.lcp is in milliseconds, the legacy `lcp` field in seconds
+  lcpSeconds: a.lighthouseMetrics?.lcp != null ? a.lighthouseMetrics.lcp / 1000 : a.lcp ?? undefined,
+  a11yScore: a.scores?.accessibility ?? a.scores?.a11y ?? a.a11yScore ?? undefined,
+  a11yViolationsCount: a.a11ySummary?.violationsCount ?? undefined,
+  visualHierarchyRating: a.designCritique?.visualHierarchyRating ?? undefined,
+  mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating ?? undefined,
+  criticalFlaws: a.designCritique?.criticalFlaws ?? [],
+  quickWins: a.designCritique?.quickWins ?? [],
+  colorPalette: {
+    primary: a.extractedBrandTokens?.primaryColor || undefined,
+    secondary: a.extractedBrandTokens?.secondaryColor || undefined,
+    accent: a.extractedBrandTokens?.accentColor || undefined,
+  },
+});

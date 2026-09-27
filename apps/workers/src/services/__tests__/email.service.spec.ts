@@ -1,23 +1,66 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
+  createEmailProvider,
+  EMAIL_PROVIDER_NOT_CONFIGURED,
   EmailService,
-  MockEmailProvider,
+  IEmailProvider,
+  ISendEmailOptions,
+  ISendEmailResult,
   ResendEmailProvider,
   SendGridEmailProvider,
   SmtpEmailProvider,
 } from '../email.service.js';
 
+/** Test double that records what EmailService hands to a provider */
+class RecordingEmailProvider implements IEmailProvider {
+  public name = 'recording';
+  public sentMessages: ISendEmailOptions[] = [];
+
+  async send(options: ISendEmailOptions): Promise<ISendEmailResult> {
+    this.sentMessages.push(options);
+    return { success: true, messageId: `recorded-${this.sentMessages.length}`, provider: this.name, sentAt: new Date() };
+  }
+}
+
 describe('EmailService & Providers (@revamp/workers)', () => {
-  let mockProvider: MockEmailProvider;
+  let mockProvider: RecordingEmailProvider;
   let service: EmailService;
 
   beforeEach(() => {
-    mockProvider = new MockEmailProvider();
+    mockProvider = new RecordingEmailProvider();
     service = new EmailService(mockProvider);
   });
 
-  describe('MockEmailProvider & Compliance Injections', () => {
-    it('should successfully send email and record sent message in mock provider', async () => {
+  describe('provider configuration (REV-45)', () => {
+    it('creates the provider EMAIL_PROVIDER names', () => {
+      expect(createEmailProvider('resend')).toBeInstanceOf(ResendEmailProvider);
+      expect(createEmailProvider('sendgrid')).toBeInstanceOf(SendGridEmailProvider);
+      expect(createEmailProvider('smtp')).toBeInstanceOf(SmtpEmailProvider);
+    });
+
+    it('has no provider, and no mock fallback, when EMAIL_PROVIDER is unset', () => {
+      expect(createEmailProvider(undefined)).toBeNull();
+      expect(new EmailService(null).getProvider()).toBeNull();
+    });
+
+    it('fails the dispatch instead of pretending the email was sent', async () => {
+      const unconfigured = new EmailService(null);
+      await expect(
+        unconfigured.sendEmail({ to: 'owner@smile.pl', subject: 's', html: '<p>h</p>', trackingToken: 't' }),
+      ).rejects.toThrow(EMAIL_PROVIDER_NOT_CONFIGURED);
+    });
+
+    it('uses a provider set later', async () => {
+      const unconfigured = new EmailService(null);
+      unconfigured.setProvider(mockProvider);
+      await expect(
+        unconfigured.sendEmail({ to: 'owner@smile.pl', subject: 's', html: '<p>h</p>', trackingToken: 't' }),
+      ).resolves.toMatchObject({ success: true, provider: 'recording' });
+    });
+  });
+
+  describe('Compliance Injections', () => {
+    it('should successfully send email with compliance headers, footer and tracking pixel', async () => {
       const result = await service.sendEmail({
         to: 'director@listonosz.site',
         subject: 'Audit and an updated version of the Listonosz website',
@@ -27,8 +70,8 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       });
 
       expect(result.success).toBe(true);
-      expect(result.provider).toBe('mock');
-      expect(result.messageId).toContain('mock-');
+      expect(result.provider).toBe('recording');
+      expect(result.messageId).toBe('recorded-1');
       expect(mockProvider.sentMessages).toHaveLength(1);
 
       const sent = mockProvider.sentMessages[0]!;

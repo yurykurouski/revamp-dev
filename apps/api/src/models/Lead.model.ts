@@ -47,9 +47,9 @@ const LeadSchema = new Schema<ILeadDocument>(
       trim: true,
       maxlength: 100,
     },
+    // Optional: filled from the site by the audit when the operator gives none (REV-45)
     contactEmail: {
       type: String,
-      required: [true, 'Contact email is required'],
       trim: true,
       lowercase: true,
       index: true,

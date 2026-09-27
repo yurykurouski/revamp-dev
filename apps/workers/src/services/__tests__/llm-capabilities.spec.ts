@@ -55,7 +55,7 @@ describe('LLM capabilities (REV-32)', () => {
       expect(providers['openai']).toEqual({ id: 'openai', available: true });
       expect(providers['gemini']).toEqual({ id: 'gemini', available: false, reason: 'missing_api_key' });
       expect(providers['claude-cli']).toEqual({ id: 'claude-cli', available: true });
-      expect(providers['mock']).toEqual({ id: 'mock', available: true });
+      expect(providers['mock']).toBeUndefined();
       expect(Date.parse(capabilities.checkedAt)).not.toBeNaN();
     });
 
@@ -64,9 +64,11 @@ describe('LLM capabilities (REV-32)', () => {
       expect(byId(capabilities)['claude-cli']).toEqual({ id: 'claude-cli', available: false, reason: 'cli_not_found' });
     });
 
-    it('offers the mock provider outside production only', () => {
-      const capabilities = detectLlmCapabilities({ claudeCliPath: 'claude', nodeEnv: 'production', isExecutable: nothing });
-      expect(byId(capabilities)['mock']).toEqual({ id: 'mock', available: false, reason: 'dev_only' });
+    it('reports no default provider when none is configured (REV-45)', () => {
+      const capabilities = detectLlmCapabilities({ claudeCliPath: 'claude', nodeEnv: 'test', isExecutable: nothing });
+      expect(capabilities.defaultProvider).toBeUndefined();
+      expect(capabilities.defaultModel).toBeUndefined();
+      expect(capabilities.providers.every((p) => !p.available)).toBe(true);
     });
 
     it('reports the env-based default provider and its model', () => {

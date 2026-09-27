@@ -8,11 +8,17 @@ import { AppError } from '../../middlewares/errorHandler.js';
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../queues/audit.queue.js');
+
+/** An MvpProject.find query resolving to the given projects */
+const mvpQuery = (result: Promise<unknown[]>) => ({ lean: () => ({ exec: () => result }) }) as any;
 
 describe('LeadService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Leads have no MVP unless a test says otherwise
+    vi.mocked(MvpProject.find).mockReturnValue(mvpQuery(Promise.resolve([])));
   });
 
   describe('createLead', () => {
@@ -168,6 +174,30 @@ describe('LeadService', () => {
         limit: 10,
         totalPages: 3,
       });
+    });
+
+    const mockLeadPage = (leads: unknown[]) => {
+      vi.spyOn(Lead, 'find').mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue(leads),
+      } as any);
+      vi.spyOn(Lead, 'countDocuments').mockReturnValue({ exec: vi.fn().mockResolvedValue(leads.length) } as any);
+    };
+
+    it('should surface an MVP lookup failure instead of hiding it (REV-45)', async () => {
+      mockLeadPage([{ _id: 'lead-1', businessName: 'Clinic 1' }]);
+      vi.mocked(MvpProject.find).mockReturnValue(mvpQuery(Promise.reject(new Error('mvpprojects unavailable'))));
+
+      await expect(LeadService.getLeads({})).rejects.toThrow('mvpprojects unavailable');
+    });
+
+    it('should not query MVPs for an empty page', async () => {
+      mockLeadPage([]);
+      const result = await LeadService.getLeads({});
+      expect(result.leads).toEqual([]);
+      expect(MvpProject.find).not.toHaveBeenCalled();
     });
 
     it('should construct search regex filter when query.search is provided', async () => {

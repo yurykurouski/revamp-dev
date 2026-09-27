@@ -1,122 +1,255 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { apiClient, fetchAllLeadPages, fetchLeadStats, kpiFromStats, LEADS_PAGE_SIZE } from '../client.js';
+import {
+  apiClient,
+  fetchAllLeadPages,
+  fetchLeadStats,
+  kpiFromStats,
+  LEADS_PAGE_SIZE,
+  mapServerAudit,
+} from '../client.js';
 
 describe('Dashboard apiClient', () => {
-  it('should fetch leads and compute accurate KPI counters', async () => {
-    const { leads, kpi } = await apiClient.getLeads();
+  const jsonRes = (body: unknown, status = 200) =>
+    ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
+  const unreachable = () => vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
 
-    expect(leads.length).toBeGreaterThan(0);
-    expect(kpi.totalLeads).toBeGreaterThanOrEqual(leads.length);
-    expect(kpi.needsApproval).toBeGreaterThan(0);
-
-    // Listonosz target should be present in mock/cache
-    const listonosz = leads.find((l) => l.domain === 'listonosz.site');
-    expect(listonosz).toBeDefined();
-    expect(listonosz?.status).toBe('NEEDS_APPROVAL');
-    expect(listonosz?.previewUrl).toContain('listonosz-courier-mvp');
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
-  it('should filter leads by search term', async () => {
-    const { leads } = await apiClient.getLeads({ search: 'Denta' });
-    expect(leads.length).toBeGreaterThan(0);
-    expect(leads.every((l) => l.businessName.includes('Denta') || l.domain.includes('Denta'))).toBe(true);
-  });
+  describe('getLeads (REV-45: real data only)', () => {
+    const stats = { total: 5, byStatus: { NEEDS_APPROVAL: 2, SCHEDULED: 1, SENT: 1, CLICKED: 1 } };
+    const stubLeadsApi = (leads: unknown[]) => {
+      const fetchMock = vi.fn((url: string) =>
+        Promise.resolve(
+          url.includes('/leads/stats')
+            ? jsonRes({ success: true, data: stats })
+            : jsonRes({ success: true, data: leads, pagination: { total: leads.length, totalPages: 1 } }),
+        ),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+      return fetchMock;
+    };
 
-  it('should filter leads by status', async () => {
-    const { leads } = await apiClient.getLeads({ status: 'NEEDS_APPROVAL' });
-    expect(leads.length).toBeGreaterThan(0);
-    expect(leads.every((l) => l.status === 'NEEDS_APPROVAL')).toBe(true);
-  });
+    it('returns the leads and KPIs from the API', async () => {
+      stubLeadsApi([
+        { _id: 'l1', businessName: 'Smile', originalUrl: 'https://www.smile.pl/', status: 'NEEDS_APPROVAL', createdAt: 'x' },
+      ]);
 
-  it('should filter leads by niche', async () => {
-    const { leads } = await apiClient.getLeads({ niche: 'dental' });
-    expect(leads.length).toBeGreaterThan(0);
-    expect(leads.every((l) => l.niche === 'dental')).toBe(true);
-  });
+      const { leads, kpi, total } = await apiClient.getLeads();
 
-  it('should filter leads by site complexity (REV-38)', async () => {
-    const { leads } = await apiClient.getLeads({ complexity: 'ONE_PAGE_BROCHURE' });
-    expect(leads.length).toBeGreaterThan(0);
-    expect(leads.every((l) => l.siteComplexity === 'ONE_PAGE_BROCHURE')).toBe(true);
-
-    const all = await apiClient.getLeads({ complexity: 'ALL' });
-    expect(all.leads.length).toBeGreaterThan(leads.length);
-  });
-
-  it('should treat leads without a complexity class as not estimated (REV-38)', async () => {
-    const { leads } = await apiClient.getLeads({ complexity: 'UNKNOWN' });
-    expect(leads.length).toBeGreaterThan(0);
-    expect(leads.every((l) => l.siteComplexity === undefined || l.siteComplexity === 'UNKNOWN')).toBe(true);
-  });
-
-  it('should create new lead with valid URL and niche', async () => {
-    const newLead = await apiClient.createLead({
-      url: 'https://new-test-clinic.com',
-      niche: 'dental',
+      expect(leads).toEqual([expect.objectContaining({ id: 'l1', domain: 'smile.pl', status: 'NEEDS_APPROVAL' })]);
+      expect(total).toBe(1);
+      expect(kpi).toEqual({ totalLeads: 5, needsApproval: 2, scheduled: 1, sent: 1, engaged: 1 });
     });
 
-    expect(newLead.id).toBeDefined();
-    expect(newLead.domain).toBe('new-test-clinic.com');
-    expect(newLead.status).toBe('QUEUED');
-    expect(newLead.niche).toBe('dental');
+    it('passes the filters to the API instead of filtering locally', async () => {
+      const fetchMock = stubLeadsApi([]);
 
-    // Verify it is now present in leads query
-    const { leads } = await apiClient.getLeads({ search: 'new-test-clinic' });
-    expect(leads.length).toBeGreaterThan(0);
-  });
+      await apiClient.getLeads({ search: ' Denta ', status: 'NEEDS_APPROVAL', niche: 'dental', complexity: 'ONE_PAGE_BROCHURE' });
 
-  it('should create new lead with valid URL, niche, and contactEmail', async () => {
-    const newLead = await apiClient.createLead({
-      url: 'https://premier-dental.org',
-      niche: 'dental',
-      businessName: 'Premier Dental Care',
-      contactEmail: 'contact@premier-dental.org',
+      const listUrl = new URL(fetchMock.mock.calls.map(([u]) => u).find((u) => !u.includes('/stats'))!);
+      expect(listUrl.searchParams.get('search')).toBe('Denta');
+      expect(listUrl.searchParams.get('status')).toBe('NEEDS_APPROVAL');
+      expect(listUrl.searchParams.get('niche')).toBe('dental');
+      expect(listUrl.searchParams.get('complexity')).toBe('ONE_PAGE_BROCHURE');
     });
 
-    expect(newLead.id).toBeDefined();
-    expect(newLead.domain).toBe('premier-dental.org');
-    expect(newLead.businessName).toBe('Premier Dental Care');
-    expect(newLead.status).toBe('QUEUED');
+    it('returns an empty board when the API has no leads', async () => {
+      stubLeadsApi([]);
+      const { leads, total } = await apiClient.getLeads();
+      expect(leads).toEqual([]);
+      expect(total).toBe(0);
+    });
+
+    it('throws when the backend is unreachable instead of showing demo leads', async () => {
+      vi.stubGlobal('fetch', unreachable());
+      await expect(apiClient.getLeads()).rejects.toThrow('Failed to fetch');
+    });
+
+    it('throws on a server error', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false }, 500)));
+      await expect(apiClient.getLeads()).rejects.toThrow('HTTP 500');
+    });
   });
 
-  it('should throw validation error when creating lead with invalid URL', async () => {
-    await expect(
-      apiClient.createLead({
-        url: 'not-a-valid-url',
-        niche: 'other',
-      }),
-    ).rejects.toThrow();
+  describe('createLead', () => {
+    it('posts the lead and returns it with the server id', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(
+        jsonRes({ success: true, data: { id: 'lead-9', auditId: 'audit-9', lead: { _id: 'lead-9' } } }, 201),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const newLead = await apiClient.createLead({
+        url: 'https://premier-dental.org',
+        niche: 'dental',
+        businessName: 'Premier Dental Care',
+        contactEmail: 'contact@premier-dental.org',
+      });
+
+      expect(newLead).toMatchObject({
+        id: 'lead-9',
+        auditId: 'audit-9',
+        domain: 'premier-dental.org',
+        businessName: 'Premier Dental Care',
+        status: 'QUEUED',
+      });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+        businessName: 'Premier Dental Care',
+        originalUrl: 'https://premier-dental.org',
+        contactEmail: 'contact@premier-dental.org',
+        niche: 'dental',
+      });
+    });
+
+    it('does not invent a contact email when none is given (REV-45)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { id: 'lead-1' } }, 201));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const newLead = await apiClient.createLead({ url: 'new-test-clinic.com', niche: 'dental', contactEmail: '' });
+
+      const body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body).not.toHaveProperty('contactEmail');
+      expect(body.businessName).toBe('New-test-clinic');
+      expect(newLead.domain).toBe('new-test-clinic.com');
+    });
+
+    it('throws when the backend is unreachable instead of adding a local lead', async () => {
+      vi.stubGlobal('fetch', unreachable());
+      await expect(apiClient.createLead({ url: 'https://x-clinic.com', niche: 'dental' })).rejects.toThrow('Failed to fetch');
+    });
+
+    it('surfaces the server validation message', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonRes({ success: false, errors: [{ message: 'Duplicate domain' }] }, 409)),
+      );
+      await expect(apiClient.createLead({ url: 'https://dup.com', niche: 'other' })).rejects.toThrow('Duplicate domain');
+    });
+
+    it('rejects a response without a lead id', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: true, data: {} }, 201)));
+      await expect(apiClient.createLead({ url: 'https://x.com', niche: 'other' })).rejects.toThrow('Malformed server response');
+    });
+
+    it('should throw validation error when creating lead with invalid URL', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(apiClient.createLead({ url: 'not-a-valid-url', niche: 'other' })).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 
-  it('should fetch audit diagnostics and critique details', async () => {
-    const audit = await apiClient.getAudit('audit-listonosz-001');
+  describe('getAudit', () => {
+    it('maps the audit metrics, critique and brand colors from the API', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonRes({
+            success: true,
+            data: {
+              _id: 'audit-1',
+              leadId: 'lead-1',
+              screenshotUrls: { desktopOriginal: 'http://minio/d.webp', mobileOriginal: 'http://minio/m.webp' },
+              lighthouseMetrics: { lcp: 3400 },
+              scores: { accessibility: 68 },
+              a11ySummary: { violationsCount: 14 },
+              designCritique: {
+                visualHierarchyRating: 55,
+                mobileFriendlinessRating: 45,
+                criticalFlaws: [{ title: 'No CTA', impact: 'i', recommendation: 'r' }],
+                quickWins: ['Click-to-call'],
+              },
+              extractedBrandTokens: { primaryColor: '#123456', secondaryColor: '#abcdef', accentColor: '#654321' },
+            },
+          }),
+        ),
+      );
 
-    expect(audit).toBeDefined();
-    expect(audit.id).toBe('audit-listonosz-001');
-    expect(audit.lcpSeconds).toBe(3.4);
-    expect(audit.a11yViolationsCount).toBe(14);
-    expect(audit.criticalFlaws.length).toBe(3);
-    expect(audit.quickWins.length).toBe(3);
-    expect(audit.desktopScreenshotUrl).toBeDefined();
-    expect(audit.mobileScreenshotUrl).toBeDefined();
-    expect(audit.colorPalette.primary).toBe('#5c5bed');
+      const audit = await apiClient.getAudit('audit-1');
+
+      expect(audit).toMatchObject({
+        id: 'audit-1',
+        leadId: 'lead-1',
+        desktopScreenshotUrl: 'http://minio/d.webp',
+        mobileScreenshotUrl: 'http://minio/m.webp',
+        lcpSeconds: 3.4,
+        a11yScore: 68,
+        a11yViolationsCount: 14,
+        visualHierarchyRating: 55,
+        mobileFriendlinessRating: 45,
+        quickWins: ['Click-to-call'],
+        colorPalette: { primary: '#123456', secondary: '#abcdef', accent: '#654321' },
+      });
+      expect(audit.criticalFlaws).toHaveLength(1);
+    });
+
+    it('leaves unmeasured values undefined instead of inventing them (REV-45)', () => {
+      const audit = mapServerAudit({ leadId: 'lead-1' }, 'audit-1');
+
+      expect(audit).toEqual({
+        id: 'audit-1',
+        leadId: 'lead-1',
+        desktopScreenshotUrl: undefined,
+        mobileScreenshotUrl: undefined,
+        desktopFullScreenshotUrl: undefined,
+        mobileFullScreenshotUrl: undefined,
+        lcpSeconds: undefined,
+        a11yScore: undefined,
+        a11yViolationsCount: undefined,
+        visualHierarchyRating: undefined,
+        mobileFriendlinessRating: undefined,
+        criticalFlaws: [],
+        quickWins: [],
+        colorPalette: { primary: undefined, secondary: undefined, accent: undefined },
+      });
+    });
+
+    it('keeps measured zeros', () => {
+      const audit = mapServerAudit(
+        { leadId: 'l', lighthouseMetrics: { lcp: 0 }, scores: { accessibility: 0 }, a11ySummary: { violationsCount: 0 } },
+        'a',
+      );
+      expect(audit).toMatchObject({ lcpSeconds: 0, a11yScore: 0, a11yViolationsCount: 0 });
+    });
+
+    it('throws when the audit is missing or the backend is unreachable (REV-45)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Audit not found' }, 404)));
+      await expect(apiClient.getAudit('missing')).rejects.toThrow('Audit not found');
+
+      vi.stubGlobal('fetch', unreachable());
+      await expect(apiClient.getAudit('audit-1')).rejects.toThrow('Failed to fetch');
+    });
+  });
+
+  describe('getMvp', () => {
+    it('returns the MVP project', async () => {
+      const mvp = { leadId: 'lead-1', fullPreviewUrl: 'http://minio/v/smile/index.html' };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: true, data: mvp })));
+      await expect(apiClient.getMvp('lead-1')).resolves.toEqual(mvp);
+    });
+
+    it('returns null when the lead has no MVP yet (404)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'MVP not found' }, 404)));
+      await expect(apiClient.getMvp('lead-1')).resolves.toBeNull();
+    });
+
+    it('throws on other failures', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'boom' }, 500)));
+      await expect(apiClient.getMvp('lead-1')).rejects.toThrow('boom');
+
+      vi.stubGlobal('fetch', unreachable());
+      await expect(apiClient.getMvp('lead-1')).rejects.toThrow('Failed to fetch');
+    });
   });
 
   describe('Full-page screenshots (REV-21)', () => {
-    afterEach(() => {
-      vi.unstubAllGlobals();
-    });
-
     const stubAuditResponse = (screenshotUrls: Record<string, string>) =>
       vi.stubGlobal(
         'fetch',
-        vi.fn().mockResolvedValue({
-          ok: true,
-          json: async () => ({
-            success: true,
-            data: { _id: 'audit-full-1', leadId: 'lead-full-1', screenshotUrls },
-          }),
-        }),
+        vi.fn().mockResolvedValue(
+          jsonRes({ success: true, data: { _id: 'audit-full-1', leadId: 'lead-full-1', screenshotUrls } }),
+        ),
       );
 
     it('should map full-page screenshot URLs from the audit API', async () => {
@@ -148,50 +281,89 @@ describe('Dashboard apiClient', () => {
   });
 
   describe('HITL Approval Gate & Outreach Actions (REV-16)', () => {
-    it('should approve outreach and transition lead status to SCHEDULED', async () => {
-      const result = await apiClient.approveOutreach('lead-listonosz-001', {
-        subject: 'Custom subject for Listonosz',
+    it('should approve outreach through the API', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { status: 'SCHEDULED' } }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await apiClient.approveOutreach('lead-1', {
+        subject: 'Custom subject',
         preheader: 'Custom preheader',
         body: 'Custom approved email body',
       });
 
-      expect(result.success).toBe(true);
-      expect(result.leadId).toBe('lead-listonosz-001');
-      expect(result.status).toBe('SCHEDULED');
+      expect(result).toEqual({ success: true, leadId: 'lead-1', status: 'SCHEDULED' });
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toMatch(/\/outreach\/lead-1\/approve$/);
+      expect(JSON.parse(init.body)).toEqual({
+        approvedBy: 'operator',
+        subject: 'Custom subject',
+        preheader: 'Custom preheader',
+        body: 'Custom approved email body',
+      });
+    });
 
-      // Verify status in leads list
-      const { leads } = await apiClient.getLeads();
-      const updated = leads.find((l) => l.id === 'lead-listonosz-001');
-      expect(updated?.status).toBe('SCHEDULED');
+    it('surfaces a refused approval instead of reporting success (REV-45)', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          jsonRes(
+            {
+              success: false,
+              error: { code: 'NO_CONTACT_EMAIL', message: 'This lead has no contact email. Add one before approving outreach.' },
+            },
+            409,
+          ),
+        ),
+      );
+      await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow('This lead has no contact email');
+
+      vi.stubGlobal('fetch', unreachable());
+      await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow('Failed to fetch');
     });
 
     it('should send test email to operator', async () => {
-      const result = await apiClient.sendTestEmail('lead-dental-002', 'operator@revamp.io');
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: {} }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await apiClient.sendTestEmail('lead-2', 'operator@revamp.io');
       expect(result.success).toBe(true);
       expect(result.message).toContain('operator@revamp.io');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ testEmail: 'operator@revamp.io' });
     });
 
-    it('should reject lead and transition status to REJECTED', async () => {
-      const result = await apiClient.rejectLead('lead-dental-002', 'Off-target niche');
-      expect(result.success).toBe(true);
-      expect(result.leadId).toBe('lead-dental-002');
-      expect(result.status).toBe('REJECTED');
+    it('surfaces a failed test email', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Lead not found' }, 404)));
+      await expect(apiClient.sendTestEmail('missing', 'op@revamp.io')).rejects.toThrow('Lead not found');
+    });
 
-      // Verify status in leads list
-      const { leads } = await apiClient.getLeads();
-      const updated = leads.find((l) => l.id === 'lead-dental-002');
-      expect(updated?.status).toBe('REJECTED');
+    it('should reject a lead through the API', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { status: 'REJECTED' } }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await apiClient.rejectLead('lead-2', 'Off-target niche');
+      expect(result).toEqual({ success: true, leadId: 'lead-2', status: 'REJECTED' });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ reason: 'Off-target niche' });
+    });
+
+    it('surfaces a failed rejection', async () => {
+      vi.stubGlobal('fetch', unreachable());
+      await expect(apiClient.rejectLead('lead-2', 'x')).rejects.toThrow('Failed to fetch');
     });
 
     it('should update MVP brand design tokens', async () => {
-      const tokens = {
-        primaryColor: '#7C3AED',
-        secondaryColor: '#C4B5FD',
-        accentColor: '#7C3AED',
-      };
-      const result = await apiClient.updateMvpTokens('lead-listonosz-001', tokens);
+      const tokens = { primaryColor: '#7C3AED', secondaryColor: '#C4B5FD', accentColor: '#7C3AED' };
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: tokens }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await apiClient.updateMvpTokens('lead-1', tokens);
       expect(result.success).toBe(true);
       expect(result.data.primaryColor).toBe('#7C3AED');
+      expect(fetchMock.mock.calls[0][1].method).toBe('PATCH');
+    });
+
+    it('surfaces a failed token update', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Invalid color' }, 400)));
+      await expect(apiClient.updateMvpTokens('lead-1', { primaryColor: 'x' })).rejects.toThrow('Invalid color');
     });
   });
 
@@ -335,7 +507,7 @@ describe('Dashboard apiClient', () => {
       const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
       vi.stubGlobal('fetch', fetchMock);
 
-      await expect(apiClient.generateMvp('audit-1', 'lead-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
+      await expect(apiClient.generateMvp('audit-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toContain('/mvp/generate');
       expect(JSON.parse(init.body)).toEqual({ auditId: 'audit-1', forceRegenerate: false });
@@ -345,7 +517,7 @@ describe('Dashboard apiClient', () => {
       const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
       vi.stubGlobal('fetch', fetchMock);
 
-      await apiClient.generateMvp('audit-1', 'lead-1', { forceRegenerate: true });
+      await apiClient.generateMvp('audit-1', { forceRegenerate: true });
       expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true });
     });
 
@@ -353,7 +525,7 @@ describe('Dashboard apiClient', () => {
       const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
       vi.stubGlobal('fetch', fetchMock);
 
-      await apiClient.generateMvp('audit-1', 'lead-1', { provider: 'claude-cli', model: 'opus' });
+      await apiClient.generateMvp('audit-1', { provider: 'claude-cli', model: 'opus' });
       expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
         auditId: 'audit-1',
         forceRegenerate: false,
@@ -366,7 +538,7 @@ describe('Dashboard apiClient', () => {
       const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
       vi.stubGlobal('fetch', fetchMock);
 
-      await expect(apiClient.generateMvp('audit-1', 'lead-1', { provider: 'openai', model: 'opus' })).rejects.toThrow();
+      await expect(apiClient.generateMvp('audit-1', { provider: 'openai', model: 'opus' })).rejects.toThrow();
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
@@ -390,7 +562,7 @@ describe('Dashboard apiClient', () => {
         respond(409, { success: false, message: 'MVP generation is not allowed while the lead is SCHEDULED' }),
       );
 
-      await expect(apiClient.generateMvp('audit-1', 'lead-1', { forceRegenerate: true })).rejects.toThrow(
+      await expect(apiClient.generateMvp('audit-1', { forceRegenerate: true })).rejects.toThrow(
         'MVP generation is not allowed while the lead is SCHEDULED',
       );
     });
@@ -400,9 +572,9 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.generateMvp('missing')).rejects.toThrow('Audit not found');
     });
 
-    it('falls back to demo data when the backend is unreachable', async () => {
+    it('throws when the backend is unreachable instead of pretending the job started (REV-45)', async () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-      await expect(apiClient.generateMvp('audit-1', 'lead-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
+      await expect(apiClient.generateMvp('audit-1')).rejects.toThrow('Failed to fetch');
     });
   });
 
@@ -465,9 +637,9 @@ describe('Dashboard apiClient', () => {
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
-    it('falls back to demo data when the backend is unreachable', async () => {
+    it('throws when the backend is unreachable instead of pretending the audit was queued (REV-45)', async () => {
       vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
-      await expect(apiClient.retryAudit('lead-1')).resolves.toEqual({ success: true, status: 'QUEUED' });
+      await expect(apiClient.retryAudit('lead-1')).rejects.toThrow('Failed to fetch');
     });
   });
 

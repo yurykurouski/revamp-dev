@@ -34,7 +34,8 @@ export interface LlmCompletionRequest {
 }
 
 /**
- * The provider a client uses when none is passed: MVP_LLM_PROVIDER, else the first API key set
+ * The provider a client uses when none is passed: MVP_LLM_PROVIDER, else the first API key set.
+ * Undefined when nothing is configured; callers then fail instead of inventing copy (REV-45).
  */
 export function resolveDefaultProvider(keys: {
   anthropicApiKey?: string;
@@ -44,22 +45,30 @@ export function resolveDefaultProvider(keys: {
   anthropicApiKey: env.ANTHROPIC_API_KEY,
   openaiApiKey: env.OPENAI_API_KEY,
   geminiApiKey: env.GEMINI_API_KEY,
-}): LlmProvider {
+}): LlmProvider | undefined {
   if (env.MVP_LLM_PROVIDER) return env.MVP_LLM_PROVIDER;
   if (keys.anthropicApiKey) return 'anthropic';
   if (keys.openaiApiKey) return 'openai';
   if (keys.geminiApiKey) return 'gemini';
-  return 'mock';
+  return undefined;
 }
 
 /** A provider's default model; the CLI's comes from CLAUDE_CLI_MODEL */
 export function defaultModelFor(provider: LlmProvider): string {
   if (provider === 'claude-cli') return env.CLAUDE_CLI_MODEL;
-  return findLlmProvider(provider)?.defaultModel ?? 'mock';
+  return findLlmProvider(provider)?.defaultModel ?? '';
 }
 
+/** The environment variable that holds each HTTP provider's API key */
+const API_KEY_VARS: Partial<Record<LlmProvider, string>> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  gemini: 'GEMINI_API_KEY',
+};
+
 export class LlmClient {
-  readonly provider: LlmProvider;
+  /** Undefined when no provider is configured (REV-45) */
+  readonly provider: LlmProvider | undefined;
   readonly model: string;
   private readonly anthropicApiKey?: string;
   private readonly openaiApiKey?: string;
@@ -87,7 +96,7 @@ export class LlmClient {
         openaiApiKey: this.openaiApiKey,
         geminiApiKey: this.geminiApiKey,
       });
-    this.model = options.model ?? defaultModelFor(this.provider);
+    this.model = options.model ?? (this.provider ? defaultModelFor(this.provider) : '');
   }
 
   /** A real model can be called: the CLI authenticates itself, each API needs its own key */
@@ -106,10 +115,19 @@ export class LlmClient {
     }
   }
 
+  /** Why no model can be called, or undefined when one can (REV-45) */
+  unavailableReason(): string | undefined {
+    if (!this.provider) {
+      return 'No LLM provider is configured: set MVP_LLM_PROVIDER or one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY';
+    }
+    if (this.isAvailable()) return undefined;
+    return `LLM provider "${this.provider}" has no API key: set ${API_KEY_VARS[this.provider] ?? 'its API key'}`;
+  }
+
   /** Name of the model behind the provider, for reports and logs */
   get modelName(): string {
     if (this.provider === 'claude-cli') return `claude-cli:${this.model}`;
-    return this.provider === 'mock' ? 'mock' : this.model;
+    return this.model || 'none';
   }
 
   async complete(request: LlmCompletionRequest): Promise<string> {
@@ -128,7 +146,7 @@ export class LlmClient {
       case 'openai':
         return this.callOpenAi(request);
       default:
-        throw new Error('No LLM provider configured');
+        throw new Error(this.unavailableReason() ?? 'No LLM provider configured');
     }
   }
 

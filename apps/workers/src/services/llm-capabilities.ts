@@ -82,7 +82,7 @@ export function detectLlmCapabilities(
       reason = 'dev_only';
     } else if (option.id === 'claude-cli') {
       if (!findExecutable(inputs.claudeCliPath, inputs.pathEnv, inputs.isExecutable)) reason = 'cli_not_found';
-    } else if (option.id !== 'mock' && !keys[option.id]) {
+    } else if (!keys[option.id]) {
       reason = 'missing_api_key';
     }
     return reason ? { id: option.id, available: false, reason } : { id: option.id, available: true };
@@ -96,8 +96,7 @@ export function detectLlmCapabilities(
 
   return {
     checkedAt: new Date().toISOString(),
-    defaultProvider,
-    defaultModel: defaultModelFor(defaultProvider),
+    ...(defaultProvider ? { defaultProvider, defaultModel: defaultModelFor(defaultProvider) } : {}),
     providers,
   };
 }

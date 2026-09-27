@@ -31,7 +31,8 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(err?.errors['businessName']).toBeDefined();
       expect(err?.errors['originalUrl']).toBeDefined();
       expect(err?.errors['domain']).toBeDefined();
-      expect(err?.errors['contactEmail']).toBeDefined();
+      // The audit fills the email from the site when the operator gives none (REV-45)
+      expect(err?.errors['contactEmail']).toBeUndefined();
     });
 
     it('should transform _id to id and remove __v in toJSON', () => {
