@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BentoTemplateService, bentoTemplateService } from '../template.service.js';
 import { resolveTrackerUrls } from '../../templates/bento.template.js';
 import { env } from '../../config/env.js';
-import { IBentoTemplateData, ILead, IAudit } from '@revamp/shared-types';
+import { IBentoTemplateData, ILead, IAudit, MVP_LAYOUT_VARIANTS } from '@revamp/shared-types';
 
 describe('BentoTemplateService (@revamp/workers)', () => {
   const sampleTemplateData: IBentoTemplateData = {
@@ -190,6 +190,50 @@ describe('BentoTemplateService (@revamp/workers)', () => {
 
     expect(html).toContain('<div class="brand-logo-monogram">');
     expect(html).toContain('id="custom-monogram"');
+  });
+
+  describe('favicon (REV-56)', () => {
+    const iconHrefs = (html: string) =>
+      [...html.matchAll(/<link rel="icon" href="([^"]*)">/g)].map((m) => m[1].replace(/&#039;/g, "'").replace(/&amp;/g, '&'));
+
+    it('uses the site logo as the icon when the logo URL is known', () => {
+      const html = bentoTemplateService.render({
+        ...sampleTemplateData,
+        logoUrl: 'https://listonosz.site/logo.png?v=1&size=2',
+      });
+
+      expect(iconHrefs(html)).toEqual(['https://listonosz.site/logo.png?v=1&size=2']);
+      expect(html).toContain('href="https://listonosz.site/logo.png?v=1&amp;size=2"');
+    });
+
+    it('inlines the monogram SVG as a data URI when there is no logo URL', () => {
+      const monogram = '<svg id="custom-monogram"><circle cx="10" cy="10" r="10"/></svg>';
+      const html = bentoTemplateService.render({ ...sampleTemplateData, logoUrl: undefined, monogramSvg: monogram });
+
+      const [href] = iconHrefs(html);
+      expect(href.startsWith('data:image/svg+xml,')).toBe(true);
+      expect(decodeURIComponent(href.slice('data:image/svg+xml,'.length))).toBe(monogram);
+    });
+
+    it('inlines the generated initials monogram when the site has no logo or monogram', () => {
+      const html = bentoTemplateService.render({ ...sampleTemplateData, logoUrl: undefined, monogramSvg: undefined });
+
+      const [href] = iconHrefs(html);
+      expect(href.startsWith('data:image/svg+xml,')).toBe(true);
+      const svg = decodeURIComponent(href.slice('data:image/svg+xml,'.length));
+      expect(svg).toContain('<svg xmlns="http://www.w3.org/2000/svg"');
+      expect(svg).toContain('fill="#5c5bed"');
+      expect(svg).toContain('>DD</text>');
+    });
+
+    it('declares exactly one icon inside <head> in every layout', () => {
+      for (const layout of MVP_LAYOUT_VARIANTS) {
+        const html = bentoTemplateService.render({ ...sampleTemplateData, layout });
+        const head = html.slice(html.indexOf('<head>'), html.indexOf('</head>'));
+        expect(iconHrefs(head)).toHaveLength(1);
+        expect(iconHrefs(html)).toHaveLength(1);
+      }
+    });
   });
 
   it('should fallback gracefully on unknown Lucide icons', () => {
