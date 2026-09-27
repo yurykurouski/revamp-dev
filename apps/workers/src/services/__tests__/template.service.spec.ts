@@ -605,6 +605,8 @@ describe('MVP layout variants (REV-54)', () => {
     gallery: ['https://wdc.example/1.jpg', 'https://wdc.example/2.jpg', 'https://wdc.example/3.jpg'],
   };
   const render = (layout?: IBentoTemplateData['layout']) => bentoTemplateService.render({ ...data, layout });
+  // The page as shown: without the other layouts waiting in their <template>s for a live switch (REV-84)
+  const livePage = (html: string) => html.replace(/<template data-revamp-layout="[a-z]+">[\s\S]*?<\/template>/g, '');
   const indexOf = (html: string, marker: string) => {
     const index = html.indexOf(marker);
     expect(index, marker).toBeGreaterThan(-1);
@@ -616,7 +618,8 @@ describe('MVP layout variants (REV-54)', () => {
     expect(html).toContain('<body class="layout-bento">');
     expect(html).toContain('class="bento-grid"');
     expect(html).toContain('bento-card bento-card-large');
-    expect(html).not.toContain('LAYOUT:');
+    expect(livePage(html)).not.toContain('LAYOUT:');
+    expect(html).toContain('<style id="revamp-layout-css"></style>');
     expect(render('bento')).toBe(html);
   });
 
@@ -625,13 +628,13 @@ describe('MVP layout variants (REV-54)', () => {
     ['editorial', 'hero-editorial', 'class="numbered-services"'],
     ['compact', 'hero-compact', 'class="service-tiles service-tiles-compact"'],
   ] as const)('renders the %s layout with its own hero, services markup and styles', (layout, heroClass, servicesMarker) => {
-    const html = render(layout);
+    const html = livePage(render(layout));
     expect(html).toContain(`<body class="layout-${layout}">`);
     expect(html).toContain(`hero-section ${heroClass}`);
     expect(html).toContain(servicesMarker);
     expect(html).not.toContain('class="bento-grid"');
-    expect(html).toContain(`LAYOUT: ${layout.toUpperCase()}`);
-    // Only the active layout's CSS is inlined
+    expect(html).toMatch(new RegExp(`<style id="revamp-layout-css">\\s*/\\* LAYOUT: ${layout.toUpperCase()}`));
+    // Only the active layout's CSS is applied; the others wait in their templates
     for (const other of ['SPLIT', 'EDITORIAL', 'COMPACT'].filter((name) => name !== layout.toUpperCase())) {
       expect(html).not.toContain(`LAYOUT: ${other}`);
     }
@@ -733,11 +736,14 @@ describe('MVP layout variants (REV-54)', () => {
       expect(html).toContain('.layout-split .gallery-count-5 .gallery-image:first-child { grid-column: span 2; }');
     });
 
-    it.each(['bento', 'editorial', 'compact'] as const)('leaves the %s gallery markup unchanged', (layout) => {
-      const html = bentoTemplateService.render({ ...data, layout, about: undefined, gallery: images(4) });
-      expect(galleryGrid(html)).toBe('gallery-grid');
-      expect(html).not.toContain('gallery-count-');
-    });
+    it.each(['bento', 'editorial', 'compact'] as const)(
+      'tags the %s gallery too, so a live switch to split fills it, but styles it only in split (REV-84)',
+      (layout) => {
+        const html = bentoTemplateService.render({ ...data, layout, about: undefined, gallery: images(4) });
+        expect(galleryGrid(html)).toBe('gallery-grid gallery-count-4');
+        expect(livePage(html)).not.toContain('.gallery-count-');
+      },
+    );
   });
 
   it('rejects an unknown layout', () => {

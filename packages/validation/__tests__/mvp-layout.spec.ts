@@ -1,6 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import { MVP_LAYOUT_VARIANTS } from '@revamp/shared-types';
-import { BentoTemplateDataSchema, MvpLayoutSelectionSchema, MvpLayoutVariantSchema } from '../src/index.js';
+import {
+  BentoTemplateDataSchema,
+  MvpLayoutSelectionSchema,
+  MvpLayoutVariantSchema,
+  UpdateMvpLayoutSchema,
+} from '../src/index.js';
 
 const templateData = {
   businessName: 'Studio',
@@ -39,5 +44,24 @@ describe('MVP layout schemas (REV-54)', () => {
     expect(BentoTemplateDataSchema.parse(templateData).layout).toBeUndefined();
     expect(BentoTemplateDataSchema.parse({ ...templateData, layout: 'editorial' }).layout).toBe('editorial');
     expect(BentoTemplateDataSchema.safeParse({ ...templateData, layout: 'grid' }).success).toBe(false);
+  });
+});
+
+describe('UpdateMvpLayoutSchema (REV-84)', () => {
+  it('accepts each layout variant', () => {
+    for (const variant of MVP_LAYOUT_VARIANTS) {
+      expect(UpdateMvpLayoutSchema.parse({ variant })).toEqual({ variant });
+    }
+  });
+
+  it('rejects a missing, unknown or non-string variant', () => {
+    expect(UpdateMvpLayoutSchema.safeParse({}).success).toBe(false);
+    expect(UpdateMvpLayoutSchema.safeParse({ variant: 'masonry' }).success).toBe(false);
+    expect(UpdateMvpLayoutSchema.safeParse({ variant: 'SPLIT' }).success).toBe(false);
+    expect(UpdateMvpLayoutSchema.safeParse({ variant: 3 }).success).toBe(false);
+  });
+
+  it('drops fields other than the variant', () => {
+    expect(UpdateMvpLayoutSchema.parse({ variant: 'compact', reasons: ['rule:x'] })).toEqual({ variant: 'compact' });
   });
 });

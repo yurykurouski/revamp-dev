@@ -36,6 +36,12 @@ describe('MvpLayoutChip (REV-54)', () => {
     expect(render(mvp({ variant: 'masonry' as never, reasons: [] }))).toBe('');
   });
 
+  it('says when the operator picked the layout (REV-84)', () => {
+    const html = render(mvp({ variant: 'split', reasons: ['rule:manual', 'images:3'] }));
+    expect(html).toContain(en.mvpLayout.variants.split);
+    expect(html).toContain(en.mvpLayout.rules.manual);
+  });
+
   it('follows the interface language', () => {
     useLanguageStore.getState().setLanguage('pl');
     expect(render(mvp({ variant: 'compact', reasons: ['rule:small_brochure'] }))).toContain('Kompaktowy');
@@ -43,6 +49,7 @@ describe('MvpLayoutChip (REV-54)', () => {
 
   it('reads the rule behind the choice from the reason codes', () => {
     expect(layoutRuleOf(['complexity:COMPLEX', 'rule:image_rich'])).toBe('image_rich');
+    expect(layoutRuleOf(['rule:manual', 'images:3'])).toBe('manual');
     expect(layoutRuleOf(['rule:made_up'])).toBeUndefined();
     expect(layoutRuleOf([])).toBeUndefined();
     expect(layoutRuleOf(undefined)).toBeUndefined();
@@ -51,7 +58,8 @@ describe('MvpLayoutChip (REV-54)', () => {
   it('has a label and an explanation for every layout and rule in every language', () => {
     for (const locale of [en, ru, pl, lt, be]) {
       expect(Object.keys(locale.mvpLayout.variants)).toEqual(['bento', 'split', 'editorial', 'compact']);
-      expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(6);
+      expect(Object.keys(locale.mvpLayout.descriptions)).toEqual(['bento', 'split', 'editorial', 'compact']);
+      expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(7);
     }
   });
 });

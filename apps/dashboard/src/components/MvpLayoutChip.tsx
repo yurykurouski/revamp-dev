@@ -5,7 +5,16 @@ import { useTranslation } from 'react-i18next';
 import { MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
 import { IMvpProjectDetail } from '../api/client.js';
 
-const LAYOUT_RULES = ['small_brochure', 'visual_niche', 'image_rich', 'professional_niche', 'text_heavy', 'default'] as const;
+// `manual`: picked by the operator in the Prototype step instead of the automatic choice (REV-84)
+const LAYOUT_RULES = [
+  'small_brochure',
+  'visual_niche',
+  'image_rich',
+  'professional_niche',
+  'text_heavy',
+  'default',
+  'manual',
+] as const;
 type LayoutRule = (typeof LAYOUT_RULES)[number];
 
 /** The rule behind the layout choice, from its `rule:<name>` reason code */
@@ -15,7 +24,8 @@ export function layoutRuleOf(reasons: string[] | undefined): LayoutRule | undefi
 }
 
 /**
- * Which layout the MVP was rendered with, and why it was picked (REV-54)
+ * Which layout the MVP was rendered with, and why it was picked (REV-54), or that the operator picked
+ * it (REV-84)
  */
 export const MvpLayoutChip: React.FC<{ mvp: IMvpProjectDetail | null | undefined }> = ({ mvp }) => {
   const { t } = useTranslation();

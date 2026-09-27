@@ -527,6 +527,15 @@ export const MvpLayoutSelectionSchema = z.object({
 
 export type MvpLayoutSelection = z.infer<typeof MvpLayoutSelectionSchema>;
 
+/**
+ * Schema for PATCH /api/v1/mvp/:id/layout: the layout the operator picked for the MVP (REV-84)
+ */
+export const UpdateMvpLayoutSchema = z.object({
+  variant: MvpLayoutVariantSchema,
+});
+
+export type UpdateMvpLayoutDto = z.infer<typeof UpdateMvpLayoutSchema>;
+
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
   layout: MvpLayoutVariantSchema.optional(),

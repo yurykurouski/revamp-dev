@@ -24,6 +24,8 @@ interface MvpPreviewFrameProps {
   previewUrl: string;
   /** A regenerate request is in flight or the lead is GENERATING */
   busy: boolean;
+  /** Called each time the preview page has loaded */
+  onLoad?: () => void;
 }
 
 /**
@@ -31,7 +33,7 @@ interface MvpPreviewFrameProps {
  * overlay until the new version has loaded (REV-53). The overlay is a sibling of the iframe and
  * never changes its sandbox.
  */
-export const MvpPreviewFrame = forwardRef<HTMLIFrameElement, MvpPreviewFrameProps>(({ previewUrl, busy }, ref) => {
+export const MvpPreviewFrame = forwardRef<HTMLIFrameElement, MvpPreviewFrameProps>(({ previewUrl, busy, onLoad }, ref) => {
   const { t } = useTranslation();
   const { visible, onFrameLoad } = useRegenerationOverlay({ busy, previewUrl });
 
@@ -43,7 +45,10 @@ export const MvpPreviewFrame = forwardRef<HTMLIFrameElement, MvpPreviewFrameProp
         src={previewUrl}
         title={t('inspector.iframeTitle')}
         sandbox="allow-scripts allow-same-origin"
-        onLoad={() => onFrameLoad(previewUrl)}
+        onLoad={() => {
+          onFrameLoad(previewUrl);
+          onLoad?.();
+        }}
         style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
       />
       {visible && (

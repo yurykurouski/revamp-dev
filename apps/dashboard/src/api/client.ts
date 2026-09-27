@@ -18,6 +18,7 @@ import {
   IMvpCompletenessReport,
   IMvpCompletenessSummary,
   IMvpLayoutSelection,
+  MvpLayoutVariant,
   IReverseGeocodeResult,
   ILeadStats,
   LeadStatus,
@@ -311,6 +312,19 @@ export const apiClient = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(tokens),
+    });
+    return readDataOrThrow<IMvpProjectDetail>(res);
+  },
+
+  /**
+   * Saves the layout the operator picked for the MVP, by the MVP's own id, and returns the saved MVP
+   * (REV-84). The server then re-renders the published page in it; a lead past review throws.
+   */
+  async updateMvpLayout(mvpId: string, variant: MvpLayoutVariant): Promise<IMvpProjectDetail> {
+    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/layout`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant }),
     });
     return readDataOrThrow<IMvpProjectDetail>(res);
   },

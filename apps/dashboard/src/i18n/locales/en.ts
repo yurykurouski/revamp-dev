@@ -210,7 +210,17 @@ export const en = {
       professional_niche: 'expertise-led business',
       text_heavy: 'lots of text and few photos',
       default: 'default layout',
+      manual: 'chosen by the operator',
     },
+    descriptions: {
+      bento: 'Card grid of services',
+      split: 'Copy beside a large photo',
+      editorial: 'Typographic, text-led page',
+      compact: 'Short page led by the contacts',
+    },
+    picker: 'Layout:',
+    saveFailed: 'Could not save the layout: {{message}}',
+    locked: 'The layout can be changed only while the MVP awaits review',
   },
   llm: {
     provider: 'LLM provider',

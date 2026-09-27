@@ -5,6 +5,7 @@ const queues = vi.hoisted(() => ({}) as Record<string, { name: string; close: Re
 
 vi.mock('../audit.queue.js', () => ({ auditQueue: (queues.audit = queue('audit')) }));
 vi.mock('../ai.queue.js', () => ({ aiGenerationQueue: (queues.ai = queue('ai')) }));
+vi.mock('../deploy.queue.js', () => ({ deployQueue: (queues.deploy = queue('deploy')) }));
 vi.mock('../email.queue.js', () => ({ emailQueue: (queues.email = queue('email')) }));
 vi.mock('../discovery.queue.js', () => ({ discoveryQueue: (queues.discovery = queue('discovery')) }));
 const closeEmailTestEvents = vi.hoisted(() => vi.fn());
@@ -21,7 +22,7 @@ describe('closeQueues (REV-66)', () => {
     await closeQueues();
 
     for (const q of Object.values(queues)) expect(q.close).toHaveBeenCalledTimes(1);
-    expect(Object.keys(queues)).toHaveLength(5);
+    expect(Object.keys(queues)).toHaveLength(6);
     expect(closeEmailTestEvents).toHaveBeenCalledTimes(1);
   });
 

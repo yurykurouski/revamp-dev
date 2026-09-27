@@ -12,6 +12,7 @@ import {
   isLeadStatus,
   leadStatusesInto,
   mvpGenerationMode,
+  canChangeMvpLayout,
 } from '../src/index.js';
 
 // The lifecycle written out edge by edge, independently of LEAD_TRANSITIONS (REV-62)
@@ -148,6 +149,17 @@ describe('Lead state machine (REV-62)', () => {
       }
       expect(mvpGenerationMode('MVP_READY')).toBe('blocked');
       expect(mvpGenerationMode(undefined)).toBe('blocked');
+    });
+  });
+
+  describe('canChangeMvpLayout (REV-84)', () => {
+    it('allows a layout switch only while the MVP awaits review', () => {
+      expect(canChangeMvpLayout('NEEDS_APPROVAL')).toBe(true);
+      for (const status of LEAD_STATUSES.filter((s) => s !== 'NEEDS_APPROVAL')) {
+        expect(canChangeMvpLayout(status)).toBe(false);
+      }
+      expect(canChangeMvpLayout(undefined)).toBe(false);
+      expect(canChangeMvpLayout(null)).toBe(false);
     });
   });
 });

@@ -481,4 +481,131 @@ describe('DeployWorker (@revamp/workers)', () => {
     await expect(capturedProcessor!(job)).rejects.toThrow('No completed audit found for lead lead-1');
     expect(findGenerationAudit).toHaveBeenCalledWith('lead-1', 'missing-audit');
   });
+
+  describe('relayout jobs (REV-84)', () => {
+    const leadId = '64f8a1234567890123456789';
+    const auditId = '64f8a9876543210987654321';
+    const projectId = '64f8b1112223334445556667';
+    const lead = { _id: leadId, businessName: 'Smile Dental', status: 'NEEDS_APPROVAL', toObject: () => lead };
+    const audit = { _id: auditId, screenshotUrls: {}, toObject: () => audit };
+    const storedCopy = { hero: { headline: 'Stored headline', subheadline: 'Stored sub' }, services: [] };
+    const project = (variant: string) => ({
+      _id: projectId,
+      leadId,
+      auditId,
+      previewSlug: 'smile-dental-456789',
+      generatedContent: storedCopy,
+      layout: { variant, reasons: ['rule:manual'] },
+    });
+    const job = { id: 'job-relayout-1', data: { leadId, auditId, mvpProjectId: projectId, mode: 'relayout' } };
+
+    const setUp = (leadDoc: unknown = lead) => {
+      createDeployWorker();
+      vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(leadDoc) } as any);
+      vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
+      vi.mocked(bentoTemplateService.renderFromAudit).mockImplementation(
+        (_lead, _audit, _content, layout) => `<html>${layout}</html>`,
+      );
+      vi.mocked(storageService.uploadHtml).mockResolvedValue({
+        url: 'http://localhost:9000/revamp-demos/v/smile-dental-456789/index.html',
+        key: 'v/smile-dental-456789/index.html',
+      });
+      vi.mocked(browserService.captureHtmlScreenshot).mockResolvedValue(Buffer.from('shot'));
+      vi.mocked(ImageService.createComparisonBanner).mockResolvedValue(Buffer.from('banner'));
+      vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue(
+        'http://localhost:9000/revamp-assets/banners/smile-dental-456789.webp',
+      );
+    };
+
+    it('re-renders the stored copy in the saved layout into the same slug, without touching the lead', async () => {
+      setUp();
+      const assess = vi.spyOn(mvpCompletenessService, 'assess');
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(project('editorial')) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(project('editorial')) } as any);
+
+      const result = await capturedProcessor!(job);
+
+      expect(result).toMatchObject({ success: true, relayout: true, layout: 'editorial', mvpProjectId: projectId });
+      // Deterministic render of the copy saved on the MVP; the LLM is never involved
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledTimes(1);
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'editorial');
+      expect(findGenerationAudit).toHaveBeenCalledWith(leadId, auditId);
+      expect(storageService.uploadHtml).toHaveBeenCalledWith('smile-dental-456789', '<html>editorial</html>', expect.any(String));
+      // The banner shows the new look
+      expect(browserService.captureHtmlScreenshot).toHaveBeenCalledWith('<html>editorial</html>', expect.any(Object));
+      expect(storageService.uploadComparisonBanner).toHaveBeenCalledWith('smile-dental-456789', expect.any(Buffer));
+      // No status change, no new generation, no completeness re-check
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(assess).not.toHaveBeenCalled();
+    });
+
+    it('publishes Bento for an MVP saved without a layout', async () => {
+      setUp();
+      const legacy = { ...project('bento'), layout: undefined };
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(legacy) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(legacy) } as any);
+
+      await capturedProcessor!(job);
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'bento');
+    });
+
+    it('publishes again when the operator switched once more while it was publishing', async () => {
+      setUp();
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(project('split')) } as any);
+      vi.mocked(MvpProject.findById)
+        .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(project('compact')) } as any)
+        .mockReturnValue({ exec: vi.fn().mockResolvedValue(project('compact')) } as any);
+
+      const result = await capturedProcessor!(job);
+
+      expect(vi.mocked(storageService.uploadHtml).mock.calls.map((call) => call[1])).toEqual([
+        '<html>split</html>',
+        '<html>compact</html>',
+      ]);
+      expect(result.layout).toBe('compact');
+    });
+
+    it('stops after a bounded number of passes when the layout keeps changing', async () => {
+      setUp();
+      const variants = ['split', 'compact', 'editorial', 'bento', 'split'];
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(project('bento')) } as any);
+      let call = 0;
+      vi.mocked(MvpProject.findById).mockImplementation(
+        () => ({ exec: vi.fn().mockResolvedValue(project(variants[call++]!)) }) as any,
+      );
+
+      await capturedProcessor!(job);
+      expect(storageService.uploadHtml).toHaveBeenCalledTimes(3);
+    });
+
+    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED'])(
+      'skips a lead that is %s: a regeneration or outreach owns the bundle now',
+      async (status) => {
+        setUp({ ...lead, status });
+        const result = await capturedProcessor!(job);
+        expect(result).toMatchObject({ success: false, skipped: true });
+        expect(MvpProject.findOne).not.toHaveBeenCalled();
+        expect(storageService.uploadHtml).not.toHaveBeenCalled();
+      },
+    );
+
+    it('throws when the lead has no MVP', async () => {
+      setUp();
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      await expect(capturedProcessor!(job)).rejects.toThrow(`No MVP found for lead ${leadId}`);
+      expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    });
+
+    it('never resets the lead when a relayout fails for good', async () => {
+      createDeployWorker();
+      const onFailed = mockWorkerInstance.on.mock.calls.find(([event]) => event === 'failed')![1];
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+
+      onFailed({ ...job, attemptsMade: 3, opts: { attempts: 3 } }, new Error('S3 down'));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -711,6 +711,11 @@ export interface IDeployJobData {
   forceRegenerate?: boolean;
   previousStatus?: LeadStatus;
   generationSource?: IMvpGenerationSource;
+  /**
+   * `relayout`: re-render the published bundle in the MVP's saved layout from its stored copy, with no
+   * LLM call and no status change (REV-84). A full deploy when absent.
+   */
+  mode?: 'deploy' | 'relayout';
 }
 
 export interface IEmailDispatchJobData {
@@ -762,6 +767,9 @@ export interface IBentoServiceCard {
 export const MVP_LAYOUT_VARIANTS = ['bento', 'split', 'editorial', 'compact'] as const;
 
 export type MvpLayoutVariant = (typeof MVP_LAYOUT_VARIANTS)[number];
+
+/** The reason code of a layout the operator picked in the dashboard instead of the automatic one (REV-84) */
+export const MVP_LAYOUT_MANUAL_REASON = 'rule:manual';
 
 /** The layout an MVP was rendered with, and why it was chosen */
 export interface IMvpLayoutSelection {
@@ -847,6 +855,7 @@ export const API_ERROR_CODES = [
   'MVP_GENERATION_NOT_ALLOWED',
   'MVP_ALREADY_GENERATED',
   'MVP_NOT_FOUND',
+  'MVP_LAYOUT_CHANGE_NOT_ALLOWED',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',

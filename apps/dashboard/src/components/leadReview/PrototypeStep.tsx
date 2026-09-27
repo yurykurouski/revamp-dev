@@ -14,6 +14,8 @@ import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
 import { MvpLayoutChip } from '../MvpLayoutChip.js';
 import { ColorPickerToolbar } from '../ColorPickerToolbar.js';
+import { MvpLayoutPicker } from '../MvpLayoutPicker.js';
+import { useLiveMvpLayout } from '../../hooks/useLiveMvpLayout.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
 
 type PreviewBreakpoint = 'mobile' | 'tablet' | 'desktop';
@@ -39,7 +41,8 @@ interface PrototypeStepProps {
 
 /**
  * Step 2 of a lead review (REV-77): the generated MVP in its sandboxed iframe (AGENTS.md §3.2.3) with the
- * device breakpoints, regenerate, the live color toolbar (REV-16) and the "What changed" summary (REV-81).
+ * device breakpoints, regenerate, the live color toolbar (REV-16), the live layout picker (REV-84) and the
+ * "What changed" summary (REV-81).
  */
 export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }) => {
   const { t } = useTranslation();
@@ -50,6 +53,7 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [currentColor, setCurrentColor] = useState<string>(DEFAULT_PRIMARY);
   const [tokensError, setTokensError] = useState<string | null>(null);
+  const liveLayout = useLiveMvpLayout({ lead, mvp, iframeRef });
 
   useEffect(() => {
     if (audit?.colorPalette?.primary) setCurrentColor(audit.colorPalette.primary);
@@ -159,14 +163,35 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
         </Box>
       </Box>
 
-      {/* Color palette live toolbar (REV-16) */}
-      <Box sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
-        <ColorPickerToolbar
-          currentPrimary={currentColor}
-          originalPrimary={audit?.colorPalette?.primary}
-          onColorChange={handleColorChange}
-          onReset={handleColorReset}
-        />
+      {/* Live color (REV-16) and layout (REV-84) toolbars */}
+      <Box
+        sx={{
+          px: 2,
+          py: 1,
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          display: 'flex',
+          flexWrap: 'wrap',
+          alignItems: 'stretch',
+          gap: 1,
+        }}
+      >
+        <Box sx={{ flex: '1 1 360px', minWidth: 0 }}>
+          <ColorPickerToolbar
+            currentPrimary={currentColor}
+            originalPrimary={audit?.colorPalette?.primary}
+            onColorChange={handleColorChange}
+            onReset={handleColorReset}
+          />
+        </Box>
+        {mvp && (
+          <MvpLayoutPicker
+            value={liveLayout.layout}
+            onChange={liveLayout.changeLayout}
+            disabled={!liveLayout.canChange || !previewUrl || isPreviewBusy}
+            disabledReason={t('mvpLayout.locked')}
+          />
+        )}
       </Box>
 
       {/* What the MVP changed compared with the original site (REV-81) */}
@@ -221,7 +246,7 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
           )}
 
           {previewUrl ? (
-            <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} />
+            <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} onLoad={liveLayout.onFrameLoad} />
           ) : (
             <Box
               sx={{
@@ -256,6 +281,16 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
       >
         <Alert severity="error" onClose={() => setTokensError(null)}>
           {t('colorPicker.saveFailed', { message: tokensError ?? '' })}
+        </Alert>
+      </Snackbar>
+      <Snackbar
+        open={Boolean(liveLayout.error)}
+        autoHideDuration={6000}
+        onClose={liveLayout.clearError}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={liveLayout.clearError}>
+          {t('mvpLayout.saveFailed', { message: liveLayout.error ?? '' })}
         </Alert>
       </Snackbar>
     </Card>
