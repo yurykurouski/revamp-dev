@@ -1,5 +1,8 @@
 import nodemailer, { type Transporter } from 'nodemailer';
+import { EMAIL_PROVIDER_NOT_CONFIGURED } from '@revamp/shared-types';
 import { env } from '../config/env.js';
+
+export { EMAIL_PROVIDER_NOT_CONFIGURED };
 
 export interface ISendEmailOptions {
   to: string;
@@ -8,6 +11,8 @@ export interface ISendEmailOptions {
   html: string;
   text?: string;
   trackingToken: string;
+  /** Adds the open-tracking pixel; off for test sends to the operator (REV-60) */
+  trackOpens?: boolean;
   unsubscribeUrl?: string;
   unsubscribeEmail?: string;
   headers?: Record<string, string>;
@@ -183,9 +188,6 @@ export class SmtpEmailProvider implements IEmailProvider {
  * Main Email Service
  * Enforces List-Unsubscribe, List-Unsubscribe-Post, 1-Click HTML footer, and tracking token
  */
-export const EMAIL_PROVIDER_NOT_CONFIGURED =
-  'No email provider is configured: set EMAIL_PROVIDER to resend, sendgrid or smtp';
-
 /** The provider EMAIL_PROVIDER names, or null when it is unset (REV-45) */
 export function createEmailProvider(name: typeof env.EMAIL_PROVIDER = env.EMAIL_PROVIDER): IEmailProvider | null {
   switch (name) {
@@ -253,7 +255,7 @@ export class EmailService {
 
     // Append 1x1 tracking pixel to HTML (REV-18)
     const trackingPixelUrl = `${publicUrl}/track/open/${trackingToken}.gif`;
-    if (!preparedHtml.includes(trackingPixelUrl)) {
+    if (options.trackOpens !== false && !preparedHtml.includes(trackingPixelUrl)) {
       const trackingPixelHtml = `\n<img src="${trackingPixelUrl}" width="1" height="1" style="display:none;width:1px;height:1px;max-height:0px;max-width:0px;opacity:0;overflow:hidden;" alt="" />`;
       if (preparedHtml.includes('</body>')) {
         preparedHtml = preparedHtml.replace('</body>', `${trackingPixelHtml}\n</body>`);

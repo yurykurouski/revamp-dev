@@ -4,6 +4,7 @@ import { createAuditWorker } from './workers/audit.worker.js';
 import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
 import { createEmailWorker } from './workers/email.worker.js';
+import { createEmailTestWorker } from './workers/email-test.worker.js';
 import { createDiscoveryWorker } from './workers/discovery.worker.js';
 import { redisConnection } from './queues/connection.js';
 import { browserService } from './services/browser.service.js';
@@ -58,6 +59,7 @@ async function startWorkers(): Promise<void> {
     const aiWorker = createAiWorker();
     const deployWorker = createDeployWorker();
     const emailWorker = createEmailWorker();
+    const emailTestWorker = createEmailTestWorker();
     const discoveryWorker = createDiscoveryWorker();
 
     console.log('[Workers] All background workers are active and listening.');
@@ -78,6 +80,7 @@ async function startWorkers(): Promise<void> {
         aiWorker.close(),
         deployWorker.close(),
         emailWorker.close(),
+        emailTestWorker.close(),
         discoveryWorker.close(),
       ]);
       await browserService.close();

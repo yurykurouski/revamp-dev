@@ -341,19 +341,30 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow('Failed to fetch');
     });
 
-    it('should send test email to operator', async () => {
-      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: {} }));
+    const testDraft = { subject: 'A new site', preheader: 'A prototype', body: 'Hello' };
+
+    it('sends the draft to the operator and returns the delivery result (REV-60)', async () => {
+      const data = { to: 'operator@revamp.io', messageId: 'msg-1', provider: 'smtp', sentAt: '2026-09-27T12:00:00.000Z' };
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data }));
       vi.stubGlobal('fetch', fetchMock);
 
-      const result = await apiClient.sendTestEmail('lead-2', 'operator@revamp.io');
-      expect(result.success).toBe(true);
-      expect(result.message).toContain('operator@revamp.io');
-      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ testEmail: 'operator@revamp.io' });
+      const result = await apiClient.sendTestEmail('lead-2', 'operator@revamp.io', testDraft);
+      expect(result).toEqual(data);
+      expect(fetchMock.mock.calls[0][0]).toContain('/outreach/lead-2/test');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ testEmail: 'operator@revamp.io', ...testDraft });
     });
 
     it('surfaces a failed test email', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, message: 'Lead not found' }, 404)));
-      await expect(apiClient.sendTestEmail('missing', 'op@revamp.io')).rejects.toThrow('Lead not found');
+      await expect(apiClient.sendTestEmail('missing', 'op@revamp.io', testDraft)).rejects.toThrow('Lead not found');
+    });
+
+    it('surfaces a missing email provider instead of reporting a send (REV-60)', async () => {
+      const error = { code: 'EMAIL_PROVIDER_NOT_CONFIGURED', message: 'No email provider is configured' };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error }, 503)));
+      await expect(apiClient.sendTestEmail('lead-2', 'op@revamp.io', testDraft)).rejects.toThrow(
+        'No email provider is configured',
+      );
     });
 
     it('should reject a lead through the API', async () => {

@@ -572,6 +572,8 @@ export const QUEUE_NAMES = {
   AI_GENERATION: 'ai-gen-queue',
   DEPLOY: 'deploy-queue',
   EMAIL_DISPATCH: 'email-queue',
+  /** Test sends of a draft to the operator's own address (REV-60) */
+  EMAIL_TEST: 'email-test-queue',
   DISCOVERY: 'discovery-queue',
 } as const;
 
@@ -714,6 +716,29 @@ export interface IEmailDispatchJobData {
   campaignId: string;
   leadId: string;
 }
+
+/**
+ * A test send of the current draft to the operator (REV-60). It goes to the operator, not to the
+ * lead, so it skips the HITL gate, carries no open tracking and never changes the lead or campaign.
+ */
+export interface IEmailTestJobData {
+  leadId: string;
+  to: string;
+  subject: string;
+  preheader?: string;
+  /** Plain-text draft with its template variables already substituted */
+  body: string;
+}
+
+export interface IEmailTestJobResult {
+  messageId?: string;
+  provider: string;
+  sentAt: string;
+}
+
+/** Why an email could not be sent at all; shared so the API can recognise it in a failed job (REV-60) */
+export const EMAIL_PROVIDER_NOT_CONFIGURED =
+  'No email provider is configured: set EMAIL_PROVIDER to resend, sendgrid or smtp';
 
 // 8. Bento Template Data Interfaces
 export interface IBentoReviewItem {

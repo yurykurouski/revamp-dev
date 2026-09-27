@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import mongoose from 'mongoose';
 import { createApp } from '../../app.js';
@@ -11,8 +11,10 @@ import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { addEmailDispatchJob } from '../../queues/email.queue.js';
+import { sendTestEmailJob } from '../../queues/email-test.queue.js';
+import { env } from '../../config/env.js';
 import { redisConnection } from '../../queues/connection.js';
-import { LLM_CAPABILITIES_REDIS_KEY } from '@revamp/shared-types';
+import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY } from '@revamp/shared-types';
 
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
@@ -28,6 +30,9 @@ vi.mock('../../queues/email.queue.js', () => ({
   addEmailDispatchJob: vi.fn().mockResolvedValue({ id: 'mock-email-job-1' }),
   calculateDispatchDelay: vi.fn().mockReturnValue(25000),
   emailQueue: {} as any,
+}));
+vi.mock('../../queues/email-test.queue.js', () => ({
+  sendTestEmailJob: vi.fn(),
 }));
 
 describe('API Routes Integration Tests (Supertest)', () => {
@@ -582,28 +587,146 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
   });
 
-  describe('POST /api/v1/outreach/:id/test', () => {
-    it('should send test email and return 200', async () => {
-      const res = await request(app)
-        .post('/api/v1/outreach/lead-123/test')
-        .send({
-          testEmail: 'operator@revamp.io',
-        });
+  describe('POST /api/v1/outreach/:id/test (REV-60)', () => {
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const draft = {
+      testEmail: 'operator@revamp.io',
+      subject: 'A new mobile website for Dr Smile',
+      preheader: 'An interactive prototype',
+      body: 'Hello,\n\nSee https://demo.example/dr-smile',
+    };
+    const originalProvider = env.EMAIL_PROVIDER;
+
+    const mockLead = (lead: Record<string, unknown> | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+
+    const expectNothingChanged = () => {
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+    };
+
+    beforeEach(() => {
+      env.EMAIL_PROVIDER = 'smtp';
+      mockLead({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+    });
+
+    afterEach(() => {
+      env.EMAIL_PROVIDER = originalProvider;
+    });
+
+    it('sends the draft to the operator through the workers and returns 200 with the provider result', async () => {
+      const sentAt = new Date().toISOString();
+      vi.mocked(sendTestEmailJob).mockResolvedValue({
+        status: 'sent',
+        result: { messageId: 'msg-1', provider: 'smtp', sentAt },
+      });
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.message).toContain('operator@revamp.io');
+      expect(res.body.data).toEqual({ to: 'operator@revamp.io', messageId: 'msg-1', provider: 'smtp', sentAt });
+      expect(sendTestEmailJob).toHaveBeenCalledWith({
+        leadId,
+        to: 'operator@revamp.io',
+        subject: draft.subject,
+        preheader: draft.preheader,
+        body: draft.body,
+      });
+      expectNothingChanged();
     });
 
-    it('should return 400 when test email format is invalid', async () => {
+    it.each(['SENT', 'REJECTED', 'SCHEDULED'])('does not gate a test send on the lead status (%s)', async (status) => {
+      mockLead({ _id: leadId, status });
+      vi.mocked(sendTestEmailJob).mockResolvedValue({
+        status: 'sent',
+        result: { provider: 'smtp', sentAt: new Date().toISOString() },
+      });
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(200);
+      expectNothingChanged();
+    });
+
+    it('returns 503 EMAIL_PROVIDER_NOT_CONFIGURED and queues nothing when no provider is set', async () => {
+      env.EMAIL_PROVIDER = undefined;
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(503);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('EMAIL_PROVIDER_NOT_CONFIGURED');
+      expect(sendTestEmailJob).not.toHaveBeenCalled();
+      expectNothingChanged();
+    });
+
+    it('returns 503 when the workers report that they have no provider', async () => {
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'failed', reason: EMAIL_PROVIDER_NOT_CONFIGURED });
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(503);
+      expect(res.body.error.code).toBe('EMAIL_PROVIDER_NOT_CONFIGURED');
+    });
+
+    it('returns 502 EMAIL_SEND_FAILED with the provider error when the send fails', async () => {
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'failed', reason: 'Resend API error (403): forbidden' });
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(502);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('EMAIL_SEND_FAILED');
+      expect(res.body.error.message).toContain('Resend API error (403)');
+      expectNothingChanged();
+    });
+
+    it('returns 504 EMAIL_TEST_TIMEOUT when no worker sends it in time', async () => {
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'timeout' });
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(504);
+      expect(res.body.error.code).toBe('EMAIL_TEST_TIMEOUT');
+    });
+
+    it('returns 404 for an unknown lead', async () => {
+      mockLead(null);
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      expect(sendTestEmailJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an invalid lead id', async () => {
+      const res = await request(app).post('/api/v1/outreach/lead-123/test').send(draft);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_ID');
+      expect(sendTestEmailJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the test email format is invalid', async () => {
       const res = await request(app)
-        .post('/api/v1/outreach/lead-123/test')
-        .send({
-          testEmail: 'not-an-email',
-        });
+        .post(`/api/v1/outreach/${leadId}/test`)
+        .send({ ...draft, testEmail: 'not-an-email' });
 
       expect(res.status).toBe(400);
       expect(res.body.success).toBe(false);
+      expect(sendTestEmailJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 when the draft is missing', async () => {
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send({ testEmail: 'operator@revamp.io' });
+
+      expect(res.status).toBe(400);
+      expect(sendTestEmailJob).not.toHaveBeenCalled();
     });
   });
 

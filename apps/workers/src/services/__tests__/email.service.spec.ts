@@ -97,6 +97,21 @@ describe('EmailService & Providers (@revamp/workers)', () => {
       expect(sent.text).toContain('/track/unsubscribe/token-abc-123');
     });
 
+    it('leaves out the tracking pixel but keeps the footer when trackOpens is false (REV-60)', async () => {
+      await service.sendEmail({
+        to: 'operator@revamp.io',
+        subject: 'Test',
+        html: '<p>Hello</p>',
+        text: 'Hello',
+        trackingToken: 'test-send',
+        trackOpens: false,
+      });
+
+      const sent = mockProvider.sentMessages[0]!;
+      expect(sent.html).not.toContain('/track/open/');
+      expect(sent.html).toContain('Unsubscribe in one click');
+    });
+
     it('should not duplicate unsubscribe footer if it is already present in HTML and text', async () => {
       const customUnsubscribe = 'http://localhost:4000/api/v1/track/unsubscribe/token-xyz';
       const existingHtml = `<p>Email text</p><a href="${customUnsubscribe}">Unsubscribe</a><img src="http://localhost:4000/api/v1/track/open/token-xyz.gif" width="1" height="1" style="display:none;" alt="" />`;

@@ -74,6 +74,8 @@ The operator can override the provider and model for each generation from the da
 
 A lead can be added without a contact email; the audit then fills it in from the email published on the site. Outreach cannot be approved for a lead that still has no email (409). Outreach can be approved only while the lead awaits review (`NEEDS_APPROVAL`), and a lead can be rejected only until its outreach is approved; otherwise the API answers `409 LEAD_NOT_AWAITING_APPROVAL` or `409 LEAD_NOT_REJECTABLE` and the dashboard disables the action.
 
+"Send a test to myself" sends the current draft, exactly as the preview shows it, to the operator's address through the same provider (`POST /outreach/:id/test`). The API queues it on `email-test-queue` and waits up to 30 s for the result: the test has `[Test]` in the subject, no open-tracking pixel, and it never changes the lead or its campaign. Both the API and the workers read `EMAIL_PROVIDER`. Without it the API answers `503 EMAIL_PROVIDER_NOT_CONFIGURED`. A provider error returns `502 EMAIL_SEND_FAILED`, and if no worker picks the job up in time the API returns `504 EMAIL_TEST_TIMEOUT` and drops the job.
+
 ### Discovery
 
 OpenStreetMap works with no configuration. Google Places needs `GOOGLE_PLACES_API_KEY`. Set `DISCOVERY_USER_AGENT` to something that identifies you: the Nominatim and Overpass usage policies require it.

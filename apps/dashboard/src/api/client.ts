@@ -280,16 +280,16 @@ export const apiClient = {
   },
 
   /**
-   * Sends a test preview email to the operator
+   * Sends the current draft to the operator's own address (REV-60). Resolves only once the email
+   * provider accepted it; a missing provider or a failed send rejects with the API's message.
    */
-  async sendTestEmail(leadId: string, testEmail: string): Promise<{ success: boolean; message: string }> {
+  async sendTestEmail(leadId: string, testEmail: string, draft: ITestEmailDraft): Promise<ITestEmailResult> {
     const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ testEmail }),
+      body: JSON.stringify({ testEmail, ...draft }),
     });
-    await readDataOrThrow<unknown>(res);
-    return { success: true, message: `Test email sent to ${testEmail}` };
+    return readDataOrThrow<ITestEmailResult>(res);
   },
 
   /**
@@ -432,6 +432,20 @@ export const apiClient = {
 };
 
 /** Returns the `data` of a JSON API response, turning non-2xx responses into an Error with the server's message */
+/** The draft as the operator sees it in the preview, with its variables substituted */
+export interface ITestEmailDraft {
+  subject: string;
+  preheader?: string;
+  body: string;
+}
+
+export interface ITestEmailResult {
+  to: string;
+  messageId?: string;
+  provider: string;
+  sentAt: string;
+}
+
 async function readDataOrThrow<T>(res: Response): Promise<T> {
   let body: { message?: string; error?: { message?: string }; errors?: Array<{ message?: string }>; data?: T } | null =
     null;
