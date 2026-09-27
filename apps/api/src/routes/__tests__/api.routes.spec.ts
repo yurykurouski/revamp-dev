@@ -478,8 +478,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
     const leadId = new mongoose.Types.ObjectId().toString();
 
     const mockLeadWithStatus = (status: string) => {
-      vi.spyOn(Audit, 'findOne').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: auditId, leadId }),
+      vi.spyOn(Audit, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: auditId, leadId, status: 'COMPLETED' }),
       } as any);
       vi.spyOn(Lead, 'findById').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status }),
@@ -564,6 +564,50 @@ describe('API Routes Integration Tests (Supertest)', () => {
       },
     );
 
+    describe('audit resolution when the lead has several audits (REV-55)', () => {
+      const newestAuditId = new mongoose.Types.ObjectId().toString();
+
+      /** findById answers the id sent; findOne().sort() is the lead's newest COMPLETED audit */
+      const mockAudits = (byId: unknown, newest: unknown) => {
+        mockLeadWithStatus('NEEDS_APPROVAL');
+        vi.spyOn(Audit, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(byId) } as any);
+        const sort = vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(newest) });
+        vi.spyOn(Audit, 'findOne').mockReturnValue({ sort } as any);
+        return sort;
+      };
+
+      it("uses the lead's newest completed audit when the dashboard sends the lead id", async () => {
+        const sort = mockAudits(null, { _id: newestAuditId, leadId, status: 'COMPLETED' });
+
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId: leadId, forceRegenerate: true });
+
+        expect(res.status).toBe(202);
+        expect(res.body.data.auditId).toBe(newestAuditId);
+        expect(Audit.findOne).toHaveBeenCalledWith({ leadId, status: 'COMPLETED' });
+        expect(sort).toHaveBeenCalledWith({ createdAt: -1 });
+        expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ leadId, auditId: newestAuditId }));
+      });
+
+      it('never builds from a failed audit when a newer completed one exists', async () => {
+        mockAudits({ _id: auditId, leadId, status: 'FAILED' }, { _id: newestAuditId, leadId, status: 'COMPLETED' });
+
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: true });
+
+        expect(res.status).toBe(202);
+        expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ auditId: newestAuditId }));
+      });
+
+      it('returns 404 and enqueues nothing when the lead has no completed audit', async () => {
+        mockAudits({ _id: auditId, leadId, status: 'FAILED' }, null);
+
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
+
+        expect(res.status).toBe(404);
+        expect(res.body.message).toBe('No completed audit found for this lead');
+        expect(addAiGenerationJob).not.toHaveBeenCalled();
+      });
+    });
+
     it('should return 400 when auditId is missing', async () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({});
       expect(res.status).toBe(400);
@@ -629,8 +673,9 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
 
     it('should return 404 when audit is not found', async () => {
+      vi.spyOn(Audit, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
       vi.spyOn(Audit, 'findOne').mockReturnValue({
-        exec: vi.fn().mockResolvedValue(null),
+        sort: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
       } as any);
 
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
@@ -639,8 +684,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
 
     it('should return 404 when the audit has no lead', async () => {
-      vi.spyOn(Audit, 'findOne').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: auditId, leadId }),
+      vi.spyOn(Audit, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: auditId, leadId, status: 'COMPLETED' }),
       } as any);
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
 

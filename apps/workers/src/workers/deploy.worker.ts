@@ -5,6 +5,7 @@ import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { env } from '../config/env.js';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
+import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { bentoTemplateService } from '../services/template.service.js';
 import { storageService } from '../services/storage.service.js';
@@ -43,11 +44,10 @@ export const createDeployWorker = (): Worker => {
         throw new Error(`Lead ${leadId} not found`);
       }
 
-      const audit = await Audit.findOne({
-        $or: [{ _id: auditId }, { leadId }],
-      }).exec();
+      // The job's audit, else the lead's newest completed one; never a failed or stale audit (REV-55)
+      const audit = await findGenerationAudit(leadId, auditId);
       if (!audit) {
-        throw new Error(`Audit ${auditId || leadId} not found`);
+        throw new Error(`No completed audit found for lead ${leadId}`);
       }
 
       // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
