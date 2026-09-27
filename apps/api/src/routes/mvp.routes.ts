@@ -1,15 +1,23 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { GenerateMvpSchema, UpdateMvpTokensSchema, mvpGenerationMode } from '@revamp/validation';
+import {
+  GenerateMvpSchema,
+  MvpLayoutSelectionSchema,
+  UpdateMvpLayoutSchema,
+  UpdateMvpTokensSchema,
+  canChangeMvpLayout,
+  mvpGenerationMode,
+} from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { Lead } from '../models/Lead.model.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
+import { addMvpRelayoutJob } from '../queues/deploy.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { redisConnection } from '../queues/connection.js';
 import { getLlmProviders } from '../services/llm-providers.service.js';
 import { env } from '../config/env.js';
-import { findLlmProvider } from '@revamp/shared-types';
+import { MVP_LAYOUT_MANUAL_REASON, findLlmProvider } from '@revamp/shared-types';
 import mongoose from 'mongoose';
 
 const router = Router();
@@ -168,6 +176,70 @@ router.patch(
         success: true,
         message: 'Palette saved on the MVP record; the published MVP is not rebuilt',
         data: project,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// PATCH /mvp/:id/layout: the operator's layout for the MVP (REV-84). Saved on the MVP record by its
+// _id, then the published bundle is re-rendered from the stored copy in that layout; no LLM call.
+router.patch(
+  '/:id/layout',
+  validateBody(UpdateMvpLayoutSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] || '';
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
+      }
+      const { variant } = req.body;
+
+      const project = await MvpProject.findById(id).exec();
+      if (!project) {
+        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
+      }
+      const lead = await Lead.findById(project.leadId).exec();
+      if (!lead) {
+        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
+      }
+      // Same rule as a regeneration: never while one runs, nor once outreach is scheduled or sent (HITL)
+      if (!canChangeMvpLayout(lead.status)) {
+        throw new AppError(
+          409,
+          'MVP_LAYOUT_CHANGE_NOT_ALLOWED',
+          `The MVP layout cannot be changed while the lead is ${lead.status}`,
+          { status: lead.status },
+        );
+      }
+
+      if (project.layout?.variant === variant) {
+        res.status(200).json({ success: true, message: 'The MVP already uses this layout', data: project });
+        return;
+      }
+
+      // The audit facts behind the automatic choice are kept; the rule becomes the operator's
+      const facts = (project.layout?.reasons ?? []).filter((reason) => !reason.startsWith('rule:'));
+      const layout = MvpLayoutSelectionSchema.parse({
+        variant,
+        reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
+      });
+      const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout } }, { new: true }).exec();
+      if (!saved) {
+        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
+      }
+
+      await addMvpRelayoutJob({
+        leadId: lead._id.toString(),
+        auditId: saved.auditId.toString(),
+        mvpProjectId: saved._id.toString(),
+      });
+
+      res.status(200).json({
+        success: true,
+        message: 'Layout saved; the published MVP is being re-rendered in it',
+        data: saved,
       });
     } catch (error) {
       next(error);

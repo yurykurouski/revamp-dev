@@ -209,7 +209,17 @@ export const pl: Translation = {
       professional_niche: 'biznes oparty na wiedzy eksperckiej',
       text_heavy: 'dużo tekstu i mało zdjęć',
       default: 'układ domyślny',
+      manual: 'wybrany przez operatora',
     },
+    descriptions: {
+      bento: 'Siatka kart usług',
+      split: 'Tekst obok dużego zdjęcia',
+      editorial: 'Strona typograficzna, oparta na tekście',
+      compact: 'Krótka strona zaczynająca się od kontaktów',
+    },
+    picker: 'Układ:',
+    saveFailed: 'Nie udało się zapisać układu: {{message}}',
+    locked: 'Układ można zmienić tylko wtedy, gdy MVP czeka na przegląd',
   },
   llm: {
     provider: 'Dostawca LLM',

@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit } from '@revamp/shared-types';
-import { leadStatusesInto } from '@revamp/validation';
+import { IDeployJobData, ILead, IAudit, MvpLayoutVariant } from '@revamp/shared-types';
+import { canChangeMvpLayout, leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { env } from '../config/env.js';
@@ -31,10 +31,110 @@ function transliterate(str: string): string {
     .join('');
 }
 
+type AuditDoc = NonNullable<Awaited<ReturnType<typeof findGenerationAudit>>>;
+
+/**
+ * Uploads the MVP bundle to the S3/MinIO demo sandbox under the lead's slug, then captures its mobile
+ * view and uploads the 1200x630 "Before / After" comparison banner next to it.
+ */
+async function publishMvp(
+  slug: string,
+  html: string,
+  lead: Pick<ILead, 'businessName'>,
+  audit: AuditDoc,
+): Promise<{ fullPreviewUrl: string; storageHtmlPath: string; comparisonBannerUrl: string }> {
+  const { url: fullPreviewUrl, key: storageHtmlPath } = await storageService.uploadHtml(slug, html, env.S3_BUCKET_DEMOS);
+  console.log(`[DeployWorker] HTML deployed to ${fullPreviewUrl}`);
+
+  const newMvpMobileBuffer = await browserService.captureHtmlScreenshot(html, {
+    width: 375,
+    height: 812,
+    deviceScaleFactor: 2,
+  });
+
+  // The original site's mobile screenshot, else the new MVP on both sides
+  let originalMobileBuffer: Buffer = newMvpMobileBuffer;
+  if (audit.screenshotUrls?.mobileOriginal) {
+    try {
+      const res = await fetch(audit.screenshotUrls.mobileOriginal);
+      if (res.ok) originalMobileBuffer = Buffer.from(await res.arrayBuffer());
+    } catch {
+      // keep the fallback
+    }
+  }
+
+  const bannerBuffer = await ImageService.createComparisonBanner({
+    originalMobileBuffer,
+    newMvpMobileBuffer,
+    businessName: lead.businessName,
+    oldLcpSeconds: audit.lighthouseMetrics?.lcp ? audit.lighthouseMetrics.lcp / 1000 : undefined,
+    oldA11yViolationsCount: audit.a11ySummary?.violationsCount,
+    newScore: 95,
+  });
+
+  const comparisonBannerUrl = await storageService.uploadComparisonBanner(slug, bannerBuffer);
+  console.log(`[DeployWorker] Comparison banner uploaded to ${comparisonBannerUrl}`);
+
+  return { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl };
+}
+
+/** How many times a relayout re-renders when the operator keeps switching while it publishes */
+const MAX_RELAYOUT_PASSES = 3;
+
+/**
+ * Re-publishes an existing MVP in the layout the operator saved (REV-84): the stored copy rendered by
+ * the deterministic template, with no LLM call, no completeness re-check and no lead status change,
+ * so the page a lead is sent is the one the operator approved.
+ */
+async function relayoutMvp(job: Job<IDeployJobData>) {
+  const { leadId } = job.data;
+  const lead = await Lead.findById(leadId).exec();
+  if (!lead) {
+    throw new Error(`Lead ${leadId} not found`);
+  }
+  // A regeneration started since, or outreach went out: that run owns the bundle now
+  if (!canChangeMvpLayout(lead.status)) {
+    const reason = `Lead ${leadId} is ${lead.status}; its MVP layout is no longer re-published.`;
+    console.warn(`[DeployWorker] ${reason}`);
+    return { success: false, skipped: true, leadId, reason };
+  }
+
+  let project = await MvpProject.findOne({ leadId: lead._id }).exec();
+  if (!project) {
+    throw new Error(`No MVP found for lead ${leadId}`);
+  }
+  const audit = await findGenerationAudit(leadId, project.auditId?.toString());
+  if (!audit) {
+    throw new Error(`No completed audit found for lead ${leadId}`);
+  }
+
+  const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>;
+  const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
+  let published: Awaited<ReturnType<typeof publishMvp>> | undefined;
+  let variant: MvpLayoutVariant = project.layout?.variant ?? 'bento';
+
+  // The saved layout is read again after each upload: a switch made meanwhile gets its own pass,
+  // so an older job can never leave an outdated layout published
+  for (let pass = 0; pass < MAX_RELAYOUT_PASSES; pass++) {
+    const html = bentoTemplateService.renderFromAudit(leadData, auditData, project.generatedContent, variant);
+    published = await publishMvp(project.previewSlug, html, lead, audit);
+    const latest = await MvpProject.findById(project._id).exec();
+    const latestVariant: MvpLayoutVariant = latest?.layout?.variant ?? 'bento';
+    if (!latest || latestVariant === variant) break;
+    project = latest;
+    variant = latestVariant;
+  }
+
+  console.log(`[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${variant} layout`);
+  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: variant, ...published };
+}
+
 export const createDeployWorker = (): Worker => {
   const worker = new Worker<IDeployJobData>(
     QUEUE_NAMES.DEPLOY,
     async (job: Job<IDeployJobData>) => {
+      if (job.data.mode === 'relayout') return relayoutMvp(job);
+
       const { leadId, auditId, forceRegenerate = false, generationSource } = job.data;
       console.log(
         `[DeployWorker] Deploying MVP static site for lead: ${leadId}, audit: ${auditId}` +
@@ -78,52 +178,8 @@ export const createDeployWorker = (): Worker => {
           (completenessReport.hasCriticalIssues ? ', critical data missing or changed' : ''),
       );
 
-      // 3. Upload static HTML bundle to S3/MinIO demo sandbox
-      const { url: fullPreviewUrl, key: storageHtmlPath } = await storageService.uploadHtml(
-        slug,
-        html,
-        env.S3_BUCKET_DEMOS,
-      );
-
-      console.log(`[DeployWorker] HTML deployed to ${fullPreviewUrl}`);
-
-      // 4. Capture mobile screenshot of newly generated MVP via Playwright
-      const newMvpMobileBuffer = await browserService.captureHtmlScreenshot(html, {
-        width: 375,
-        height: 812,
-        deviceScaleFactor: 2,
-      });
-
-      // 5. Fetch or retrieve original mobile screenshot
-      let originalMobileBuffer: Buffer;
-      if (audit.screenshotUrls?.mobileOriginal) {
-        try {
-          const res = await fetch(audit.screenshotUrls.mobileOriginal);
-          if (res.ok) {
-            originalMobileBuffer = Buffer.from(await res.arrayBuffer());
-          } else {
-            originalMobileBuffer = newMvpMobileBuffer;
-          }
-        } catch {
-          originalMobileBuffer = newMvpMobileBuffer;
-        }
-      } else {
-        originalMobileBuffer = newMvpMobileBuffer;
-      }
-
-      // 6. Generate 1200x630 "Before / After" comparison banner
-      const bannerBuffer = await ImageService.createComparisonBanner({
-        originalMobileBuffer,
-        newMvpMobileBuffer,
-        businessName: lead.businessName,
-        oldLcpSeconds: audit.lighthouseMetrics?.lcp ? audit.lighthouseMetrics.lcp / 1000 : undefined,
-        oldA11yViolationsCount: audit.a11ySummary?.violationsCount,
-        newScore: 95,
-      });
-
-      // 7. Upload comparison banner to S3/MinIO
-      const comparisonBannerUrl = await storageService.uploadComparisonBanner(slug, bannerBuffer);
-      console.log(`[DeployWorker] Comparison banner uploaded to ${comparisonBannerUrl}`);
+      // 3-7. Upload the bundle and a fresh Before / After banner
+      const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit);
 
       // 8. Create or update MvpProject document in MongoDB (one per lead; regeneration updates it)
       const generatedAt = new Date();
@@ -223,6 +279,8 @@ export const createDeployWorker = (): Worker => {
 
   worker.on('failed', (job, err) => {
     console.error(`[DeployWorker] Job ${job?.id} failed:`, err);
+    // A failed relayout leaves the previous bundle published; the lead never went to GENERATING
+    if (job?.data?.mode === 'relayout') return;
     void handleGenerationFailure(job, err, 'deploy');
   });
 

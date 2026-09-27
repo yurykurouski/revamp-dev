@@ -1,4 +1,4 @@
-import { IBentoTemplateData, MvpLayoutVariant } from '@revamp/shared-types';
+import { IBentoTemplateData, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
 import { getMvpStrings } from './mvp-locale.js';
 
@@ -75,7 +75,8 @@ export function resolveTrackerUrls(
 
 /**
  * Styles each layout adds on top of the shared design system (REV-54). Only the active layout's
- * block is inlined, so the bundle stays small. Bento needs nothing extra.
+ * block is applied; the others wait in the layout <template>s for a live switch (REV-84). Bento
+ * needs nothing extra.
  */
 const LAYOUT_CSS: Record<MvpLayoutVariant, string> = {
   bento: '',
@@ -209,6 +210,44 @@ const LAYOUT_CSS: Record<MvpLayoutVariant, string> = {
     .service-tile-title { font-size: 1.0625rem; font-weight: 700; line-height: 1.3; }
     .service-tile-desc { font-size: 0.875rem; color: var(--color-text-muted); }`,
 };
+
+/** The content sections a layout reorders between the hero and the booking form */
+type MvpSection = 'about' | 'services' | 'gallery' | 'reviews';
+
+/**
+ * Section order per layout: image-led layouts show the gallery early, text-led ones the About block.
+ * Also sent to the page script, which reorders the sections on a live layout switch (REV-84).
+ */
+export const LAYOUT_SECTION_ORDER: Record<MvpLayoutVariant, MvpSection[]> = {
+  bento: ['about', 'services', 'gallery', 'reviews'],
+  split: ['gallery', 'services', 'about', 'reviews'],
+  editorial: ['about', 'services', 'reviews', 'gallery'],
+  compact: ['services', 'reviews', 'about', 'gallery'],
+};
+
+/**
+ * Motion of a live layout switch (REV-84): a View Transition where the browser has one, in which the
+ * hero, the services and each section glide to their new place while the old and new looks cross-fade.
+ * Only applies during a switch; `prefers-reduced-motion` switches instantly.
+ */
+const LAYOUT_TRANSITION_CSS = `
+    [data-revamp-part="hero"] { view-transition-name: revamp-hero; }
+    [data-revamp-part="services"] { view-transition-name: revamp-services; }
+    [data-revamp-section="about"] { view-transition-name: revamp-about; }
+    [data-revamp-section="gallery"] { view-transition-name: revamp-gallery; }
+    [data-revamp-section="reviews"] { view-transition-name: revamp-reviews; }
+    .site-header { view-transition-name: revamp-header; }
+    ::view-transition-group(*) { animation-duration: 520ms; animation-timing-function: cubic-bezier(0.2, 0, 0, 1); }
+    ::view-transition-old(*) { animation: 220ms cubic-bezier(0.4, 0, 1, 1) both revamp-layout-out; }
+    ::view-transition-new(*) { animation: 420ms cubic-bezier(0, 0, 0.2, 1) 120ms both revamp-layout-in; }
+    /* The header's content never changes: it stays sharp instead of blurring out and back in */
+    ::view-transition-old(revamp-header) { display: none; }
+    ::view-transition-new(revamp-header) { animation: none; }
+    @keyframes revamp-layout-out { to { opacity: 0; filter: blur(6px); } }
+    @keyframes revamp-layout-in { from { opacity: 0; filter: blur(6px); } }
+    @media (prefers-reduced-motion: reduce) {
+      ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+    }`;
 
 /**
  * Compiles the complete, self-contained landing page HTML document in the requested layout
@@ -383,7 +422,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const aboutHtml = data.about
     ? `
     <!-- MODULE 2b: ABOUT (rewritten from the original site's own copy) -->
-    <section class="about-section${layout === 'split' ? ' about-reverse' : ''}" id="about">
+    <section class="about-section${layout === 'split' ? ' about-reverse' : ''}" id="about" data-revamp-section="about">
       <div class="container about-grid">
         <div>
           <span class="section-tag">${escapeHtml(t.aboutTag)}</span>
@@ -400,9 +439,9 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     galleryImages.length >= 2
       ? `
     <!-- MODULE 3b: GALLERY (images from the original site) -->
-    <section class="gallery-section" id="gallery">
+    <section class="gallery-section" id="gallery" data-revamp-section="gallery">
       <div class="container">
-        <div class="gallery-grid${layout === 'split' ? ` gallery-count-${galleryImages.length}` : ''}">
+        <div class="gallery-grid gallery-count-${galleryImages.length}">
           ${galleryImages
             .map((src) => `<img class="gallery-image" src="${escapeHtml(src)}" alt="${businessName}" loading="lazy" />`)
             .join('\n')}
@@ -462,7 +501,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const heroByLayout: Record<MvpLayoutVariant, string> = {
     bento: `
     <!-- MODULE 2: HERO SECTION -->
-    <section class="hero-section">
+    <section class="hero-section" data-revamp-part="hero">
       <div class="hero-bg-glow"></div>
       <div class="container hero-content">
         ${heroBadgeHtml}
@@ -484,7 +523,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     </section>`,
     split: `
     <!-- MODULE 2: HERO SECTION (split: copy beside the photo) -->
-    <section class="hero-section hero-split${data.heroImageUrl ? '' : ' hero-split-no-image'}">
+    <section class="hero-section hero-split${data.heroImageUrl ? '' : ' hero-split-no-image'}" data-revamp-part="hero">
       <div class="container hero-split-grid">
         <div class="hero-split-copy">
           ${heroBadgeHtml}
@@ -498,7 +537,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     </section>`,
     editorial: `
     <!-- MODULE 2: HERO SECTION (editorial: typographic, left-aligned) -->
-    <section class="hero-section hero-editorial">
+    <section class="hero-section hero-editorial" data-revamp-part="hero">
       <div class="container hero-editorial-inner">
         ${heroBadgeHtml}
         <h1 class="hero-headline">${heroHeadline}</h1>
@@ -510,7 +549,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     </section>`,
     compact: `
     <!-- MODULE 2: HERO SECTION (compact: headline beside the verified contacts) -->
-    <section class="hero-section hero-compact">
+    <section class="hero-section hero-compact" data-revamp-part="hero">
       <div class="container hero-compact-grid">
         <div class="hero-compact-copy">
           ${heroBadgeHtml}
@@ -525,17 +564,17 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   };
 
   const servicesBodyByLayout: Record<MvpLayoutVariant, string> = {
-    bento: `<div class="bento-grid">
+    bento: `<div class="bento-grid" data-revamp-part="services">
           ${bentoCardsHtml}
         </div>`,
-    split: `<div class="service-tiles">${tileServicesHtml}</div>`,
-    editorial: `<ol class="numbered-services">${numberedServicesHtml}</ol>`,
-    compact: `<div class="service-tiles service-tiles-compact">${tileServicesHtml}</div>`,
+    split: `<div class="service-tiles" data-revamp-part="services">${tileServicesHtml}</div>`,
+    editorial: `<ol class="numbered-services" data-revamp-part="services">${numberedServicesHtml}</ol>`,
+    compact: `<div class="service-tiles service-tiles-compact" data-revamp-part="services">${tileServicesHtml}</div>`,
   };
   const servicesSectionHtml = services.length
     ? `
-    <!-- MODULE 3: SERVICES (${layout}) -->
-    <section class="bento-section" id="services">
+    <!-- MODULE 3: SERVICES -->
+    <section class="bento-section" id="services" data-revamp-section="services">
       <div class="container">
         <div class="section-header">
           <span class="section-tag">${escapeHtml(t.servicesTag)}</span>
@@ -549,7 +588,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const reviewsSectionHtml = reviews.length
     ? `
     <!-- MODULE 4: SOCIAL PROOF & REVIEWS (only real testimonials from the original site) -->
-    <section class="reviews-section" id="reviews">
+    <section class="reviews-section" id="reviews" data-revamp-section="reviews">
       <div class="container">
         <div class="section-header">
           <span class="section-tag">${escapeHtml(t.reviewsTag)}</span>
@@ -650,14 +689,28 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       </div>
     </section>`;
 
-  // Section order per layout: image-led layouts show the gallery early, text-led ones the About block
-  const sectionsByLayout: Record<MvpLayoutVariant, string[]> = {
-    bento: [heroByLayout.bento, aboutHtml, servicesSectionHtml, galleryHtml, reviewsSectionHtml],
-    split: [heroByLayout.split, galleryHtml, servicesSectionHtml, aboutHtml, reviewsSectionHtml],
-    editorial: [heroByLayout.editorial, aboutHtml, servicesSectionHtml, reviewsSectionHtml, galleryHtml],
-    compact: [heroByLayout.compact, servicesSectionHtml, reviewsSectionHtml, aboutHtml, galleryHtml],
+  const sectionHtml: Record<MvpSection, string> = {
+    about: aboutHtml,
+    services: servicesSectionHtml,
+    gallery: galleryHtml,
+    reviews: reviewsSectionHtml,
   };
-  const mainHtml = [...sectionsByLayout[layout], bookingSectionHtml].filter(Boolean).join('\n');
+  const mainHtml = [heroByLayout[layout], ...LAYOUT_SECTION_ORDER[layout].map((name) => sectionHtml[name]), bookingSectionHtml]
+    .filter(Boolean)
+    .join('\n');
+
+  // The other layouts' styles, hero and services markup, inert until the dashboard preview switches
+  // to one of them (REV-84). Same grounded content, only arranged differently.
+  const layoutTemplatesHtml = MVP_LAYOUT_VARIANTS.filter((variant) => variant !== layout)
+    .map(
+      (variant) => `
+  <template data-revamp-layout="${variant}">
+    <style>${LAYOUT_CSS[variant]}</style>
+    ${heroByLayout[variant]}
+    ${services.length ? servicesBodyByLayout[variant] : ''}
+  </template>`,
+    )
+    .join('');
 
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(language)}">
@@ -1522,8 +1575,9 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       color: inherit;
       text-decoration: none;
     }
-    ${LAYOUT_CSS[layout]}
+    ${LAYOUT_TRANSITION_CSS}
   </style>
+  <style id="revamp-layout-css">${LAYOUT_CSS[layout]}</style>
 
   ${data.customHeadSnippet ? data.customHeadSnippet : ''}
 </head>
@@ -1556,6 +1610,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   <main>
 ${mainHtml}
   </main>
+${layoutTemplatesHtml}
 
   <!-- MODULE 6: FOOTER -->
   <footer class="site-footer">
@@ -1607,6 +1662,81 @@ ${mainHtml}
       </div>
     </div>
   </footer>
+
+  <!-- LIVE LAYOUT SWITCH from the dashboard preview (REV-84) -->
+  <script>
+    (function() {
+      const sectionOrder = ${scriptJson(LAYOUT_SECTION_ORDER)};
+      const layoutStyle = document.getElementById('revamp-layout-css');
+      const main = document.querySelector('main');
+      const booking = document.getElementById('booking');
+      const reduceMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      // Parts taken out of the page on a switch, kept to switch back without re-cloning
+      const stash = {};
+      let current = ${scriptJson(layout)};
+
+      function partOf(root, name) {
+        return root.querySelector('[data-revamp-part="' + name + '"]');
+      }
+
+      function partsOf(layout) {
+        if (stash[layout]) return stash[layout];
+        const template = document.querySelector('template[data-revamp-layout="' + layout + '"]');
+        if (!template) return null;
+        const content = template.content.cloneNode(true);
+        const style = content.querySelector('style');
+        return { css: style ? style.textContent : '', hero: partOf(content, 'hero'), services: partOf(content, 'services') };
+      }
+
+      function apply(layout, parts) {
+        const hero = partOf(document, 'hero');
+        const services = partOf(document, 'services');
+        stash[current] = { css: layoutStyle ? layoutStyle.textContent : '', hero: hero, services: services };
+        if (layoutStyle) layoutStyle.textContent = parts.css;
+        if (hero && parts.hero) hero.replaceWith(parts.hero);
+        if (services && parts.services) services.replaceWith(parts.services);
+        document.body.classList.remove('layout-' + current);
+        document.body.classList.add('layout-' + layout);
+        const about = document.getElementById('about');
+        if (about) about.classList.toggle('about-reverse', layout === 'split');
+        if (main && booking) {
+          sectionOrder[layout].forEach(function(name) {
+            const section = main.querySelector('[data-revamp-section="' + name + '"]');
+            if (section) main.insertBefore(section, booking);
+          });
+        }
+        current = layout;
+      }
+
+      function setLayout(layout, animate) {
+        if (layout === current || !Object.prototype.hasOwnProperty.call(sectionOrder, layout)) return;
+        const parts = partsOf(layout);
+        if (!parts) return;
+        if (!animate || reduceMotion || !main) {
+          apply(layout, parts);
+        } else if (document.startViewTransition) {
+          document.startViewTransition(function() { apply(layout, parts); });
+        } else if (main.animate) {
+          // No View Transitions: fade and blur the page out, switch, and bring it back in
+          main.animate([{ opacity: 1 }, { opacity: 0, filter: 'blur(6px)', transform: 'translateY(8px)' }], {
+            duration: 180, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards'
+          }).finished.then(function() {
+            apply(layout, parts);
+            main.animate([{ opacity: 0, filter: 'blur(6px)', transform: 'translateY(-8px)' }, { opacity: 1, filter: 'none', transform: 'none' }], {
+              duration: 340, easing: 'cubic-bezier(0, 0, 0.2, 1)', fill: 'forwards'
+            });
+          });
+        } else {
+          apply(layout, parts);
+        }
+      }
+
+      window.addEventListener('message', function(event) {
+        if (!event.data || event.data.type !== 'REVAMP_SET_LAYOUT' || typeof event.data.layout !== 'string') return;
+        setLayout(event.data.layout, event.data.animate !== false);
+      });
+    })();
+  </script>
 
   <!-- CLIENT-SIDE INTERACTION SCRIPT (Zero dependencies, < 2 KB) -->
   <script>

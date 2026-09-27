@@ -10,6 +10,7 @@ import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
+import { addMvpRelayoutJob } from '../../queues/deploy.queue.js';
 import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { sendTestEmailJob } from '../../queues/email-test.queue.js';
 import { env } from '../../config/env.js';
@@ -25,6 +26,10 @@ vi.mock('../../queues/audit.queue.js');
 vi.mock('../../queues/ai.queue.js', () => ({
   addAiGenerationJob: vi.fn().mockResolvedValue({ id: 'mock-ai-job-1' }),
   aiGenerationQueue: {} as any,
+}));
+vi.mock('../../queues/deploy.queue.js', () => ({
+  addMvpRelayoutJob: vi.fn().mockResolvedValue({ id: 'mock-relayout-job-1' }),
+  deployQueue: {} as any,
 }));
 vi.mock('../../queues/email.queue.js', () => ({
   addEmailDispatchJob: vi.fn().mockResolvedValue({ id: 'mock-email-job-1' }),
@@ -1303,6 +1308,144 @@ describe('API Routes Integration Tests (Supertest)', () => {
         });
 
       expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  describe('PATCH /api/v1/mvp/:id/layout (REV-84)', () => {
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const auditId = new mongoose.Types.ObjectId().toString();
+    const project = (variant = 'bento', reasons = ['rule:default', 'complexity:MULTI_PAGE', 'images:3']) => ({
+      _id: projectId,
+      leadId,
+      auditId,
+      layout: { variant, reasons },
+    });
+    const mockProject = (doc: unknown) =>
+      vi.spyOn(MvpProject, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
+    const mockLead = (status: string | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
+      } as any);
+    const mockSave = (doc: unknown) =>
+      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
+
+    it('saves the layout as the operator choice and queues a re-render of the published MVP', async () => {
+      mockProject(project());
+      mockLead('NEEDS_APPROVAL');
+      const saved = { ...project('split', ['rule:manual', 'complexity:MULTI_PAGE', 'images:3']) };
+      const saveSpy = mockSave(saved);
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.layout).toEqual(saved.layout);
+      // The facts behind the automatic choice stay; the rule becomes the operator's
+      expect(saveSpy).toHaveBeenCalledWith(
+        projectId,
+        { $set: { layout: { variant: 'split', reasons: ['rule:manual', 'complexity:MULTI_PAGE', 'images:3'] } } },
+        { new: true },
+      );
+      expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
+      // A layout change is never a new generation (no LLM call)
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('saves a layout on an MVP generated before layouts were recorded', async () => {
+      mockProject({ ...project(), layout: undefined });
+      mockLead('NEEDS_APPROVAL');
+      const saveSpy = mockSave(project('editorial', ['rule:manual']));
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'editorial' });
+
+      expect(res.status).toBe(200);
+      expect(saveSpy).toHaveBeenCalledWith(
+        projectId,
+        { $set: { layout: { variant: 'editorial', reasons: ['rule:manual'] } } },
+        { new: true },
+      );
+    });
+
+    it('answers 200 without writing or re-rendering when the MVP already uses the layout', async () => {
+      mockProject(project('compact'));
+      mockLead('NEEDS_APPROVAL');
+      const saveSpy = mockSave(null);
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'compact' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.layout.variant).toBe('compact');
+      expect(saveSpy).not.toHaveBeenCalled();
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+    });
+
+    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED', 'AUDITED'])(
+      'returns 409 MVP_LAYOUT_CHANGE_NOT_ALLOWED while the lead is %s',
+      async (status) => {
+        mockProject(project());
+        mockLead(status);
+        const saveSpy = mockSave(null);
+
+        const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({
+          success: false,
+          error: {
+            code: 'MVP_LAYOUT_CHANGE_NOT_ALLOWED',
+            message: `The MVP layout cannot be changed while the lead is ${status}`,
+            details: { status },
+          },
+        });
+        expect(saveSpy).not.toHaveBeenCalled();
+        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 400 INVALID_ID for an id that is not an ObjectId', async () => {
+      const findSpy = vi.spyOn(MvpProject, 'findById');
+      const res = await request(app).patch('/api/v1/mvp/demo/layout').send({ variant: 'split' });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_ID');
+      expect(findSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([{}, { variant: 'masonry' }, { variant: 3 }])('returns 400 VALIDATION_ERROR for body %j', async (body) => {
+      const findSpy = vi.spyOn(MvpProject, 'findById');
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(findSpy).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 MVP_NOT_FOUND for an unknown MVP id', async () => {
+      mockProject(null);
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+      expect(res.status).toBe(404);
+      expect(res.body).toEqual({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } });
+    });
+
+    it('returns 404 LEAD_NOT_FOUND when the MVP has no lead', async () => {
+      mockProject(project());
+      mockLead(null);
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when the re-render cannot be queued', async () => {
+      mockProject(project());
+      mockLead('NEEDS_APPROVAL');
+      mockSave(project('split', ['rule:manual']));
+      vi.mocked(addMvpRelayoutJob).mockRejectedValueOnce(new Error('Redis down'));
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+
+      expect(res.status).toBe(500);
       expect(res.body.success).toBe(false);
     });
   });

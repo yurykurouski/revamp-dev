@@ -1,0 +1,260 @@
+/**
+ * @vitest-environment happy-dom
+ */
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import React, { act } from 'react';
+import { createRoot, Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider } from '@mui/material';
+import { MvpLayoutVariant } from '@revamp/shared-types';
+import '../../i18n/index.js';
+import { en } from '../../i18n/locales/en.js';
+import { ApiError, apiClient, IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
+import { getTheme } from '../../theme/theme.js';
+import { PrototypeStep } from '../leadReview/PrototypeStep.js';
+import { savedMvpLayout } from '../../hooks/useLiveMvpLayout.js';
+import { useMvpQuery } from '../../hooks/useLeads.js';
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+const lead: ILeadItem = {
+  id: 'lead-1',
+  businessName: 'Harbor Dental',
+  domain: 'harbor.example',
+  originalUrl: 'https://harbor.example',
+  niche: 'dental',
+  city: 'Vilnius',
+  status: 'NEEDS_APPROVAL',
+  auditId: 'audit-1',
+  // happy-dom loads iframe sources, so the preview points nowhere
+  previewUrl: 'about:blank#mvp',
+  createdAt: '2026-09-27T10:00:00.000Z',
+};
+
+const audit: IAuditDetail = {
+  id: 'audit-1',
+  leadId: 'lead-1',
+  criticalFlaws: [],
+  quickWins: [],
+  colorPalette: { primary: '#123456' },
+};
+
+const mvpWith = (variant: MvpLayoutVariant | undefined, reasons = ['rule:default']): IMvpProjectDetail => ({
+  id: 'mvp-1',
+  leadId: 'lead-1',
+  fullPreviewUrl: 'about:blank#mvp',
+  ...(variant ? { layout: { variant, reasons } } : {}),
+});
+
+/** Resolves on demand, to hold a save in flight */
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** The Prototype step fed from the MVP query, as LeadReview does */
+const Harness: React.FC<{ lead: ILeadItem }> = ({ lead: current }) => {
+  const { data: mvp } = useMvpQuery(current.id);
+  return React.createElement(PrototypeStep, { lead: current, audit, mvp });
+};
+
+const flush = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+
+describe('Prototype step layout picker (REV-84)', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let queryClient: QueryClient;
+  let posted: unknown[];
+
+  beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    posted = [];
+    vi.spyOn(apiClient, 'generateMvp');
+    vi.spyOn(apiClient, 'getLlmProviders').mockResolvedValue({ defaultProvider: 'claude', providers: [] } as never);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    document.body.innerHTML = '';
+    vi.restoreAllMocks();
+  });
+
+  const render = (mvp: IMvpProjectDetail | null, leadOverrides: Partial<ILeadItem> = {}) => {
+    queryClient.setQueryData(['mvp', 'lead-1'], mvp);
+    vi.spyOn(apiClient, 'getMvp').mockImplementation(async () => queryClient.getQueryData(['mvp', 'lead-1']) ?? null);
+    act(() => {
+      root.render(
+        React.createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          React.createElement(
+            ThemeProvider,
+            { theme: getTheme('light') },
+            React.createElement(Harness, { lead: { ...lead, ...leadOverrides } }),
+          ),
+        ),
+      );
+    });
+    // Everything the dashboard sends to the sandboxed preview
+    const frame = container.querySelector('iframe');
+    if (!frame?.contentWindow) return;
+    vi.spyOn(frame.contentWindow, 'postMessage').mockImplementation((message: unknown) => {
+      posted.push(message);
+    });
+  };
+
+  const button = (variant: MvpLayoutVariant) =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="mvp-layout-picker"] button')).find(
+      (el) => el.value === variant,
+    )!;
+  const pressed = () =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="mvp-layout-picker"] button'))
+      .filter((el) => el.getAttribute('aria-pressed') === 'true')
+      .map((el) => el.value);
+  const click = (variant: MvpLayoutVariant) => act(() => button(variant).click());
+  const setLayoutMessages = () =>
+    posted.filter((message) => (message as { type?: string }).type === 'REVAMP_SET_LAYOUT');
+
+  it('offers all four layouts with the saved one selected', () => {
+    render(mvpWith('editorial'));
+    for (const variant of ['bento', 'split', 'editorial', 'compact'] as const) {
+      expect(button(variant).textContent).toBe(en.mvpLayout.variants[variant]);
+      expect(button(variant).disabled).toBe(false);
+    }
+    expect(pressed()).toEqual(['editorial']);
+  });
+
+  it('switches the preview live with the animation and saves the layout, without a generation', async () => {
+    render(mvpWith('bento'));
+    const saved = mvpWith('split', ['rule:manual']);
+    const save = vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(saved);
+
+    click('split');
+
+    expect(setLayoutMessages()).toContainEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
+    expect(pressed()).toEqual(['split']);
+
+    await vi.waitFor(() => expect(save).toHaveBeenCalledWith('mvp-1', 'split'));
+    expect(apiClient.generateMvp).not.toHaveBeenCalled();
+    // The iframe is never reloaded for a layout change
+    expect(container.querySelector('iframe')!.getAttribute('src')).toBe('about:blank#mvp');
+    expect(pressed()).toEqual(['split']);
+    // The saved MVP replaces the cached one, so the layout chip and the change summary follow it
+    expect(queryClient.getQueryData(['mvp', 'lead-1'])).toEqual(saved);
+  });
+
+  it('shows the operator pick on the layout chip once saved', async () => {
+    render(mvpWith('bento'));
+    const saved = mvpWith('compact', ['rule:manual']);
+    vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(saved);
+    click('compact');
+
+    const chips = () => Array.from(container.querySelectorAll('.MuiChip-label')).map((chip) => chip.textContent);
+    await vi.waitFor(() => expect(chips()).toContain(en.mvpLayout.variants.compact));
+    expect(chips()).not.toContain(en.mvpLayout.variants.bento);
+    expect(pressed()).toEqual(['compact']);
+  });
+
+  it('puts the saved layout back in the preview and reports a failed save', async () => {
+    render(mvpWith('bento'));
+    vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(
+      new ApiError('The MVP layout cannot be changed while the lead is SCHEDULED', 409, 'MVP_LAYOUT_CHANGE_NOT_ALLOWED'),
+    );
+
+    click('editorial');
+    await vi.waitFor(() => expect(pressed()).toEqual(['bento']));
+
+    expect(setLayoutMessages()).toContainEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'editorial', animate: true });
+    expect(setLayoutMessages().at(-1)).toEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'bento', animate: true });
+    expect(pressed()).toEqual(['bento']);
+    expect(document.body.textContent).toContain(
+      en.mvpLayout.saveFailed.replace('{{message}}', 'The MVP layout cannot be changed while the lead is SCHEDULED'),
+    );
+  });
+
+  it('keeps the latest pick selected while an earlier save is still in flight', async () => {
+    render(mvpWith('bento'));
+    const first = deferred<IMvpProjectDetail>();
+    const save = vi
+      .spyOn(apiClient, 'updateMvpLayout')
+      .mockImplementationOnce(() => first.promise)
+      .mockResolvedValueOnce(mvpWith('compact', ['rule:manual']));
+
+    click('split');
+    click('compact');
+    expect(pressed()).toEqual(['compact']);
+
+    first.resolve(mvpWith('split', ['rule:manual']));
+    await flush();
+    expect(pressed()).toEqual(['compact']);
+
+    // Saved one after the other, in the order picked
+    await vi.waitFor(() => expect(save.mock.calls.map((call) => call[1])).toEqual(['split', 'compact']));
+    await vi.waitFor(() =>
+      expect(queryClient.getQueryData<IMvpProjectDetail>(['mvp', 'lead-1'])?.layout?.variant).toBe('compact'),
+    );
+    await flush();
+    expect(pressed()).toEqual(['compact']);
+    // The preview never went back to an older layout on the way
+    expect(setLayoutMessages().map((message) => (message as { layout: string }).layout)).not.toContain('bento');
+    expect(queryClient.getQueryData<IMvpProjectDetail>(['mvp', 'lead-1'])?.layout?.variant).toBe('compact');
+  });
+
+  it('drops a pick still unsaved when the MVP is regenerated', async () => {
+    render({ ...mvpWith('bento'), generatedAt: '2026-09-27T10:00:00.000Z' });
+    const save = deferred<IMvpProjectDetail>();
+    vi.spyOn(apiClient, 'updateMvpLayout').mockImplementation(() => save.promise);
+    click('split');
+    expect(pressed()).toEqual(['split']);
+
+    // A new version arrives with its own automatic layout
+    act(() => {
+      queryClient.setQueryData(['mvp', 'lead-1'], { ...mvpWith('editorial'), generatedAt: '2026-09-27T11:00:00.000Z' });
+    });
+    await vi.waitFor(() => expect(pressed()).toEqual(['editorial']));
+  });
+
+  it('brings a freshly loaded preview to the shown layout without the animation', () => {
+    render(mvpWith('split', ['rule:manual']));
+    act(() => container.querySelector('iframe')!.dispatchEvent(new Event('load')));
+    expect(setLayoutMessages().at(-1)).toEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: false });
+  });
+
+  it('ignores a click on the layout already shown', () => {
+    render(mvpWith('bento'));
+    const save = vi.spyOn(apiClient, 'updateMvpLayout');
+    click('bento');
+    expect(save).not.toHaveBeenCalled();
+    expect(pressed()).toEqual(['bento']);
+  });
+
+  it.each(['SCHEDULED', 'SENT', 'GENERATING'] as const)('locks the picker while the lead is %s', (status) => {
+    render(mvpWith('bento'), { status });
+    const save = vi.spyOn(apiClient, 'updateMvpLayout');
+    expect(button('split').disabled).toBe(true);
+    click('split');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('has no picker before an MVP exists', () => {
+    render(null, { previewUrl: undefined });
+    expect(container.querySelector('[data-testid="mvp-layout-picker"]')).toBeNull();
+  });
+
+  it('treats an MVP saved without a layout as Bento', () => {
+    render(mvpWith(undefined));
+    expect(pressed()).toEqual(['bento']);
+    expect(savedMvpLayout(mvpWith(undefined))).toBe('bento');
+    expect(savedMvpLayout({ ...mvpWith(undefined), layout: { variant: 'masonry' as never, reasons: [] } })).toBe('bento');
+    expect(savedMvpLayout(null)).toBeUndefined();
+  });
+});

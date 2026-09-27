@@ -209,7 +209,17 @@ export const lt: Translation = {
       professional_niche: 'ekspertinis verslas',
       text_heavy: 'daug teksto ir mažai nuotraukų',
       default: 'numatytasis maketas',
+      manual: 'pasirinko operatorius',
     },
+    descriptions: {
+      bento: 'Paslaugų kortelių tinklelis',
+      split: 'Tekstas šalia didelės nuotraukos',
+      editorial: 'Tipografinis, tekstu paremtas puslapis',
+      compact: 'Trumpas puslapis, pradedantis kontaktais',
+    },
+    picker: 'Maketas:',
+    saveFailed: 'Nepavyko išsaugoti maketo: {{message}}',
+    locked: 'Maketą galima keisti tik kol MVP laukia peržiūros',
   },
   llm: {
     provider: 'LLM teikėjas',

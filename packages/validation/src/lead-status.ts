@@ -80,3 +80,10 @@ export function mvpGenerationMode(status: string | undefined | null): MvpGenerat
   if ((MVP_REGENERATABLE_STATUSES as readonly string[]).includes(status ?? '')) return 'regenerate';
   return 'blocked';
 }
+
+/**
+ * Whether the operator may switch the layout of a lead's existing MVP (REV-84): under the same rule as
+ * a regeneration, so never while one is running or once outreach is scheduled or dispatched.
+ */
+export const canChangeMvpLayout = (status: string | undefined | null): boolean =>
+  mvpGenerationMode(status) === 'regenerate';
