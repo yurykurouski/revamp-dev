@@ -3,11 +3,15 @@ export const ROUTES = {
   queue: '/',
   leads: '/leads',
   lead: '/leads/:id',
+  leadPreview: '/leads/:id/preview',
   settings: '/settings',
 } as const;
 
 /** The URL of one lead */
 export const leadPath = (id: string): string => `${ROUTES.leads}/${encodeURIComponent(id)}`;
+
+/** The lead's MVP full-window, with the Design tools (REV-91) */
+export const leadPreviewPath = (id: string): string => `${leadPath(id)}/preview`;
 
 /** Rail entries that are pages; Discovery opens its overlay instead */
 export type RailPage = 'queue' | 'leads' | 'settings';

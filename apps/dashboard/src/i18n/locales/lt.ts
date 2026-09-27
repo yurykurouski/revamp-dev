@@ -518,6 +518,11 @@ export const lt: Translation = {
       guidance: 'Gairės',
     },
   },
+  mvpPreviewPage: {
+    backToReview: 'Atgal į peržiūrą',
+    openPublished: 'Atidaryti puslapį, kurį gaus potencialus klientas',
+    noMvp: 'Šis potencialus klientas dar neturi MVP.',
+  },
   mvpTools: {
     title: 'Dizaino įrankiai',
     move: 'Perkelti dizaino įrankių skydelį. Rodyklės jį perkelia, Home grąžina į vietą',

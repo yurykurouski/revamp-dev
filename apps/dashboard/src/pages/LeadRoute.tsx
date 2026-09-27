@@ -1,16 +1,11 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { Alert, Box, Button, CircularProgress } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useLeadsQuery } from '../hooks/useLeads.js';
-import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
+import { useListedLead } from '../hooks/useListedLead.js';
 import { LeadReview } from '../components/leadReview/LeadReview.js';
 import { MAIN_FILL_HEIGHT } from '../components/Layout.js';
 import { openedInApp, ROUTES } from '../routes/paths.js';
-
-/** Whether the list is narrowed by a filter that could hide the requested lead */
-const hasListFilters = (s: { searchQuery: string; selectedNiche: string; selectedComplexity: string }) =>
-  Boolean(s.searchQuery) || s.selectedNiche !== 'ALL' || s.selectedComplexity !== 'ALL';
 
 /**
  * `/leads/:id` (REV-76): the review of the lead in the URL (REV-77), so a lead can be linked to and
@@ -22,19 +17,10 @@ export const LeadRoute: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { t } = useTranslation();
-  const { data, isLoading, isError } = useLeadsQuery();
-  const filtersActive = useLeadFilterStore(hasListFilters);
-  const resetFilters = useLeadFilterStore((s) => s.resetFilters);
-
-  const lead = data?.leads.find((l) => l.id === id);
-
   // The review reads the lead from the list; a lead hidden by the search or a filter needs them cleared
-  const hiddenByFilters = Boolean(data) && !lead && filtersActive;
-  useEffect(() => {
-    if (hiddenByFilters) resetFilters();
-  }, [hiddenByFilters, resetFilters]);
+  const { lead, missing, isError } = useListedLead(id);
 
-  if (!lead && !isLoading && !hiddenByFilters && (data || isError)) {
+  if (missing) {
     return (
       <Box sx={{ mb: 2 }}>
         <Alert

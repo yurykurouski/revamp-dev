@@ -518,6 +518,11 @@ export const be: Translation = {
       guidance: 'Арыенцір',
     },
   },
+  mvpPreviewPage: {
+    backToReview: 'Назад да праверкі',
+    openPublished: 'Адкрыць старонку, якую атрымае лід',
+    noMvp: 'У гэтага ліда яшчэ няма MVP.',
+  },
   mvpTools: {
     title: 'Інструменты дызайну',
     move: 'Перамясціць панэль інструментаў дызайну. Стрэлкі рухаюць яе, Home вяртае на месца',

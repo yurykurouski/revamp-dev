@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { matchRoutes } from 'react-router-dom';
-import { ROUTES, activeRailPage, leadPath, openedInApp } from '../paths.js';
+import { ROUTES, activeRailPage, leadPath, leadPreviewPath, openedInApp } from '../paths.js';
 import { APP_ROUTES } from '../AppRoutes.js';
 
 describe('dashboard routes (REV-76)', () => {
@@ -28,6 +28,14 @@ describe('dashboard routes (REV-76)', () => {
   it('sends unknown paths to the catch-all route', () => {
     expect(leafPath('/nowhere').route.path).toBe('*');
     expect(leafPath('/leads/abc/extra').route.path).toBe('*');
+  });
+
+  it("opens a lead's MVP full-window outside the app shell (REV-91)", () => {
+    const matches = matchRoutes(APP_ROUTES, '/leads/abc/preview')!;
+    expect(matches.map((m) => m.route.path)).toEqual([ROUTES.leadPreview]);
+    expect(matches[0]!.params.id).toBe('abc');
+    expect(leadPreviewPath('abc')).toBe('/leads/abc/preview');
+    expect(leadPreviewPath('a/b')).toBe('/leads/a%2Fb/preview');
   });
 
   it('builds lead URLs with the id encoded', () => {
