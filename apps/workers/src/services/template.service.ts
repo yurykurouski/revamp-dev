@@ -5,6 +5,7 @@ import {
   IMvpGeneratedContent,
   IBentoServiceCard,
   IBentoReviewItem,
+  MvpLayoutVariant,
 } from '@revamp/shared-types';
 import { BentoTemplateDataSchema } from '@revamp/validation';
 import { generateBentoHtml } from '../templates/bento.template.js';
@@ -42,12 +43,13 @@ export class BentoTemplateService {
 
   /**
    * Convenience helper to construct and render a Bento landing page directly
-   * from MongoDB Lead and Audit documents.
+   * from MongoDB Lead and Audit documents, in the given layout (Bento when omitted, REV-54).
    */
   public renderFromAudit(
     lead: Partial<ILead>,
     audit?: Partial<IAudit>,
     generatedContent?: Partial<IMvpGeneratedContent>,
+    layout?: MvpLayoutVariant,
   ): string {
     const site = audit?.extractedContent;
     // The MVP speaks the original site's language (REV-25)
@@ -92,6 +94,7 @@ export class BentoTemplateService {
 
     const templateData: IBentoTemplateData = {
       businessName,
+      layout,
       language,
       niche: lead.niche,
       logoUrl,

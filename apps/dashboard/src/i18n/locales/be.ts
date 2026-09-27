@@ -134,6 +134,24 @@ export const be: Translation = {
     confirm: 'Стварыць',
     failed: 'Не ўдалося запусціць генерацыю: {{message}}',
   },
+  // REV-54: the layout the MVP was rendered with
+  mvpLayout: {
+    tooltip: 'Макет: {{name}} — {{reason}}',
+    variants: {
+      bento: 'Бэнта',
+      split: 'Спліт',
+      editorial: 'Рэдакцыйны',
+      compact: 'Кампактны',
+    },
+    rules: {
+      small_brochure: 'невялікі сайт-візітка з малой колькасцю фота',
+      visual_niche: 'візуальны бізнес з сапраўднымі фота',
+      image_rich: 'шмат сапраўдных фота на арыгінальным сайце',
+      professional_niche: 'экспертны бізнес',
+      text_heavy: 'шмат тэксту і мала фота',
+      default: 'макет па змаўчанні',
+    },
+  },
   llm: {
     provider: 'LLM-правайдар',
     model: 'Мадэль',

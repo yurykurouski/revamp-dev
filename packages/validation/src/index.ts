@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   DiscoveryCandidateStatus,
   LLM_PROVIDER_IDS,
+  MVP_LAYOUT_VARIANTS,
   SITE_COMPLEXITY_CLASSES,
   findLlmProvider,
 } from '@revamp/shared-types';
@@ -530,8 +531,19 @@ const HttpUrlSchema = z
   .url()
   .regex(/^https?:\/\//i, 'Only http(s) URLs are allowed');
 
+// Layout variants of the generated MVP (REV-54)
+export const MvpLayoutVariantSchema = z.enum(MVP_LAYOUT_VARIANTS);
+
+export const MvpLayoutSelectionSchema = z.object({
+  variant: MvpLayoutVariantSchema,
+  reasons: z.array(z.string().min(1).max(60)).max(12),
+});
+
+export type MvpLayoutSelection = z.infer<typeof MvpLayoutSelectionSchema>;
+
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
+  layout: MvpLayoutVariantSchema.optional(),
   language: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i).optional(),
   niche: NicheEnumSchema.optional(),
   logoUrl: HttpUrlSchema.optional(),

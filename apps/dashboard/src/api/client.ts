@@ -15,6 +15,7 @@ import {
   MvpCopyProvider,
   IMvpCompletenessReport,
   IMvpCompletenessSummary,
+  IMvpLayoutSelection,
   IReverseGeocodeResult,
   ILeadStats,
   LeadStatus,
@@ -475,6 +476,8 @@ export interface IMvpProjectDetail {
   modelUsed?: string;
   requestedProvider?: LlmProviderId;
   requestedModel?: string;
+  /** Layout the MVP was rendered with; absent on MVPs generated before REV-54 (Bento) */
+  layout?: IMvpLayoutSelection;
 }
 
 export interface ICriticalFlaw {

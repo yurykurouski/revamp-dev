@@ -534,3 +534,156 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     ).toThrow();
   });
 });
+
+describe('MVP layout variants (REV-54)', () => {
+  const data: IBentoTemplateData = {
+    businessName: 'Warsaw Dental Center',
+    palette: { primary: '#9a7d42', secondary: '#1e293b', accent: '#9a7d42' },
+    contacts: {
+      phone: '+48 22 542 18 04',
+      email: 'kontakt@wdc.example',
+      address: 'ulica Topiel 11, 00-342 Warszawa',
+      workingHours: 'Pon - Pt 09:00 — 21:00',
+    },
+    hero: {
+      badge: '★ 4.9 rating',
+      headline: 'Best dental clinic in Warsaw',
+      subheadline: 'Modern dental center with a full range of services.',
+    },
+    about: { heading: 'About us', body: 'We take care of your smile.' },
+    services: [
+      { title: 'Veneers', description: 'Thin ceramic shells.', lucideIconName: 'sparkles' },
+      { title: 'Implants <b>', description: 'Titanium & ceramic.', lucideIconName: 'shield-check' },
+    ],
+    trustSignals: [{ metric: '14 yrs', label: 'In Warsaw' }],
+    reviews: [{ author: 'Abhijit C.', comment: 'Doctors speak English fluently.', source: 'Website' }],
+    heroImageUrl: 'https://wdc.example/hero.jpg',
+    gallery: ['https://wdc.example/1.jpg', 'https://wdc.example/2.jpg', 'https://wdc.example/3.jpg'],
+  };
+  const render = (layout?: IBentoTemplateData['layout']) => bentoTemplateService.render({ ...data, layout });
+  const indexOf = (html: string, marker: string) => {
+    const index = html.indexOf(marker);
+    expect(index, marker).toBeGreaterThan(-1);
+    return index;
+  };
+
+  it('renders the original Bento layout when no layout is given', () => {
+    const html = render();
+    expect(html).toContain('<body class="layout-bento">');
+    expect(html).toContain('class="bento-grid"');
+    expect(html).toContain('bento-card bento-card-large');
+    expect(html).not.toContain('LAYOUT:');
+    expect(render('bento')).toBe(html);
+  });
+
+  it.each([
+    ['split', 'hero-split', 'class="service-tiles"'],
+    ['editorial', 'hero-editorial', 'class="numbered-services"'],
+    ['compact', 'hero-compact', 'class="service-tiles service-tiles-compact"'],
+  ] as const)('renders the %s layout with its own hero, services markup and styles', (layout, heroClass, servicesMarker) => {
+    const html = render(layout);
+    expect(html).toContain(`<body class="layout-${layout}">`);
+    expect(html).toContain(`hero-section ${heroClass}`);
+    expect(html).toContain(servicesMarker);
+    expect(html).not.toContain('class="bento-grid"');
+    expect(html).toContain(`LAYOUT: ${layout.toUpperCase()}`);
+    // Only the active layout's CSS is inlined
+    for (const other of ['SPLIT', 'EDITORIAL', 'COMPACT'].filter((name) => name !== layout.toUpperCase())) {
+      expect(html).not.toContain(`LAYOUT: ${other}`);
+    }
+  });
+
+  it.each(['bento', 'split', 'editorial', 'compact'] as const)(
+    'keeps the same grounded content in the %s layout',
+    (layout) => {
+      const html = render(layout);
+      expect(html).toContain('Best dental clinic in Warsaw');
+      expect(html).toMatch(/<h3 class="[^"]+">Veneers<\/h3>/);
+      expect(html).toContain('Implants &lt;b&gt;');
+      expect(html).not.toContain('Implants <b>');
+      expect(html).toContain('href="tel:+48225421804"');
+      expect(html).toContain('href="mailto:kontakt@wdc.example"');
+      expect(html).toContain('https://www.google.com/maps/search/');
+      expect(html).toContain('src="https://wdc.example/hero.jpg"');
+      expect(html).toContain('src="https://wdc.example/3.jpg"');
+      expect(html).toContain('Doctors speak English fluently.');
+      expect(html).toContain('id="lead-booking-form"');
+      expect(Buffer.byteLength(html, 'utf8')).toBeLessThan(BentoTemplateService.MAX_BUNDLE_SIZE_BYTES);
+    },
+  );
+
+  it('orders the sections per layout', () => {
+    const bento = render('bento');
+    expect(indexOf(bento, 'id="about"')).toBeLessThan(indexOf(bento, 'id="services"'));
+    expect(indexOf(bento, 'id="services"')).toBeLessThan(indexOf(bento, 'id="gallery"'));
+
+    // Image-led: the gallery comes straight after the hero
+    const split = render('split');
+    expect(indexOf(split, 'id="gallery"')).toBeLessThan(indexOf(split, 'id="services"'));
+    expect(indexOf(split, 'id="services"')).toBeLessThan(indexOf(split, 'id="about"'));
+
+    // Text-led: About first, the gallery last
+    const editorial = render('editorial');
+    expect(indexOf(editorial, 'id="about"')).toBeLessThan(indexOf(editorial, 'id="services"'));
+    expect(indexOf(editorial, 'id="reviews"')).toBeLessThan(indexOf(editorial, 'id="gallery"'));
+
+    // Brochure: services straight after the contacts hero
+    const compact = render('compact');
+    expect(indexOf(compact, 'id="services"')).toBeLessThan(indexOf(compact, 'id="about"'));
+
+    for (const html of [bento, split, editorial, compact]) {
+      expect(indexOf(html, 'id="booking"')).toBeGreaterThan(indexOf(html, 'id="services"'));
+    }
+  });
+
+  it('numbers the services in the editorial layout', () => {
+    const html = render('editorial');
+    expect(html).toContain('<span class="numbered-service-index">01</span>');
+    expect(html).toContain('<span class="numbered-service-index">02</span>');
+  });
+
+  it('puts only the verified contacts in the compact hero', () => {
+    const html = render('compact');
+    const hero = html.slice(indexOf(html, 'hero-compact"'), indexOf(html, '<!-- MODULE 3'));
+    expect(hero).toContain('<ul class="quick-facts">');
+    expect(hero).toContain('href="tel:+48225421804"');
+    expect(hero).toContain('Pon - Pt 09:00 — 21:00');
+
+    const phoneOnly = bentoTemplateService.render({ ...data, layout: 'compact', contacts: { phone: '+48 22 542 18 04' } });
+    const phoneOnlyHero = phoneOnly.slice(indexOf(phoneOnly, 'hero-compact"'), indexOf(phoneOnly, '<!-- MODULE 3'));
+    expect(phoneOnlyHero).toContain('href="tel:+48225421804"');
+    expect(phoneOnlyHero).not.toContain('mailto:');
+    expect(phoneOnlyHero).not.toContain('google.com/maps');
+
+    const noContacts = bentoTemplateService.render({ ...data, layout: 'compact', contacts: {} });
+    expect(noContacts).not.toContain('<ul class="quick-facts">');
+  });
+
+  it('falls back to a single column split hero when there is no photo', () => {
+    const html = bentoTemplateService.render({ ...data, layout: 'split', heroImageUrl: undefined });
+    expect(html).toContain('hero-split hero-split-no-image');
+    expect(html).not.toContain('class="hero-split-image"');
+  });
+
+  it('rejects an unknown layout', () => {
+    expect(() => bentoTemplateService.render({ ...data, layout: 'grid' as never })).toThrow();
+  });
+
+  it('renders the layout chosen for a lead from its audit', () => {
+    const lead: Partial<ILead> = { businessName: 'Warsaw Dental Center', niche: 'dental' };
+    const audit: Partial<IAudit> = {
+      extractedContent: {
+        headings: [],
+        paragraphs: ['We take care of your smile.'],
+        serviceItems: [{ title: 'Veneers', description: 'Thin ceramic shells.' }],
+        navItems: [],
+        testimonials: [],
+        images: [],
+      },
+    };
+    expect(bentoTemplateService.renderFromAudit(lead, audit, undefined, 'editorial')).toContain(
+      '<body class="layout-editorial">',
+    );
+    expect(bentoTemplateService.renderFromAudit(lead, audit)).toContain('<body class="layout-bento">');
+  });
+});

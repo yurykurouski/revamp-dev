@@ -134,6 +134,24 @@ export const lt: Translation = {
     confirm: 'Generuoti',
     failed: 'Nepavyko pradėti generavimo: {{message}}',
   },
+  // REV-54: the layout the MVP was rendered with
+  mvpLayout: {
+    tooltip: 'Maketas: {{name}} — {{reason}}',
+    variants: {
+      bento: 'Bento',
+      split: 'Padalytas',
+      editorial: 'Redakcinis',
+      compact: 'Kompaktiškas',
+    },
+    rules: {
+      small_brochure: 'maža svetainė-vizitinė su keliomis nuotraukomis',
+      visual_niche: 'vizualus verslas su tikromis nuotraukomis',
+      image_rich: 'daug tikrų nuotraukų originalioje svetainėje',
+      professional_niche: 'ekspertinis verslas',
+      text_heavy: 'daug teksto ir mažai nuotraukų',
+      default: 'numatytasis maketas',
+    },
+  },
   llm: {
     provider: 'LLM teikėjas',
     model: 'Modelis',

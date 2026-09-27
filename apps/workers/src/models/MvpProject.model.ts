@@ -71,6 +71,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     modelUsed: { type: String },
     requestedProvider: { type: String },
     requestedModel: { type: String },
+    // REV-54: the layout this version was rendered with, and the audit facts behind the choice
+    layout: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,

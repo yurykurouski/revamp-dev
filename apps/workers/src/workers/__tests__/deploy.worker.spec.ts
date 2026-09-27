@@ -201,6 +201,25 @@ describe('DeployWorker (@revamp/workers)', () => {
       { upsert: true, new: true },
     );
 
+    // REV-54: the layout is picked from the audit, rendered, and recorded on the MvpProject.
+    // No services and no photos on this site, so the short compact layout fits.
+    expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(
+      mockLead,
+      mockAudit,
+      mockAudit.generatedContent,
+      'compact',
+    );
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledWith(
+      { leadId: mockLeadId },
+      expect.objectContaining({
+        layout: {
+          variant: 'compact',
+          reasons: ['rule:small_brochure', 'complexity:UNKNOWN', 'niche:dental', 'images:0', 'services:0'],
+        },
+      }),
+      { upsert: true, new: true },
+    );
+
     // Assert Audit updated with comparisonBanner
     expect(Audit.findByIdAndUpdate).toHaveBeenCalledWith(
       mockAuditId,

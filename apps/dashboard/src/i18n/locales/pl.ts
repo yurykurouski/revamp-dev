@@ -134,6 +134,24 @@ export const pl: Translation = {
     confirm: 'Wygeneruj',
     failed: 'Nie udało się rozpocząć generowania: {{message}}',
   },
+  // REV-54: the layout the MVP was rendered with
+  mvpLayout: {
+    tooltip: 'Układ: {{name}} — {{reason}}',
+    variants: {
+      bento: 'Bento',
+      split: 'Dzielony',
+      editorial: 'Redakcyjny',
+      compact: 'Kompaktowy',
+    },
+    rules: {
+      small_brochure: 'mała strona-wizytówka z niewieloma zdjęciami',
+      visual_niche: 'biznes wizualny z prawdziwymi zdjęciami',
+      image_rich: 'wiele prawdziwych zdjęć na oryginalnej stronie',
+      professional_niche: 'biznes oparty na wiedzy eksperckiej',
+      text_heavy: 'dużo tekstu i mało zdjęć',
+      default: 'układ domyślny',
+    },
+  },
   llm: {
     provider: 'Dostawca LLM',
     model: 'Model',
