@@ -479,6 +479,7 @@ export const en = {
   },
   colorPicker: {
     brandPalette: 'Brand palette:',
+    saveFailed: 'Could not save the palette: {{message}}',
     presets: {
       Indigo: 'Indigo',
       Violet: 'Violet',

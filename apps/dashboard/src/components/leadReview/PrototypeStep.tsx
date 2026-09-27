@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Box, Button, ButtonGroup, Card, Chip, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
+import { Alert, Box, Button, ButtonGroup, Card, Chip, CircularProgress, IconButton, Snackbar, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
@@ -8,7 +8,7 @@ import LaptopIcon from '@mui/icons-material/Laptop';
 import SecurityIcon from '@mui/icons-material/Security';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
-import { useIsMvpGenerationPending, useUpdateMvpTokensMutation, withPreviewVersion } from '../../hooks/useLeads.js';
+import { mvpRecordId, useIsMvpGenerationPending, useUpdateMvpTokensMutation, withPreviewVersion } from '../../hooks/useLeads.js';
 import { MvpPreviewFrame } from '../MvpPreviewFrame.js';
 import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
@@ -48,6 +48,7 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const [currentColor, setCurrentColor] = useState<string>(DEFAULT_PRIMARY);
+  const [tokensError, setTokensError] = useState<string | null>(null);
 
   useEffect(() => {
     if (audit?.colorPalette?.primary) setCurrentColor(audit.colorPalette.primary);
@@ -60,7 +61,13 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
       { type: 'REVAMP_UPDATE_THEME', palette: { primary: newColor, accent: newColor } },
       '*',
     );
-    updateTokensMutation.mutate({ mvpId: lead.id, tokens: { primaryColor: newColor, accentColor: newColor } });
+    // Saved against the MVP record, not the lead; a failed save is shown instead of passing silently (REV-65)
+    const mvpId = mvpRecordId(mvp);
+    if (!mvpId) return;
+    updateTokensMutation.mutate(
+      { mvpId, leadId: lead.id, tokens: { primaryColor: newColor, accentColor: newColor } },
+      { onError: (err) => setTokensError(err instanceof Error ? err.message : String(err)) },
+    );
   };
 
   const handleColorReset = () => handleColorChange(audit?.colorPalette?.primary || DEFAULT_PRIMARY);
@@ -236,6 +243,17 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
           )}
         </Box>
       </Box>
+
+      <Snackbar
+        open={Boolean(tokensError)}
+        autoHideDuration={6000}
+        onClose={() => setTokensError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert severity="error" onClose={() => setTokensError(null)}>
+          {t('colorPicker.saveFailed', { message: tokensError ?? '' })}
+        </Alert>
+      </Snackbar>
     </Card>
   );
 };

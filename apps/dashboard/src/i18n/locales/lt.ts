@@ -478,6 +478,7 @@ export const lt: Translation = {
   },
   colorPicker: {
     brandPalette: 'Prekės ženklo paletė:',
+    saveFailed: 'Nepavyko išsaugoti paletės: {{message}}',
     presets: {
       Indigo: 'Indigo',
       Violet: 'Violetinė',

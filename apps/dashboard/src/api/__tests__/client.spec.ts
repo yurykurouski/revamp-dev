@@ -407,20 +407,26 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.rejectLead('lead-2', 'x')).rejects.toThrow('Failed to fetch');
     });
 
-    it('should update MVP brand design tokens', async () => {
+    it('should save the MVP palette and return the saved MVP (REV-65)', async () => {
       const tokens = { primaryColor: '#7C3AED', secondaryColor: '#C4B5FD', accentColor: '#7C3AED' };
-      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: tokens }));
+      const saved = { id: 'mvp-1', leadId: 'lead-1', fullPreviewUrl: 'https://x', colorPalette: { primary: '#7C3AED', secondary: '#C4B5FD', accent: '#7C3AED' } };
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: saved }));
       vi.stubGlobal('fetch', fetchMock);
 
-      const result = await apiClient.updateMvpTokens('lead-1', tokens);
-      expect(result.success).toBe(true);
-      expect(result.data.primaryColor).toBe('#7C3AED');
+      const result = await apiClient.updateMvpTokens('mvp-1', tokens);
+      expect(result.colorPalette?.primary).toBe('#7C3AED');
+      expect(fetchMock.mock.calls[0][0]).toContain('/mvp/mvp-1/tokens');
       expect(fetchMock.mock.calls[0][1].method).toBe('PATCH');
     });
 
     it('surfaces a failed token update', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid color' } }, 400)));
-      await expect(apiClient.updateMvpTokens('lead-1', { primaryColor: 'x' })).rejects.toThrow('Invalid color');
+      await expect(apiClient.updateMvpTokens('mvp-1', { primaryColor: 'x' })).rejects.toThrow('Invalid color');
+    });
+
+    it('surfaces an unknown MVP id instead of reporting success (REV-65)', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } }, 404)));
+      await expect(apiClient.updateMvpTokens('507f1f77bcf86cd799439011', { primaryColor: '#123456' })).rejects.toThrow('MVP not found');
     });
   });
 
