@@ -14,6 +14,7 @@ import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
 import { MvpLayoutChip } from '../MvpLayoutChip.js';
 import { ColorPickerToolbar } from '../ColorPickerToolbar.js';
+import { MvpChangeSummary } from './MvpChangeSummary.js';
 
 type PreviewBreakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -38,7 +39,7 @@ interface PrototypeStepProps {
 
 /**
  * Step 2 of a lead review (REV-77): the generated MVP in its sandboxed iframe (AGENTS.md §3.2.3) with the
- * device breakpoints, regenerate and the live color toolbar (REV-16).
+ * device breakpoints, regenerate, the live color toolbar (REV-16) and the "What changed" summary (REV-81).
  */
 export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }) => {
   const { t } = useTranslation();
@@ -167,6 +168,9 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
           onReset={handleColorReset}
         />
       </Box>
+
+      {/* What the MVP changed compared with the original site (REV-81) */}
+      <MvpChangeSummary mvp={mvp} audit={audit} />
 
       {/* Iframe viewport with a simulated device chassis */}
       <Box

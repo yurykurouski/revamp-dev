@@ -214,6 +214,16 @@ describe('Dashboard apiClient', () => {
       });
     });
 
+    it("maps the original site's service count (REV-81)", () => {
+      expect(mapServerAudit({ leadId: 'l', extractedServices: ['a', 'b'] }, 'a').originalServiceCount).toBe(2);
+      // No extracted services: the service items the crawler found
+      expect(mapServerAudit({ leadId: 'l', extractedContent: { serviceItems: [{}] } }, 'a').originalServiceCount).toBe(1);
+      // A site with no services found keeps its zero
+      expect(mapServerAudit({ leadId: 'l', extractedServices: [] }, 'a').originalServiceCount).toBe(0);
+      const unknown = mapServerAudit({ leadId: 'l' }, 'a');
+      expect(unknown.originalServiceCount).toBeUndefined();
+    });
+
     it('keeps measured zeros', () => {
       const audit = mapServerAudit(
         { leadId: 'l', lighthouseMetrics: { lcp: 0 }, scores: { accessibility: 0 }, a11ySummary: { violationsCount: 0 } },
