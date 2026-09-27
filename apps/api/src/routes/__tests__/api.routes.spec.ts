@@ -346,6 +346,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/outreach/:id/approve (HITL Gate)', () => {
+    const approvedDraft = { approvedBy: 'operator', subject: 'Approved subject', body: 'Approved body' };
+
     const mockFindById = (lead: Record<string, unknown> | null) =>
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
 
@@ -450,7 +452,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const update = vi.spyOn(Lead, 'findOneAndUpdate');
       const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
 
-      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
 
       expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
@@ -468,7 +470,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
       const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
 
-      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
 
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('LEAD_NOT_AWAITING_APPROVAL');
@@ -481,7 +483,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       mockFindById(null);
       const update = vi.spyOn(Lead, 'findOneAndUpdate');
 
-      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
 
       expect(res.status).toBe(404);
       expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
@@ -489,8 +491,49 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(addEmailDispatchJob).not.toHaveBeenCalled();
     });
 
+    it.each([
+      ['no draft', { approvedBy: 'operator' }],
+      ['no body', { approvedBy: 'operator', subject: 'Approved subject' }],
+      ['an empty body', { approvedBy: 'operator', subject: 'Approved subject', body: '   ' }],
+      ['no subject', { approvedBy: 'operator', body: 'Approved body' }],
+    ])('returns 400 and schedules nothing for an approval with %s (REV-61)', async (_case, payload) => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      const find = mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      const update = vi.spyOn(Lead, 'findOneAndUpdate');
+      const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(payload);
+
+      expect(res.status).toBe(400);
+      expect(res.body.success).toBe(false);
+      expect(find).not.toHaveBeenCalled();
+      expect(update).not.toHaveBeenCalled();
+      expect(campaign).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+    });
+
+    it('stores the approved subject and body with no default copy (REV-61)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Biz', contactEmail: 'owner@business.com' }),
+      } as any);
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: new mongoose.Types.ObjectId() }),
+      } as any);
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+
+      expect(res.status).toBe(200);
+      const update = vi.mocked(EmailCampaign.findOneAndUpdate).mock.calls[0]![1] as Record<string, unknown>;
+      expect(update['subject']).toBe('Approved subject');
+      expect(update['bodyHtml']).toBe(draftToHtml('Approved body'));
+      expect(update['bodyPlainText']).toBe('Approved body');
+      expect(update).not.toHaveProperty('previewText');
+    });
+
     it('returns 400 for an invalid lead id', async () => {
-      const res = await request(app).post('/api/v1/outreach/lead-123/approve').send({ approvedBy: 'operator' });
+      const res = await request(app).post('/api/v1/outreach/lead-123/approve').send(approvedDraft);
 
       expect(res.status).toBe(400);
       expect(res.body.error.code).toBe('INVALID_ID');
@@ -502,7 +545,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const update = vi.spyOn(Lead, 'findOneAndUpdate');
       const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
 
-      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
 
       expect(res.status).toBe(409);
       expect(res.body.error.code).toBe('NO_CONTACT_EMAIL');

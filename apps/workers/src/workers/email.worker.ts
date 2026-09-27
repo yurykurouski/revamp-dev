@@ -1,5 +1,5 @@
-import { Worker, Job } from 'bullmq';
-import crypto from 'crypto';
+import { Worker, Job, UnrecoverableError } from 'bullmq';
+import type { Types } from 'mongoose';
 import { IEmailDispatchJobData } from '@revamp/shared-types';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -17,8 +17,30 @@ export interface IEmailWorkerResult {
   sentAt?: Date;
   bounced?: boolean;
   aborted?: boolean;
+  alreadySent?: boolean;
   reason?: string;
 }
+
+/** Campaign statuses an approved email is sent from; the worker claims it by moving it to SENDING (REV-61) */
+const SENDABLE_CAMPAIGN_STATUSES = ['SCHEDULED', 'APPROVED'];
+
+/** Finishes the lead update for a campaign that was already delivered, without sending anything */
+const markLeadSent = async (
+  leadId: Types.ObjectId | string,
+  campaign: { _id: Types.ObjectId | string; sentAt?: Date },
+  reason: string,
+): Promise<IEmailWorkerResult> => {
+  console.warn(`[EmailWorker] ${reason}`);
+  await Lead.findByIdAndUpdate(leadId, { status: 'SENT' }).exec();
+  return {
+    success: true,
+    alreadySent: true,
+    campaignId: campaign._id.toString(),
+    leadId: leadId.toString(),
+    sentAt: campaign.sentAt,
+    reason,
+  };
+};
 
 export const createEmailWorker = (): Worker => {
   const worker = new Worker<IEmailDispatchJobData, IEmailWorkerResult>(
@@ -46,12 +68,27 @@ export const createEmailWorker = (): Worker => {
         };
       }
 
-      // 3. Fetch or Locate EmailCampaign
-      let campaign = await EmailCampaign.findOne({
+      // 3. Load the approved campaign. Only the text the operator approved is ever sent: a missing
+      // campaign or empty content fails the job instead of sending default copy (REV-61)
+      const campaign = await EmailCampaign.findOne({
         $or: [{ _id: campaignId }, { leadId: lead._id }],
       }).exec();
 
-      const recipientEmail = campaign?.recipientEmail || lead.contactEmail;
+      if (!campaign) {
+        throw new UnrecoverableError(`No approved EmailCampaign for lead ${leadId}; nothing was sent`);
+      }
+      if (!campaign.subject?.trim() || !campaign.bodyHtml?.trim()) {
+        throw new UnrecoverableError(
+          `EmailCampaign ${campaign._id.toString()} has no approved subject or body; nothing was sent`,
+        );
+      }
+
+      // A retry after the provider accepted the email must not send it again (REV-61)
+      if (campaign.status === 'DELIVERED') {
+        return markLeadSent(lead._id, campaign, 'The email was already sent; finishing the lead update only.');
+      }
+
+      const recipientEmail = campaign.recipientEmail || lead.contactEmail;
       if (!recipientEmail) {
         throw new Error(`No recipient email address available for lead ${leadId}`);
       }
@@ -64,14 +101,11 @@ export const createEmailWorker = (): Worker => {
         const bounceReason = mxResult.reason || `No routable MX records found for domain ${mxResult.domain}`;
         console.warn(`[EmailWorker] Pre-flight MX check failed for ${recipientEmail}: ${bounceReason}`);
 
-        // Update campaign if exists
-        if (campaign) {
-          await EmailCampaign.findByIdAndUpdate(campaign._id, {
-            status: 'BOUNCED',
-            bouncedAt: new Date(),
-            bounceReason,
-          }).exec();
-        }
+        await EmailCampaign.findByIdAndUpdate(campaign._id, {
+          status: 'BOUNCED',
+          bouncedAt: new Date(),
+          bounceReason,
+        }).exec();
 
         // Update Lead status to REJECTED and tag with bounce metadata
         await Lead.findByIdAndUpdate(lead._id, {
@@ -83,48 +117,62 @@ export const createEmailWorker = (): Worker => {
           success: false,
           bounced: true,
           leadId,
-          campaignId: campaign?._id?.toString() || campaignId,
+          campaignId: campaign._id.toString(),
           reason: bounceReason,
         };
       }
 
       console.log(`[EmailWorker] Recipient domain verified via MX: ${mxResult.mxRecords?.join(', ')}`);
 
-      // 5. Prepare Email Content & Tracking Token
-      const trackingToken = campaign?.trackingToken || crypto.randomUUID().replace(/-/g, '');
-      const subject =
-        campaign?.subject ||
-        `3 ways to lift conversions on the ${lead.businessName} website (plus an interactive prototype)`;
-      const bodyHtml =
-        campaign?.bodyHtml ||
-        `<p>Hello! We prepared an interactive website redesign concept for ${lead.businessName}.</p>`;
-      const bodyPlainText =
-        campaign?.bodyPlainText ||
-        `Hello! We prepared an interactive website redesign concept for ${lead.businessName}.`;
+      // 5. Claim the campaign atomically, so the email goes out at most once per approval (REV-61)
+      const claimed = await EmailCampaign.findOneAndUpdate(
+        { _id: campaign._id, status: { $in: SENDABLE_CAMPAIGN_STATUSES } },
+        { $set: { status: 'SENDING' } },
+        { new: true },
+      ).exec();
+
+      if (!claimed) {
+        const current = await EmailCampaign.findById(campaign._id).exec();
+        if (current?.status === 'DELIVERED') {
+          return markLeadSent(lead._id, current, 'The email was already sent; finishing the lead update only.');
+        }
+        // SENDING: an earlier attempt claimed it and may have handed it to the provider already
+        const reason = `EmailCampaign ${campaign._id.toString()} is ${current?.status ?? 'gone'}, not ${SENDABLE_CAMPAIGN_STATUSES.join('/')}. Not sending it again.`;
+        console.warn(`[EmailWorker] ${reason}`);
+        return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
+      }
 
       // 6. Dispatch Email via Provider with Compliance Headers
       console.log(`[EmailWorker] Dispatching email to ${recipientEmail} via ${emailService.getProvider()?.name ?? 'no configured provider'}...`);
-      const sendResult = await emailService.sendEmail({
-        to: recipientEmail,
-        subject,
-        html: bodyHtml,
-        text: bodyPlainText,
-        trackingToken,
-      });
+      let sendResult: Awaited<ReturnType<typeof emailService.sendEmail>>;
+      try {
+        sendResult = await emailService.sendEmail({
+          to: recipientEmail,
+          subject: claimed.subject,
+          html: claimed.bodyHtml,
+          text: claimed.bodyPlainText,
+          trackingToken: claimed.trackingToken,
+        });
+      } catch (error) {
+        // The provider did not take the email, so release the claim and let the retry send it
+        await EmailCampaign.findOneAndUpdate(
+          { _id: campaign._id, status: 'SENDING' },
+          { $set: { status: 'SCHEDULED' } },
+        ).exec();
+        throw error;
+      }
 
       console.log(
         `[EmailWorker] Email successfully dispatched. Message ID: ${sendResult.messageId}, Provider: ${sendResult.provider}`,
       );
 
+      // 7. Record the send first: if this or anything later throws, the campaign stays SENDING and
+      // a retry skips it instead of sending twice
       const now = new Date();
-
-      // 7. Update EmailCampaign status to DELIVERED
-      if (campaign) {
-        await EmailCampaign.findByIdAndUpdate(campaign._id, {
-          status: 'DELIVERED',
-          sentAt: now,
-        }).exec();
-      }
+      await EmailCampaign.findByIdAndUpdate(campaign._id, {
+        status: 'DELIVERED',
+        sentAt: now,
+      }).exec();
 
       // 8. Update Lead status to SENT
       await Lead.findByIdAndUpdate(lead._id, {
@@ -136,7 +184,7 @@ export const createEmailWorker = (): Worker => {
 
       return {
         success: true,
-        campaignId: campaign?._id?.toString() || campaignId,
+        campaignId: campaign._id.toString(),
         leadId: lead._id.toString(),
         messageId: sendResult.messageId,
         provider: sendResult.provider,
