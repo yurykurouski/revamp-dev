@@ -293,6 +293,8 @@ export const en = {
     generatingTitle: 'Generating and deploying the interactive MVP...',
     generatingBody: 'A background worker is compiling the Bento layout and uploading the bundle to isolated MinIO storage.',
     regenerating: 'Regenerating: the current version stays visible until the new one is ready',
+    regeneratingTitle: 'AI is rebuilding the MVP…',
+    regeneratingBody: 'Rewriting the copy and redeploying the page. The new version appears here as soon as it is ready.',
     hitlNotice: '🔒 Human-in-the-loop mode: outreach is blocked until the operator explicitly approves',
     goToApproval: 'Go to approval & sending',
     backToInspector: 'Back to site inspector',

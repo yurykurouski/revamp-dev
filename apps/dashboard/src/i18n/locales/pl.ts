@@ -292,6 +292,8 @@ export const pl: Translation = {
     generatingTitle: 'Generowanie i wdrażanie interaktywnego MVP...',
     generatingBody: 'Proces w tle składa układ Bento i przesyła paczkę do odizolowanego magazynu MinIO.',
     regenerating: 'Ponowne generowanie: obecna wersja pozostaje widoczna, dopóki nowa nie będzie gotowa',
+    regeneratingTitle: 'AI przebudowuje MVP…',
+    regeneratingBody: 'Przepisujemy teksty i ponownie publikujemy stronę. Nowa wersja pojawi się tutaj, gdy tylko będzie gotowa.',
     hitlNotice: '🔒 Tryb human-in-the-loop: wysyłka jest zablokowana do wyraźnego zatwierdzenia przez operatora',
     goToApproval: 'Przejdź do zatwierdzenia i wysyłki',
     backToInspector: 'Wróć do inspektora strony',

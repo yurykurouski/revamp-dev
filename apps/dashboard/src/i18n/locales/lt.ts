@@ -292,6 +292,8 @@ export const lt: Translation = {
     generatingTitle: 'Generuojamas ir diegiamas interaktyvus MVP...',
     generatingBody: 'Foninis procesas surenka Bento maketą ir įkelia paketą į izoliuotą MinIO saugyklą.',
     regenerating: 'Generuojama iš naujo: dabartinė versija matoma, kol nauja bus paruošta',
+    regeneratingTitle: 'DI perkuria MVP…',
+    regeneratingBody: 'Perrašome tekstus ir iš naujo publikuojame puslapį. Nauja versija atsiras čia, kai tik bus paruošta.',
     hitlNotice: '🔒 Human-in-the-loop režimas: siuntimas užblokuotas, kol operatorius aiškiai nepatvirtins',
     goToApproval: 'Pereiti prie patvirtinimo ir siuntimo',
     backToInspector: 'Atgal į svetainės inspektorių',
