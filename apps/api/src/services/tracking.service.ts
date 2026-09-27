@@ -161,6 +161,62 @@ export class TrackingService {
   }
 
   /**
+   * Looks up the campaign behind an unsubscribe link without changing anything, so the
+   * GET confirmation page is safe for link scanners that prefetch email URLs (REV-73)
+   */
+  public async findUnsubscribeCampaign(
+    token: string,
+  ): Promise<{ found: boolean; unsubscribed: boolean }> {
+    const campaign = await EmailCampaign.findOne({ trackingToken: token }).exec();
+    return { found: Boolean(campaign), unsubscribed: campaign?.status === 'UNSUBSCRIBED' };
+  }
+
+  /**
+   * Records an opt-out: POST /track/unsubscribe/:token (RFC 8058 one-click or the confirmation form).
+   * Moves the lead and its campaign to UNSUBSCRIBED; repeat calls change nothing (REV-73)
+   */
+  public async recordUnsubscribe(
+    token: string,
+    meta: IRequestMetadata = {},
+  ): Promise<{ found: boolean; alreadyUnsubscribed: boolean; leadId?: string }> {
+    const now = new Date();
+    // The status filter makes the first opt-out win, so a repeat call records nothing new
+    const campaign = await EmailCampaign.findOneAndUpdate(
+      { trackingToken: token, status: { $ne: 'UNSUBSCRIBED' } },
+      { $set: { status: 'UNSUBSCRIBED', unsubscribedAt: now } },
+      { new: true },
+    ).exec();
+
+    if (!campaign) {
+      const existing = await EmailCampaign.findOne({ trackingToken: token }).exec();
+      if (!existing) return { found: false, alreadyUnsubscribed: false };
+      // Keep the lead opted out even if something moved it on after the first call
+      await Lead.findByIdAndUpdate(existing.leadId, { $set: { status: 'UNSUBSCRIBED' } }).exec();
+      return { found: true, alreadyUnsubscribed: true, leadId: existing.leadId?.toString() };
+    }
+
+    // An opt-out applies whatever stage the lead reached; approve and dispatch refuse it from now on
+    await Lead.findByIdAndUpdate(campaign.leadId, {
+      $set: { status: 'UNSUBSCRIBED' },
+      $addToSet: { tags: 'unsubscribed' },
+    }).exec();
+
+    await AnalyticsEvent.create({
+      leadId: campaign.leadId,
+      campaignId: campaign._id,
+      mvpProjectId: campaign.mvpProjectId,
+      trackingToken: token,
+      eventType: 'unsubscribe',
+      ipHash: this.hashClientIp(meta.ip || ''),
+      userAgent: meta.userAgent,
+      metadata: meta.referer ? { referer: meta.referer } : {},
+      timestamp: now,
+    });
+
+    return { found: true, alreadyUnsubscribed: false, leadId: campaign.leadId?.toString() };
+  }
+
+  /**
    * Records telemetry event from client revamp-tracker.js: POST /track/mvp-event
    * Dispatches dwell_time, cta_click, booking_intent, pageview, scroll_depth
    * Automatically transitions Lead to ENGAGED when dwellTimeSeconds >= 30 or on CTA/booking interaction

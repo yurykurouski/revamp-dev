@@ -184,6 +184,31 @@ describe('EmailWorker (@revamp/workers)', () => {
     expect(mxValidator.validateRecipientDomain).not.toHaveBeenCalled();
   });
 
+  it('should not send to a lead that unsubscribed before the job ran (REV-73)', async () => {
+    createEmailWorker();
+
+    (Lead.findById as any).mockReturnValue({
+      exec: vi.fn().mockResolvedValue({
+        _id: 'lead-unsubscribed',
+        businessName: 'Opted Out Business',
+        status: 'UNSUBSCRIBED',
+        contactEmail: 'owner@optedout.com',
+      }),
+    });
+
+    const result = await capturedProcessor!({
+      id: 'job-unsubscribed',
+      data: { campaignId: 'camp-1', leadId: 'lead-unsubscribed' },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.aborted).toBe(true);
+    expect(result.reason).toContain('UNSUBSCRIBED');
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
   it('should catch unroutable MX records, mark EmailCampaign as BOUNCED, Lead as REJECTED, and prevent email send', async () => {
     createEmailWorker();
 
