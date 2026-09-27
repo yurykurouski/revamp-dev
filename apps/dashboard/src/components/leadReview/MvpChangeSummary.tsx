@@ -132,28 +132,11 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
   const { layout, copySource, sections, palette, businessData, critiqueGuidance } = summary;
   const fieldLabel = (field: string) => t(`completeness.fields.${field}` as 'completeness.fields.phone');
 
-  let paletteTag: Tag | undefined;
-  if (palette) {
-    if (!palette.original) paletteTag = { label: t('mvpChanges.tags.default'), tone: 'default' };
-    else if (palette.changed) paletteTag = { label: t('mvpChanges.tags.changed'), tone: 'warning' };
-    else paletteTag = { label: t('mvpChanges.tags.kept'), tone: 'success' };
-  }
-
-  let dataTag: Tag | undefined;
-  if (businessData) {
-    if (!businessData.verified) dataTag = { label: t('mvpChanges.tags.unverified'), tone: 'warning' };
-    else if (businessData.issues.length > 0)
-      dataTag = { label: t('mvpChanges.tags.issues', { count: businessData.issues.length }), tone: 'error' };
-    else dataTag = { label: t('mvpChanges.tags.allKept'), tone: 'success' };
-  }
-
-  // The original count is what the crawler extracted as a list, not everything the site mentions
-  let servicesLabel = '';
-  if (sections) {
-    if (sections.originalServices === undefined) servicesLabel = t('mvpChanges.servicesMvpOnly');
-    else if (sections.originalServices === 0) servicesLabel = t('mvpChanges.servicesNoneFound');
-    else servicesLabel = t('mvpChanges.servicesCompared');
-  }
+  const paletteTag: Tag | undefined = palette
+    ? palette.original
+      ? { label: t('mvpChanges.tags.changed'), tone: 'warning' }
+      : { label: t('mvpChanges.tags.default'), tone: 'default' }
+    : undefined;
 
   return (
     <Box
@@ -192,14 +175,19 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
 
       {sections && (
         <ChangeCard icon={<ViewQuiltOutlinedIcon />} title={t('mvpChanges.sections')}>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
-            <Stat
-              before={sections.originalServices === undefined ? undefined : sections.originalServices || '—'}
-              value={sections.mvpServices}
-              label={servicesLabel}
-            />
-            {sections.trustSignals > 0 && <Stat value={sections.trustSignals} label={t('mvpChanges.trustSignals')} />}
-          </Box>
+          {(sections.services || sections.trustSignals > 0) && (
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
+              {/* The original count is what the crawler extracted as a list, not everything the site mentions */}
+              {sections.services && (
+                <Stat
+                  before={sections.services.original || '—'}
+                  value={sections.services.mvp}
+                  label={t(sections.services.original === 0 ? 'mvpChanges.servicesNoneFound' : 'mvpChanges.servicesCompared')}
+                />
+              )}
+              {sections.trustSignals > 0 && <Stat value={sections.trustSignals} label={t('mvpChanges.trustSignals')} />}
+            </Box>
+          )}
           {sections.about && (
             <Box>
               <Chip label={t('mvpChanges.aboutSection')} size="small" color="success" sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }} />
@@ -220,39 +208,35 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
       )}
 
       {businessData && (
-        <ChangeCard icon={<FactCheckIcon />} title={t('mvpChanges.businessData')} tag={dataTag}>
-          {businessData.verified ? (
-            <>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <LinearProgress
-                  variant="determinate"
-                  value={businessData.checked ? (businessData.kept / businessData.checked) * 100 : 0}
-                  color={businessData.issues.length > 0 ? 'warning' : 'success'}
-                  aria-label={t('mvpChanges.businessData')}
-                  sx={{ flexGrow: 1, height: 6, borderRadius: 3 }}
-                />
-                <Typography variant="caption" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-                  {businessData.kept}/{businessData.checked}
-                </Typography>
-              </Box>
-              <Text muted>{t('mvpChanges.dataKept', { kept: businessData.kept, checked: businessData.checked })}</Text>
-              {businessData.issues.length > 0 && (
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                  {businessData.issues.map(({ field, status }) => (
-                    <Chip
-                      key={field}
-                      size="small"
-                      color={COMPLETENESS_STATUS_COLOR[status]}
-                      label={`${fieldLabel(field)}: ${t(`completeness.statuses.${status}`)}`}
-                      sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }}
-                    />
-                  ))}
-                </Box>
-              )}
-            </>
-          ) : (
-            <Text muted>{t('completeness.unverified')}</Text>
-          )}
+        <ChangeCard
+          icon={<FactCheckIcon />}
+          title={t('mvpChanges.businessData')}
+          tag={{ label: t('mvpChanges.tags.issues', { count: businessData.issues.length }), tone: 'error' }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <LinearProgress
+              variant="determinate"
+              value={businessData.checked ? (businessData.kept / businessData.checked) * 100 : 0}
+              color="warning"
+              aria-label={t('mvpChanges.businessData')}
+              sx={{ flexGrow: 1, height: 6, borderRadius: 3 }}
+            />
+            <Typography variant="caption" sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+              {businessData.kept}/{businessData.checked}
+            </Typography>
+          </Box>
+          <Text muted>{t('mvpChanges.dataKept', { kept: businessData.kept, checked: businessData.checked })}</Text>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            {businessData.issues.map(({ field, status }) => (
+              <Chip
+                key={field}
+                size="small"
+                color={COMPLETENESS_STATUS_COLOR[status]}
+                label={`${fieldLabel(field)}: ${t(`completeness.statuses.${status}`)}`}
+                sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }}
+              />
+            ))}
+          </Box>
         </ChangeCard>
       )}
 

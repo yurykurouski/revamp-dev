@@ -13,16 +13,19 @@ export interface MvpDataIssue {
 /**
  * What the generated MVP changed compared with the original site (REV-81). Every part comes from
  * data the pipeline stored: the layout choice, the copy source, the generated copy, the palette,
- * the completeness report and the audit. A part with no data stays undefined (or empty), so the
- * review omits it instead of guessing (AGENTS.md §3.2.2).
+ * the completeness report and the audit. Only changes are listed: a part that stayed as it was on
+ * the original site, or has no data, stays undefined (or empty), so the review omits it instead of
+ * guessing (AGENTS.md §3.2.2).
  */
 export interface MvpChangeSummary {
   layout?: { variant: MvpLayoutVariant; rule?: ReturnType<typeof layoutRuleOf> };
   copySource?: MvpSourceSummary;
-  sections?: { originalServices?: number; mvpServices: number; about: boolean; trustSignals: number };
-  palette?: { original?: string; mvp: string; changed: boolean };
-  /** Key business data compared with the original site; `verified: false` when the check could not run */
-  businessData?: { verified: true; kept: number; checked: number; issues: MvpDataIssue[] } | { verified: false };
+  /** `services` only when the MVP's count differs from the service list the crawler found */
+  sections?: { services?: { original: number; mvp: number }; about: boolean; trustSignals: number };
+  /** Only when the MVP's primary color differs from the site's; `original` is absent when the site had none */
+  palette?: { original?: string; mvp: string };
+  /** Only when key business data from the original site was lost, changed or made up */
+  businessData?: { kept: number; checked: number; issues: MvpDataIssue[] };
   /** The design critique's quick wins, given to the copy writer as guidance; not checked on the page */
   critiqueGuidance: string[];
 }
@@ -63,29 +66,27 @@ export function summarizeMvpChanges(
   summary.copySource = summarizeMvpSource(mvp) ?? undefined;
 
   const content = readGeneratedContent(mvp.generatedContent);
-  if (content.services !== undefined) {
-    summary.sections = {
-      originalServices: audit?.originalServiceCount,
-      mvpServices: content.services,
-      about: content.hasAbout,
-      trustSignals: content.trustSignals,
-    };
+  // Without the crawler's count there is nothing to compare the MVP's services with
+  const originalServices = audit?.originalServiceCount;
+  const services =
+    content.services !== undefined && originalServices !== undefined && content.services !== originalServices
+      ? { original: originalServices, mvp: content.services }
+      : undefined;
+  if (services || content.hasAbout || content.trustSignals > 0) {
+    summary.sections = { services, about: content.hasAbout, trustSignals: content.trustSignals };
   }
 
   const mvpPrimary = text(mvp.colorPalette?.primary);
   if (mvpPrimary) {
     const original = text(audit?.colorPalette.primary);
-    summary.palette = {
-      original,
-      mvp: mvpPrimary,
-      changed: !original || original.toLowerCase() !== mvpPrimary.toLowerCase(),
-    };
+    if (!original || original.toLowerCase() !== mvpPrimary.toLowerCase()) {
+      summary.palette = { original, mvp: mvpPrimary };
+    }
   }
 
   const report = mvp.completenessReport;
-  if (report?.status === 'unverified') {
-    summary.businessData = { verified: false };
-  } else if (report?.status === 'verified') {
+  // A check that could not run says nothing about a change; the Audit step's data check shows it
+  if (report?.status === 'verified') {
     // Fields the original site doesn't have are not part of what the MVP could keep
     const compared = report.checks.filter((check) => check.status !== 'not_in_source');
     const issues = compared
@@ -94,12 +95,13 @@ export function summarizeMvpChanges(
       )
       .sort((a, b) => ISSUE_STATUSES.indexOf(a.status) - ISSUE_STATUSES.indexOf(b.status))
       .map(({ field, status }) => ({ field, status }));
-    summary.businessData = {
-      verified: true,
-      kept: compared.filter((check) => check.status === 'present').length,
-      checked: compared.length,
-      issues,
-    };
+    if (issues.length > 0) {
+      summary.businessData = {
+        kept: compared.filter((check) => check.status === 'present').length,
+        checked: compared.length,
+        issues,
+      };
+    }
   }
 
   summary.critiqueGuidance = (audit?.quickWins ?? []).map((win) => win.trim()).filter(Boolean);

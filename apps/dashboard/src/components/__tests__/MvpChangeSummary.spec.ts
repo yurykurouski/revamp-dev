@@ -93,12 +93,12 @@ describe('MvpChangeSummary (REV-81)', () => {
         null,
       ),
     );
-    expect(text).toContain(en.mvpChanges.servicesMvpOnly);
     expect(text).toContain(en.mvpChanges.paletteDefault);
     expect(text).toContain(`|${en.mvpChanges.tags.default}|`);
     for (const absent of [
       en.mvpChanges.layout,
       en.mvpChanges.copy,
+      en.mvpChanges.sections,
       en.mvpChanges.businessData,
       en.mvpChanges.critique,
       en.mvpChanges.aboutSection,
@@ -123,27 +123,14 @@ describe('MvpChangeSummary (REV-81)', () => {
     expect(render({ leadId: 'lead-1', fullPreviewUrl: 'x' }, null)).toContain(en.mvpChanges.empty);
   });
 
-  it('shows a kept brand color, an unverified data check and a clean one', () => {
-    const unverified = textOf(
+  it('hides what stayed as it was on the original site', () => {
+    const text = textOf(
       render(
         {
           leadId: 'lead-1',
           fullPreviewUrl: 'x',
+          generatedContent: { services: [{}, {}] },
           colorPalette: { primary: '#AA0000' },
-          completenessReport: { status: 'unverified', hasCriticalIssues: false, checks: [], checkedAt: '' },
-        },
-        audit,
-      ),
-    );
-    expect(unverified).toContain(`|${en.mvpChanges.tags.kept}|`);
-    expect(unverified).toContain(`|${en.mvpChanges.tags.unverified}|`);
-    expect(unverified).toContain(en.completeness.unverified);
-
-    const clean = textOf(
-      render(
-        {
-          leadId: 'lead-1',
-          fullPreviewUrl: 'x',
           completenessReport: {
             status: 'verified',
             hasCriticalIssues: false,
@@ -151,10 +138,29 @@ describe('MvpChangeSummary (REV-81)', () => {
             checks: [{ field: 'phone', tier: 'critical', status: 'present' }],
           },
         },
+        { ...audit, quickWins: [] },
+      ),
+    );
+    for (const absent of [en.mvpChanges.sections, en.mvpChanges.palette, en.mvpChanges.businessData]) {
+      expect(text).not.toContain(`|${absent}|`);
+    }
+    expect(text).toContain(en.mvpChanges.empty);
+  });
+
+  it('hides a data check that could not run', () => {
+    const text = textOf(
+      render(
+        {
+          leadId: 'lead-1',
+          fullPreviewUrl: 'x',
+          provider: 'deterministic',
+          completenessReport: { status: 'unverified', hasCriticalIssues: false, checks: [], checkedAt: '' },
+        },
         null,
       ),
     );
-    expect(clean).toContain(`|${en.mvpChanges.tags.allKept}|`);
+    expect(text).not.toContain(`|${en.mvpChanges.businessData}|`);
+    expect(text).toContain(`|${en.mvpChanges.copy}|`);
   });
 
   it('names the LLM that rewrote the copy', () => {
