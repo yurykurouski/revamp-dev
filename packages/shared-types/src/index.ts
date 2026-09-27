@@ -371,6 +371,8 @@ export interface IMvpProject {
   /** Provider and model the operator picked for this run, when they picked one (REV-32) */
   requestedProvider?: LlmProviderId;
   requestedModel?: string;
+  /** Layout this version was rendered with; absent on MVPs generated before REV-54 (Bento) */
+  layout?: IMvpLayoutSelection;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -697,8 +699,22 @@ export interface IBentoServiceCard {
   highlight?: boolean;
 }
 
+// Layout variants of the generated MVP, picked per lead from its audit data (REV-54)
+export const MVP_LAYOUT_VARIANTS = ['bento', 'split', 'editorial', 'compact'] as const;
+
+export type MvpLayoutVariant = (typeof MVP_LAYOUT_VARIANTS)[number];
+
+/** The layout an MVP was rendered with, and why it was chosen */
+export interface IMvpLayoutSelection {
+  variant: MvpLayoutVariant;
+  /** Short machine-readable codes behind the choice (e.g. `complexity:ONE_PAGE_BROCHURE`, `images:5`) */
+  reasons: string[];
+}
+
 export interface IBentoTemplateData {
   businessName: string;
+  /** Page layout; the original Bento layout when absent (REV-54) */
+  layout?: MvpLayoutVariant;
   /** The original site's BCP 47 language tag ("pl-PL"); drives `<html lang>` and the template UI text (REV-25) */
   language?: string;
   niche?: NicheType;

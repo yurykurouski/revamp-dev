@@ -460,6 +460,18 @@ describe('MvpCompletenessService (REV-36)', () => {
       expect(report.score).toBe(100);
     });
 
+    it.each(['split', 'editorial', 'compact'] as const)(
+      'finds all key data in the %s layout too, with nothing made up (REV-54)',
+      (layout) => {
+        const report = service.check(bentoTemplateService.renderFromAudit(lead, audit, content, layout), lead, audit);
+
+        expect(report.status).toBe('verified');
+        expect(report.hasCriticalIssues).toBe(false);
+        expect(report.checks.some((c) => c.status === 'unsourced')).toBe(false);
+        expect(report.score).toBe(100);
+      },
+    );
+
     it('flags an MVP rendered without the business contacts', () => {
       const html = bentoTemplateService.renderFromAudit(
         { ...lead, contactEmail: undefined },

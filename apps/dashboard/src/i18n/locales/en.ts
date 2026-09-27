@@ -135,6 +135,24 @@ export const en = {
     confirm: 'Generate',
     failed: 'Could not start generation: {{message}}',
   },
+  // REV-54: the layout the MVP was rendered with
+  mvpLayout: {
+    tooltip: 'Layout: {{name}} — {{reason}}',
+    variants: {
+      bento: 'Bento',
+      split: 'Split',
+      editorial: 'Editorial',
+      compact: 'Compact',
+    },
+    rules: {
+      small_brochure: 'small brochure site with few photos',
+      visual_niche: 'visual business with real photos',
+      image_rich: 'many real photos on the original site',
+      professional_niche: 'expertise-led business',
+      text_heavy: 'lots of text and few photos',
+      default: 'default layout',
+    },
+  },
   llm: {
     provider: 'LLM provider',
     model: 'Model',

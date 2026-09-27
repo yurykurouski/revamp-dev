@@ -1,4 +1,4 @@
-import { IBentoTemplateData } from '@revamp/shared-types';
+import { IBentoTemplateData, MvpLayoutVariant } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
 import { getMvpStrings } from './mvp-locale.js';
 
@@ -67,7 +67,137 @@ export function resolveTrackerUrls(
 }
 
 /**
- * Compiles the complete, self-contained Bento Landing Page HTML document.
+ * Styles each layout adds on top of the shared design system (REV-54). Only the active layout's
+ * block is inlined, so the bundle stays small. Bento needs nothing extra.
+ */
+const LAYOUT_CSS: Record<MvpLayoutVariant, string> = {
+  bento: '',
+  split: `
+    /* LAYOUT: SPLIT (image-led) */
+    .hero-split { padding-block: 3rem; }
+    .hero-split-grid { display: grid; gap: 2.5rem; align-items: center; }
+    @media (min-width: 900px) {
+      .hero-split-grid { grid-template-columns: 1.05fr 1fr; }
+      .hero-split-no-image .hero-split-grid { grid-template-columns: 1fr; max-width: 760px; }
+    }
+    .hero-split .hero-subheadline { margin-inline: 0; }
+    .hero-split .hero-actions { justify-content: flex-start; margin-bottom: 2rem; }
+    .hero-split .trust-signals-bar { margin-inline: 0; box-shadow: none; }
+    .hero-split-image {
+      width: 100%;
+      aspect-ratio: 4 / 5;
+      max-height: 560px;
+      object-fit: cover;
+      border-radius: 28px 28px 28px 4px;
+      box-shadow: 0 30px 60px -20px rgba(15, 23, 42, 0.35);
+    }
+    .layout-split .gallery-section { padding-top: 1rem; }
+    .layout-split .gallery-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 200px; }
+    @media (min-width: 768px) {
+      .layout-split .gallery-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+      .layout-split .gallery-image:first-child { grid-column: span 2; grid-row: span 2; }
+    }
+    .layout-split .gallery-image { height: 100%; aspect-ratio: auto; border-radius: 14px; }
+    .layout-split .section-header { text-align: left; margin-inline: 0; }
+    .service-tiles { display: grid; gap: 1rem; grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    @media (min-width: 640px) { .service-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .service-tile {
+      background: var(--color-surface);
+      border: 1px solid var(--color-border);
+      border-left: 4px solid var(--brand-primary);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+    }
+    .service-tile-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+    .service-tile-icon { color: var(--brand-primary); flex-shrink: 0; }
+    .service-tile-title { font-size: 1.125rem; font-weight: 700; line-height: 1.3; }
+    .service-tile-desc { font-size: 0.9375rem; color: var(--color-text-muted); }
+    @media (min-width: 900px) {
+      .about-reverse .about-grid { grid-template-columns: 1fr 1.2fr; }
+      .about-reverse .about-image { order: -1; }
+    }`,
+  editorial: `
+    /* LAYOUT: EDITORIAL (typographic, text-led) */
+    :root {
+      --font-display: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Times New Roman', serif;
+      --color-bg-body: #faf8f4;
+      --radius-xl: 0.375rem;
+      --radius-lg: 0.25rem;
+    }
+    .layout-editorial .hero-headline,
+    .layout-editorial .section-title,
+    .layout-editorial .numbered-service-title,
+    .layout-editorial .success-title { font-family: var(--font-display); font-weight: 600; letter-spacing: -0.01em; }
+    .layout-editorial .site-header { background: rgba(250, 248, 244, 0.92); }
+    .hero-editorial { padding-block: 4.5rem 3rem; border-bottom: 1px solid var(--color-border); }
+    .hero-editorial .hero-headline { font-size: clamp(2.25rem, 5.5vw, 4rem); line-height: 1.1; max-width: 16em; }
+    .hero-editorial .hero-subheadline { margin-inline: 0; max-width: 40em; }
+    .hero-editorial .hero-actions { justify-content: flex-start; margin-bottom: 2.5rem; }
+    .hero-editorial .hero-badge { border-radius: 0; background: none; border: none; border-bottom: 2px solid var(--brand-primary); padding: 0 0 0.25rem; }
+    .hero-editorial .trust-signals-bar {
+      margin-inline: 0; padding: 1.25rem 0; background: none; backdrop-filter: none;
+      border: none; border-top: 1px solid var(--color-border); border-radius: 0; box-shadow: none;
+    }
+    .hero-editorial .trust-badge-item { align-items: flex-start; text-align: left; padding-inline: 0; }
+    .hero-editorial .hero-image { margin-inline: 0; max-width: none; border-radius: var(--radius-xl); box-shadow: none; }
+    .layout-editorial .section-header { text-align: left; margin-inline: 0; }
+    .layout-editorial .about-body { font-size: 1.2rem; }
+    .layout-editorial .bento-card,
+    .layout-editorial .review-card,
+    .layout-editorial .booking-wrapper { box-shadow: none; }
+    .numbered-services { list-style: none; border-top: 1px solid var(--color-border); }
+    .numbered-service {
+      display: grid; grid-template-columns: 3.5rem 1fr; gap: 1rem;
+      padding-block: 1.5rem; border-bottom: 1px solid var(--color-border);
+    }
+    .numbered-service-index { font-family: var(--font-display); font-size: 1.5rem; color: var(--brand-primary); line-height: 1.2; }
+    .numbered-service-title { font-size: 1.375rem; line-height: 1.3; margin-bottom: 0.375rem; }
+    .numbered-service-desc { color: var(--color-text-muted); max-width: 44em; }
+    .layout-editorial .reviews-section { background: none; }
+    .layout-editorial .review-text { font-family: var(--font-display); font-size: 1.125rem; font-style: normal; color: var(--color-text-main); }`,
+  compact: `
+    /* LAYOUT: COMPACT (short brochure, contacts first) */
+    .hero-compact {
+      padding-block: 3rem;
+      color: #ffffff;
+      background: linear-gradient(135deg, rgba(15, 23, 42, 0.96) 0%, rgba(var(--brand-primary-rgb), 0.88) 100%), var(--brand-secondary);
+    }
+    .hero-compact-grid { display: grid; gap: 2rem; align-items: center; }
+    @media (min-width: 900px) { .hero-compact-grid { grid-template-columns: 1.4fr 1fr; } }
+    .hero-compact .hero-headline { color: #ffffff; font-size: clamp(1.875rem, 4vw, 2.75rem); }
+    .hero-compact .hero-subheadline { color: rgba(255, 255, 255, 0.82); margin-inline: 0; margin-bottom: 1.75rem; }
+    .hero-compact .hero-actions { justify-content: flex-start; margin-bottom: 0; }
+    .hero-compact .hero-badge { color: #ffffff; background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.3); }
+    .hero-compact .btn-secondary { background: rgba(255, 255, 255, 0.1); color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
+    .hero-compact .trust-signals-bar { margin-top: 2rem; }
+    .hero-compact .hero-image { max-width: none; max-height: 300px; margin-top: 2rem; border-radius: var(--radius-xl); }
+    .quick-facts {
+      list-style: none; display: flex; flex-direction: column; gap: 0.875rem;
+      padding: 1.5rem; border-radius: var(--radius-xl);
+      background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.18);
+    }
+    .quick-fact { display: flex; align-items: flex-start; gap: 0.75rem; font-size: 1rem; overflow-wrap: anywhere; }
+    .quick-fact svg { flex-shrink: 0; margin-top: 0.2rem; opacity: 0.85; }
+    .layout-compact .bento-section,
+    .layout-compact .reviews-section,
+    .layout-compact .about-section { padding-block: 3rem; }
+    .layout-compact .section-header { margin-bottom: 1.75rem; }
+    .service-tiles { display: grid; gap: 0.875rem; grid-template-columns: repeat(1, minmax(0, 1fr)); }
+    @media (min-width: 640px) { .service-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (min-width: 1024px) { .service-tiles-compact { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+    .service-tile { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 1.25rem; }
+    .service-tile-head { display: flex; flex-direction: column; align-items: flex-start; gap: 0.625rem; margin-bottom: 0.5rem; }
+    .service-tile-icon {
+      display: inline-flex; padding: 0.5rem; border-radius: var(--radius-md);
+      color: var(--brand-primary); background: rgba(var(--brand-primary-rgb), 0.1);
+    }
+    .service-tile-title { font-size: 1.0625rem; font-weight: 700; line-height: 1.3; }
+    .service-tile-desc { font-size: 0.875rem; color: var(--color-text-muted); }`,
+};
+
+/**
+ * Compiles the complete, self-contained landing page HTML document in the requested layout
+ * (the original Bento layout by default).
  */
 export function generateBentoHtml(data: IBentoTemplateData): string {
   const businessName = escapeHtml(data.businessName);
@@ -79,6 +209,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const primaryRgb = hexToRgb(primaryColor);
   const accentRgb = hexToRgb(accentColor);
   const tracker = resolveTrackerUrls(data.publicApiUrl);
+  // The layout only arranges the same grounded content differently (REV-54)
+  const layout: MvpLayoutVariant = data.layout ?? 'bento';
 
   // Contacts are rendered only when they were verified on the original site (Strict Grounding)
   const phone = data.contacts?.phone;
@@ -157,6 +289,36 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     })
     .join('\n');
 
+  // Editorial layout: a numbered list of services instead of cards (REV-54)
+  const numberedServicesHtml = services
+    .map(
+      (service, index) => `
+        <li class="numbered-service">
+          <span class="numbered-service-index">${String(index + 1).padStart(2, '0')}</span>
+          <div>
+            <h3 class="numbered-service-title">${escapeHtml(service.title)}</h3>
+            <p class="numbered-service-desc">${escapeHtml(service.description)}</p>
+          </div>
+        </li>
+      `,
+    )
+    .join('\n');
+
+  // Split and compact layouts: even tiles with the icon beside the title (REV-54)
+  const tileServicesHtml = services
+    .map(
+      (service) => `
+        <div class="service-tile">
+          <div class="service-tile-head">
+            <span class="service-tile-icon">${getLucideIconSvg(service.lucideIconName, { size: 22 })}</span>
+            <h3 class="service-tile-title">${escapeHtml(service.title)}</h3>
+          </div>
+          <p class="service-tile-desc">${escapeHtml(service.description)}</p>
+        </div>
+      `,
+    )
+    .join('\n');
+
   // Render Trust Signals
   const trustSignalsHtml = trustSignals
     .map(
@@ -200,7 +362,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const aboutHtml = data.about
     ? `
     <!-- MODULE 2b: ABOUT (rewritten from the original site's own copy) -->
-    <section class="about-section" id="about">
+    <section class="about-section${layout === 'split' ? ' about-reverse' : ''}" id="about">
       <div class="container about-grid">
         <div>
           <span class="section-tag">${escapeHtml(t.aboutTag)}</span>
@@ -241,6 +403,240 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const serviceSelectOptions = services
     .map((s) => `<option value="${escapeHtml(s.title)}">${escapeHtml(s.title)}</option>`)
     .join('\n');
+
+  // -------------------------------------------------------------
+  // Page sections. Every layout renders the same content; only the markup and order differ (REV-54)
+  // -------------------------------------------------------------
+  const heroActionsHtml = `
+        <div class="hero-actions">
+          <a href="#booking" class="btn-primary" data-revamp-cta="primary-booking">
+            <span>${primaryCtaText}</span>
+            ${getLucideIconSvg('arrow-right', { size: 18 })}
+          </a>
+          <a href="${secondaryCtaHref}" class="btn-secondary" data-revamp-cta="call">
+            ${getLucideIconSvg(phone ? 'phone' : 'mail', { size: 18 })}
+            <span>${secondaryCtaText}</span>
+          </a>
+        </div>`;
+  const heroBadgeHtml = heroBadge ? `<div class="hero-badge">${heroBadge}</div>` : '';
+  const trustBarHtml = trustSignals.length ? `<div class="trust-signals-bar">${trustSignalsHtml}</div>` : '';
+  const heroImageHtml = data.heroImageUrl
+    ? `<img class="hero-image" src="${escapeHtml(data.heroImageUrl)}" alt="${businessName}" />`
+    : '';
+
+  // Verified contacts only (Strict Grounding): the compact hero leads with them
+  const quickFactsHtml = [
+    phone
+      ? `<li class="quick-fact">${getLucideIconSvg('phone', { size: 18 })}<a href="tel:${phoneClean}">${escapeHtml(phone)}</a></li>`
+      : '',
+    email
+      ? `<li class="quick-fact">${getLucideIconSvg('mail', { size: 18 })}<a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></li>`
+      : '',
+    address
+      ? `<li class="quick-fact">${getLucideIconSvg('map-pin', { size: 18 })}<a href="${escapeHtml(mapUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(address)}</a></li>`
+      : '',
+    workingHours ? `<li class="quick-fact">${getLucideIconSvg('clock', { size: 18 })}<span>${escapeHtml(workingHours)}</span></li>` : '',
+  ].join('');
+
+  const heroByLayout: Record<MvpLayoutVariant, string> = {
+    bento: `
+    <!-- MODULE 2: HERO SECTION -->
+    <section class="hero-section">
+      <div class="hero-bg-glow"></div>
+      <div class="container hero-content">
+        ${heroBadgeHtml}
+
+        <h1 class="hero-headline">
+          ${heroHeadline}
+        </h1>
+
+        <p class="hero-subheadline">
+          ${heroSubheadline}
+        </p>
+
+        ${heroActionsHtml}
+
+        ${trustBarHtml}
+
+        ${heroImageHtml}
+      </div>
+    </section>`,
+    split: `
+    <!-- MODULE 2: HERO SECTION (split: copy beside the photo) -->
+    <section class="hero-section hero-split${data.heroImageUrl ? '' : ' hero-split-no-image'}">
+      <div class="container hero-split-grid">
+        <div class="hero-split-copy">
+          ${heroBadgeHtml}
+          <h1 class="hero-headline">${heroHeadline}</h1>
+          <p class="hero-subheadline">${heroSubheadline}</p>
+          ${heroActionsHtml}
+          ${trustBarHtml}
+        </div>
+        ${data.heroImageUrl ? `<img class="hero-split-image" src="${escapeHtml(data.heroImageUrl)}" alt="${businessName}" />` : ''}
+      </div>
+    </section>`,
+    editorial: `
+    <!-- MODULE 2: HERO SECTION (editorial: typographic, left-aligned) -->
+    <section class="hero-section hero-editorial">
+      <div class="container hero-editorial-inner">
+        ${heroBadgeHtml}
+        <h1 class="hero-headline">${heroHeadline}</h1>
+        <p class="hero-subheadline">${heroSubheadline}</p>
+        ${heroActionsHtml}
+        ${trustBarHtml}
+        ${heroImageHtml}
+      </div>
+    </section>`,
+    compact: `
+    <!-- MODULE 2: HERO SECTION (compact: headline beside the verified contacts) -->
+    <section class="hero-section hero-compact">
+      <div class="container hero-compact-grid">
+        <div class="hero-compact-copy">
+          ${heroBadgeHtml}
+          <h1 class="hero-headline">${heroHeadline}</h1>
+          <p class="hero-subheadline">${heroSubheadline}</p>
+          ${heroActionsHtml}
+        </div>
+        ${quickFactsHtml ? `<ul class="quick-facts">${quickFactsHtml}</ul>` : ''}
+      </div>
+      ${trustBarHtml || heroImageHtml ? `<div class="container">${trustBarHtml}${heroImageHtml}</div>` : ''}
+    </section>`,
+  };
+
+  const servicesBodyByLayout: Record<MvpLayoutVariant, string> = {
+    bento: `<div class="bento-grid">
+          ${bentoCardsHtml}
+        </div>`,
+    split: `<div class="service-tiles">${tileServicesHtml}</div>`,
+    editorial: `<ol class="numbered-services">${numberedServicesHtml}</ol>`,
+    compact: `<div class="service-tiles service-tiles-compact">${tileServicesHtml}</div>`,
+  };
+  const servicesSectionHtml = services.length
+    ? `
+    <!-- MODULE 3: SERVICES (${layout}) -->
+    <section class="bento-section" id="services">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">${escapeHtml(t.servicesTag)}</span>
+          <h2 class="section-title">${servicesHeading}</h2>
+        </div>
+
+        ${servicesBodyByLayout[layout]}
+      </div>
+    </section>`
+    : '';
+  const reviewsSectionHtml = reviews.length
+    ? `
+    <!-- MODULE 4: SOCIAL PROOF & REVIEWS (only real testimonials from the original site) -->
+    <section class="reviews-section" id="reviews">
+      <div class="container">
+        <div class="section-header">
+          <span class="section-tag">${escapeHtml(t.reviewsTag)}</span>
+          <h2 class="section-title">${escapeHtml(t.reviewsHeading(data.businessName))}</h2>
+        </div>
+
+        <div class="reviews-grid">
+          ${reviewsHtml}
+        </div>
+      </div>
+    </section>`
+    : '';
+  const bookingSectionHtml = `
+    <!-- MODULE 5: INTERACTIVE BOOKING FORM -->
+    <section class="booking-section" id="booking">
+      <div class="container">
+        <div class="booking-wrapper">
+          <div class="section-header" style="margin-bottom: 2rem;">
+            <span class="section-tag">${escapeHtml(t.getInTouchTag)}</span>
+            <h2 class="section-title" style="font-size: 1.75rem;">${primaryCtaText}</h2>
+            <p class="section-desc">
+              ${escapeHtml(t.bookingDescription(data.businessName))}
+            </p>
+          </div>
+
+          <form id="lead-booking-form" class="booking-form" novalidate>
+            <div class="form-group">
+              <label for="lead-name" class="form-label">${escapeHtml(t.nameLabel)}</label>
+              <input 
+                type="text" 
+                id="lead-name" 
+                name="name" 
+                class="form-input" 
+                placeholder="${escapeHtml(t.namePlaceholder)}" 
+                required 
+                autocomplete="name"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="lead-phone" class="form-label">${escapeHtml(t.phoneLabel)}</label>
+              <input 
+                type="tel" 
+                id="lead-phone" 
+                name="phone" 
+                class="form-input" 
+                placeholder="${escapeHtml(t.phonePlaceholder)}" 
+                required 
+                autocomplete="tel"
+              />
+            </div>
+
+            <div class="form-group">
+              <label for="lead-service" class="form-label">${escapeHtml(t.serviceLabel)}</label>
+              <select id="lead-service" name="service" class="form-select">
+                <option value="${escapeHtml(t.generalConsultation)}">${escapeHtml(t.generalConsultation)}</option>
+                ${serviceSelectOptions}
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="lead-notes" class="form-label">${escapeHtml(t.notesLabel)}</label>
+              <textarea 
+                id="lead-notes" 
+                name="notes" 
+                class="form-textarea" 
+                placeholder="${escapeHtml(t.notesPlaceholder)}"
+              ></textarea>
+            </div>
+
+            <div class="form-checkbox-container">
+              <input type="checkbox" id="policy-consent" class="form-checkbox" checked required />
+              <label for="policy-consent" class="checkbox-label">
+                ${escapeHtml(t.consent)}
+              </label>
+            </div>
+
+            <button type="submit" id="booking-submit-btn" class="form-submit-btn">
+              <span>${escapeHtml(t.bookNow)}</span>
+              ${getLucideIconSvg('send', { size: 18 })}
+            </button>
+          </form>
+
+          <!-- Confirmation State -->
+          <div id="booking-success-message" class="form-success-message" aria-live="polite">
+            <div class="success-icon-badge">
+              ${getLucideIconSvg('check-circle', { size: 36 })}
+            </div>
+            <h3 class="success-title">${escapeHtml(t.successTitle)}</h3>
+            <p class="success-desc" id="success-client-info">
+              ${escapeHtml(t.successDescription)}
+            </p>
+            <button type="button" id="reset-form-btn" class="btn-secondary" style="margin-inline: auto;">
+              ${escapeHtml(t.sendAnother)}
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>`;
+
+  // Section order per layout: image-led layouts show the gallery early, text-led ones the About block
+  const sectionsByLayout: Record<MvpLayoutVariant, string[]> = {
+    bento: [heroByLayout.bento, aboutHtml, servicesSectionHtml, galleryHtml, reviewsSectionHtml],
+    split: [heroByLayout.split, galleryHtml, servicesSectionHtml, aboutHtml, reviewsSectionHtml],
+    editorial: [heroByLayout.editorial, aboutHtml, servicesSectionHtml, reviewsSectionHtml, galleryHtml],
+    compact: [heroByLayout.compact, servicesSectionHtml, reviewsSectionHtml, aboutHtml, galleryHtml],
+  };
+  const mainHtml = [...sectionsByLayout[layout], bookingSectionHtml].filter(Boolean).join('\n');
 
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(language)}">
@@ -1104,11 +1500,12 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       color: inherit;
       text-decoration: none;
     }
+    ${LAYOUT_CSS[layout]}
   </style>
 
   ${data.customHeadSnippet ? data.customHeadSnippet : ''}
 </head>
-<body>
+<body class="layout-${layout}">
 
   <!-- MODULE 1: HEADER -->
   <header class="site-header">
@@ -1135,152 +1532,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   </header>
 
   <main>
-    <!-- MODULE 2: HERO SECTION -->
-    <section class="hero-section">
-      <div class="hero-bg-glow"></div>
-      <div class="container hero-content">
-        ${heroBadge ? `<div class="hero-badge">${heroBadge}</div>` : ''}
-
-        <h1 class="hero-headline">
-          ${heroHeadline}
-        </h1>
-
-        <p class="hero-subheadline">
-          ${heroSubheadline}
-        </p>
-
-        <div class="hero-actions">
-          <a href="#booking" class="btn-primary" data-revamp-cta="primary-booking">
-            <span>${primaryCtaText}</span>
-            ${getLucideIconSvg('arrow-right', { size: 18 })}
-          </a>
-          <a href="${secondaryCtaHref}" class="btn-secondary" data-revamp-cta="call">
-            ${getLucideIconSvg(phone ? 'phone' : 'mail', { size: 18 })}
-            <span>${secondaryCtaText}</span>
-          </a>
-        </div>
-
-        ${trustSignals.length ? `<div class="trust-signals-bar">${trustSignalsHtml}</div>` : ''}
-
-        ${data.heroImageUrl ? `<img class="hero-image" src="${escapeHtml(data.heroImageUrl)}" alt="${businessName}" />` : ''}
-      </div>
-    </section>
-${aboutHtml}
-
-    <!-- MODULE 3: BENTO SERVICES GRID -->
-    ${services.length ? `<section class="bento-section" id="services">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-tag">${escapeHtml(t.servicesTag)}</span>
-          <h2 class="section-title">${servicesHeading}</h2>
-        </div>
-
-        <div class="bento-grid">
-          ${bentoCardsHtml}
-        </div>
-      </div>
-    </section>` : ''}
-${galleryHtml}
-    <!-- MODULE 4: SOCIAL PROOF & REVIEWS (only real testimonials from the original site) -->
-    ${reviews.length ? `<section class="reviews-section" id="reviews">
-      <div class="container">
-        <div class="section-header">
-          <span class="section-tag">${escapeHtml(t.reviewsTag)}</span>
-          <h2 class="section-title">${escapeHtml(t.reviewsHeading(data.businessName))}</h2>
-        </div>
-
-        <div class="reviews-grid">
-          ${reviewsHtml}
-        </div>
-      </div>
-    </section>` : ''}
-
-    <!-- MODULE 5: INTERACTIVE BOOKING FORM -->
-    <section class="booking-section" id="booking">
-      <div class="container">
-        <div class="booking-wrapper">
-          <div class="section-header" style="margin-bottom: 2rem;">
-            <span class="section-tag">${escapeHtml(t.getInTouchTag)}</span>
-            <h2 class="section-title" style="font-size: 1.75rem;">${primaryCtaText}</h2>
-            <p class="section-desc">
-              ${escapeHtml(t.bookingDescription(data.businessName))}
-            </p>
-          </div>
-
-          <form id="lead-booking-form" class="booking-form" novalidate>
-            <div class="form-group">
-              <label for="lead-name" class="form-label">${escapeHtml(t.nameLabel)}</label>
-              <input 
-                type="text" 
-                id="lead-name" 
-                name="name" 
-                class="form-input" 
-                placeholder="${escapeHtml(t.namePlaceholder)}" 
-                required 
-                autocomplete="name"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="lead-phone" class="form-label">${escapeHtml(t.phoneLabel)}</label>
-              <input 
-                type="tel" 
-                id="lead-phone" 
-                name="phone" 
-                class="form-input" 
-                placeholder="${escapeHtml(t.phonePlaceholder)}" 
-                required 
-                autocomplete="tel"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="lead-service" class="form-label">${escapeHtml(t.serviceLabel)}</label>
-              <select id="lead-service" name="service" class="form-select">
-                <option value="${escapeHtml(t.generalConsultation)}">${escapeHtml(t.generalConsultation)}</option>
-                ${serviceSelectOptions}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="lead-notes" class="form-label">${escapeHtml(t.notesLabel)}</label>
-              <textarea 
-                id="lead-notes" 
-                name="notes" 
-                class="form-textarea" 
-                placeholder="${escapeHtml(t.notesPlaceholder)}"
-              ></textarea>
-            </div>
-
-            <div class="form-checkbox-container">
-              <input type="checkbox" id="policy-consent" class="form-checkbox" checked required />
-              <label for="policy-consent" class="checkbox-label">
-                ${escapeHtml(t.consent)}
-              </label>
-            </div>
-
-            <button type="submit" id="booking-submit-btn" class="form-submit-btn">
-              <span>${escapeHtml(t.bookNow)}</span>
-              ${getLucideIconSvg('send', { size: 18 })}
-            </button>
-          </form>
-
-          <!-- Confirmation State -->
-          <div id="booking-success-message" class="form-success-message" aria-live="polite">
-            <div class="success-icon-badge">
-              ${getLucideIconSvg('check-circle', { size: 36 })}
-            </div>
-            <h3 class="success-title">${escapeHtml(t.successTitle)}</h3>
-            <p class="success-desc" id="success-client-info">
-              ${escapeHtml(t.successDescription)}
-            </p>
-            <button type="button" id="reset-form-btn" class="btn-secondary" style="margin-inline: auto;">
-              ${escapeHtml(t.sendAnother)}
-            </button>
-          </div>
-        </div>
-      </div>
-    </section>
+${mainHtml}
   </main>
 
   <!-- MODULE 6: FOOTER -->

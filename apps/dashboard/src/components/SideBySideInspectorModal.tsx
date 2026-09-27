@@ -46,6 +46,7 @@ import {
 import { MvpPreviewFrame } from './MvpPreviewFrame.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { MvpSourceChip } from './MvpSourceChip.js';
+import { MvpLayoutChip } from './MvpLayoutChip.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
 import { EmailDraftEditor } from './EmailDraftEditor.js';
 import { CompletenessChecklist } from './CompletenessChecklist.js';
@@ -563,6 +564,8 @@ export const SideBySideInspectorModal: React.FC = () => {
                   )}
 
                   <MvpSourceChip mvp={mvp} />
+
+                  <MvpLayoutChip mvp={mvp} />
 
                   {currentLead && <RegenerateMvpButton lead={currentLead} variant="button" />}
 

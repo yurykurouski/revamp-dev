@@ -8,6 +8,7 @@ import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { bentoTemplateService } from '../services/template.service.js';
+import { buildLayoutSignals, selectMvpLayout } from '../services/layout-selection.service.js';
 import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
@@ -59,10 +60,12 @@ export const createDeployWorker = (): Worker => {
         .replace(/^-|-$/g, '') || 'preview';
       const slug = existingProject?.previewSlug || `${rawSlug}-${leadId.toString().slice(-6)}`;
 
-      // 2. Render Bento Landing Page HTML
+      // 2. Pick the page layout from the audit data (REV-54), then render the landing page
       const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>;
       const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
-      const html = bentoTemplateService.renderFromAudit(leadData, auditData, audit.generatedContent);
+      const layout = selectMvpLayout(buildLayoutSignals(leadData, auditData, audit.generatedContent));
+      console.log(`[DeployWorker] Layout: ${layout.variant} (${layout.reasons.join(', ')})`);
+      const html = bentoTemplateService.renderFromAudit(leadData, auditData, audit.generatedContent, layout.variant);
 
       // 2b. Compare the MVP with the original site's key data (REV-36): judged by the LLM with its
       // quotes verified in code when one is configured (REV-37), else by code. Advisory only: it
@@ -168,6 +171,7 @@ export const createDeployWorker = (): Worker => {
           },
           isPublished: true,
           completenessReport,
+          layout,
         },
         { upsert: true, new: true },
       ).exec();
