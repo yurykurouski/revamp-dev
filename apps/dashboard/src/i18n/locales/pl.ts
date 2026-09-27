@@ -518,6 +518,13 @@ export const pl: Translation = {
       guidance: 'Wskazówki',
     },
   },
+  mvpTools: {
+    title: 'Narzędzia projektu',
+    move: 'Przesuń panel narzędzi projektu. Strzałki go przesuwają, Home przywraca na miejsce',
+    resetPosition: 'Przywróć położenie',
+    collapse: 'Zwiń narzędzia projektu',
+    expand: 'Rozwiń narzędzia projektu',
+  },
   colorPicker: {
     brandPalette: 'Paleta marki:',
     saveFailed: 'Nie udało się zapisać palety: {{message}}',

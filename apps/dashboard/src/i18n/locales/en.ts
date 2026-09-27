@@ -519,6 +519,13 @@ export const en = {
       guidance: 'Guidance',
     },
   },
+  mvpTools: {
+    title: 'Design tools',
+    move: 'Move the design tools panel. Arrow keys move it, Home resets it',
+    resetPosition: 'Reset position',
+    collapse: 'Collapse design tools',
+    expand: 'Expand design tools',
+  },
   colorPicker: {
     brandPalette: 'Brand palette:',
     saveFailed: 'Could not save the palette: {{message}}',

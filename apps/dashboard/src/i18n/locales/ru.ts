@@ -518,6 +518,13 @@ export const ru: Translation = {
       guidance: 'Ориентир',
     },
   },
+  mvpTools: {
+    title: 'Инструменты дизайна',
+    move: 'Переместить панель инструментов дизайна. Стрелки двигают её, Home возвращает на место',
+    resetPosition: 'Вернуть на место',
+    collapse: 'Свернуть инструменты дизайна',
+    expand: 'Развернуть инструменты дизайна',
+  },
   colorPicker: {
     brandPalette: 'Палитра бренда:',
     saveFailed: 'Не удалось сохранить палитру: {{message}}',
