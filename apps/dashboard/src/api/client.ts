@@ -261,11 +261,12 @@ export const apiClient = {
   },
 
   /**
-   * Approves lead outreach and transitions status to SCHEDULED (HITL Approval Gate)
+   * Approves lead outreach and transitions status to SCHEDULED (HITL Approval Gate). The draft is
+   * required: the API sends only the text the operator approved (REV-61)
    */
   async approveOutreach(
     leadId: string,
-    emailData?: IEmailDraft,
+    emailData: IEmailDraft,
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
     const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/approve`, {
       method: 'POST',

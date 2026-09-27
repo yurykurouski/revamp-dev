@@ -128,17 +128,11 @@ router.post(
         return;
       }
 
-      // 2. Create or Update EmailCampaign document in MongoDB
+      // 2. Store the draft exactly as the operator approved it; there is no default copy (REV-61).
+      // It is sent as escaped HTML with its line breaks, plus the same text as the plain-text part,
+      // exactly like the test send (REV-72)
       const trackingToken = crypto.randomUUID().replace(/-/g, '');
-      const subject =
-        req.body.subject ||
-        `3 ways to lift conversions on the ${lead.businessName || 'your company'} website (plus an interactive prototype)`;
-      // The operator approves a plain-text draft; it is sent as escaped HTML with its line breaks,
-      // plus the same text as the plain-text part, exactly like the test send (REV-72)
-      const body: string | undefined = req.body.body;
-      const bodyHtml = body
-        ? draftToHtml(body, req.body.preheader)
-        : `<p>Hello! We prepared an interactive website redesign concept for ${lead.businessName || 'your company'}.</p>`;
+      const { subject, preheader, body } = req.body as { subject: string; preheader?: string; body: string };
 
       const campaign = await EmailCampaign.findOneAndUpdate(
         { leadId: lead._id },
@@ -148,9 +142,9 @@ router.post(
           senderEmail: env.EMAIL_FROM,
           recipientEmail: lead.contactEmail,
           subject,
-          previewText: req.body.preheader || 'A new mobile concept',
-          bodyHtml,
-          ...(body ? { bodyPlainText: body } : {}),
+          ...(preheader ? { previewText: preheader } : {}),
+          bodyHtml: draftToHtml(body, preheader),
+          bodyPlainText: body,
           trackingToken,
           requiresManualReview: false,
           approvedBy: req.body.approvedBy || 'operator',
@@ -185,7 +179,7 @@ router.post(
           approvedBy: req.body.approvedBy,
           approvedAt: campaign?.approvedAt || new Date().toISOString(),
           subject: campaign?.subject || subject,
-          preheader: campaign?.previewText || req.body.preheader,
+          preheader: campaign?.previewText || preheader,
         },
       });
     } catch (error) {

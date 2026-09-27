@@ -347,20 +347,37 @@ describe('Validation Schemas (@revamp/validation)', () => {
   });
 
   describe('ApproveOutreachSchema & RejectOutreachSchema', () => {
+    const draft = { subject: 'A subject', body: 'Hello there' };
+
     it('should parse approve outreach with default operator', () => {
-      const parsed = ApproveOutreachSchema.parse({});
+      const parsed = ApproveOutreachSchema.parse(draft);
       expect(parsed.approvedBy).toBe('operator');
     });
 
     it('should parse valid ISO schedule datetime', () => {
       const now = new Date().toISOString();
-      const parsed = ApproveOutreachSchema.parse({ scheduleTime: now, approvedBy: 'admin' });
+      const parsed = ApproveOutreachSchema.parse({ ...draft, scheduleTime: now, approvedBy: 'admin' });
       expect(parsed.scheduleTime).toBe(now);
       expect(parsed.approvedBy).toBe('admin');
     });
 
     it('should reject invalid ISO datetime in approve schema', () => {
-      expect(() => ApproveOutreachSchema.parse({ scheduleTime: 'tomorrow' })).toThrow();
+      expect(() => ApproveOutreachSchema.parse({ ...draft, scheduleTime: 'tomorrow' })).toThrow();
+    });
+
+    it('should require the approved subject and body, with no default copy (REV-61)', () => {
+      expect(ApproveOutreachSchema.safeParse({}).success).toBe(false);
+      expect(ApproveOutreachSchema.safeParse({ subject: 'A subject' }).success).toBe(false);
+      expect(ApproveOutreachSchema.safeParse({ body: 'Hello there' }).success).toBe(false);
+      expect(ApproveOutreachSchema.safeParse({ subject: '   ', body: 'Hello there' }).success).toBe(false);
+      expect(ApproveOutreachSchema.safeParse({ subject: 'A subject', body: ' \n ' }).success).toBe(false);
+    });
+
+    it('should bound the approved draft like the test send', () => {
+      expect(ApproveOutreachSchema.safeParse({ ...draft, subject: 'x'.repeat(300) }).success).toBe(true);
+      expect(ApproveOutreachSchema.safeParse({ ...draft, subject: 'x'.repeat(301) }).success).toBe(false);
+      expect(ApproveOutreachSchema.safeParse({ ...draft, body: 'x'.repeat(20001) }).success).toBe(false);
+      expect(ApproveOutreachSchema.safeParse({ ...draft, preheader: 'x'.repeat(301) }).success).toBe(false);
     });
 
     it('should parse valid reject reason and reject too short reason', () => {

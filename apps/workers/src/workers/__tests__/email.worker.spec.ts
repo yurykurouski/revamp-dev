@@ -23,6 +23,9 @@ const mockWorkerInstance = {
 
 vi.mock('bullmq', () => {
   return {
+    UnrecoverableError: class UnrecoverableError extends Error {
+      name = 'UnrecoverableError';
+    },
     Worker: vi.fn().mockImplementation(function (queueName: string, processor: any, opts: any) {
       capturedProcessor = processor;
       capturedWorkerOpts = opts;
@@ -91,6 +94,10 @@ describe('EmailWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockCampaign),
     });
 
+    (EmailCampaign.findOneAndUpdate as any).mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ ...mockCampaign, status: 'SENDING' }),
+    });
+
     (mxValidator.validateRecipientDomain as any).mockResolvedValue({
       valid: true,
       domain: 'listonosz.site',
@@ -134,7 +141,16 @@ describe('EmailWorker (@revamp/workers)', () => {
         to: 'director@listonosz.site',
         trackingToken: 'tok-listonosz-123',
         subject: mockCampaign.subject,
+        html: '<p>Welcome text</p>',
+        text: 'Welcome text',
       }),
+    );
+
+    // Verify the campaign was claimed atomically before sending (REV-61)
+    expect(EmailCampaign.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: mockCampaignId, status: { $in: ['SCHEDULED', 'APPROVED'] } },
+      { $set: { status: 'SENDING' } },
+      { new: true },
     );
 
     // Verify Lead status was updated to SENT
@@ -227,6 +243,8 @@ describe('EmailWorker (@revamp/workers)', () => {
       leadId: mockLeadId,
       status: 'SCHEDULED',
       recipientEmail: 'info@non-existent-fake-domain-xyz.com',
+      subject: 'Subject',
+      bodyHtml: '<p>Body</p>',
     };
 
     (Lead.findById as any).mockReturnValue({
@@ -301,5 +319,135 @@ describe('EmailWorker (@revamp/workers)', () => {
         },
       }),
     ).rejects.toThrow('Lead missing-lead not found');
+  });
+
+  describe('at-most-once dispatch with only the approved text (REV-61)', () => {
+    const leadId = '64f8a1234567890123456789';
+    const campaignId = '64f8a9876543210987654321';
+    let campaign: Record<string, any>;
+    let lead: Record<string, any>;
+
+    const job = (id: string) => ({ id, data: { campaignId, leadId } });
+
+    // A campaign and lead whose fake queries behave like MongoDB's, so retries see earlier writes
+    beforeEach(() => {
+      lead = { _id: leadId, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
+      campaign = {
+        _id: campaignId,
+        leadId,
+        status: 'SCHEDULED',
+        recipientEmail: 'owner@biz.com',
+        subject: 'Approved subject',
+        bodyHtml: '<p>Approved body</p>',
+        bodyPlainText: 'Approved body',
+        trackingToken: 'tok-approved',
+      };
+
+      const exec = (fn: () => unknown) => ({ exec: vi.fn().mockImplementation(async () => fn()) });
+      (Lead.findById as any).mockImplementation(() => exec(() => ({ ...lead })));
+      (Lead.findByIdAndUpdate as any).mockImplementation((_id: string, update: any) =>
+        exec(() => Object.assign(lead, update)),
+      );
+      (EmailCampaign.findOne as any).mockImplementation(() => exec(() => campaign && { ...campaign }));
+      (EmailCampaign.findById as any).mockImplementation(() => exec(() => campaign && { ...campaign }));
+      (EmailCampaign.findByIdAndUpdate as any).mockImplementation((_id: string, update: any) =>
+        exec(() => Object.assign(campaign, update)),
+      );
+      (EmailCampaign.findOneAndUpdate as any).mockImplementation((filter: any, update: any) =>
+        exec(() => {
+          const wanted = filter.status?.$in ?? [filter.status];
+          if (!wanted.includes(campaign.status)) return null;
+          Object.assign(campaign, update.$set);
+          return { ...campaign };
+        }),
+      );
+
+      (mxValidator.validateRecipientDomain as any).mockResolvedValue({ valid: true, domain: 'biz.com', mxRecords: ['mx.biz.com'] });
+      (emailService.getProvider as any).mockReturnValue({ name: 'smtp' });
+      (emailService.sendEmail as any).mockResolvedValue({ success: true, messageId: 'msg-1', provider: 'smtp', sentAt: new Date() });
+      createEmailWorker();
+    });
+
+    it('does not send again when a retry follows a failure after the provider accepted the email', async () => {
+      (EmailCampaign.findByIdAndUpdate as any).mockReturnValueOnce({
+        exec: vi.fn().mockRejectedValue(new Error('Mongo write failed')),
+      });
+
+      await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('Mongo write failed');
+      expect(campaign['status']).toBe('SENDING');
+
+      const retry = await capturedProcessor!(job('attempt-2'));
+
+      expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+      expect(retry.success).toBe(false);
+      expect(retry.aborted).toBe(true);
+      expect(retry.reason).toContain('SENDING');
+    });
+
+    it('finishes only the lead update when the campaign was delivered but the lead update failed', async () => {
+      (Lead.findByIdAndUpdate as any).mockReturnValueOnce({
+        exec: vi.fn().mockRejectedValue(new Error('Lead write failed')),
+      });
+
+      await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('Lead write failed');
+      expect(campaign['status']).toBe('DELIVERED');
+      expect(lead['status']).toBe('SCHEDULED');
+
+      const retry = await capturedProcessor!(job('attempt-2'));
+
+      expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+      expect(retry.success).toBe(true);
+      expect(retry.alreadySent).toBe(true);
+      expect(lead['status']).toBe('SENT');
+    });
+
+    it('does not send when another attempt already claimed the campaign', async () => {
+      campaign['status'] = 'SENDING';
+
+      const result = await capturedProcessor!(job('attempt-1'));
+
+      expect(result.aborted).toBe(true);
+      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(lead['status']).toBe('SCHEDULED');
+    });
+
+    it('releases the claim when the provider fails, so the retry sends the email once', async () => {
+      (emailService.sendEmail as any).mockRejectedValueOnce(new Error('SMTP 421 try later'));
+
+      await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('SMTP 421');
+      expect(campaign['status']).toBe('SCHEDULED');
+
+      const retry = await capturedProcessor!(job('attempt-2'));
+
+      expect(retry.success).toBe(true);
+      expect(emailService.sendEmail).toHaveBeenCalledTimes(2);
+      expect(campaign['status']).toBe('DELIVERED');
+      expect(lead['status']).toBe('SENT');
+    });
+
+    it('fails without sending and without retrying when there is no campaign', async () => {
+      campaign = null as any;
+
+      const failure = capturedProcessor!(job('attempt-1'));
+
+      await expect(failure).rejects.toThrow('No approved EmailCampaign');
+      await expect(failure).rejects.toMatchObject({ name: 'UnrecoverableError' });
+      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(mxValidator.validateRecipientDomain).not.toHaveBeenCalled();
+      expect(lead['status']).toBe('SCHEDULED');
+    });
+
+    it.each([
+      ['subject', { subject: '' }],
+      ['subject', { subject: '   ' }],
+      ['body', { bodyHtml: '' }],
+      ['body', { bodyHtml: undefined }],
+    ])('fails without sending default copy when the approved %s is empty', async (_field, patch) => {
+      Object.assign(campaign, patch);
+
+      await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('no approved subject or body');
+      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(campaign['status']).toBe('SCHEDULED');
+    });
   });
 });

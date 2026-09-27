@@ -8,6 +8,9 @@ import {
   mapServerAudit,
 } from '../client.js';
 
+/** The approve call always carries the draft the operator reviewed (REV-61) */
+const draft = { subject: 'Subject', body: 'Body' };
+
 describe('Dashboard apiClient', () => {
   const jsonRes = (body: unknown, status = 200) =>
     ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
@@ -250,7 +253,7 @@ describe('Dashboard apiClient', () => {
         'fetch',
         vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'LEAD_NOT_AWAITING_APPROVAL', message } }, 409)),
       );
-      await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow(message);
+      await expect(apiClient.approveOutreach('lead-1', draft)).rejects.toThrow(message);
     });
 
     it('surfaces the server message when reject is refused after outreach was approved', async () => {
@@ -335,10 +338,10 @@ describe('Dashboard apiClient', () => {
           ),
         ),
       );
-      await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow('This lead has no contact email');
+      await expect(apiClient.approveOutreach('lead-1', draft)).rejects.toThrow('This lead has no contact email');
 
       vi.stubGlobal('fetch', unreachable());
-      await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow('Failed to fetch');
+      await expect(apiClient.approveOutreach('lead-1', draft)).rejects.toThrow('Failed to fetch');
     });
 
     const testDraft = { subject: 'A new site', preheader: 'A prototype', body: 'Hello' };

@@ -62,7 +62,7 @@ export const useApproveOutreachMutation = () => {
       emailData,
     }: {
       leadId: string;
-      emailData?: IEmailDraft;
+      emailData: IEmailDraft;
     }) => apiClient.approveOutreach(leadId, emailData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
