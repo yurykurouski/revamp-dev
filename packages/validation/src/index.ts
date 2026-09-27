@@ -574,6 +574,7 @@ export const BentoTemplateDataSchema = z.object({
   footerTagline: z.string().max(300).optional(),
   originalUrl: HttpUrlSchema.optional(),
   trackingToken: z.string().optional(),
+  publicApiUrl: HttpUrlSchema.optional(),
   customHeadSnippet: z.string().optional(),
 });
 

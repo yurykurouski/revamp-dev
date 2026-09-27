@@ -741,6 +741,8 @@ export interface IBentoTemplateData {
   footerTagline?: string;
   originalUrl?: string;
   trackingToken?: string;
+  /** Absolute public API URL ("https://api.example.com/api/v1"); the MVP loads the tracker and posts events here (REV-52) */
+  publicApiUrl?: string;
   customHeadSnippet?: string;
 }
 

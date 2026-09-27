@@ -44,6 +44,29 @@ function escapeHtml(str: string | undefined | null): string {
 }
 
 /**
+ * Resolves the telemetry URLs from the public API URL (REV-52). MVPs are served from the
+ * storage host, so relative /api/v1/... paths would hit S3/MinIO instead of the API.
+ * The tracker appends /api/v1/track/mvp-event to data-api, so data-api is the API origin.
+ */
+export function resolveTrackerUrls(
+  publicApiUrl: string | undefined,
+): { scriptSrc: string; apiOrigin: string; eventUrl: string } | null {
+  if (!publicApiUrl) return null;
+  let apiOrigin: string;
+  try {
+    apiOrigin = new URL(publicApiUrl).origin;
+  } catch {
+    return null;
+  }
+  const apiBase = publicApiUrl.replace(/\/+$/, '');
+  return {
+    scriptSrc: `${apiBase}/track/revamp-tracker.js`,
+    apiOrigin,
+    eventUrl: `${apiBase}/track/mvp-event`,
+  };
+}
+
+/**
  * Compiles the complete, self-contained Bento Landing Page HTML document.
  */
 export function generateBentoHtml(data: IBentoTemplateData): string {
@@ -55,6 +78,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const accentColor = data.palette?.accent || '#5c5bed';
   const primaryRgb = hexToRgb(primaryColor);
   const accentRgb = hexToRgb(accentColor);
+  const tracker = resolveTrackerUrls(data.publicApiUrl);
 
   // Contacts are rendered only when they were verified on the original site (Strict Grounding)
   const phone = data.contacts?.phone;
@@ -1362,12 +1386,12 @@ ${galleryHtml}
 
           // Dispatch telemetry Beacon if tracking token is provided
           ${
-            data.trackingToken
+            data.trackingToken && tracker
               ? `
           try {
             if (navigator.sendBeacon) {
-              navigator.sendBeacon('/api/v1/track/mvp-event', new Blob([JSON.stringify({
-                token: '${data.trackingToken}',
+              navigator.sendBeacon(${scriptJson(tracker.eventUrl)}, new Blob([JSON.stringify({
+                token: ${scriptJson(data.trackingToken)},
                 eventType: 'booking_intent',
                 metadata: {
                   name: nameVal,
@@ -1418,7 +1442,11 @@ ${galleryHtml}
       });
     })();
   </script>
-  <script src="/api/v1/track/revamp-tracker.js" data-token="${data.trackingToken || ''}" async></script>
+  ${
+    tracker
+      ? `<script src="${escapeHtml(tracker.scriptSrc)}" data-api="${escapeHtml(tracker.apiOrigin)}" data-token="${escapeHtml(data.trackingToken)}" async></script>`
+      : ''
+  }
 </body>
 </html>`;
 }
