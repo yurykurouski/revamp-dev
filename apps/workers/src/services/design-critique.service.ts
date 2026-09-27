@@ -1,5 +1,7 @@
 import { DesignCritiqueOutputSchema, DesignCritiqueOutput } from '@revamp/validation';
 import { env } from '../config/env.js';
+import { ClaudeCliVisionRunner, createClaudeCliVisionRunner } from './claude-cli.js';
+import { findExecutable } from './llm-capabilities.js';
 
 export interface AnalyzeDesignInput {
   mobileScreenshotWebp: Buffer;
@@ -25,13 +27,19 @@ export interface DesignCritiqueResult {
   tokenUsage?: TokenUsage;
 }
 
-export type VisionProvider = 'anthropic' | 'openai';
+export type VisionProvider = 'anthropic' | 'openai' | 'claude-cli';
 
 export interface DesignCritiqueServiceOptions {
   provider?: VisionProvider;
   anthropicApiKey?: string;
   openaiApiKey?: string;
   customFetcher?: typeof fetch;
+  /** Replaces the local Claude Code CLI call for the 'claude-cli' provider */
+  claudeCliRunner?: ClaudeCliVisionRunner;
+  /** Whether the `claude` binary can be run; looked up on PATH from CLAUDE_CLI_PATH otherwise */
+  claudeCliAvailable?: boolean;
+  /** Model passed to the CLI; CLAUDE_CLI_MODEL otherwise */
+  claudeCliModel?: string;
 }
 
 export const DESIGN_CRITIQUE_SYSTEM_PROMPT = `You are a lead UX/UI art director and conversion expert for local-business websites.
@@ -47,26 +55,84 @@ Analysis rules:
 - List exactly 3 Critical Flaws that reduce trust or stop a visitor from getting in touch.
 - List exactly 3 Quick Wins that a modern redesign would deliver.
 - Write all text in English.
-- Respond with a raw JSON object only, with no preamble and no markdown around the JSON.`;
+- Respond with a raw JSON object only, with no preamble and no markdown around the JSON.
+
+Output format (use exactly these keys and types):
+{
+  "visualHierarchyRating": <integer 0-100>,
+  "mobileFriendlinessRating": <integer 0-100>,
+  "primaryCtaFound": <true if a clear primary call to action is visible above the fold, else false>,
+  "datedDesignFactors": [<up to 5 short kebab-case strings, e.g. "low-contrast-typography">],
+  "criticalFlaws": [
+    { "title": "<max 80 characters>", "impact": "<max 200 characters>", "recommendation": "<max 200 characters>" }
+  ] (exactly 3 items),
+  "quickWins": ["<max 150 characters>"] (exactly 3 plain strings)
+}`;
 
 export class DesignCritiqueService {
-  /** Undefined when no Vision LLM key is set; the critique then fails (REV-45) */
-  private provider: VisionProvider | undefined;
+  /** Undefined when no Vision LLM can be called; the critique then fails (REV-45) */
+  readonly provider: VisionProvider | undefined;
   private anthropicApiKey?: string;
   private openaiApiKey?: string;
   private fetcher: typeof fetch;
+  private claudeCliAvailable: boolean;
+  private claudeCliModel: string;
+  private claudeCliRunner: ClaudeCliVisionRunner;
 
   constructor(options: DesignCritiqueServiceOptions = {}) {
     this.anthropicApiKey = options.anthropicApiKey ?? env.ANTHROPIC_API_KEY;
     this.openaiApiKey = options.openaiApiKey ?? env.OPENAI_API_KEY;
     this.fetcher = options.customFetcher ?? fetch;
+    this.claudeCliAvailable = options.claudeCliAvailable ?? Boolean(findExecutable(env.CLAUDE_CLI_PATH));
+    this.claudeCliModel = options.claudeCliModel ?? env.CLAUDE_CLI_MODEL;
+    this.claudeCliRunner =
+      options.claudeCliRunner ??
+      createClaudeCliVisionRunner({
+        cliPath: env.CLAUDE_CLI_PATH,
+        model: this.claudeCliModel,
+        timeoutMs: env.CLAUDE_CLI_TIMEOUT_MS,
+      });
 
-    if (options.provider) {
-      this.provider = options.provider;
+    // Explicit choice, then Anthropic key, OpenAI key, and the local Claude Code CLI (REV-51)
+    const explicit = options.provider ?? env.VISION_LLM_PROVIDER;
+    if (explicit) {
+      this.provider = explicit;
     } else if (this.anthropicApiKey) {
       this.provider = 'anthropic';
     } else if (this.openaiApiKey) {
       this.provider = 'openai';
+    } else if (this.claudeCliAvailable) {
+      this.provider = 'claude-cli';
+    }
+  }
+
+  /** Why the critique cannot call a Vision LLM, or undefined when it can */
+  unavailableReason(): string | undefined {
+    switch (this.provider) {
+      case undefined:
+        return 'No Vision LLM is configured for the design critique: set ANTHROPIC_API_KEY or OPENAI_API_KEY, or install the Claude Code CLI (CLAUDE_CLI_PATH)';
+      case 'anthropic':
+        return this.anthropicApiKey ? undefined : 'Vision LLM provider "anthropic" has no API key: set ANTHROPIC_API_KEY';
+      case 'openai':
+        return this.openaiApiKey ? undefined : 'Vision LLM provider "openai" has no API key: set OPENAI_API_KEY';
+      case 'claude-cli':
+        return this.claudeCliAvailable
+          ? undefined
+          : `Vision LLM provider "claude-cli" cannot run: the Claude Code CLI was not found at CLAUDE_CLI_PATH (${env.CLAUDE_CLI_PATH})`;
+    }
+  }
+
+  /** Model behind the provider, recorded as `modelUsed` */
+  get modelName(): string {
+    switch (this.provider) {
+      case 'anthropic':
+        return 'claude-3-5-sonnet-20241022';
+      case 'openai':
+        return 'gpt-4o';
+      case 'claude-cli':
+        return `claude-cli:${this.claudeCliModel}`;
+      default:
+        return 'none';
     }
   }
 
@@ -78,17 +144,8 @@ export class DesignCritiqueService {
    * Throws when no Vision LLM can be called: no critique is invented without one (REV-45).
    */
   async analyzeDesign(input: AnalyzeDesignInput): Promise<DesignCritiqueResult> {
-    const missingKey =
-      !this.provider ||
-      (this.provider === 'anthropic' && !this.anthropicApiKey) ||
-      (this.provider === 'openai' && !this.openaiApiKey);
-    if (missingKey) {
-      throw new Error(
-        this.provider
-          ? `Vision LLM provider "${this.provider}" has no API key: set ${this.provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'OPENAI_API_KEY'}`
-          : 'No Vision LLM is configured for the design critique: set ANTHROPIC_API_KEY or OPENAI_API_KEY',
-      );
-    }
+    const unavailable = this.unavailableReason();
+    if (unavailable) throw new Error(unavailable);
 
     const temperatures = [0.2, 0.0, 0.0]; // initial attempt + 2 retries with temp 0.0
     let lastError: Error | null = null;
@@ -110,6 +167,11 @@ export class DesignCritiqueService {
           const res = await this.callAnthropicVision(input, currentTemperature);
           rawResponse = res.rawResponse;
           tokenUsage = res.tokenUsage;
+        } else if (this.provider === 'claude-cli') {
+          // The CLI has no temperature setting; retries rerun the same prompt
+          const res = await this.callClaudeCliVision(input);
+          rawResponse = res.rawResponse;
+          tokenUsage = res.tokenUsage;
         } else {
           const res = await this.callOpenAiVision(input, currentTemperature);
           rawResponse = res.rawResponse;
@@ -124,7 +186,7 @@ export class DesignCritiqueService {
           return {
             critique: validation.data,
             aiFallbackUsed: false,
-            modelUsed: this.provider === 'anthropic' ? 'claude-3-5-sonnet-20241022' : 'gpt-4o',
+            modelUsed: this.modelName,
             attempts: attemptsCount,
             tokenUsage,
           };
@@ -155,8 +217,32 @@ export class DesignCritiqueService {
       aiFallbackUsed: true,
       modelUsed: `${this.provider}-fallback`,
       attempts: attemptsCount,
-      tokenUsage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      // No token usage is reported for the fallback, so no token_usage event is logged (REV-51)
     };
+  }
+
+  /** The text part of the user message, shared by every provider */
+  private buildUserPrompt(input: AnalyzeDesignInput): string {
+    return `Business niche: ${input.niche || 'not specified'}\nAccessibility score (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nLCP: ${input.lcpSeconds ?? 'N/A'} s\n\nAnalyze the attached above-the-fold screenshot and return a clean JSON object that follows the specification.`;
+  }
+
+  /**
+   * Calls the local Claude Code CLI with both screenshots as image blocks (REV-51)
+   */
+  private async callClaudeCliVision(
+    input: AnalyzeDesignInput,
+  ): Promise<{ rawResponse: string; tokenUsage?: TokenUsage }> {
+    const images = [{ mediaType: 'image/webp' as const, data: input.mobileScreenshotWebp }];
+    if (input.desktopScreenshotWebp) {
+      images.push({ mediaType: 'image/webp', data: input.desktopScreenshotWebp });
+    }
+    const res = await this.claudeCliRunner({
+      systemPrompt: DESIGN_CRITIQUE_SYSTEM_PROMPT,
+      userPrompt: this.buildUserPrompt(input),
+      images,
+      model: this.claudeCliModel,
+    });
+    return { rawResponse: res.text, tokenUsage: res.usage };
   }
 
   /**
@@ -170,7 +256,7 @@ export class DesignCritiqueService {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
-        text: `Business niche: ${input.niche || 'not specified'}\nAccessibility score (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nLCP: ${input.lcpSeconds ?? 'N/A'} s\n\nAnalyze the attached above-the-fold screenshot and return a clean JSON object that follows the specification.`,
+        text: this.buildUserPrompt(input),
       },
       {
         type: 'image',
@@ -248,7 +334,7 @@ export class DesignCritiqueService {
     const content: Array<Record<string, unknown>> = [
       {
         type: 'text',
-        text: `Business niche: ${input.niche || 'not specified'}\nAccessibility score (a11yScore): ${input.a11yScore ?? 'N/A'}/100\nLCP: ${input.lcpSeconds ?? 'N/A'} s\n\nAnalyze the attached above-the-fold screenshot and return a clean JSON object that follows the specification.`,
+        text: this.buildUserPrompt(input),
       },
       {
         type: 'image_url',

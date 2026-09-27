@@ -55,13 +55,14 @@ The `minio-init` container creates the `revamp-assets` and `revamp-demos` bucket
 
 ### LLM providers
 
-All LLM settings live in `.env`. Nothing is faked when a provider is missing: without a Vision key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) audits fail at the design critique, and without an MVP provider generation fails with an error the dashboard shows. Deterministic copy and critique are only used as a fallback after a configured LLM fails every retry (the result is marked `aiFallbackUsed`). The workers log a warning at startup for each missing provider.
+All LLM settings live in `.env`. Nothing is faked when a provider is missing: without a Vision provider (an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, or the local Claude Code CLI) audits fail at the design critique, and without an MVP provider generation fails with an error the dashboard shows. Deterministic copy and critique are only used as a fallback after a configured LLM fails every retry (the result is marked `aiFallbackUsed`). The workers log a warning at startup for each missing provider.
 
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | Enable the matching API provider |
 | `MVP_LLM_PROVIDER` | Default provider: `anthropic`, `openai`, `gemini` or `claude-cli`. When empty, the first provider with a key is used |
 | `CLAUDE_CLI_PATH`, `CLAUDE_CLI_MODEL`, `CLAUDE_CLI_TIMEOUT_MS` | `claude-cli` runs the local Claude Code CLI with the account it is logged into, so it needs no API key |
+| `VISION_LLM_PROVIDER` | Design critique provider: `anthropic`, `openai` or `claude-cli`. When empty: the Anthropic key, then the OpenAI key, then the CLI if `CLAUDE_CLI_PATH` is found. The CLI receives both screenshots as images and uses `CLAUDE_CLI_MODEL` |
 | `MVP_COMPLETENESS_LLM` | `true` lets the LLM judge the MVP completeness check (every verdict is verified in code); `false` uses the code-only check |
 
 The operator can override the provider and model for each generation from the dashboard.

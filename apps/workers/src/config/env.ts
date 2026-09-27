@@ -27,6 +27,11 @@ export const EnvSchema = z.object({
     (v) => (v === '' ? undefined : v),
     z.enum(['anthropic', 'openai', 'gemini', 'claude-cli']).optional(),
   ),
+  // Vision design critique provider (REV-51); when unset: Anthropic key, OpenAI key, then the local CLI
+  VISION_LLM_PROVIDER: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.enum(['anthropic', 'openai', 'claude-cli']).optional(),
+  ),
   // Local Claude Code CLI provider (REV-30); uses the account the CLI is logged into
   CLAUDE_CLI_PATH: z.string().default('claude'),
   CLAUDE_CLI_MODEL: z.string().default('sonnet'),

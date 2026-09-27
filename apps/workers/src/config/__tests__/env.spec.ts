@@ -35,4 +35,11 @@ describe('worker env schema: MVP LLM provider (REV-30)', () => {
     expect(() => EnvSchema.parse({ CLAUDE_CLI_TIMEOUT_MS: '0' })).toThrow();
     expect(() => EnvSchema.parse({ CLAUDE_CLI_TIMEOUT_MS: 'soon' })).toThrow();
   });
+
+  it('accepts a Vision provider and treats an empty one as unset (REV-51)', () => {
+    expect(EnvSchema.parse({}).VISION_LLM_PROVIDER).toBeUndefined();
+    expect(EnvSchema.parse({ VISION_LLM_PROVIDER: '' }).VISION_LLM_PROVIDER).toBeUndefined();
+    expect(EnvSchema.parse({ VISION_LLM_PROVIDER: 'claude-cli' }).VISION_LLM_PROVIDER).toBe('claude-cli');
+    expect(() => EnvSchema.parse({ VISION_LLM_PROVIDER: 'gemini' })).toThrow();
+  });
 });
