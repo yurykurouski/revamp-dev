@@ -94,6 +94,8 @@ const ADDRESS_STOPWORDS = new Set([
 const PHONE_IN_TEXT = /(?:\+|\b)\d[\d\s().\u2010-\u2015-]{5,}\d/g;
 const EMAIL_IN_TEXT = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/gi;
 const TIME_IN_TEXT = /\b(\d{1,2})[:.](\d{2})\b/g;
+const LETTER_OR_NUMBER = /[\p{L}\p{N}]/u;
+const NUMBER = /\p{N}/u;
 
 const clip = (value: string | undefined): string | undefined =>
   value ? (value.length > MAX_VALUE_LENGTH ? `${value.slice(0, MAX_VALUE_LENGTH - 1)}…` : value) : undefined;
@@ -232,10 +234,24 @@ function extractTimes(text: string): string[] {
  * ("8200-175", "(22) 555-12-34"). Looks for the subscriber part: the last nine digits at most.
  */
 export function findPhoneInText(phone: string, text: string): string | undefined {
-  const digits = normalizePhone(phone)?.replace(/\D/g, '');
+  const digits = normalizePhone(phone)?.replace(/\D/g, '').slice(-9);
   if (!digits) return undefined;
-  const pattern = digits.slice(-9).split('').join('[^\\p{L}\\p{N}]{0,3}');
-  return new RegExp(`${pattern}(?!\\p{N})`, 'u').exec(text)?.[0];
+  // A scan, not a per-number regex: V8 took ~0.6 s to compile each one's Unicode classes (REV-42)
+  const chars = Array.from(text);
+  for (let start = 0; start < chars.length; start++) {
+    let at = start;
+    let matched = 0;
+    while (matched < digits.length) {
+      // Up to three separators between digits: anything but a letter or a number
+      const gapEnd = matched > 0 ? Math.min(at + 3, chars.length) : at;
+      while (at < gapEnd && !LETTER_OR_NUMBER.test(chars[at]!)) at++;
+      if (chars[at] !== digits[matched]) break;
+      at++;
+      matched++;
+    }
+    if (matched === digits.length && !(at < chars.length && NUMBER.test(chars[at]!))) return chars.slice(start, at).join('');
+  }
+  return undefined;
 }
 
 function extractPhones(text: string): string[] {
