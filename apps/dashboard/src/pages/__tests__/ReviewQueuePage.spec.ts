@@ -266,6 +266,125 @@ describe('review queue home (REV-79)', () => {
     expect(location()).toBe('/settings');
   });
 
+  describe('quick filters (REV-80)', () => {
+    // Needs you, oldest first: n1 (42), n2 (audit failed, no score), n3 (85)
+    const FILTER_LEADS = LEADS.map((l) =>
+      l.id === 'n2' ? { ...l, totalScore: undefined } : l.id === 'n3' ? { ...l, totalScore: 85 } : l,
+    );
+    const toggle = () => document.querySelector<HTMLElement>('[data-testid="queue-filter-toggle"]')!;
+    const chip = (group: string, value: string) =>
+      document.querySelector<HTMLElement>(`[data-filter-group="${group}"] [data-filter="${value}"]`)!;
+    const caption = () => document.querySelector('[data-testid="queue-caption"]')!.textContent;
+    const click = async (el: HTMLElement) => {
+      await act(async () => el.click());
+      await flush();
+    };
+    const mountFiltered = async (entry?: string) => {
+      vi.mocked(apiClient.getLeads).mockResolvedValue({ leads: FILTER_LEADS, total: FILTER_LEADS.length });
+      await mount(entry);
+      await click(toggle());
+    };
+
+    it('starts closed and unfiltered, with the Filter button next to the caption', async () => {
+      await mount();
+      expect(toggle().textContent).toBe(en.queue.filters.button);
+      expect(toggle().getAttribute('aria-expanded')).toBe('false');
+      expect(document.querySelector('[data-filter-group]')).toBeNull();
+      expect(caption()).toBe(en.queue.listCaption.needs_you);
+    });
+
+    it('offers the bucket statuses and score bands with their counts', async () => {
+      await mountFiltered();
+      expect(toggle().getAttribute('aria-expanded')).toBe('true');
+      expect(chip('status', 'AUDIT_FAILED').textContent).toBe(`${en.statuses.AUDIT_FAILED}1`);
+      expect(chip('status', 'NEEDS_APPROVAL').textContent).toBe(`${en.statuses.NEEDS_APPROVAL}2`);
+      expect(chip('score', 'low').textContent).toBe(`${en.queue.filters.bands.low}0`);
+      expect(chip('score', 'medium').textContent).toBe(`${en.queue.filters.bands.medium}1`);
+      expect(chip('score', 'high').textContent).toBe(`${en.queue.filters.bands.high}1`);
+      expect(chip('status', 'AUDIT_FAILED').getAttribute('aria-pressed')).toBe('false');
+    });
+
+    it('narrows the list by status, counts it in the caption and moves the selection along', async () => {
+      await mountFiltered();
+      expect(selected()).toBe('n1');
+      await click(chip('status', 'AUDIT_FAILED'));
+
+      expect(chip('status', 'AUDIT_FAILED').getAttribute('aria-pressed')).toBe('true');
+      expect(listed()).toEqual(['n2']);
+      expect(selected()).toBe('n2');
+      expect(reviewed()).toBe('n2');
+      expect(query().get('lead')).toBe('n2');
+      expect(caption()).toBe(`${en.queue.listCaption.needs_you} · 1 of 3`);
+      expect(toggle().textContent).toBe(en.queue.filters.buttonActive.replace('{{count}}', '1'));
+    });
+
+    it('hides unscored leads only while a score band is picked', async () => {
+      await mountFiltered();
+      await click(chip('score', 'medium'));
+      await click(chip('score', 'high'));
+      expect(listed()).toEqual(['n1', 'n3']);
+
+      await click(chip('score', 'medium'));
+      await click(chip('score', 'high'));
+      expect(listed()).toEqual(['n1', 'n2', 'n3']);
+      expect(caption()).toBe(en.queue.listCaption.needs_you);
+    });
+
+    it('moves J / K through the filtered list only', async () => {
+      await mountFiltered();
+      await click(chip('score', 'medium'));
+      await click(chip('score', 'high'));
+      (document.activeElement as HTMLElement | null)?.blur();
+      await key('j');
+      expect(selected()).toBe('n3');
+      await key('j');
+      expect(selected()).toBe('n3');
+      await key('k');
+      expect(selected()).toBe('n1');
+    });
+
+    it('says when the filters match nothing, apart from an empty bucket, and clears them', async () => {
+      await mountFiltered();
+      await click(chip('score', 'low'));
+
+      expect(listed()).toEqual([]);
+      expect(document.querySelector('[data-testid="queue-empty"]')).toBeNull();
+      const empty = document.querySelector<HTMLElement>('[data-testid="queue-filtered-empty"]')!;
+      expect(empty.textContent).toContain(en.queue.filters.noMatch);
+      expect(caption()).toBe(`${en.queue.listCaption.needs_you} · 0 of 3`);
+      expect(reviewed()).toBeNull();
+      expect(query().has('lead')).toBe(false);
+
+      await click(empty.querySelector('button')!);
+      expect(listed()).toEqual(['n1', 'n2', 'n3']);
+      expect(document.querySelector('[data-testid="queue-filtered-empty"]')).toBeNull();
+      expect(selected()).toBe('n1');
+    });
+
+    it('resets the filters when the bucket changes, and when coming back', async () => {
+      await mountFiltered();
+      await click(chip('status', 'AUDIT_FAILED'));
+      expect(listed()).toEqual(['n2']);
+
+      await click(tab('outreach'));
+      expect(listed()).toEqual(['o2', 'o1']);
+      expect(chip('status', 'SENT').getAttribute('aria-pressed')).toBe('false');
+      expect(caption()).toBe(en.queue.listCaption.outreach);
+      expect(query().get('bucket')).toBe('outreach');
+      expect([...query().keys()].sort()).toEqual(['bucket', 'lead']);
+
+      await click(tab('needs_you'));
+      expect(listed()).toEqual(['n1', 'n2', 'n3']);
+      expect(toggle().textContent).toBe(en.queue.filters.button);
+    });
+
+    it('hides the status filter in a bucket whose leads share one status', async () => {
+      await mountFiltered('/?bucket=in_progress');
+      expect(document.querySelector('[data-filter-group="status"]')).toBeNull();
+      expect(document.querySelector('[data-filter-group="score"]')).not.toBeNull();
+    });
+  });
+
   it('offers Retry for a lead whose audit failed', async () => {
     await mount('/?lead=n2');
     expect(document.body.textContent).toContain(en.queue.auditFailedHint);

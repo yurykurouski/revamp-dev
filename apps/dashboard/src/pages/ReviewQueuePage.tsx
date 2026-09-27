@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Alert,
   Box,
+  Button,
   Chip,
   CircularProgress,
   List,
@@ -12,6 +13,7 @@ import {
   Typography,
 } from '@mui/material';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
+import FilterListIcon from '@mui/icons-material/FilterList';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ILeadItem } from '../api/client.js';
@@ -34,12 +36,20 @@ import {
   type LeadBucket,
 } from '../utils/leadStages.js';
 import {
+  activeFilterCount,
   DEFAULT_QUEUE_BUCKET,
+  filterQueue,
   formatAge,
   isLeadBucket,
+  NO_QUEUE_FILTERS,
+  queueStatusOptions,
   resolveSelection,
+  scoreBandOptions,
   sortQueue,
   stepSelection,
+  toggleValue,
+  type FilterOption,
+  type QueueFilters,
 } from '../utils/reviewQueue.js';
 
 /** Width of the lead list next to the review */
@@ -47,6 +57,7 @@ export const QUEUE_LIST_WIDTH = 380;
 
 const tabId = (bucket: LeadBucket) => `queue-tab-${bucket}`;
 const LIST_ID = 'queue-list';
+const FILTERS_ID = 'queue-filters';
 
 /** Hidden from sight but read by screen readers, for the page heading the layout has no room for */
 const visuallyHidden = {
@@ -119,12 +130,55 @@ const QueueItem: React.FC<QueueItemProps> = ({ lead, selected, now, onSelect, on
   );
 };
 
+interface FilterChipsProps<T extends string> {
+  label: string;
+  group: string;
+  options: readonly FilterOption<T>[];
+  picked: readonly T[];
+  optionLabel: (value: T) => string;
+  onToggle: (value: T) => void;
+}
+
+/** One quick-filter group: a toggle chip per value, with how many of the bucket's leads have it */
+const FilterChips = <T extends string>({ label, group, options, picked, optionLabel, onToggle }: FilterChipsProps<T>) => (
+  <Box role="group" aria-label={label} data-filter-group={group} sx={{ display: 'flex', alignItems: 'center', gap: 0.75, flexWrap: 'wrap' }}>
+    <Typography variant="caption" color="text.secondary" sx={{ minWidth: 44 }}>
+      {label}
+    </Typography>
+    {options.map(({ value, count }) => {
+      const on = picked.includes(value);
+      return (
+        <Chip
+          key={value}
+          data-filter={value}
+          size="small"
+          clickable
+          aria-pressed={on}
+          aria-label={`${optionLabel(value)} (${count})`}
+          color={on ? 'primary' : 'default'}
+          variant={on ? 'filled' : 'outlined'}
+          onClick={() => onToggle(value)}
+          label={
+            <>
+              {optionLabel(value)}
+              <Box component="span" sx={{ ml: 0.75, opacity: 0.7, fontVariantNumeric: 'tabular-nums' }}>
+                {count}
+              </Box>
+            </>
+          }
+        />
+      );
+    })}
+  </Box>
+);
+
 /**
  * Review queue home (REV-79): the leads in four buckets (Needs you, In progress, Outreach, Closed), a
  * 380px list of the current bucket, and the selected lead's review (REV-77) next to it. The bucket and
  * the selected lead live in the URL (`?bucket=…&lead=…`), so a reload keeps the operator's place. When
  * the selected lead leaves the bucket (approved, rejected, moved on by a worker) the next one is selected.
- * J / K move through the list and Enter opens the lead as its own page.
+ * J / K move through the list and Enter opens the lead as its own page. Quick filters (REV-80) narrow the
+ * bucket's list by status and score band; they belong to the bucket and reset when it changes.
  */
 export const ReviewQueuePage: React.FC = () => {
   const { t } = useTranslation();
@@ -142,10 +196,22 @@ export const ReviewQueuePage: React.FC = () => {
   const linkedLeadBucket = requestedLead ? leadBucket(allLeads.find((l) => l.id === requestedLead)?.status ?? '') : undefined;
   const bucket: LeadBucket = isLeadBucket(bucketParam) ? bucketParam : (linkedLeadBucket ?? DEFAULT_QUEUE_BUCKET);
 
-  const leads = useMemo(
+  const bucketLeads = useMemo(
     () => sortQueue(allLeads.filter((lead) => matchesBucket(lead.status, bucket)), bucket),
     [allLeads, bucket],
   );
+
+  // Filters belong to the bucket they were set in: a new bucket, by tab or by URL, starts unfiltered
+  const [filterState, setFilterState] = useState<{ bucket: LeadBucket; filters: QueueFilters }>({ bucket, filters: NO_QUEUE_FILTERS });
+  if (filterState.bucket !== bucket) setFilterState({ bucket, filters: NO_QUEUE_FILTERS });
+  const filters = filterState.bucket === bucket ? filterState.filters : NO_QUEUE_FILTERS;
+  const filtering = activeFilterCount(filters) > 0;
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const updateFilters = (next: Partial<QueueFilters>) => setFilterState({ bucket, filters: { ...filters, ...next } });
+
+  const statusOptions = useMemo(() => queueStatusOptions(bucketLeads, filters.statuses), [bucketLeads, filters.statuses]);
+  const bandOptions = useMemo(() => scoreBandOptions(bucketLeads), [bucketLeads]);
+  const leads = useMemo(() => filterQueue(bucketLeads, filters), [bucketLeads, filters]);
   const ids = useMemo(() => leads.map((lead) => lead.id), [leads]);
 
   // The list as last shown, to find the lead that followed one that just left it
@@ -264,13 +330,71 @@ export const ReviewQueuePage: React.FC = () => {
             borderColor: 'divider',
           }}
         >
-          <Typography
-            variant="caption"
-            color="text.secondary"
-            sx={{ px: 2.5, py: 1.25, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}
+          <Box
+            sx={{
+              pl: 2.5,
+              pr: 1,
+              py: 0.5,
+              minHeight: 40,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 1,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              flexShrink: 0,
+            }}
           >
-            {t(`queue.listCaption.${bucket}`)}
-          </Typography>
+            <Typography variant="caption" color="text.secondary" data-testid="queue-caption" sx={{ minWidth: 0 }} noWrap>
+              {t(`queue.listCaption.${bucket}`)}
+              {filtering && ` · ${t('queue.filters.shown', { shown: leads.length, total: bucketLeads.length })}`}
+            </Typography>
+            <Button
+              size="small"
+              color={filtering ? 'primary' : 'inherit'}
+              startIcon={<FilterListIcon fontSize="small" />}
+              aria-expanded={filtersOpen}
+              aria-controls={FILTERS_ID}
+              data-testid="queue-filter-toggle"
+              onClick={() => setFiltersOpen((open) => !open)}
+              sx={{ flexShrink: 0, color: filtering ? undefined : 'text.secondary', fontWeight: 600 }}
+            >
+              {filtering ? t('queue.filters.buttonActive', { count: activeFilterCount(filters) }) : t('queue.filters.button')}
+            </Button>
+          </Box>
+
+          {filtersOpen && (
+            <Box
+              id={FILTERS_ID}
+              role="region"
+              aria-label={t('queue.filters.label')}
+              sx={{ px: 2.5, py: 1.25, display: 'flex', flexDirection: 'column', gap: 1, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}
+            >
+              {statusOptions.length > 1 && (
+                <FilterChips
+                  label={t('queue.filters.status')}
+                  group="status"
+                  options={statusOptions}
+                  picked={filters.statuses}
+                  optionLabel={(status) => (isKnownLeadStatus(status) ? t(`statuses.${status}`) : status)}
+                  onToggle={(status) => updateFilters({ statuses: toggleValue(filters.statuses, status) })}
+                />
+              )}
+              <FilterChips
+                label={t('queue.filters.score')}
+                group="score"
+                options={bandOptions}
+                picked={filters.scoreBands}
+                optionLabel={(band) => t(`queue.filters.bands.${band}`)}
+                onToggle={(band) => updateFilters({ scoreBands: toggleValue(filters.scoreBands, band) })}
+              />
+              {filtering && (
+                <Button size="small" onClick={() => updateFilters(NO_QUEUE_FILTERS)} sx={{ alignSelf: 'flex-start', ml: -0.5 }}>
+                  {t('queue.filters.clear')}
+                </Button>
+              )}
+            </Box>
+          )}
 
           <Box ref={listRef} id={LIST_ID} role="tabpanel" aria-labelledby={tabId(bucket)} sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto' }}>
             {isLoading ? (
@@ -281,6 +405,14 @@ export const ReviewQueuePage: React.FC = () => {
               <Typography color="error.main" sx={{ p: 2.5 }}>
                 {t('leadsPage.loadFailed')}
               </Typography>
+            ) : leads.length === 0 && bucketLeads.length > 0 ? (
+              <Box data-testid="queue-filtered-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
+                <FilterListIcon sx={{ fontSize: 32, mb: 1 }} />
+                <Typography variant="body2">{t('queue.filters.noMatch')}</Typography>
+                <Button size="small" onClick={() => updateFilters(NO_QUEUE_FILTERS)} sx={{ mt: 1 }}>
+                  {t('queue.filters.clear')}
+                </Button>
+              </Box>
             ) : leads.length === 0 ? (
               <Box data-testid="queue-empty" sx={{ p: 4, textAlign: 'center', color: 'text.secondary' }}>
                 <InboxOutlinedIcon sx={{ fontSize: 32, mb: 1 }} />
