@@ -41,7 +41,9 @@ import {
   useRejectLeadMutation,
   useUpdateMvpTokensMutation,
   withPreviewVersion,
+  useIsMvpGenerationPending,
 } from '../hooks/useLeads.js';
+import { MvpPreviewFrame } from './MvpPreviewFrame.js';
 import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { MvpSourceChip } from './MvpSourceChip.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
@@ -81,6 +83,7 @@ export const SideBySideInspectorModal: React.FC = () => {
   // Screenshot URL that failed to load; the viewer then says so instead of showing another image
   const [brokenScreenshotUrl, setBrokenScreenshotUrl] = useState<string | null>(null);
   const { data: mvp } = useMvpQuery(selectedLeadId);
+  const isGenerationRequestPending = useIsMvpGenerationPending(selectedLeadId);
 
   const approveMutation = useApproveOutreachMutation();
   const sendTestMutation = useSendTestEmailMutation();
@@ -150,6 +153,8 @@ export const SideBySideInspectorModal: React.FC = () => {
     currentLead?.mvpGeneratedAt || mvp?.generatedAt,
   );
   const isRegenerating = currentLead?.status === 'GENERATING' && Boolean(previewUrl);
+  // From the regenerate click until the lead is back from GENERATING (REV-53)
+  const isPreviewBusy = isGenerationRequestPending || currentLead?.status === 'GENERATING';
 
   // Prefer the full-page capture (REV-21); fall back to the above-the-fold shot for older audits
   const originalScreenshotUrl =
@@ -674,18 +679,11 @@ export const SideBySideInspectorModal: React.FC = () => {
 
                   {/* Secure Sandboxed Iframe or Loading State */}
                   {previewUrl ? (
-                    <iframe
-                      key={previewUrl}
+                    <MvpPreviewFrame
+                      key={selectedLeadId ?? undefined}
                       ref={iframeRef}
-                      src={previewUrl}
-                      title={t('inspector.iframeTitle')}
-                      sandbox="allow-scripts allow-same-origin"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                        display: 'block',
-                      }}
+                      previewUrl={previewUrl}
+                      busy={isPreviewBusy}
                     />
                   ) : (
                     <Box

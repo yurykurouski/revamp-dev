@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
 import { apiClient, ILeadItem, KpiMetrics } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
 import { LeadStatus, LlmProviderId } from '@revamp/shared-types';
@@ -141,17 +141,31 @@ export const useLlmProvidersQuery = (enabled = true) =>
     staleTime: 30000,
   });
 
+export const GENERATE_MVP_MUTATION_KEY = ['generate-mvp'];
+
 export const useGenerateMvpMutation = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
+    mutationKey: GENERATE_MVP_MUTATION_KEY,
     mutationFn: generateMvpRequest,
-    onSuccess: (_data, { leadId }) => {
-      queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
-      if (leadId) queryClient.invalidateQueries({ queryKey: ['mvp', leadId] });
-    },
+    // Returned so the mutation stays pending until the lead shows GENERATING, leaving no gap in
+    // the inspector's regeneration overlay (REV-53)
+    onSuccess: (_data, { leadId }) =>
+      Promise.all([
+        queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY }),
+        leadId ? queryClient.invalidateQueries({ queryKey: ['mvp', leadId] }) : undefined,
+      ]),
   });
 };
+
+/** Whether a generate/regenerate request for this lead is in flight (REV-53) */
+export const useIsMvpGenerationPending = (leadId: string | null | undefined): boolean =>
+  useIsMutating({
+    mutationKey: GENERATE_MVP_MUTATION_KEY,
+    predicate: (mutation) =>
+      Boolean(leadId) && (mutation.state.variables as GenerateMvpVariables | undefined)?.leadId === leadId,
+  }) > 0;
 
 /** Whether the dashboard offers "Regenerate MVP" for a lead (REV-31) */
 export const canRegenerateMvp = (status: LeadStatus | undefined): boolean =>
