@@ -15,6 +15,16 @@ export const NOT_MEASURED = '—';
 
 type ScreenshotDevice = 'desktop' | 'mobile';
 
+/** Width of the findings column when it sits beside the screenshot */
+export const AUDIT_FINDINGS_WIDTH = 380;
+
+/**
+ * From this breakpoint up the findings sit beside the screenshot; below it they stack under it, full
+ * width (REV-83). At `lg` the review queue's lead list (380px) and the findings column leave the
+ * screenshot too little room, so the row waits for `xl`.
+ */
+export const AUDIT_ROW_BREAKPOINT = 'xl';
+
 interface AuditStepProps {
   audit?: IAuditDetail | null;
   mvp?: IMvpProjectDetail | null;
@@ -45,7 +55,7 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color }) => (
 );
 
 /**
- * Step 1 of a lead review (REV-77): the original site's full-page screenshot next to the audit — the
+ * Step 1 of a lead review (REV-77): the original site's full-page screenshot next to (or, below `xl`, above) the audit — the
  * measured metrics (a value the audit did not measure shows as missing, REV-45), the MVP data check,
  * the critical flaws and the quick wins.
  */
@@ -67,9 +77,9 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
     <Box
       sx={{
         display: 'grid',
-        gridTemplateColumns: { xs: '1fr', lg: 'minmax(0, 1fr) 380px' },
+        gridTemplateColumns: { xs: '1fr', [AUDIT_ROW_BREAKPOINT]: `minmax(0, 1fr) ${AUDIT_FINDINGS_WIDTH}px` },
         gap: 3,
-        height: { lg: '100%' },
+        height: { [AUDIT_ROW_BREAKPOINT]: '100%' },
         minHeight: 0,
       }}
     >
@@ -128,7 +138,7 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
             overflowY: 'auto',
             overflowX: 'hidden',
             backgroundColor: 'background.default',
-            height: { xs: 420, lg: 'auto' },
+            height: { xs: 420, [AUDIT_ROW_BREAKPOINT]: 'auto' },
             minHeight: 320,
             display: 'flex',
             alignItems: 'flex-start',
@@ -157,7 +167,7 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
       </Card>
 
       {/* Audit findings */}
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, overflowY: { lg: 'auto' }, minHeight: 0, pr: { lg: 0.5 } }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, overflowY: { [AUDIT_ROW_BREAKPOINT]: 'auto' }, minHeight: 0, pr: { [AUDIT_ROW_BREAKPOINT]: 0.5 } }}>
         {Boolean(error) && (
           <Alert severity="error">
             {t('inspector.auditLoadError', { error: error instanceof Error ? error.message : '' })}
