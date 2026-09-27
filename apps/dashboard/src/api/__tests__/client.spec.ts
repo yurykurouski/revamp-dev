@@ -243,6 +243,26 @@ describe('Dashboard apiClient', () => {
     });
   });
 
+  describe('outreach approve/reject status conflicts (REV-59)', () => {
+    it('surfaces the server message when approve is refused for a lead not awaiting approval', async () => {
+      const message = 'Only a lead awaiting approval can be approved; this lead is SENT.';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'LEAD_NOT_AWAITING_APPROVAL', message } }, 409)),
+      );
+      await expect(apiClient.approveOutreach('lead-1')).rejects.toThrow(message);
+    });
+
+    it('surfaces the server message when reject is refused after outreach was approved', async () => {
+      const message = 'A lead can only be rejected before its outreach is approved; this lead is SCHEDULED.';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'LEAD_NOT_REJECTABLE', message } }, 409)),
+      );
+      await expect(apiClient.rejectLead('lead-1', 'Too late')).rejects.toThrow(message);
+    });
+  });
+
   describe('Full-page screenshots (REV-21)', () => {
     const stubAuditResponse = (screenshotUrls: Record<string, string>) =>
       vi.stubGlobal(

@@ -418,6 +418,8 @@ export const en = {
     defaultRejectReason: 'Off-target niche / site closed',
     approved: 'Lead approved and moved to SCHEDULED!',
     actionFailed: 'Action failed: {{error}}',
+    approveUnavailable: 'Outreach can be approved once the MVP is ready for review. Current status: {{status}}.',
+    outreachClosed: 'Outreach for this lead is already approved or closed (status: {{status}}). It can no longer be approved or rejected.',
     testSent: 'Test email sent to {{email}}',
     editorTitle: 'Email editor (Outreach Personalizer)',
     subject: 'Subject',

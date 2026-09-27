@@ -6,6 +6,12 @@ import {
   RejectOutreachSchema,
   TestEmailOutreachSchema,
 } from '@revamp/validation';
+import {
+  LeadStatus,
+  OUTREACH_APPROVABLE_STATUSES,
+  OUTREACH_REJECTABLE_STATUSES,
+  canApproveOutreach,
+} from '@revamp/shared-types';
 import { validateBody } from '../middlewares/validate.js';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
@@ -13,6 +19,36 @@ import { addEmailDispatchJob, calculateDispatchDelay } from '../queues/email.que
 import { env } from '../config/env.js';
 
 const router = Router();
+
+const notAwaitingApproval = (res: Response, status?: LeadStatus): void => {
+  res.status(409).json({
+    success: false,
+    error: {
+      code: 'LEAD_NOT_AWAITING_APPROVAL',
+      message: `Only a lead awaiting approval can be approved; this lead is ${status ?? 'no longer awaiting approval'}.`,
+    },
+  });
+};
+
+const notRejectable = (res: Response, status?: LeadStatus): void => {
+  res.status(409).json({
+    success: false,
+    error: {
+      code: 'LEAD_NOT_REJECTABLE',
+      message: `A lead can only be rejected before its outreach is approved; this lead is ${status ?? 'no longer rejectable'}.`,
+    },
+  });
+};
+
+const leadNotFound = (res: Response, id: string): void => {
+  res.status(404).json({
+    success: false,
+    error: {
+      code: 'LEAD_NOT_FOUND',
+      message: `Lead ${id} not found`,
+    },
+  });
+};
 
 // GET /outreach/pending - Pending approval drafts
 router.get('/pending', async (_req: Request, res: Response, next: NextFunction) => {
@@ -52,9 +88,20 @@ router.post(
         return;
       }
 
-      // 0. Outreach needs a real recipient; none is invented (REV-45)
       const existing = await Lead.findById(id).exec();
-      if (existing && !existing.contactEmail) {
+      if (!existing) {
+        leadNotFound(res, id);
+        return;
+      }
+
+      // Outreach is approved only from the review state (REV-59)
+      if (!canApproveOutreach(existing.status)) {
+        notAwaitingApproval(res, existing.status);
+        return;
+      }
+
+      // Outreach needs a real recipient; none is invented (REV-45)
+      if (!existing.contactEmail) {
         res.status(409).json({
           success: false,
           error: {
@@ -65,21 +112,16 @@ router.post(
         return;
       }
 
-      // 1. Update Lead status to SCHEDULED
-      const lead = await Lead.findByIdAndUpdate(
-        id,
+      // 1. Move the lead to SCHEDULED only if it is still awaiting approval, so two approvals at
+      // once can't both queue an email (REV-59)
+      const lead = await Lead.findOneAndUpdate(
+        { _id: id, status: { $in: OUTREACH_APPROVABLE_STATUSES } },
         { $set: { status: 'SCHEDULED' } },
         { new: true },
       ).exec();
 
       if (!lead) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'LEAD_NOT_FOUND',
-            message: `Lead ${id} not found`,
-          },
-        });
+        notAwaitingApproval(res);
         return;
       }
 
@@ -163,20 +205,17 @@ router.post(
         return;
       }
 
-      const lead = await Lead.findByIdAndUpdate(
-        id,
+      // Reject only before outreach is approved; the status filter makes check and update atomic (REV-59)
+      const lead = await Lead.findOneAndUpdate(
+        { _id: id, status: { $in: OUTREACH_REJECTABLE_STATUSES } },
         { $set: { status: 'REJECTED' } },
         { new: true },
       ).exec();
 
       if (!lead) {
-        res.status(404).json({
-          success: false,
-          error: {
-            code: 'LEAD_NOT_FOUND',
-            message: `Lead ${id} not found`,
-          },
-        });
+        const existing = await Lead.findById(id).exec();
+        if (existing) notRejectable(res, existing.status);
+        else leadNotFound(res, id);
         return;
       }
 
