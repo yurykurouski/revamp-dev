@@ -157,13 +157,16 @@ describe('app shell and routes (REV-76)', () => {
     await act(async () => document.querySelector<HTMLElement>('[data-testid="close-review"]')!.click());
     await flush();
     expect(path()).toBe('/');
-    expect(reviewedLead()).toBeNull();
+    // Back on the queue, not on the lead's own page
+    expect(heading()).toBe(en.queue.title);
   });
 
-  it('opens a lead from its name on the queue with the queue as the page to return to', async () => {
+  it('opens a lead from the queue with the queue as the page to return to', async () => {
     await mount('/');
-    const link = [...document.querySelectorAll('main a')].find((a) => a.textContent?.includes('Harbor Dental'))!;
-    await act(async () => (link as HTMLElement).click());
+    const item = document.querySelector<HTMLElement>('[data-queue-item="l1"]')!;
+    await act(async () => {
+      item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true }));
+    });
     await flush();
     expect(path()).toBe('/leads/l1');
     expect(reviewedLead()).toBe('l1');

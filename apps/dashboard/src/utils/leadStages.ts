@@ -25,6 +25,30 @@ export const LEAD_STATUS_STAGE: Readonly<Record<LeadStatus, Stage>> = {
 export const leadStage = (status: string): Stage | undefined =>
   (LEAD_STATUSES as readonly string[]).includes(status) ? LEAD_STATUS_STAGE[status as LeadStatus] : undefined;
 
+/** MUI palette color of a status chip */
+export type StatusChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
+
+/** The chip color of every lead status, shared by the table and the review queue (REV-62, REV-79) */
+export const LEAD_STATUS_CHIP_COLOR: Readonly<Record<LeadStatus, StatusChipColor>> = {
+  QUEUED: 'default',
+  AUDITING: 'info',
+  AUDIT_FAILED: 'error',
+  AUDITED: 'info',
+  GENERATING: 'primary',
+  NEEDS_APPROVAL: 'warning',
+  SCHEDULED: 'primary',
+  SENT: 'info',
+  OPENED: 'secondary',
+  CLICKED: 'success',
+  ENGAGED: 'secondary',
+  REJECTED: 'error',
+  UNSUBSCRIBED: 'error',
+};
+
+/** Whether the dashboard knows this status; one it does not (e.g. from a newer API) is shown as is */
+export const isKnownLeadStatus = (status: string): status is LeadStatus =>
+  (LEAD_STATUSES as readonly string[]).includes(status);
+
 /** The review-queue buckets (REV-76): what the operator has to do next with a lead */
 export const LEAD_BUCKETS = ['needs_you', 'in_progress', 'outreach', 'closed'] as const;
 export type LeadBucket = (typeof LEAD_BUCKETS)[number];

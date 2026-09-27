@@ -5,14 +5,12 @@ import { Link as RouterLink, useLocation, useNavigate, useParams } from 'react-r
 import { useLeadsQuery } from '../hooks/useLeads.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { LeadReview } from '../components/leadReview/LeadReview.js';
+import { MAIN_FILL_HEIGHT } from '../components/Layout.js';
 import { openedInApp, ROUTES } from '../routes/paths.js';
 
 /** Whether the list is narrowed by a filter that could hide the requested lead */
 const hasListFilters = (s: { searchQuery: string; selectedNiche: string; selectedComplexity: string }) =>
   Boolean(s.searchQuery) || s.selectedNiche !== 'ALL' || s.selectedComplexity !== 'ALL';
-
-/** The top bar and the main area's vertical padding, which the review's fixed-height layout leaves out */
-const REVIEW_HEIGHT = 'calc(100vh - 64px - 48px)';
 
 /**
  * `/leads/:id` (REV-76): the review of the lead in the URL (REV-77), so a lead can be linked to and
@@ -67,7 +65,7 @@ export const LeadRoute: React.FC = () => {
   }
 
   return (
-    <Box sx={{ height: { lg: REVIEW_HEIGHT }, minHeight: { lg: 560 } }}>
+    <Box sx={{ height: { lg: MAIN_FILL_HEIGHT }, minHeight: { lg: 560 } }}>
       <LeadReview key={lead.id} lead={lead} onClose={handleClose} />
     </Box>
   );

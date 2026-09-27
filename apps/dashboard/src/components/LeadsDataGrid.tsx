@@ -4,7 +4,7 @@ import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import { LeadStatus } from '@revamp/shared-types';
+import { isKnownLeadStatus, LEAD_STATUS_CHIP_COLOR } from '../utils/leadStages.js';
 import { ILeadItem } from '../api/client.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
 import { ScoreChip } from './ScoreChip.js';
@@ -17,30 +17,6 @@ import { useTranslation } from 'react-i18next';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { formatDate } from '../i18n/languages.js';
 import { NICHE_EMOJI, isDashboardNiche } from '../i18n/niches.js';
-
-type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
-
-// Every status in the shared list has a chip color and a translated label (REV-62)
-const STATUS_COLORS: Record<LeadStatus, ChipColor> = {
-  QUEUED: 'default',
-  AUDITING: 'info',
-  AUDIT_FAILED: 'error',
-  AUDITED: 'info',
-  GENERATING: 'primary',
-  NEEDS_APPROVAL: 'warning',
-  SCHEDULED: 'primary',
-  SENT: 'info',
-  OPENED: 'secondary',
-  CLICKED: 'success',
-  ENGAGED: 'secondary',
-  REJECTED: 'error',
-  UNSUBSCRIBED: 'error',
-};
-
-// A status the dashboard does not know (e.g. from a newer API) is shown as is
-function isLabelledStatus(status: string): status is LeadStatus {
-  return Object.prototype.hasOwnProperty.call(STATUS_COLORS, status);
-}
 
 interface LeadsDataGridProps {
   leads: ILeadItem[];
@@ -106,8 +82,9 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
       width: 170,
       renderCell: (params: GridRenderCellParams<ILeadItem>) => {
         const status = params.row.status;
-        const conf = isLabelledStatus(status)
-          ? { label: t(`statuses.${status}`), color: STATUS_COLORS[status] }
+        // A status the dashboard does not know (e.g. from a newer API) is shown as is
+        const conf = isKnownLeadStatus(status)
+          ? { label: t(`statuses.${status}`), color: LEAD_STATUS_CHIP_COLOR[status] }
           : { label: status, color: 'default' as const };
         const chip = (
           <Chip label={conf.label} size="small" color={conf.color} />

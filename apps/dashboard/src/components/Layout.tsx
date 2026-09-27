@@ -12,6 +12,9 @@ import { useLeadStatsQuery } from '../hooks/useLeads.js';
 import { activeRailPage } from '../routes/paths.js';
 import { countStatsByBucket } from '../utils/leadStages.js';
 
+/** The height a page gets to fill the main area: the viewport less the top bar and the main area's padding */
+export const MAIN_FILL_HEIGHT = 'calc(100vh - 64px - 48px)';
+
 /** App shell of the review-queue layout (REV-76): icon rail, top bar and the routed page */
 export const Layout: React.FC = () => {
   const { pathname } = useLocation();
