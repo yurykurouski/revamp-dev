@@ -43,14 +43,55 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('GET /api/v1/health', () => {
-    it('should return 200 and healthy status', async () => {
+    const originalRedisStatus = redisConnection.status;
+    const setDependencies = (mongoReadyState: number, redisStatus: string) => {
+      vi.spyOn(mongoose.connection, 'readyState', 'get').mockReturnValue(mongoReadyState as any);
+      (redisConnection as any).status = redisStatus;
+    };
+
+    afterEach(() => {
+      vi.restoreAllMocks();
+      (redisConnection as any).status = originalRedisStatus;
+    });
+
+    it('should return 200 and healthy status when MongoDB and Redis are connected', async () => {
+      setDependencies(1, 'ready');
       const res = await request(app).get('/api/v1/health');
       expect(res.status).toBe(200);
       expect(res.body).toHaveProperty('status', 'ok');
-      expect(res.body).toHaveProperty('services');
-      expect(res.body.services.api).toBe('healthy');
-      expect(res.body.services).toHaveProperty('mongodb');
-      expect(res.body.services).toHaveProperty('redis');
+      expect(res.body.services).toEqual({ api: 'healthy', mongodb: 'connected', redis: 'connected' });
+      expect(res.body).toHaveProperty('timestamp');
+    });
+
+    it('should treat an ioredis "connect" status as connected', async () => {
+      setDependencies(1, 'connect');
+      const res = await request(app).get('/api/v1/health');
+      expect(res.status).toBe(200);
+      expect(res.body.services.redis).toBe('connected');
+    });
+
+    it('should return 503 with the same body shape when MongoDB is disconnected (REV-66)', async () => {
+      setDependencies(0, 'ready');
+      const res = await request(app).get('/api/v1/health');
+      expect(res.status).toBe(503);
+      expect(res.body).toHaveProperty('status', 'degraded');
+      expect(res.body).toHaveProperty('timestamp');
+      expect(res.body.services).toEqual({ api: 'healthy', mongodb: 'disconnected', redis: 'connected' });
+    });
+
+    it('should return 503 while MongoDB is still connecting', async () => {
+      setDependencies(2, 'ready');
+      const res = await request(app).get('/api/v1/health');
+      expect(res.status).toBe(503);
+      expect(res.body.services.mongodb).toBe('connecting');
+    });
+
+    it('should return 503 when Redis is not connected (REV-66)', async () => {
+      setDependencies(1, 'reconnecting');
+      const res = await request(app).get('/api/v1/health');
+      expect(res.status).toBe(503);
+      expect(res.body).toHaveProperty('status', 'degraded');
+      expect(res.body.services).toEqual({ api: 'healthy', mongodb: 'connected', redis: 'reconnecting' });
     });
   });
 

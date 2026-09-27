@@ -1,6 +1,8 @@
 import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { closeQueues, redisConnection } from './queues/index.js';
+import { createShutdown } from './shutdown.js';
 
 const app = createApp();
 
@@ -15,15 +17,13 @@ async function startServer(): Promise<void> {
       console.log(`[API] Base URL: http://localhost:${env.PORT}${env.API_PREFIX}`);
     });
 
-    // Graceful Shutdown
-    const shutdown = async (signal: string) => {
-      console.log(`[API] Received ${signal}. Closing server gracefully...`);
-      server.close(async () => {
-        await mongoose.disconnect();
-        console.log('[API] Server closed and MongoDB disconnected.');
-        process.exit(0);
-      });
-    };
+    const shutdown = createShutdown({
+      server,
+      closeQueues,
+      closeRedis: () => redisConnection.quit(),
+      disconnectMongo: () => mongoose.disconnect(),
+      exit: (code) => process.exit(code),
+    });
 
     process.on('SIGINT', () => shutdown('SIGINT'));
     process.on('SIGTERM', () => shutdown('SIGTERM'));

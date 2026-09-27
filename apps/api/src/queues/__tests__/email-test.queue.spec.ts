@@ -7,7 +7,7 @@ const job = {
   remove: vi.fn(),
 };
 const queue = { add: vi.fn() };
-const events = { waitUntilReady: vi.fn() };
+const events = { waitUntilReady: vi.fn(), close: vi.fn() };
 
 vi.mock('../connection.js', () => ({ redisConnection: {} }));
 vi.mock('bullmq', () => ({
@@ -19,7 +19,7 @@ vi.mock('bullmq', () => ({
   }),
 }));
 
-const { sendTestEmailJob, emailTestQueue } = await import('../email-test.queue.js');
+const { sendTestEmailJob, emailTestQueue, closeEmailTestEvents } = await import('../email-test.queue.js');
 const { Queue, QueueEvents } = await import('bullmq');
 // Recorded at import; mock calls are cleared between tests
 const queueConstructorArgs = [...vi.mocked(Queue).mock.calls];
@@ -82,5 +82,20 @@ describe('sendTestEmailJob (REV-60)', () => {
 
     await expect(sendTestEmailJob(data)).resolves.toEqual({ status: 'timeout' });
     expect(job.remove).not.toHaveBeenCalled();
+  });
+
+  it('closes the QueueEvents connection once and reopens it on the next send (REV-66)', async () => {
+    events.close.mockResolvedValue(undefined);
+    job.waitUntilFinished.mockResolvedValue({ messageId: 'm-1' });
+    await sendTestEmailJob(data);
+    events.close.mockClear();
+    vi.mocked(QueueEvents).mockClear();
+
+    await closeEmailTestEvents();
+    await closeEmailTestEvents();
+    expect(events.close).toHaveBeenCalledTimes(1);
+
+    await sendTestEmailJob(data);
+    expect(QueueEvents).toHaveBeenCalledTimes(1);
   });
 });
