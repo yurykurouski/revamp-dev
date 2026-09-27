@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist",
     "backfill:lead-identity": "tsx src/scripts/backfill-lead-identity.ts",
-    "backfill:stuck-audits": "tsx src/scripts/backfill-stuck-audits.ts"
+    "backfill:stuck-audits": "tsx src/scripts/backfill-stuck-audits.ts",
+    "migrate:lead-statuses": "tsx src/scripts/migrate-lead-statuses.ts"
   },
   "dependencies": {
     "@revamp/db": "*",

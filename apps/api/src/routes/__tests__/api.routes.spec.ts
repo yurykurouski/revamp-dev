@@ -285,6 +285,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         _id: new mongoose.Types.ObjectId(),
         originalUrl: 'https://example.com',
         niche: 'auto',
+        status: 'QUEUED',
       };
       const mockAudit = {
         _id: new mongoose.Types.ObjectId(),
@@ -316,17 +317,18 @@ describe('API Routes Integration Tests (Supertest)', () => {
         auditError: 'page.goto: net::ERR_NAME_NOT_RESOLVED at https://ekomyj.com/',
       };
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
-      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
       vi.spyOn(Audit, 'create').mockResolvedValue({ _id: new mongoose.Types.ObjectId() } as any);
       vi.spyOn(auditQueue, 'addAuditJob').mockResolvedValue({ id: 'job-retry' } as any);
 
       const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
 
       expect(res.status).toBe(202);
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(mockLead._id, {
-        $set: { status: 'QUEUED' },
-        $unset: { auditError: '' },
-      });
+      // Atomic: only a lead that is still AUDIT_FAILED (or already QUEUED) is put back (REV-62)
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: mockLead._id, status: { $in: ['AUDIT_FAILED', 'QUEUED'] } },
+        { $set: { status: 'QUEUED' }, $unset: { auditError: '' } },
+      );
       expect(auditQueue.addAuditJob).toHaveBeenCalledWith({
         leadId: mockLead._id.toString(),
         url: 'https://ekomyj.com',
@@ -334,10 +336,10 @@ describe('API Routes Integration Tests (Supertest)', () => {
       });
     });
 
-    it('should leave the lead untouched when re-auditing a lead without an audit failure', async () => {
-      const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status: 'AUDITED' };
+    it('should re-run the audit of a queued lead without changing it', async () => {
+      const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status: 'QUEUED' };
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
-      const updateSpy = vi.spyOn(Lead, 'findByIdAndUpdate');
+      const updateSpy = vi.spyOn(Lead, 'findOneAndUpdate');
       vi.spyOn(Audit, 'create').mockResolvedValue({ _id: new mongoose.Types.ObjectId() } as any);
       vi.spyOn(auditQueue, 'addAuditJob').mockResolvedValue({ id: 'job-1' } as any);
 
@@ -345,6 +347,37 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(202);
       expect(updateSpy).not.toHaveBeenCalled();
+    });
+
+    it.each(['AUDITING', 'AUDITED', 'GENERATING', 'NEEDS_APPROVAL', 'SCHEDULED', 'SENT', 'REJECTED', 'UNSUBSCRIBED'])(
+      'should refuse to audit a %s lead with 409, queueing nothing (REV-62)',
+      async (status) => {
+        const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status };
+        vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
+        const updateSpy = vi.spyOn(Lead, 'findOneAndUpdate');
+        const createSpy = vi.spyOn(Audit, 'create');
+        const queueSpy = vi.spyOn(auditQueue, 'addAuditJob');
+
+        const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
+
+        expect(res.status).toBe(409);
+        expect(res.body.details).toEqual({ code: 'LEAD_NOT_AUDITABLE', status });
+        expect(updateSpy).not.toHaveBeenCalled();
+        expect(createSpy).not.toHaveBeenCalled();
+        expect(queueSpy).not.toHaveBeenCalled();
+      },
+    );
+
+    it('should return 409 when the failed lead changes before it is re-queued', async () => {
+      const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status: 'AUDIT_FAILED' };
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      const queueSpy = vi.spyOn(auditQueue, 'addAuditJob');
+
+      const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
+
+      expect(res.status).toBe(409);
+      expect(queueSpy).not.toHaveBeenCalled();
     });
   });
 
@@ -392,7 +425,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
     const mockFindById = (lead: Record<string, unknown> | null) =>
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
 
-    it.each(['NEEDS_APPROVAL', 'AWAITING_APPROVAL'])(
+    it.each(['NEEDS_APPROVAL'])(
       'approves a %s lead atomically, schedules it, enqueues the email and returns 200',
       async (status) => {
         const leadId = new mongoose.Types.ObjectId().toString();
@@ -435,7 +468,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         expect(res.body.data.campaignId).toBe(campaignId);
         expect(res.body.data.jobId).toBe('mock-email-job-1');
         expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-          { _id: leadId, status: { $in: ['NEEDS_APPROVAL', 'AWAITING_APPROVAL'] } },
+          { _id: leadId, status: { $in: ['NEEDS_APPROVAL'] } },
           { $set: { status: 'SCHEDULED' } },
           { new: true },
         );
@@ -471,20 +504,15 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
     it.each([
       'QUEUED',
-      'PENDING',
       'AUDITING',
       'AUDIT_FAILED',
       'AUDITED',
       'GENERATING',
-      'MVP_READY',
-      'APPROVED',
       'SCHEDULED',
       'SENT',
-      'DISPATCHED',
       'OPENED',
       'CLICKED',
       'ENGAGED',
-      'REPLIED',
       'REJECTED',
       'UNSUBSCRIBED',
     ])('returns 409 LEAD_NOT_AWAITING_APPROVAL and queues nothing for a %s lead (REV-59)', async (status) => {
@@ -599,14 +627,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
   describe('POST /api/v1/outreach/:id/reject', () => {
     it.each([
       'QUEUED',
-      'PENDING',
       'AUDITING',
       'AUDIT_FAILED',
       'AUDITED',
       'GENERATING',
-      'MVP_READY',
       'NEEDS_APPROVAL',
-      'AWAITING_APPROVAL',
     ])('rejects a %s lead atomically and returns 200', async () => {
       const leadId = new mongoose.Types.ObjectId().toString();
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
@@ -632,14 +657,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
           status: {
             $in: [
               'QUEUED',
-              'PENDING',
               'AUDITING',
               'AUDIT_FAILED',
               'AUDITED',
               'GENERATING',
-              'MVP_READY',
               'NEEDS_APPROVAL',
-              'AWAITING_APPROVAL',
             ],
           },
         },
@@ -649,7 +671,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(EmailCampaign.findOneAndUpdate).toHaveBeenCalledTimes(1);
     });
 
-    it.each(['APPROVED', 'SCHEDULED', 'SENT', 'DISPATCHED', 'OPENED', 'CLICKED', 'ENGAGED', 'REPLIED', 'REJECTED', 'UNSUBSCRIBED'])(
+    it.each(['SCHEDULED', 'SENT', 'OPENED', 'CLICKED', 'ENGAGED', 'REJECTED', 'UNSUBSCRIBED'])(
       'returns 409 LEAD_NOT_REJECTABLE and changes nothing for a %s lead (REV-59)',
       async (status) => {
         const leadId = new mongoose.Types.ObjectId().toString();
@@ -848,7 +870,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.spyOn(Lead, 'findById').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status }),
       } as any);
-      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'GENERATING' }),
       } as any);
     };
@@ -869,10 +891,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data.status).toBe('GENERATING');
       expect(res.body.data.leadId).toBe(leadId);
       expect(res.body.data.jobId).toBe('mock-ai-job-1');
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(leadId, {
-        $set: { status: 'GENERATING' },
-        $unset: { generationError: '' },
-      });
+      // Atomic: only a lead still in the status that was checked moves to GENERATING (REV-62)
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: leadId, status: 'AUDITED' },
+        { $set: { status: 'GENERATING' }, $unset: { generationError: '' } },
+      );
       expect(addAiGenerationJob).toHaveBeenCalledWith({
         leadId,
         auditId,
@@ -881,7 +904,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       });
     });
 
-    it.each(['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL', 'APPROVED'])(
+    it.each(['NEEDS_APPROVAL'])(
       'should regenerate the MVP of a %s lead when forceRegenerate is set (REV-31)',
       async (status) => {
         mockLeadWithStatus(status);
@@ -900,6 +923,17 @@ describe('API Routes Integration Tests (Supertest)', () => {
       },
     );
 
+    it('should return 409 and enqueue nothing when the lead changes before it is claimed (REV-62)', async () => {
+      mockLeadWithStatus('AUDITED');
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId });
+
+      expect(res.status).toBe(409);
+      expect(res.body.details.code).toBe('MVP_GENERATION_NOT_ALLOWED');
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+    });
+
     it('should return 409 when the lead already has an MVP and forceRegenerate is not set', async () => {
       mockLeadWithStatus('NEEDS_APPROVAL');
 
@@ -907,11 +941,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(409);
       expect(res.body.details.code).toBe('MVP_ALREADY_GENERATED');
-      expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
       expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
 
-    it.each(['SCHEDULED', 'SENT', 'DISPATCHED', 'OPENED', 'CLICKED', 'REPLIED', 'REJECTED', 'GENERATING', 'AUDITING'])(
+    it.each(['SCHEDULED', 'SENT', 'OPENED', 'CLICKED', 'ENGAGED', 'REJECTED', 'UNSUBSCRIBED', 'GENERATING', 'AUDITING'])(
       'should return 409 for a %s lead even with forceRegenerate (REV-31)',
       async (status) => {
         mockLeadWithStatus(status);
@@ -923,7 +957,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         expect(res.status).toBe(409);
         expect(res.body.success).toBe(false);
         expect(res.body.details).toEqual({ code: 'MVP_GENERATION_NOT_ALLOWED', status });
-        expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+        expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
         expect(addAiGenerationJob).not.toHaveBeenCalled();
       },
     );

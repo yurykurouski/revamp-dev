@@ -3,17 +3,13 @@ import crypto from 'crypto';
 import mongoose from 'mongoose';
 import {
   ApproveOutreachSchema,
-  RejectOutreachSchema,
-  TestEmailOutreachSchema,
-} from '@revamp/validation';
-import {
-  EMAIL_PROVIDER_NOT_CONFIGURED,
-  LeadStatus,
   OUTREACH_APPROVABLE_STATUSES,
   OUTREACH_REJECTABLE_STATUSES,
+  RejectOutreachSchema,
+  TestEmailOutreachSchema,
   canApproveOutreach,
-  draftToHtml,
-} from '@revamp/shared-types';
+} from '@revamp/validation';
+import { EMAIL_PROVIDER_NOT_CONFIGURED, LeadStatus, draftToHtml } from '@revamp/shared-types';
 import { validateBody } from '../middlewares/validate.js';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
@@ -57,7 +53,7 @@ const leadNotFound = (res: Response, id: string): void => {
 router.get('/pending', async (_req: Request, res: Response, next: NextFunction) => {
   try {
     const pendingLeads = await Lead.find({
-      status: { $in: ['NEEDS_APPROVAL', 'AWAITING_APPROVAL'] },
+      status: { $in: OUTREACH_APPROVABLE_STATUSES },
     })
       .sort({ updatedAt: -1 })
       .limit(50)

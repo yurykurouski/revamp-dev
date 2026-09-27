@@ -103,6 +103,10 @@ Revamp-dev/
 7. **One Schema per Collection (REV-48):**
    * Mongoose schemas are defined only in `packages/db` (`@revamp/db`). `apps/api/src/models` and `apps/workers/src/models` only re-export them; never add or change a schema inside an app.
    * Queue names come from `QUEUE_NAMES` in `@revamp/shared-types`.
+8. **One Lead State Machine (REV-62):**
+   * `LEAD_STATUSES` (`@revamp/shared-types`) lists every lead status; `LEAD_TRANSITIONS`, `canTransition` and `leadStatusesInto` (`@revamp/validation`) define the allowed moves.
+   * Every write of `Lead.status` checks the table, normally as an atomic filter (`Lead.findOneAndUpdate({ _id, status: { $in: leadStatusesInto(to) } }, …)`), so stale jobs and late tracking hits never move a lead backwards. Never keep a local list of statuses; add a status or an edge to the table (and its tests) instead.
+   * The dashboard maps each status to a Kanban column in `apps/dashboard/src/utils/leadStages.ts`; a new status must get a column, a chip color and a label in all five locales.
 
 ---
 

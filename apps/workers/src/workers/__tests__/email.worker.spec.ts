@@ -116,7 +116,7 @@ describe('EmailWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockCampaign),
     });
 
-    (Lead.findByIdAndUpdate as any).mockReturnValue({
+    (Lead.findOneAndUpdate as any).mockReturnValue({
       exec: vi.fn().mockResolvedValue({ ...mockLead, status: 'SENT' }),
     });
 
@@ -154,8 +154,8 @@ describe('EmailWorker (@revamp/workers)', () => {
     );
 
     // Verify Lead status was updated to SENT
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      mockLeadId,
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: mockLeadId, status: { $in: ['SCHEDULED'] } },
       expect.objectContaining({
         status: 'SENT',
       }),
@@ -170,7 +170,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     );
   });
 
-  it('should abort dispatch when Lead is not in SCHEDULED or APPROVED status (HITL Gate)', async () => {
+  it('should abort dispatch when Lead is not SCHEDULED (HITL Gate)', async () => {
     createEmailWorker();
 
     const mockLeadId = 'lead-unapproved';
@@ -221,7 +221,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     expect(result.aborted).toBe(true);
     expect(result.reason).toContain('UNSUBSCRIBED');
     expect(emailService.sendEmail).not.toHaveBeenCalled();
-    expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 
@@ -265,7 +265,7 @@ describe('EmailWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockCampaign),
     });
 
-    (Lead.findByIdAndUpdate as any).mockReturnValue({
+    (Lead.findOneAndUpdate as any).mockReturnValue({
       exec: vi.fn().mockResolvedValue(mockLead),
     });
 
@@ -294,8 +294,8 @@ describe('EmailWorker (@revamp/workers)', () => {
     );
 
     // Verified: Lead marked REJECTED with mx_bounced tag
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      mockLeadId,
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: mockLeadId, status: { $in: expect.arrayContaining(['SCHEDULED']) } },
       expect.objectContaining({
         status: 'REJECTED',
         $addToSet: { tags: 'mx_bounced' },
@@ -345,8 +345,13 @@ describe('EmailWorker (@revamp/workers)', () => {
 
       const exec = (fn: () => unknown) => ({ exec: vi.fn().mockImplementation(async () => fn()) });
       (Lead.findById as any).mockImplementation(() => exec(() => ({ ...lead })));
-      (Lead.findByIdAndUpdate as any).mockImplementation((_id: string, update: any) =>
-        exec(() => Object.assign(lead, update)),
+      (Lead.findOneAndUpdate as any).mockImplementation((filter: any, update: any) =>
+        exec(() => {
+          const wanted = filter.status?.$in ?? [filter.status];
+          if (!wanted.includes(lead.status)) return null;
+          Object.assign(lead, update);
+          return { ...lead };
+        }),
       );
       (EmailCampaign.findOne as any).mockImplementation(() => exec(() => campaign && { ...campaign }));
       (EmailCampaign.findById as any).mockImplementation(() => exec(() => campaign && { ...campaign }));
@@ -385,7 +390,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     });
 
     it('finishes only the lead update when the campaign was delivered but the lead update failed', async () => {
-      (Lead.findByIdAndUpdate as any).mockReturnValueOnce({
+      (Lead.findOneAndUpdate as any).mockReturnValueOnce({
         exec: vi.fn().mockRejectedValue(new Error('Lead write failed')),
       });
 
@@ -423,6 +428,19 @@ describe('EmailWorker (@revamp/workers)', () => {
       expect(emailService.sendEmail).toHaveBeenCalledTimes(2);
       expect(campaign['status']).toBe('DELIVERED');
       expect(lead['status']).toBe('SENT');
+    });
+
+    it('keeps a lead that opted out while the email was being sent UNSUBSCRIBED (REV-62)', async () => {
+      (emailService.sendEmail as any).mockImplementationOnce(async () => {
+        lead['status'] = 'UNSUBSCRIBED';
+        return { success: true, messageId: 'msg-1', provider: 'smtp', sentAt: new Date() };
+      });
+
+      const result = await capturedProcessor!(job('attempt-1'));
+
+      expect(result.success).toBe(true);
+      expect(campaign['status']).toBe('DELIVERED');
+      expect(lead['status']).toBe('UNSUBSCRIBED');
     });
 
     it('fails without sending and without retrying when there is no campaign', async () => {

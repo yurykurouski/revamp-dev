@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { ILead, NicheType, LeadStatus, LeadSource, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
+import { ILead, NicheType, LEAD_STATUSES, LeadSource, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 
 export interface ILeadDocument extends Omit<ILead, '_id' | 'createdAt' | 'updatedAt'>, Document {
   createdAt: Date;
@@ -79,27 +79,7 @@ const LeadSchema = new Schema<ILeadDocument>(
     },
     status: {
       type: String,
-      enum: [
-        'QUEUED',
-        'PENDING',
-        'AUDITING',
-        'AUDIT_FAILED',
-        'AUDITED',
-        'GENERATING',
-        'MVP_READY',
-        'NEEDS_APPROVAL',
-        'AWAITING_APPROVAL',
-        'APPROVED',
-        'SCHEDULED',
-        'SENT',
-        'DISPATCHED',
-        'OPENED',
-        'CLICKED',
-        'ENGAGED',
-        'REPLIED',
-        'REJECTED',
-        'UNSUBSCRIBED',
-      ] as LeadStatus[],
+      enum: [...LEAD_STATUSES],
       default: 'QUEUED',
       index: true,
     },

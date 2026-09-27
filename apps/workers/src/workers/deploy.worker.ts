@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { IDeployJobData, ILead, IAudit } from '@revamp/shared-types';
+import { leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { env } from '../config/env.js';
@@ -181,15 +182,22 @@ export const createDeployWorker = (): Worker => {
         'screenshotUrls.comparisonBanner': comparisonBannerUrl,
       }).exec();
 
-      await Lead.findByIdAndUpdate(lead._id, {
-        $set: {
-          status: 'NEEDS_APPROVAL',
-          previewUrl: fullPreviewUrl,
-          comparisonBannerUrl,
-          mvpGeneratedAt: generatedAt,
+      // Only a lead still GENERATING goes to review; one rejected meanwhile keeps its status (REV-62)
+      const reviewLead = await Lead.findOneAndUpdate(
+        { _id: lead._id, status: { $in: leadStatusesInto('NEEDS_APPROVAL') } },
+        {
+          $set: {
+            status: 'NEEDS_APPROVAL',
+            previewUrl: fullPreviewUrl,
+            comparisonBannerUrl,
+            mvpGeneratedAt: generatedAt,
+          },
+          $unset: { generationError: '' },
         },
-        $unset: { generationError: '' },
-      }).exec();
+      ).exec();
+      if (!reviewLead) {
+        console.warn(`[DeployWorker] Lead ${leadId} left GENERATING during the deploy; its status is unchanged.`);
+      }
 
       console.log(
         `[DeployWorker] Successfully deployed project ${mvpProject._id}. Ready for operator review.`,

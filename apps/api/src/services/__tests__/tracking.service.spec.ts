@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TrackingService } from '../tracking.service.js';
+import { LEAD_STATUSES } from '@revamp/shared-types';
 import { Lead } from '../../models/Lead.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
@@ -269,11 +270,56 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
     });
   });
 
+  describe('lead transitions follow the state machine (REV-62)', () => {
+    const execOf = (value: unknown) => ({ exec: vi.fn().mockResolvedValue(value) }) as any;
+
+    const track = async (status: string) => {
+      const lead = { _id: 'lead-1', status, tags: [] as string[], save: vi.fn().mockResolvedValue(true) };
+      const campaign = { _id: 'camp-1', leadId: 'lead-1', metrics: {}, save: vi.fn() };
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf(campaign));
+      vi.spyOn(Lead, 'findById').mockReturnValue(execOf(lead));
+      vi.spyOn(MvpProject, 'findOne').mockReturnValue(execOf(null));
+      vi.spyOn(AnalyticsEvent, 'create').mockResolvedValue({} as any);
+      return lead;
+    };
+
+    it.each(['QUEUED', 'NEEDS_APPROVAL', 'SCHEDULED', 'REJECTED'])(
+      'ignores opens, clicks and engagement for a %s lead whose email has not gone out',
+      async (status) => {
+        const lead = await track(status);
+        await service.recordEmailOpen('tok-1');
+        await service.recordClick('tok-1');
+        await service.recordMvpEvent({ token: 'tok-1', eventType: 'cta_click' });
+        expect(lead.status).toBe(status);
+        expect(lead.save).not.toHaveBeenCalled();
+      },
+    );
+
+    it('never moves a clicked lead back to OPENED', async () => {
+      const lead = await track('CLICKED');
+      await service.recordEmailOpen('tok-1');
+      expect(lead.status).toBe('CLICKED');
+      expect(lead.save).not.toHaveBeenCalled();
+    });
+
+    it('moves a SENT lead forward on each signal', async () => {
+      const lead = await track('SENT');
+      await service.recordEmailOpen('tok-1');
+      expect(lead.status).toBe('OPENED');
+      await service.recordClick('tok-1');
+      expect(lead.status).toBe('CLICKED');
+      await service.recordMvpEvent({ token: 'tok-1', eventType: 'booking_intent' });
+      expect(lead.status).toBe('ENGAGED');
+    });
+  });
+
   describe('unsubscribe (REV-73)', () => {
+    // An opt-out applies from every status but UNSUBSCRIBED itself (REV-62)
+    const NOT_OPTED_OUT = LEAD_STATUSES.filter((status) => status !== 'UNSUBSCRIBED');
     const execOf = (value: unknown) => ({ exec: vi.fn().mockResolvedValue(value) }) as any;
 
     beforeEach(() => {
-      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue(execOf({}));
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue(execOf({}));
       vi.spyOn(AnalyticsEvent, 'create').mockResolvedValue({} as any);
     });
 
@@ -300,10 +346,10 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
         { $set: { status: 'UNSUBSCRIBED', unsubscribedAt: expect.any(Date) } },
         { new: true },
       );
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-1', {
-        $set: { status: 'UNSUBSCRIBED' },
-        $addToSet: { tags: 'unsubscribed' },
-      });
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'lead-1', status: { $in: NOT_OPTED_OUT } },
+        { $set: { status: 'UNSUBSCRIBED' }, $addToSet: { tags: 'unsubscribed' } },
+      );
       expect(AnalyticsEvent.create).toHaveBeenCalledTimes(1);
       expect(AnalyticsEvent.create).toHaveBeenCalledWith(
         expect.objectContaining({ eventType: 'unsubscribe', trackingToken: 'tok-1', leadId: 'lead-1', campaignId: 'camp-1' }),
@@ -317,7 +363,10 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
       const result = await service.recordUnsubscribe('tok-1');
 
       expect(result).toEqual({ found: true, alreadyUnsubscribed: true, leadId: 'lead-1' });
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-1', { $set: { status: 'UNSUBSCRIBED' } });
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'lead-1', status: { $in: NOT_OPTED_OUT } },
+        { $set: { status: 'UNSUBSCRIBED' } },
+      );
       expect(AnalyticsEvent.create).not.toHaveBeenCalled();
     });
 
@@ -328,7 +377,7 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
       const result = await service.recordUnsubscribe(token);
 
       expect(result).toEqual({ found: false, alreadyUnsubscribed: false });
-      expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
       expect(AnalyticsEvent.create).not.toHaveBeenCalled();
     });
 

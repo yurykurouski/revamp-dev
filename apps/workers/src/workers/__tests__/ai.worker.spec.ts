@@ -126,7 +126,7 @@ describe('AiWorker (@revamp/workers)', () => {
 
     vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
-    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
     } as any);
 
@@ -162,8 +162,11 @@ describe('AiWorker (@revamp/workers)', () => {
 
     // The lead stays GENERATING; the deploy worker moves it to NEEDS_APPROVAL (HITL gate) once
     // the new preview is published (REV-31)
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-123', { status: 'GENERATING' });
-    expect(Lead.findByIdAndUpdate).not.toHaveBeenCalledWith('lead-123', { status: 'NEEDS_APPROVAL' });
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-123', status: { $in: ['AUDITED', 'NEEDS_APPROVAL', 'GENERATING'] } },
+      { $set: { status: 'GENERATING' } },
+    );
+    expect(Lead.findOneAndUpdate).not.toHaveBeenCalledWith(expect.anything(), { $set: { status: 'NEEDS_APPROVAL' } });
     expect(addDeployJob).toHaveBeenCalledWith({
       leadId: 'lead-123',
       auditId: 'audit-456',
@@ -271,7 +274,7 @@ describe('AiWorker (@revamp/workers)', () => {
 
     vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
-    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
     } as any);
 
@@ -384,7 +387,7 @@ describe('AiWorker (@revamp/workers)', () => {
 
     vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
-    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
     } as any);
 
@@ -415,7 +418,7 @@ describe('AiWorker (@revamp/workers)', () => {
         exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Smile Dental', niche: 'dental' }),
       } as any);
       vi.mocked(findGenerationAudit).mockResolvedValue({ _id: 'audit-456', leadId: 'lead-123' } as any);
-      vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
       vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
     };
 
@@ -493,6 +496,22 @@ describe('AiWorker (@revamp/workers)', () => {
     expect(mockWorkerInstance.on).toHaveBeenCalledWith('failed', expect.any(Function));
   });
 
+  it('should skip generation for a lead that was rejected or moved on since the job was queued (REV-62)', async () => {
+    createAiWorker();
+    vi.mocked(Lead.findById).mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'X', status: 'REJECTED' }),
+    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue({ _id: 'audit-1', status: 'COMPLETED' } as any);
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+
+    const result = await capturedProcessor!({ id: 'job-skip', data: { leadId: 'lead-123', auditId: 'audit-1' } });
+
+    expect(result).toMatchObject({ success: false, skipped: true, leadId: 'lead-123' });
+    expect(result.reason).toContain('REJECTED');
+    expect(mvpContentService.generateContent).not.toHaveBeenCalled();
+    expect(addDeployJob).not.toHaveBeenCalled();
+  });
+
   it('should throw error when Lead is not found', async () => {
     createAiWorker();
 
@@ -517,14 +536,14 @@ describe('AiWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Biz' }),
     } as any);
     vi.mocked(findGenerationAudit).mockResolvedValue(null);
-    vi.mocked(Lead.findByIdAndUpdate).mockClear();
+    vi.mocked(Lead.findOneAndUpdate).mockClear();
     vi.mocked(mvpContentService.generateContent).mockClear();
     vi.mocked(addDeployJob).mockClear();
 
     await expect(capturedProcessor!({ id: 'j', data: { leadId: 'lead-123', auditId: 'audit-failed' } })).rejects.toThrow(
       'No completed audit found for lead lead-123',
     );
-    expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     expect(mvpContentService.generateContent).not.toHaveBeenCalled();
     expect(addDeployJob).not.toHaveBeenCalled();
   });

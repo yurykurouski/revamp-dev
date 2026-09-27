@@ -38,14 +38,14 @@ const isDisabled = (html: string, label: string): boolean => {
 const notice = (html: string) => html.includes('data-testid="outreach-status-notice"');
 
 describe('EmailDraftEditor outreach actions by lead status (REV-59)', () => {
-  it.each<LeadStatus>(['NEEDS_APPROVAL', 'AWAITING_APPROVAL'])('offers approve and reject for a %s lead', (status) => {
+  it.each<LeadStatus>(['NEEDS_APPROVAL'])('offers approve and reject for a %s lead', (status) => {
     const html = render(status);
     expect(isDisabled(html, en.email.approve)).toBe(false);
     expect(isDisabled(html, en.email.reject)).toBe(false);
     expect(notice(html)).toBe(false);
   });
 
-  it.each<LeadStatus>(['QUEUED', 'AUDITING', 'AUDIT_FAILED', 'AUDITED', 'GENERATING', 'MVP_READY'])(
+  it.each<LeadStatus>(['QUEUED', 'AUDITING', 'AUDIT_FAILED', 'AUDITED', 'GENERATING'])(
     'offers only reject for a %s lead that is not ready for review',
     (status) => {
       const html = render(status);
@@ -55,7 +55,7 @@ describe('EmailDraftEditor outreach actions by lead status (REV-59)', () => {
     },
   );
 
-  it.each<LeadStatus>(['APPROVED', 'SCHEDULED', 'SENT', 'OPENED', 'CLICKED', 'ENGAGED', 'REPLIED', 'REJECTED', 'UNSUBSCRIBED'])(
+  it.each<LeadStatus>(['SCHEDULED', 'SENT', 'OPENED', 'CLICKED', 'ENGAGED', 'REJECTED', 'UNSUBSCRIBED'])(
     'offers neither approve nor reject for a %s lead',
     (status) => {
       const html = render(status);
