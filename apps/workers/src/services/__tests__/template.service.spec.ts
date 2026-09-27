@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { BentoTemplateService, bentoTemplateService } from '../template.service.js';
+import { resolveTrackerUrls } from '../../templates/bento.template.js';
+import { env } from '../../config/env.js';
 import { IBentoTemplateData, ILead, IAudit } from '@revamp/shared-types';
 
 describe('BentoTemplateService (@revamp/workers)', () => {
@@ -64,6 +66,7 @@ describe('BentoTemplateService (@revamp/workers)', () => {
       },
     ],
     trackingToken: 'track_token_abc123',
+    publicApiUrl: 'http://localhost:4000/api/v1',
   };
 
   it('should render a valid, self-contained HTML5 document', () => {
@@ -442,6 +445,68 @@ describe('BentoTemplateService (@revamp/workers)', () => {
 
       expect(html).not.toContain('id="about"');
       expect(html).toContain('What Warsaw Dental Center offers');
+    });
+  });
+
+  describe('telemetry tracker URLs (REV-52)', () => {
+    it('loads the tracker from the absolute API URL and points data-api at the API origin', () => {
+      const html = bentoTemplateService.render({
+        ...sampleTemplateData,
+        publicApiUrl: 'https://api.revamp.io/api/v1/',
+        trackingToken: 'tok-123',
+      });
+
+      expect(html).toContain(
+        '<script src="https://api.revamp.io/api/v1/track/revamp-tracker.js" data-api="https://api.revamp.io" data-token="tok-123" async></script>',
+      );
+      expect(html).toContain('navigator.sendBeacon("https://api.revamp.io/api/v1/track/mvp-event"');
+      expect(html).not.toMatch(/src="\/api\/v1\/track\//);
+      expect(html).not.toContain("'/api/v1/track/");
+    });
+
+    it('omits the tracker instead of using a relative path when no API URL is known', () => {
+      const html = bentoTemplateService.render({
+        ...sampleTemplateData,
+        publicApiUrl: undefined,
+        trackingToken: 'tok-123',
+      });
+
+      expect(html).not.toContain('revamp-tracker.js');
+      expect(html).not.toContain('/track/mvp-event');
+    });
+
+    it('escapes the tracking token in the tracker tag and the booking beacon', () => {
+      const html = bentoTemplateService.render({
+        ...sampleTemplateData,
+        publicApiUrl: 'http://localhost:4000/api/v1',
+        trackingToken: `a"b'</script>`,
+      });
+
+      expect(html).toContain('data-token="a&quot;b&#039;&lt;/script&gt;"');
+      expect(html).toContain('token: "a\\"b\'\\u003c/script>"');
+    });
+
+    it('rejects a non-http API URL', () => {
+      expect(() =>
+        bentoTemplateService.render({ ...sampleTemplateData, publicApiUrl: 'javascript:alert(1)' }),
+      ).toThrow();
+    });
+
+    it('renders MVPs from an audit with the configured PUBLIC_API_URL', () => {
+      const html = bentoTemplateService.renderFromAudit({ businessName: 'Listonosz Auto Service' });
+      const apiBase = env.PUBLIC_API_URL.replace(/\/+$/, '');
+
+      expect(html).toContain(`<script src="${apiBase}/track/revamp-tracker.js" data-api="${new URL(apiBase).origin}"`);
+    });
+
+    it('resolves tracker URLs and rejects unparseable API URLs', () => {
+      expect(resolveTrackerUrls('http://localhost:4000/api/v1')).toEqual({
+        scriptSrc: 'http://localhost:4000/api/v1/track/revamp-tracker.js',
+        apiOrigin: 'http://localhost:4000',
+        eventUrl: 'http://localhost:4000/api/v1/track/mvp-event',
+      });
+      expect(resolveTrackerUrls(undefined)).toBeNull();
+      expect(resolveTrackerUrls('not a url')).toBeNull();
     });
   });
 

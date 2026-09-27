@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import request from 'supertest';
 import { createApp } from '../../app.js';
 import { trackingService } from '../../services/tracking.service.js';
+import { env } from '../../config/env.js';
 
 vi.mock('../../services/tracking.service.js', () => ({
   trackingService: {
@@ -126,6 +127,68 @@ describe('Track Routes Integration Tests (REV-18 Telemetry)', () => {
       expect(res.text).toContain('sendBeacon');
       expect(res.text).toContain('dwell_time');
       expect(res.text).toContain('cta_click');
+    });
+
+    it('allows cross-origin loading from the MVP storage host (REV-52)', async () => {
+      const res = await request(app).get('/api/v1/track/revamp-tracker.js');
+
+      expect(res.headers['cross-origin-resource-policy']).toBe('cross-origin');
+    });
+  });
+
+  describe('CORS for MVP telemetry (REV-52)', () => {
+    const previewOrigin = new URL(env.S3_ENDPOINT).origin;
+
+    it('answers the credentialed sendBeacon preflight from the MVP storage origin', async () => {
+      const res = await request(app)
+        .options('/api/v1/track/mvp-event')
+        .set('Origin', previewOrigin)
+        .set('Access-Control-Request-Method', 'POST')
+        .set('Access-Control-Request-Headers', 'content-type');
+
+      expect(res.status).toBe(204);
+      expect(res.headers['access-control-allow-origin']).toBe(previewOrigin);
+      expect(res.headers['access-control-allow-credentials']).toBe('true');
+    });
+
+    it('accepts mvp-event beacons from the production preview domain', async () => {
+      const origin = `https://${env.PREVIEW_DOMAIN}`;
+      const res = await request(app)
+        .post('/api/v1/track/mvp-event')
+        .set('Origin', origin)
+        .send({ token: 'tok-mvp-123', eventType: 'pageview' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['access-control-allow-origin']).toBe(origin);
+    });
+
+    it('does not allow unknown origins', async () => {
+      const res = await request(app)
+        .options('/api/v1/track/mvp-event')
+        .set('Origin', 'https://evil.example.com')
+        .set('Access-Control-Request-Method', 'POST');
+
+      expect(res.headers['access-control-allow-origin']).toBeUndefined();
+    });
+
+    it('does not open the rest of the API to the preview origin', async () => {
+      const res = await request(app)
+        .options('/api/v1/leads')
+        .set('Origin', previewOrigin)
+        .set('Access-Control-Request-Method', 'GET');
+
+      expect(res.headers['access-control-allow-origin']).toBe(env.CORS_ORIGIN);
+      expect(res.headers['access-control-allow-origin']).not.toBe(previewOrigin);
+    });
+
+    it('keeps credentialed CORS for the dashboard origin', async () => {
+      const res = await request(app)
+        .options('/api/v1/track/mvp-event')
+        .set('Origin', env.CORS_ORIGIN)
+        .set('Access-Control-Request-Method', 'POST');
+
+      expect(res.headers['access-control-allow-origin']).toBe(env.CORS_ORIGIN);
+      expect(res.headers['access-control-allow-credentials']).toBe('true');
     });
   });
 });

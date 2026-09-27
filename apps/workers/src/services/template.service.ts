@@ -10,6 +10,7 @@ import { BentoTemplateDataSchema } from '@revamp/validation';
 import { generateBentoHtml } from '../templates/bento.template.js';
 import { getSupportedIconNames } from '../templates/icons.js';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
+import { env } from '../config/env.js';
 
 export class BentoTemplateService {
   /**
@@ -126,6 +127,8 @@ export class BentoTemplateService {
       socialLinks: (contacts?.socialLinks || []).filter((l) => isHttpUrl(l.url)).slice(0, 8),
       footerTagline: site?.metaDescription?.slice(0, 300),
       originalUrl: isHttpUrl(lead.originalUrl) ? lead.originalUrl : undefined,
+      // The tracker is loaded from the API, not the storage host serving the MVP (REV-52)
+      publicApiUrl: isHttpUrl(env.PUBLIC_API_URL) ? env.PUBLIC_API_URL : undefined,
     };
 
     return this.render(templateData);

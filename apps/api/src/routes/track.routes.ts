@@ -102,6 +102,8 @@ router.get('/revamp-tracker.js', (_req: Request, res: Response): void => {
   res.writeHead(200, {
     'Content-Type': 'application/javascript; charset=utf-8',
     'Cache-Control': 'public, max-age=3600',
+    // MVP pages load this from the storage host; helmet's default same-origin CORP would block it (REV-52)
+    'Cross-Origin-Resource-Policy': 'cross-origin',
   });
   res.end(scriptContent);
 });
