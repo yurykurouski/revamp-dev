@@ -65,8 +65,9 @@ Revamp-dev/
 │   ├── workers/         # BullMQ background workers (Playwright, AI, Deploy, Email)
 │   └── dashboard/       # Operator frontend (React 18+, Material UI v6, Vite, Zustand)
 ├── packages/
-│   ├── shared-types/    # Shared interfaces, enums, and DTOs across the monorepo
-│   └── validation/      # Shared Zod validation schemas (API and frontend forms)
+│   ├── shared-types/    # Shared interfaces, enums, DTOs and queue names across the monorepo
+│   ├── validation/      # Shared Zod validation schemas (API and frontend forms)
+│   └── db/              # Mongoose models shared by the API and workers (REV-48)
 ├── docker-compose.yml   # Containerized services: MongoDB 7.0, Redis 7.0, MinIO + minio-init
 ├── package.json         # Root npm workspace configuration
 ├── AGENTS.md            # This instruction file
@@ -96,6 +97,9 @@ Revamp-dev/
      - **Workers & Queues:** Test job payload handling, state transitions, and error recovery.
      - **Frontend Stores:** Test Zustand state transitions, filter mutations, and reset actions.
    * All test suites must execute and pass cleanly (`npm test`) with 0 failures prior to submitting any task.
+6. **One Schema per Collection (REV-48):**
+   * Mongoose schemas are defined only in `packages/db` (`@revamp/db`). `apps/api/src/models` and `apps/workers/src/models` only re-export them; never add or change a schema inside an app.
+   * Queue names come from `QUEUE_NAMES` in `@revamp/shared-types`.
 
 ---
 
