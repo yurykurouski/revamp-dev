@@ -22,7 +22,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import type { CompletenessField } from '@revamp/shared-types';
+import { canApproveOutreach, canRejectLead, type CompletenessField } from '@revamp/shared-types';
 import { ILeadItem, IAuditDetail } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
@@ -92,6 +92,10 @@ Best regards, the Revamp SaaS team`;
   const [errorAlert, setErrorAlert] = useState<string | null>(null);
   const [dataConfirmOpen, setDataConfirmOpen] = useState(false);
 
+  // The API refuses approve/reject outside these statuses (REV-59), so neither is offered there
+  const canApprove = canApproveOutreach(lead.status);
+  const canReject = canRejectLead(lead.status);
+
   // Substitute variables for preview
   const demoUrl = lead.previewUrl;
 
@@ -128,6 +132,7 @@ Best regards, the Revamp SaaS team`;
 
   // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
   const handleApproveSubmit = async () => {
+    if (!canApprove) return;
     if (criticalDataIssues.length > 0) {
       setDataConfirmOpen(true);
       return;
@@ -161,7 +166,7 @@ Best regards, the Revamp SaaS team`;
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [subject, preheader, body, criticalDataIssues]);
+  }, [subject, preheader, body, criticalDataIssues, canApprove]);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', gap: 2 }}>
@@ -177,6 +182,11 @@ Best regards, the Revamp SaaS team`;
       {errorAlert && (
         <Alert severity="error" onClose={() => setErrorAlert(null)}>
           {errorAlert}
+        </Alert>
+      )}
+      {!canApprove && !successAlert && (
+        <Alert severity="info" data-testid="outreach-status-notice">
+          {t(canReject ? 'email.approveUnavailable' : 'email.outreachClosed', { status: lead.status })}
         </Alert>
       )}
 
@@ -412,7 +422,7 @@ Best regards, the Revamp SaaS team`;
             variant="outlined"
             startIcon={<DoDisturbIcon />}
             onClick={() => setRejectDialogOpen(true)}
-            disabled={isActionLoading}
+            disabled={isActionLoading || !canReject}
             sx={{ fontWeight: 600 }}
           >
             {t('email.reject')}
@@ -440,7 +450,7 @@ Best regards, the Revamp SaaS team`;
               )
             }
             onClick={handleApproveSubmit}
-            disabled={isActionLoading}
+            disabled={isActionLoading || !canApprove}
             sx={{ px: 2 }}
           >
             {t('email.approve')}

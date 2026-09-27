@@ -72,7 +72,7 @@ The operator can override the provider and model for each generation from the da
 
 `EMAIL_PROVIDER` picks the outreach provider: `resend` (`RESEND_API_KEY`), `sendgrid` (`SENDGRID_API_KEY`) or `smtp` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`). It has no default: without it, an approved email fails at dispatch instead of being reported as sent.
 
-A lead can be added without a contact email; the audit then fills it in from the email published on the site. Outreach cannot be approved for a lead that still has no email (409).
+A lead can be added without a contact email; the audit then fills it in from the email published on the site. Outreach cannot be approved for a lead that still has no email (409). Outreach can be approved only while the lead awaits review (`NEEDS_APPROVAL`), and a lead can be rejected only until its outreach is approved; otherwise the API answers `409 LEAD_NOT_AWAITING_APPROVAL` or `409 LEAD_NOT_REJECTABLE` and the dashboard disables the action.
 
 ### Discovery
 

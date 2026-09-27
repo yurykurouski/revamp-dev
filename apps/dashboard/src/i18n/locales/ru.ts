@@ -417,6 +417,8 @@ export const ru: Translation = {
     defaultRejectReason: 'Нецелевая ниша / сайт закрыт',
     approved: 'Лид одобрен и переведён в статус SCHEDULED!',
     actionFailed: 'Действие не выполнено: {{error}}',
+    approveUnavailable: 'Рассылку можно одобрить, когда MVP будет готов к проверке. Текущий статус: {{status}}.',
+    outreachClosed: 'Рассылка для этого лида уже одобрена или закрыта (статус: {{status}}). Её больше нельзя одобрить или отклонить.',
     testSent: 'Тестовое письмо отправлено на {{email}}',
     editorTitle: 'Редактор письма (Outreach Personalizer)',
     subject: 'Тема',

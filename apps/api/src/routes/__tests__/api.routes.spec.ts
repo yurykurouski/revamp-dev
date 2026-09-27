@@ -341,66 +341,138 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/outreach/:id/approve (HITL Gate)', () => {
-    it('should approve outreach draft, update Lead status to SCHEDULED, enqueue email job, and return 200', async () => {
-      const leadId = new mongoose.Types.ObjectId().toString();
-      const campaignId = new mongoose.Types.ObjectId().toString();
+    const mockFindById = (lead: Record<string, unknown> | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
 
-      vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: leadId, contactEmail: 'custom@business.com' }),
-      } as any);
-      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({
-          _id: leadId,
-          businessName: 'Custom Business',
-          contactEmail: 'custom@business.com',
-          status: 'SCHEDULED',
-        }),
-      } as any);
+    it.each(['NEEDS_APPROVAL', 'AWAITING_APPROVAL'])(
+      'approves a %s lead atomically, schedules it, enqueues the email and returns 200',
+      async (status) => {
+        const leadId = new mongoose.Types.ObjectId().toString();
+        const campaignId = new mongoose.Types.ObjectId().toString();
 
-      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({
-          _id: campaignId,
-          leadId,
-          status: 'SCHEDULED',
-          subject: 'Custom Subject',
-          previewText: 'Custom Preheader',
-          approvedAt: new Date().toISOString(),
-        }),
-      } as any);
+        mockFindById({ _id: leadId, status, contactEmail: 'custom@business.com' });
+        vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
+          exec: vi.fn().mockResolvedValue({
+            _id: leadId,
+            businessName: 'Custom Business',
+            contactEmail: 'custom@business.com',
+            status: 'SCHEDULED',
+          }),
+        } as any);
 
-      const res = await request(app)
-        .post(`/api/v1/outreach/${leadId}/approve`)
-        .send({
-          approvedBy: 'operator',
-          subject: 'Custom Subject',
-          preheader: 'Custom Preheader',
-          body: 'Hello, check your demo',
+        vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue({
+          exec: vi.fn().mockResolvedValue({
+            _id: campaignId,
+            leadId,
+            status: 'SCHEDULED',
+            subject: 'Custom Subject',
+            previewText: 'Custom Preheader',
+            approvedAt: new Date().toISOString(),
+          }),
+        } as any);
+
+        const res = await request(app)
+          .post(`/api/v1/outreach/${leadId}/approve`)
+          .send({
+            approvedBy: 'operator',
+            subject: 'Custom Subject',
+            preheader: 'Custom Preheader',
+            body: 'Hello, check your demo',
+          });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.data.status).toBe('SCHEDULED');
+        expect(res.body.data.subject).toBe('Custom Subject');
+        expect(res.body.data.campaignId).toBe(campaignId);
+        expect(res.body.data.jobId).toBe('mock-email-job-1');
+        expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+          { _id: leadId, status: { $in: ['NEEDS_APPROVAL', 'AWAITING_APPROVAL'] } },
+          { $set: { status: 'SCHEDULED' } },
+          { new: true },
+        );
+        expect(vi.mocked(EmailCampaign.findOneAndUpdate).mock.calls[0]![1]).toMatchObject({
+          recipientEmail: 'custom@business.com',
         });
+        expect(addEmailDispatchJob).toHaveBeenCalledTimes(1);
+      },
+    );
 
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.status).toBe('SCHEDULED');
-      expect(res.body.data.subject).toBe('Custom Subject');
-      expect(res.body.data.campaignId).toBe(campaignId);
-      expect(res.body.data.jobId).toBe('mock-email-job-1');
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-        leadId,
-        { $set: { status: 'SCHEDULED' } },
-        { new: true },
-      );
-      expect(vi.mocked(EmailCampaign.findOneAndUpdate).mock.calls[0]![1]).toMatchObject({
-        recipientEmail: 'custom@business.com',
-      });
+    it.each([
+      'QUEUED',
+      'PENDING',
+      'AUDITING',
+      'AUDIT_FAILED',
+      'AUDITED',
+      'GENERATING',
+      'MVP_READY',
+      'APPROVED',
+      'SCHEDULED',
+      'SENT',
+      'DISPATCHED',
+      'OPENED',
+      'CLICKED',
+      'ENGAGED',
+      'REPLIED',
+      'REJECTED',
+      'UNSUBSCRIBED',
+    ])('returns 409 LEAD_NOT_AWAITING_APPROVAL and queues nothing for a %s lead (REV-59)', async (status) => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, status, contactEmail: 'owner@business.com' });
+      const update = vi.spyOn(Lead, 'findOneAndUpdate');
+      const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('LEAD_NOT_AWAITING_APPROVAL');
+      expect(res.body.error.message).toContain(status);
+      expect(update).not.toHaveBeenCalled();
+      expect(campaign).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 409 and queues nothing when a concurrent approval already moved the lead on (REV-59)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      // The status filter no longer matches: another request scheduled the lead in between
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('LEAD_NOT_AWAITING_APPROVAL');
+      expect(campaign).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 when the lead does not exist', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById(null);
+      const update = vi.spyOn(Lead, 'findOneAndUpdate');
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      expect(update).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 for an invalid lead id', async () => {
+      const res = await request(app).post('/api/v1/outreach/lead-123/approve').send({ approvedBy: 'operator' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_ID');
     });
 
     it('should return 409 and schedule nothing when the lead has no contact email (REV-45)', async () => {
       const leadId = new mongoose.Types.ObjectId().toString();
-      vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'No Email' }),
-      } as any);
-      const update = vi.spyOn(Lead, 'findByIdAndUpdate');
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', businessName: 'No Email' });
+      const update = vi.spyOn(Lead, 'findOneAndUpdate');
       const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
-      vi.mocked(addEmailDispatchJob).mockClear();
 
       const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
 
@@ -413,10 +485,23 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/outreach/:id/reject', () => {
-    it('should reject outreach draft, update Lead status to REJECTED, and return 200', async () => {
+    it.each([
+      'QUEUED',
+      'PENDING',
+      'AUDITING',
+      'AUDIT_FAILED',
+      'AUDITED',
+      'GENERATING',
+      'MVP_READY',
+      'NEEDS_APPROVAL',
+      'AWAITING_APPROVAL',
+    ])('rejects a %s lead atomically and returns 200', async () => {
       const leadId = new mongoose.Types.ObjectId().toString();
-      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'REJECTED' }),
+      } as any);
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(null),
       } as any);
 
       const res = await request(app)
@@ -429,11 +514,60 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.status).toBe('REJECTED');
       expect(res.body.data.reason).toBe('Off-target business');
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-        leadId,
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        {
+          _id: leadId,
+          status: {
+            $in: [
+              'QUEUED',
+              'PENDING',
+              'AUDITING',
+              'AUDIT_FAILED',
+              'AUDITED',
+              'GENERATING',
+              'MVP_READY',
+              'NEEDS_APPROVAL',
+              'AWAITING_APPROVAL',
+            ],
+          },
+        },
         { $set: { status: 'REJECTED' } },
         { new: true },
       );
+      expect(EmailCampaign.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it.each(['APPROVED', 'SCHEDULED', 'SENT', 'DISPATCHED', 'OPENED', 'CLICKED', 'ENGAGED', 'REPLIED', 'REJECTED', 'UNSUBSCRIBED'])(
+      'returns 409 LEAD_NOT_REJECTABLE and changes nothing for a %s lead (REV-59)',
+      async (status) => {
+        const leadId = new mongoose.Types.ObjectId().toString();
+        vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+        vi.spyOn(Lead, 'findById').mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: leadId, status }),
+        } as any);
+        const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
+
+        const res = await request(app).post(`/api/v1/outreach/${leadId}/reject`).send({ reason: 'Too late' });
+
+        expect(res.status).toBe(409);
+        expect(res.body.success).toBe(false);
+        expect(res.body.error.code).toBe('LEAD_NOT_REJECTABLE');
+        expect(res.body.error.message).toContain(status);
+        expect(campaign).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 404 when the lead does not exist', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/reject`).send({ reason: 'Gone' });
+
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      expect(campaign).not.toHaveBeenCalled();
     });
 
     it('should return 400 when rejection reason is too short', async () => {

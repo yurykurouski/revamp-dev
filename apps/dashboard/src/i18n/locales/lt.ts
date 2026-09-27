@@ -417,6 +417,8 @@ export const lt: Translation = {
     defaultRejectReason: 'Netinkama niša / svetainė neveikia',
     approved: 'Klientas patvirtintas ir perkeltas į SCHEDULED!',
     actionFailed: 'Veiksmas nepavyko: {{error}}',
+    approveUnavailable: 'Siuntimą galima patvirtinti, kai MVP bus paruoštas peržiūrai. Dabartinė būsena: {{status}}.',
+    outreachClosed: 'Šio kliento siuntimas jau patvirtintas arba uždarytas (būsena: {{status}}). Jo nebegalima patvirtinti ar atmesti.',
     testSent: 'Bandomasis laiškas išsiųstas adresu {{email}}',
     editorTitle: 'Laiško redaktorius (Outreach Personalizer)',
     subject: 'Tema',

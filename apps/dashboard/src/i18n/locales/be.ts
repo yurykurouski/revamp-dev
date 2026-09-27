@@ -417,6 +417,8 @@ export const be: Translation = {
     defaultRejectReason: 'Нямэтавая ніша / сайт закрыты',
     approved: 'Лід ухвалены і пераведзены ў статус SCHEDULED!',
     actionFailed: 'Дзеянне не выканана: {{error}}',
+    approveUnavailable: 'Рассылку можна ўхваліць, калі MVP будзе гатовы да праверкі. Бягучы статус: {{status}}.',
+    outreachClosed: 'Рассылка для гэтага ліда ўжо ўхвалена або закрыта (статус: {{status}}). Яе больш нельга ўхваліць або адхіліць.',
     testSent: 'Тэставы ліст адпраўлены на {{email}}',
     editorTitle: 'Рэдактар ліста (Outreach Personalizer)',
     subject: 'Тэма',

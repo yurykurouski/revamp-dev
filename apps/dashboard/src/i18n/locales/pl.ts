@@ -417,6 +417,8 @@ export const pl: Translation = {
     defaultRejectReason: 'Niedopasowana branża / strona nieaktywna',
     approved: 'Lead zatwierdzony i przeniesiony do SCHEDULED!',
     actionFailed: 'Akcja nie powiodła się: {{error}}',
+    approveUnavailable: 'Wysyłkę można zatwierdzić, gdy MVP będzie gotowe do przeglądu. Obecny status: {{status}}.',
+    outreachClosed: 'Wysyłka dla tego leada została już zatwierdzona lub zamknięta (status: {{status}}). Nie można jej już zatwierdzić ani odrzucić.',
     testSent: 'Testowy e-mail wysłany na {{email}}',
     editorTitle: 'Edytor e-maila (Outreach Personalizer)',
     subject: 'Temat',
