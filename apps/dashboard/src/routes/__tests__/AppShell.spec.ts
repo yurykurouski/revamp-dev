@@ -11,14 +11,13 @@ import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
 import { apiClient, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
-import { useHitlModalStore } from '../../store/useHitlModalStore.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
 import { AppRoutes } from '../AppRoutes.js';
 
-// The inspector itself is REV-77's; here only its open state and its close callback matter
-vi.mock('../../components/SideBySideInspectorModal.js', () => ({
-  SideBySideInspectorModal: ({ onClose }: { onClose?: () => void }) =>
-    React.createElement('button', { 'data-testid': 'close-inspector', onClick: onClose }, 'close'),
+// The review itself has its own tests; here only which lead it shows and its close callback matter
+vi.mock('../../components/leadReview/LeadReview.js', () => ({
+  LeadReview: ({ lead, onClose }: { lead: { id: string }; onClose?: () => void }) =>
+    React.createElement('button', { 'data-testid': 'close-review', 'data-lead': lead.id, onClick: onClose }, 'close'),
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -66,7 +65,6 @@ describe('app shell and routes (REV-76)', () => {
     act(() => root.unmount());
     container.remove();
     document.body.innerHTML = '';
-    useHitlModalStore.getState().closeModal();
     vi.restoreAllMocks();
   });
 
@@ -101,6 +99,8 @@ describe('app shell and routes (REV-76)', () => {
   const path = () => document.querySelector('[data-testid="path"]')!.textContent;
   const railEntry = (key: string) => document.querySelector<HTMLElement>(`[data-rail="${key}"]`)!;
   const heading = () => document.querySelector('h1')?.textContent;
+  /** The id of the lead whose review is open, or null */
+  const reviewedLead = () => document.querySelector('[data-testid="close-review"]')?.getAttribute('data-lead') ?? null;
   const buttonNamed = (text: string) =>
     [...document.querySelectorAll('button')].find((b) => b.textContent?.startsWith(text));
 
@@ -137,26 +137,27 @@ describe('app shell and routes (REV-76)', () => {
     expect(topBar.querySelectorAll('button')).toHaveLength(2);
   });
 
-  it('opens a lead from a deep link and replaces it with All leads when it closes', async () => {
+  it('opens a lead review from a deep link and replaces it with All leads when it closes', async () => {
     await mount('/leads/l3');
 
-    expect(useHitlModalStore.getState()).toMatchObject({ isOpen: true, selectedLeadId: 'l3', selectedAuditId: 'audit-l3' });
-    expect(heading()).toBe(en.allLeads.title);
+    expect(reviewedLead()).toBe('l3');
+    // The review is a page of its own, not an overlay on the list
+    expect(heading()).toBeUndefined();
     expect(railEntry('leads').getAttribute('aria-current')).toBe('page');
 
-    await act(async () => document.querySelector<HTMLElement>('[data-testid="close-inspector"]')!.click());
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="close-review"]')!.click());
     await flush();
 
     expect(path()).toBe('/leads');
-    expect(useHitlModalStore.getState().isOpen).toBe(false);
+    expect(reviewedLead()).toBeNull();
   });
 
   it('steps back to the page a lead was opened from, so Back does not reopen it', async () => {
     await mountHistory(['/settings', '/', { pathname: '/leads/l1', state: { from: '/' } }]);
-    await act(async () => document.querySelector<HTMLElement>('[data-testid="close-inspector"]')!.click());
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="close-review"]')!.click());
     await flush();
     expect(path()).toBe('/');
-    expect(useHitlModalStore.getState().isOpen).toBe(false);
+    expect(reviewedLead()).toBeNull();
   });
 
   it('opens a lead from its name on the queue with the queue as the page to return to', async () => {
@@ -165,9 +166,9 @@ describe('app shell and routes (REV-76)', () => {
     await act(async () => (link as HTMLElement).click());
     await flush();
     expect(path()).toBe('/leads/l1');
-    expect(useHitlModalStore.getState()).toMatchObject({ isOpen: true, selectedLeadId: 'l1' });
+    expect(reviewedLead()).toBe('l1');
 
-    await act(async () => document.querySelector<HTMLElement>('[data-testid="close-inspector"]')!.click());
+    await act(async () => document.querySelector<HTMLElement>('[data-testid="close-review"]')!.click());
     await flush();
     expect(path()).toBe('/');
   });
@@ -183,24 +184,24 @@ describe('app shell and routes (REV-76)', () => {
     await flush();
 
     expect(useLeadFilterStore.getState().searchQuery).toBe('');
-    expect(useHitlModalStore.getState()).toMatchObject({ isOpen: true, selectedLeadId: 'l4' });
+    expect(reviewedLead()).toBe('l4');
   });
 
   it('says so when the linked lead does not exist', async () => {
     await mount('/leads/missing');
     expect(document.body.textContent).toContain(en.leadRoute.notFound);
-    expect(useHitlModalStore.getState().isOpen).toBe(false);
+    expect(reviewedLead()).toBeNull();
   });
 
-  it('closes the lead when the operator leaves its route from the rail', async () => {
+  it('closes the review when the operator leaves its route from the rail', async () => {
     await mount('/leads/l1');
-    expect(useHitlModalStore.getState().isOpen).toBe(true);
+    expect(reviewedLead()).toBe('l1');
 
     await act(async () => railEntry('settings').click());
     await flush();
 
     expect(path()).toBe('/settings');
-    expect(useHitlModalStore.getState().isOpen).toBe(false);
+    expect(reviewedLead()).toBeNull();
   });
 
   it('moves the active rail entry as the operator navigates', async () => {

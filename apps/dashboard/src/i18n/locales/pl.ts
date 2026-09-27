@@ -302,13 +302,8 @@ export const pl: Translation = {
     },
   },
   inspector: {
-    fallbackTitle: 'Inspektor strony',
     original: 'Oryginał: {{url}}',
-    tabInspector: 'Inspektor strony (porównanie)',
-    tabEmail: 'Szkic e-maila i zatwierdzenie (HITL)',
     originalScore: 'Ocena oryginału: {{score}}/100',
-    close: 'Zamknij inspektora',
-    originalAndIssues: '🔍 Oryginalna strona i problemy',
     desktop: 'Desktop (1440px)',
     mobile: 'Mobile (375px)',
     lcp: 'LCP (szybkość)',
@@ -340,9 +335,26 @@ export const pl: Translation = {
     regeneratingTitle: 'AI przebudowuje MVP…',
     regeneratingBody: 'Przepisujemy teksty i ponownie publikujemy stronę. Nowa wersja pojawi się tutaj, gdy tylko będzie gotowa.',
     hitlNotice: '🔒 Tryb human-in-the-loop: wysyłka jest zablokowana do wyraźnego zatwierdzenia przez operatora',
-    goToApproval: 'Przejdź do zatwierdzenia i wysyłki',
-    backToInspector: 'Wróć do inspektora strony',
-    closeButton: 'Zamknij',
+  },
+  review: {
+    close: 'Zamknij lead',
+    back: 'Wstecz',
+    stepsLabel: 'Kroki weryfikacji',
+    steps: {
+      audit: 'Audyt',
+      prototype: 'Prototyp',
+      email: 'E-mail',
+    },
+    stepOf: 'Krok {{step}} z {{total}}',
+    hints: {
+      audit: 'Sprawdź, czy audyt jest poprawny, zanim obejrzysz prototyp.',
+      prototype: 'Porównaj prototyp z oryginalną stroną, zanim napiszesz e-mail.',
+    },
+    next: {
+      audit: 'Dalej: prototyp',
+      prototype: 'Dalej: e-mail',
+    },
+    originalSite: 'Oryginalna strona',
   },
   siteComplexity: {
     label: 'Typ strony',

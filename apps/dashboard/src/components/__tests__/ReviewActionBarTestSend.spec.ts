@@ -7,6 +7,8 @@ import { createRoot, Root } from 'react-dom/client';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
 import { EmailDraftEditor } from '../EmailDraftEditor.js';
+import { ReviewActionBar } from '../leadReview/ReviewActionBar.js';
+import { useEmailDraft } from '../../hooks/useEmailDraft.js';
 import type { ILeadItem, IEmailDraft } from '../../api/client.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,7 +25,21 @@ const lead: ILeadItem = {
   createdAt: new Date().toISOString(),
 };
 
-describe('EmailDraftEditor test send (REV-60)', () => {
+
+/** The email step as the review wires it: the draft is shared by the editor and the action bar */
+const EmailStep: React.FC<Omit<React.ComponentProps<typeof ReviewActionBar>, 'step' | 'onBack' | 'onNext' | 'getDraft'>> = (
+  props,
+) => {
+  const draft = useEmailDraft(props.lead);
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(EmailDraftEditor, { lead: props.lead, draft }),
+    React.createElement(ReviewActionBar, { ...props, step: 'email', onBack: () => {}, onNext: () => {}, getDraft: draft.rendered }),
+  );
+};
+
+describe('lead review test send (REV-60, REV-77)', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -42,7 +58,7 @@ describe('EmailDraftEditor test send (REV-60)', () => {
   const mount = (onSendTest: (email: string, draft: IEmailDraft) => Promise<void>, isActionLoading = false) =>
     act(async () => {
       root.render(
-        React.createElement(EmailDraftEditor, {
+        React.createElement(EmailStep, {
           lead,
           onApprove: async () => {},
           onSendTest,

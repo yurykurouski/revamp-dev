@@ -302,13 +302,8 @@ export const be: Translation = {
     },
   },
   inspector: {
-    fallbackTitle: 'Інспектар сайта',
     original: 'Арыгінал: {{url}}',
-    tabInspector: 'Інспектар сайта (параўнанне)',
-    tabEmail: 'Чарнавік ліста і ўхваленне (HITL)',
     originalScore: 'Зыходная ацэнка: {{score}}/100',
-    close: 'Закрыць інспектар',
-    originalAndIssues: '🔍 Зыходны сайт і праблемы',
     desktop: 'Дэсктоп (1440px)',
     mobile: 'Мабільны (375px)',
     lcp: 'LCP (хуткасць)',
@@ -340,9 +335,26 @@ export const be: Translation = {
     regeneratingTitle: 'ШІ перазбірае MVP…',
     regeneratingBody: 'Перапісваем тэксты і нанова публікуем старонку. Новая версія з\'явіцца тут, як толькі будзе гатовая.',
     hitlNotice: '🔒 Рэжым human-in-the-loop: рассылка заблакаваная да яўнага ўхвалення аператарам',
-    goToApproval: 'Перайсці да ўхвалення і адпраўкі',
-    backToInspector: 'Назад да інспектара сайта',
-    closeButton: 'Закрыць',
+  },
+  review: {
+    close: 'Закрыць лід',
+    back: 'Назад',
+    stepsLabel: 'Крокі праверкі',
+    steps: {
+      audit: 'Аўдыт',
+      prototype: 'Прататып',
+      email: 'Ліст',
+    },
+    stepOf: 'Крок {{step}} з {{total}}',
+    hints: {
+      audit: 'Пераканайцеся, што аўдыт правільны, перш чым глядзець прататып.',
+      prototype: 'Параўнайце прататып з зыходным сайтам, перш чым пісаць ліст.',
+    },
+    next: {
+      audit: 'Далей: прататып',
+      prototype: 'Далей: ліст',
+    },
+    originalSite: 'Зыходны сайт',
   },
   siteComplexity: {
     label: 'Тып сайта',

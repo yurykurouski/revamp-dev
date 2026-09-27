@@ -20,9 +20,9 @@ describe('dashboard routes (REV-76)', () => {
     expect(lead.params.id).toBe('66f1c0ffee');
   });
 
-  it('opens a lead on top of All leads, so the list stays mounted behind it', () => {
+  it('opens a lead review as a page of its own, not on top of All leads (REV-77)', () => {
     const matches = matchRoutes(APP_ROUTES, '/leads/abc')!;
-    expect(matches.map((m) => m.route.path)).toEqual([ROUTES.queue, ROUTES.leads, ROUTES.lead]);
+    expect(matches.map((m) => m.route.path)).toEqual([ROUTES.queue, ROUTES.lead]);
   });
 
   it('sends unknown paths to the catch-all route', () => {

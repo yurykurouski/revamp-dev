@@ -14,7 +14,6 @@ import {
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import ViewKanbanIcon from '@mui/icons-material/ViewKanban';
 import TableRowsIcon from '@mui/icons-material/TableRows';
-import { Outlet } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { NicheType, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 import { useLeadFilterStore, ViewMode } from '../store/useLeadFilterStore.js';
@@ -29,7 +28,7 @@ const BUCKET_FILTERS: readonly BucketFilter[] = ['ALL', ...LEAD_BUCKETS];
 
 /**
  * All leads (REV-76): every lead in every status as a table or a board, narrowed by bucket, niche and
- * site type. The lead route (`/leads/:id`) renders in the outlet on top of it.
+ * site type. A lead opens as its own page at `/leads/:id`.
  */
 export const AllLeadsPage: React.FC = () => {
   const {
@@ -59,8 +58,6 @@ export const AllLeadsPage: React.FC = () => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      <Outlet />
-
       <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, flexWrap: 'wrap' }}>
         <Typography variant="h5" component="h1">
           {t('allLeads.title')}

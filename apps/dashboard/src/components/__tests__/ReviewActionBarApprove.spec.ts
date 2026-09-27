@@ -7,6 +7,8 @@ import { createRoot, Root } from 'react-dom/client';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
 import { EmailDraftEditor } from '../EmailDraftEditor.js';
+import { APPROVE_ARM_DELAY_MS, ReviewActionBar } from '../leadReview/ReviewActionBar.js';
+import { useEmailDraft } from '../../hooks/useEmailDraft.js';
 import type { ILeadItem, IEmailDraft } from '../../api/client.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -23,7 +25,21 @@ const lead: ILeadItem = {
   createdAt: new Date().toISOString(),
 };
 
-describe('EmailDraftEditor approve (REV-72)', () => {
+
+/** The email step as the review wires it: the draft is shared by the editor and the action bar */
+const EmailStep: React.FC<Omit<React.ComponentProps<typeof ReviewActionBar>, 'step' | 'onBack' | 'onNext' | 'getDraft'>> = (
+  props,
+) => {
+  const draft = useEmailDraft(props.lead);
+  return React.createElement(
+    React.Fragment,
+    null,
+    React.createElement(EmailDraftEditor, { lead: props.lead, draft }),
+    React.createElement(ReviewActionBar, { ...props, step: 'email', onBack: () => {}, onNext: () => {}, getDraft: draft.rendered }),
+  );
+};
+
+describe('lead review approve (REV-72, REV-77)', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -42,10 +58,12 @@ describe('EmailDraftEditor approve (REV-72)', () => {
   const mount = (onApprove: (draft: IEmailDraft) => Promise<void>, onSendTest = vi.fn().mockResolvedValue(undefined)) =>
     act(async () => {
       root.render(
-        React.createElement(EmailDraftEditor, { lead, onApprove, onSendTest, onReject: async () => {} }),
+        React.createElement(EmailStep, { lead, onApprove, onSendTest, onReject: async () => {} }),
       );
     });
 
+  /** Waits until Approve arms after the email step opens */
+  const armApprove = () => act(() => new Promise((r) => setTimeout(r, APPROVE_ARM_DELAY_MS + 20)));
   const button = (label: string) =>
     [...document.body.querySelectorAll('button')].find((b) => b.textContent?.trim() === label);
 
@@ -53,6 +71,7 @@ describe('EmailDraftEditor approve (REV-72)', () => {
     const onApprove = vi.fn().mockResolvedValue(undefined);
     await mount(onApprove);
 
+    await armApprove();
     await act(async () => button(en.email.approve)!.click());
 
     expect(onApprove).toHaveBeenCalledTimes(1);
@@ -70,6 +89,7 @@ describe('EmailDraftEditor approve (REV-72)', () => {
 
     await act(async () => button(en.email.sendTestToMe)!.click());
     await act(async () => document.body.querySelector<HTMLButtonElement>('[data-testid="send-test-submit"]')!.click());
+    await armApprove();
     await act(async () => button(en.email.approve)!.click());
 
     expect(onApprove.mock.calls[0]![0]).toEqual(onSendTest.mock.calls[0]![1]);
