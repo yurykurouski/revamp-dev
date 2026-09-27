@@ -1,4 +1,5 @@
 import { DATE_LOCALES, type AppLanguage } from '../i18n/languages.js';
+import { LEAD_STATUSES } from '@revamp/shared-types';
 import { LEAD_BUCKETS, type LeadBucket } from './leadStages.js';
 
 /**
@@ -62,6 +63,75 @@ export function stepSelection(ids: readonly string[], selected: string | null, d
   if (at < 0) return ids[0];
   return ids[Math.min(ids.length - 1, Math.max(0, at + delta))];
 }
+
+/** Audit score bands, as the score chip colors them: below 40 is poor, 40–69 needs work, 70+ is healthy */
+export const SCORE_BANDS = ['low', 'medium', 'high'] as const;
+export type ScoreBand = (typeof SCORE_BANDS)[number];
+
+export const scoreBand = (score: number): ScoreBand => (score >= 70 ? 'high' : score >= 40 ? 'medium' : 'low');
+
+/**
+ * Quick filters over the current bucket's list (REV-80). An empty list means "all": with no status picked
+ * every status shows, and with no band picked leads without a score show too. Picking a band keeps only
+ * scored leads in the picked bands.
+ */
+export interface QueueFilters {
+  statuses: readonly string[];
+  scoreBands: readonly ScoreBand[];
+}
+
+export const NO_QUEUE_FILTERS: QueueFilters = { statuses: [], scoreBands: [] };
+
+/** How many filter values are picked; 0 when the list is unfiltered */
+export const activeFilterCount = (filters: QueueFilters): number => filters.statuses.length + filters.scoreBands.length;
+
+type FilterableLead = { status: string; totalScore?: number };
+
+/** The lead's score band; undefined for a lead without a numeric score */
+export const leadScoreBand = (lead: FilterableLead): ScoreBand | undefined =>
+  typeof lead.totalScore === 'number' && Number.isFinite(lead.totalScore) ? scoreBand(lead.totalScore) : undefined;
+
+/** The leads that pass the filters, in their original order */
+export function filterQueue<T extends FilterableLead>(leads: readonly T[], filters: QueueFilters): T[] {
+  return leads.filter((lead) => {
+    if (filters.statuses.length > 0 && !filters.statuses.includes(lead.status)) return false;
+    if (filters.scoreBands.length > 0) {
+      const band = leadScoreBand(lead);
+      if (!band || !filters.scoreBands.includes(band)) return false;
+    }
+    return true;
+  });
+}
+
+export interface FilterOption<T extends string> {
+  value: T;
+  count: number;
+}
+
+/**
+ * The status choices for a bucket's leads: each status present, with its count, in lifecycle order (an
+ * unknown status last). A picked status stays on offer at 0, so the operator can always unpick it.
+ */
+export function queueStatusOptions(leads: readonly FilterableLead[], picked: readonly string[] = []): FilterOption<string>[] {
+  const counts = new Map<string, number>(picked.map((status) => [status, 0]));
+  for (const { status } of leads) counts.set(status, (counts.get(status) ?? 0) + 1);
+  const rank = (status: string) => {
+    const at = (LEAD_STATUSES as readonly string[]).indexOf(status);
+    return at < 0 ? LEAD_STATUSES.length : at;
+  };
+  return [...counts]
+    .map(([value, count]) => ({ value, count }))
+    .sort((a, b) => rank(a.value) - rank(b.value) || a.value.localeCompare(b.value));
+}
+
+/** Leads per score band, for every band, from a bucket's leads */
+export function scoreBandOptions(leads: readonly FilterableLead[]): FilterOption<ScoreBand>[] {
+  return SCORE_BANDS.map((value) => ({ value, count: leads.filter((lead) => leadScoreBand(lead) === value).length }));
+}
+
+/** The list with `value` added, or removed when it was there */
+export const toggleValue = <T>(values: readonly T[], value: T): T[] =>
+  values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
 
 export type QueueKeyAction = 'next' | 'previous' | 'open';
 

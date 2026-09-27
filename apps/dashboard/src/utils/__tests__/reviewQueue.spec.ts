@@ -3,14 +3,23 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  activeFilterCount,
   DEFAULT_QUEUE_BUCKET,
+  filterQueue,
   formatAge,
   isLeadBucket,
   isTypingTarget,
+  leadScoreBand,
+  NO_QUEUE_FILTERS,
   queueKeyAction,
+  queueStatusOptions,
   resolveSelection,
+  scoreBand,
+  scoreBandOptions,
   sortQueue,
   stepSelection,
+  toggleValue,
+  type QueueFilters,
 } from '../reviewQueue.js';
 
 const at = (createdAt: string, id = createdAt) => ({ id, createdAt });
@@ -157,5 +166,88 @@ describe('lead age (REV-79)', () => {
   it('is empty for an invalid date and localized for other languages', () => {
     expect(formatAge('', now, 'en')).toBe('');
     expect(formatAge('2026-09-27T10:00:00Z', now, 'ru')).toMatch(/^2\s?ч/);
+  });
+});
+
+describe('review queue quick filters (REV-80)', () => {
+  const lead = (id: string, status: string, totalScore?: number) => ({ id, status, totalScore });
+  const leads = [
+    lead('a', 'NEEDS_APPROVAL', 25),
+    lead('b', 'AUDIT_FAILED'),
+    lead('c', 'NEEDS_APPROVAL', 55),
+    lead('d', 'NEEDS_APPROVAL', 90),
+    lead('e', 'AUDIT_FAILED', 40),
+  ];
+  const ids = (list: { id: string }[]) => list.map((l) => l.id);
+
+  it.each([
+    [0, 'low'],
+    [39, 'low'],
+    [40, 'medium'],
+    [69, 'medium'],
+    [70, 'high'],
+    [100, 'high'],
+  ] as const)('puts score %d in the %s band', (score, band) => {
+    expect(scoreBand(score)).toBe(band);
+  });
+
+  it('has no band for a lead without a numeric score', () => {
+    expect(leadScoreBand({ status: 'AUDIT_FAILED' })).toBeUndefined();
+    expect(leadScoreBand({ status: 'AUDIT_FAILED', totalScore: Number.NaN })).toBeUndefined();
+    expect(leadScoreBand({ status: 'NEEDS_APPROVAL', totalScore: 70 })).toBe('high');
+  });
+
+  it('keeps every lead, unscored ones too, with no filter picked', () => {
+    expect(filterQueue(leads, NO_QUEUE_FILTERS)).toEqual(leads);
+    expect(activeFilterCount(NO_QUEUE_FILTERS)).toBe(0);
+  });
+
+  it('keeps the picked statuses in their original order', () => {
+    expect(ids(filterQueue(leads, { statuses: ['AUDIT_FAILED'], scoreBands: [] }))).toEqual(['b', 'e']);
+    expect(ids(filterQueue(leads, { statuses: ['AUDIT_FAILED', 'NEEDS_APPROVAL'], scoreBands: [] }))).toEqual(ids(leads));
+  });
+
+  it('keeps only scored leads in the picked bands once a band is picked', () => {
+    expect(ids(filterQueue(leads, { statuses: [], scoreBands: ['low'] }))).toEqual(['a']);
+    expect(ids(filterQueue(leads, { statuses: [], scoreBands: ['medium', 'high'] }))).toEqual(['c', 'd', 'e']);
+    expect(ids(filterQueue(leads, { statuses: [], scoreBands: ['low', 'medium', 'high'] }))).not.toContain('b');
+  });
+
+  it('combines status and score filters', () => {
+    const filters: QueueFilters = { statuses: ['NEEDS_APPROVAL'], scoreBands: ['medium', 'high'] };
+    expect(ids(filterQueue(leads, filters))).toEqual(['c', 'd']);
+    expect(activeFilterCount(filters)).toBe(3);
+  });
+
+  it('offers each status present, with its count, in lifecycle order', () => {
+    expect(queueStatusOptions(leads)).toEqual([
+      { value: 'AUDIT_FAILED', count: 2 },
+      { value: 'NEEDS_APPROVAL', count: 3 },
+    ]);
+    expect(queueStatusOptions([])).toEqual([]);
+  });
+
+  it('keeps a picked status on offer at 0 and lists an unknown status last', () => {
+    expect(queueStatusOptions([lead('x', 'FUTURE_STATUS'), lead('y', 'SENT')], ['OPENED'])).toEqual([
+      { value: 'SENT', count: 1 },
+      { value: 'OPENED', count: 0 },
+      { value: 'FUTURE_STATUS', count: 1 },
+    ]);
+  });
+
+  it('counts the leads in every score band', () => {
+    expect(scoreBandOptions(leads)).toEqual([
+      { value: 'low', count: 1 },
+      { value: 'medium', count: 2 },
+      { value: 'high', count: 1 },
+    ]);
+    expect(scoreBandOptions([]).map((o) => o.count)).toEqual([0, 0, 0]);
+  });
+
+  it('toggles a value in or out without changing the input', () => {
+    const picked = ['low'];
+    expect(toggleValue(picked, 'high')).toEqual(['low', 'high']);
+    expect(toggleValue(picked, 'low')).toEqual([]);
+    expect(picked).toEqual(['low']);
   });
 });
