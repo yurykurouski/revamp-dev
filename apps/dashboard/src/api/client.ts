@@ -527,6 +527,8 @@ export interface IAuditDetail {
     secondary?: string;
     accent?: string;
   };
+  /** Services the crawler found on the original site; undefined when it did not extract them (REV-81) */
+  originalServiceCount?: number;
 }
 
 /** The fields of `GET /audits/:id` the inspector reads */
@@ -548,6 +550,8 @@ export interface IServerAudit {
     quickWins?: string[];
   };
   extractedBrandTokens?: { primaryColor?: string; secondaryColor?: string; accentColor?: string };
+  extractedServices?: string[];
+  extractedContent?: { serviceItems?: unknown[] };
 }
 
 /** Maps an audit from the API, keeping unmeasured values undefined */
@@ -571,4 +575,5 @@ export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail =
     secondary: a.extractedBrandTokens?.secondaryColor || undefined,
     accent: a.extractedBrandTokens?.accentColor || undefined,
   },
+  originalServiceCount: a.extractedServices?.length ?? a.extractedContent?.serviceItems?.length ?? undefined,
 });
