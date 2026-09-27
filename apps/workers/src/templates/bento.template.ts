@@ -44,6 +44,13 @@ function escapeHtml(str: string | undefined | null): string {
 }
 
 /**
+ * Encodes an SVG document as a data URI, e.g. for an inline favicon.
+ */
+function svgDataUri(svg: string): string {
+  return `data:image/svg+xml,${encodeURIComponent(svg.trim())}`;
+}
+
+/**
  * Resolves the telemetry URLs from the public API URL (REV-52). MVPs are served from the
  * storage host, so relative /api/v1/... paths would hit S3/MinIO instead of the API.
  * The tracker appends /api/v1/track/mvp-event to data-api, so data-api is the API origin.
@@ -245,6 +252,19 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const servicesHeading = escapeHtml(data.servicesHeading || t.servicesHeading(data.businessName));
   const footerTagline = escapeHtml(data.footerTagline || data.hero.subheadline);
 
+  // Generated inline SVG monogram, used when the site has neither a logo nor a monogram
+  const initials =
+    data.businessName
+      .trim()
+      .split(/\s+/)
+      .slice(0, 2)
+      .map((w) => w.charAt(0).toUpperCase())
+      .join('') || 'R';
+  const fallbackMonogramSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" fill="none">
+          <rect width="44" height="44" rx="10" fill="${primaryColor}" />
+          <text x="22" y="28" fill="#ffffff" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle">${escapeHtml(initials)}</text>
+        </svg>`;
+
   // Logo or Monogram rendering
   let logoHtml = '';
   if (data.logoUrl) {
@@ -252,21 +272,14 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   } else if (data.monogramSvg) {
     logoHtml = `<div class="brand-logo-monogram">${data.monogramSvg}</div>`;
   } else {
-    // Generate inline SVG monogram fallback
-    const initials = data.businessName
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w.charAt(0).toUpperCase())
-      .join('') || 'R';
     logoHtml = `
       <div class="brand-logo-fallback">
-        <svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" fill="none">
-          <rect width="44" height="44" rx="10" fill="${primaryColor}" />
-          <text x="22" y="28" fill="#ffffff" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle">${escapeHtml(initials)}</text>
-        </svg>
+        ${fallbackMonogramSvg}
       </div>`;
   }
+
+  // The page declares its own icon, so browsers never request /favicon.ico from the storage root (REV-56)
+  const faviconHref = data.logoUrl || svgDataUri(data.monogramSvg || fallbackMonogramSvg);
 
   // Render Bento Cards
   const bentoCardsHtml = services
@@ -652,6 +665,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${businessName} — Official website & booking</title>
+  <link rel="icon" href="${escapeHtml(faviconHref)}">
   <meta name="description" content="${heroHeadline}. ${heroSubheadline}">
   
   <style>
