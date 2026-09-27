@@ -13,6 +13,7 @@ export interface IEmailCampaignDocument
       | 'scheduledAt'
       | 'sentAt'
       | 'approvedAt'
+      | 'unsubscribedAt'
     >,
     Document {
   leadId: Types.ObjectId;
@@ -23,6 +24,7 @@ export interface IEmailCampaignDocument
   approvedAt?: Date;
   scheduledAt?: Date;
   sentAt?: Date;
+  unsubscribedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -66,6 +68,7 @@ const EmailCampaignSchema = new Schema<IEmailCampaignDocument>(
         'DELIVERED',
         'BOUNCED',
         'REJECTED',
+        'UNSUBSCRIBED',
       ] as EmailCampaignStatus[],
       default: 'DRAFT',
       index: true,
@@ -125,6 +128,9 @@ const EmailCampaignSchema = new Schema<IEmailCampaignDocument>(
     },
     bounceReason: {
       type: String,
+    },
+    unsubscribedAt: {
+      type: Date,
     },
     metrics: {
       type: EmailMetricsSchema,

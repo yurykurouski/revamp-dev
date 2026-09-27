@@ -268,4 +268,83 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
       expect(mockCampaign.metrics.demoVisitCount).toBe(3);
     });
   });
+
+  describe('unsubscribe (REV-73)', () => {
+    const execOf = (value: unknown) => ({ exec: vi.fn().mockResolvedValue(value) }) as any;
+
+    beforeEach(() => {
+      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue(execOf({}));
+      vi.spyOn(AnalyticsEvent, 'create').mockResolvedValue({} as any);
+    });
+
+    it('findUnsubscribeCampaign reports whether the token exists and is already unsubscribed', async () => {
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValueOnce(execOf({ status: 'DELIVERED' }));
+      await expect(service.findUnsubscribeCampaign('tok')).resolves.toEqual({ found: true, unsubscribed: false });
+
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValueOnce(execOf({ status: 'UNSUBSCRIBED' }));
+      await expect(service.findUnsubscribeCampaign('tok')).resolves.toEqual({ found: true, unsubscribed: true });
+
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValueOnce(execOf(null));
+      await expect(service.findUnsubscribeCampaign('tok')).resolves.toEqual({ found: false, unsubscribed: false });
+    });
+
+    it('marks the campaign and lead UNSUBSCRIBED and records one unsubscribe event', async () => {
+      const campaign = { _id: 'camp-1', leadId: 'lead-1', mvpProjectId: 'mvp-1', status: 'UNSUBSCRIBED' };
+      const campaignUpdate = vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue(execOf(campaign));
+
+      const result = await service.recordUnsubscribe('tok-1', { ip: '1.2.3.4', userAgent: 'Gmail' });
+
+      expect(result).toEqual({ found: true, alreadyUnsubscribed: false, leadId: 'lead-1' });
+      expect(campaignUpdate).toHaveBeenCalledWith(
+        { trackingToken: 'tok-1', status: { $ne: 'UNSUBSCRIBED' } },
+        { $set: { status: 'UNSUBSCRIBED', unsubscribedAt: expect.any(Date) } },
+        { new: true },
+      );
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-1', {
+        $set: { status: 'UNSUBSCRIBED' },
+        $addToSet: { tags: 'unsubscribed' },
+      });
+      expect(AnalyticsEvent.create).toHaveBeenCalledTimes(1);
+      expect(AnalyticsEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({ eventType: 'unsubscribe', trackingToken: 'tok-1', leadId: 'lead-1', campaignId: 'camp-1' }),
+      );
+    });
+
+    it('is idempotent: a repeat call keeps the lead opted out and records no new event', async () => {
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue(execOf(null));
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf({ _id: 'camp-1', leadId: 'lead-1', status: 'UNSUBSCRIBED' }));
+
+      const result = await service.recordUnsubscribe('tok-1');
+
+      expect(result).toEqual({ found: true, alreadyUnsubscribed: true, leadId: 'lead-1' });
+      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith('lead-1', { $set: { status: 'UNSUBSCRIBED' } });
+      expect(AnalyticsEvent.create).not.toHaveBeenCalled();
+    });
+
+    it.each(['unknown-token', 'test-send'])('changes nothing for the unknown token %s', async (token) => {
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue(execOf(null));
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf(null));
+
+      const result = await service.recordUnsubscribe(token);
+
+      expect(result).toEqual({ found: false, alreadyUnsubscribed: false });
+      expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(AnalyticsEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('leaves an unsubscribed lead alone when later opens and clicks arrive', async () => {
+      const lead = { _id: 'lead-1', status: 'UNSUBSCRIBED', tags: [], save: vi.fn() };
+      const campaign = { _id: 'camp-1', leadId: 'lead-1', metrics: {}, save: vi.fn() };
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf(campaign));
+      vi.spyOn(Lead, 'findById').mockReturnValue(execOf(lead));
+      vi.spyOn(MvpProject, 'findOne').mockReturnValue(execOf(null));
+
+      await service.recordEmailOpen('tok-1');
+      await service.recordClick('tok-1');
+      await service.recordMvpEvent({ token: 'tok-1', eventType: 'cta_click' });
+
+      expect(lead.status).toBe('UNSUBSCRIBED');
+      expect(lead.save).not.toHaveBeenCalled();
+    });
+  });
 });

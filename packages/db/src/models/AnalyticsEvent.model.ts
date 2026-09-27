@@ -45,6 +45,7 @@ const AnalyticsEventSchema = new Schema<IAnalyticsEventDocument>(
         'booking_intent',
         'scroll_depth',
         'token_usage',
+        'unsubscribe',
       ] as AnalyticsEventType[],
       required: [true, 'Event type is required'],
       index: true,

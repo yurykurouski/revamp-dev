@@ -91,7 +91,8 @@ export type EmailCampaignStatus =
   | 'SENDING'
   | 'DELIVERED'
   | 'BOUNCED'
-  | 'REJECTED';
+  | 'REJECTED'
+  | 'UNSUBSCRIBED';
 
 // 2. Lead Domain Entity
 export interface ILeadContacts {
@@ -552,6 +553,7 @@ export interface IEmailCampaign {
   approvedAt?: string | Date;
   scheduledAt?: string | Date;
   sentAt?: string | Date;
+  unsubscribedAt?: string | Date;
   metrics: IEmailMetrics;
   createdAt: string | Date;
   updatedAt: string | Date;
@@ -566,7 +568,8 @@ export type AnalyticsEventType =
   | 'cta_click'
   | 'booking_intent'
   | 'scroll_depth'
-  | 'token_usage';
+  | 'token_usage'
+  | 'unsubscribe';
 
 export interface IAnalyticsEvent {
   _id: string;

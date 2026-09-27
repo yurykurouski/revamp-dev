@@ -93,6 +93,84 @@ router.post(
   },
 );
 
+const unsubscribePage = (title: string, body: string): string => `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:,">
+<title>${title}</title>
+<style>
+  body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; }
+  main { max-width: 480px; margin: 12vh auto; padding: 32px 24px; background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; }
+  h1 { margin: 0 0 12px; font-size: 1.35rem; }
+  p { margin: 0 0 20px; line-height: 1.5; color: #334155; }
+  button { font: inherit; padding: 10px 20px; border: 0; border-radius: 8px; background: #0f172a; color: #fff; cursor: pointer; }
+</style>
+</head>
+<body><main><h1>${title}</h1>${body}</main></body>
+</html>`;
+
+const UNSUBSCRIBED_PAGE = unsubscribePage(
+  'You are unsubscribed',
+  '<p>We will not email you again.</p>',
+);
+
+const UNKNOWN_LINK_PAGE = unsubscribePage(
+  'Link not recognised',
+  '<p>This unsubscribe link is not valid. If you keep receiving our emails, reply to one of them and ask us to stop.</p>',
+);
+
+// The confirm button posts back to this same URL
+const CONFIRM_PAGE = unsubscribePage(
+  'Unsubscribe from our emails?',
+  '<p>Confirm and we will not email you again.</p><form method="post"><button type="submit">Unsubscribe</button></form>',
+);
+
+const sendPage = (res: Response, status: number, html: string): void => {
+  res.status(status).set({ 'Cache-Control': 'no-store', 'Content-Type': 'text/html; charset=utf-8' }).send(html);
+};
+
+/**
+ * GET /track/unsubscribe/:token
+ * Shows a confirmation page and changes nothing: mail security scanners prefetch every link in
+ * an email, so a GET must not opt the recipient out (RFC 8058 §3.2, REV-73)
+ */
+router.get(
+  '/unsubscribe/:token',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { found, unsubscribed } = await trackingService.findUnsubscribeCampaign(req.params['token'] || '');
+      if (!found) sendPage(res, 404, UNKNOWN_LINK_PAGE);
+      else sendPage(res, 200, unsubscribed ? UNSUBSCRIBED_PAGE : CONFIRM_PAGE);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+/**
+ * POST /track/unsubscribe/:token
+ * RFC 8058 one-click unsubscribe (mail clients post `List-Unsubscribe=One-Click`) and the
+ * confirmation form. Idempotent; unknown tokens answer 404 and change nothing (REV-73)
+ */
+router.post(
+  '/unsubscribe/:token',
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const result = await trackingService.recordUnsubscribe(req.params['token'] || '', {
+        ip: req.ip,
+        userAgent: req.headers['user-agent'] as string | undefined,
+        referer: req.headers['referer'] as string | undefined,
+      });
+      sendPage(res, result.found ? 200 : 404, result.found ? UNSUBSCRIBED_PAGE : UNKNOWN_LINK_PAGE);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
 /**
  * GET /track/revamp-tracker.js
  * Serves lightweight client-side tracking script

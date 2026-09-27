@@ -13,6 +13,8 @@ vi.mock('../../services/tracking.service.js', () => ({
       leadId: 'lead-1',
     }),
     recordMvpEvent: vi.fn().mockResolvedValue({ success: true, engaged: true }),
+    findUnsubscribeCampaign: vi.fn(),
+    recordUnsubscribe: vi.fn(),
   },
 }));
 
@@ -189,6 +191,90 @@ describe('Track Routes Integration Tests (REV-18 Telemetry)', () => {
 
       expect(res.headers['access-control-allow-origin']).toBe(env.CORS_ORIGIN);
       expect(res.headers['access-control-allow-credentials']).toBe('true');
+    });
+  });
+
+  describe('/api/v1/track/unsubscribe/:token (REV-73)', () => {
+    it('GET shows a confirmation form and does not unsubscribe, so link scanners cannot opt anyone out', async () => {
+      vi.mocked(trackingService.findUnsubscribeCampaign).mockResolvedValue({ found: true, unsubscribed: false });
+
+      const res = await request(app).get('/api/v1/track/unsubscribe/tok-1');
+
+      expect(res.status).toBe(200);
+      expect(res.headers['content-type']).toContain('text/html');
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.text).toContain('<form method="post">');
+      expect(trackingService.findUnsubscribeCampaign).toHaveBeenCalledWith('tok-1');
+      expect(trackingService.recordUnsubscribe).not.toHaveBeenCalled();
+    });
+
+    it('GET tells an already unsubscribed recipient so, without a form', async () => {
+      vi.mocked(trackingService.findUnsubscribeCampaign).mockResolvedValue({ found: true, unsubscribed: true });
+
+      const res = await request(app).get('/api/v1/track/unsubscribe/tok-1');
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('You are unsubscribed');
+      expect(res.text).not.toContain('<form');
+    });
+
+    it.each(['unknown-token', 'test-send'])('GET answers 404 for the unknown token %s', async (token) => {
+      vi.mocked(trackingService.findUnsubscribeCampaign).mockResolvedValue({ found: false, unsubscribed: false });
+
+      const res = await request(app).get(`/api/v1/track/unsubscribe/${token}`);
+
+      expect(res.status).toBe(404);
+      expect(res.text).toContain('Link not recognised');
+    });
+
+    it('POST with the RFC 8058 one-click body unsubscribes and answers 200', async () => {
+      vi.mocked(trackingService.recordUnsubscribe).mockResolvedValue({
+        found: true,
+        alreadyUnsubscribed: false,
+        leadId: 'lead-1',
+      });
+
+      const res = await request(app)
+        .post('/api/v1/track/unsubscribe/tok-1')
+        .type('form')
+        .send('List-Unsubscribe=One-Click');
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('You are unsubscribed');
+      expect(trackingService.recordUnsubscribe).toHaveBeenCalledWith(
+        'tok-1',
+        expect.objectContaining({ ip: expect.any(String) }),
+      );
+    });
+
+    it('POST again for an unsubscribed token still answers 200', async () => {
+      vi.mocked(trackingService.recordUnsubscribe).mockResolvedValue({
+        found: true,
+        alreadyUnsubscribed: true,
+        leadId: 'lead-1',
+      });
+
+      const res = await request(app).post('/api/v1/track/unsubscribe/tok-1');
+
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('You are unsubscribed');
+    });
+
+    it('POST answers 404 for an unknown token', async () => {
+      vi.mocked(trackingService.recordUnsubscribe).mockResolvedValue({ found: false, alreadyUnsubscribed: false });
+
+      const res = await request(app).post('/api/v1/track/unsubscribe/test-send');
+
+      expect(res.status).toBe(404);
+      expect(res.text).toContain('Link not recognised');
+    });
+
+    it('passes service errors to the error handler', async () => {
+      vi.mocked(trackingService.recordUnsubscribe).mockRejectedValue(new Error('db down'));
+
+      const res = await request(app).post('/api/v1/track/unsubscribe/tok-1');
+
+      expect(res.status).toBe(500);
     });
   });
 });
