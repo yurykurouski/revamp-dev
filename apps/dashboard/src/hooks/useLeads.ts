@@ -1,20 +1,23 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
-import { apiClient, ILeadItem, IEmailDraft, KpiMetrics } from '../api/client.js';
+import { apiClient, ILeadItem, IEmailDraft } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
-import { LeadStatus, LlmProviderId } from '@revamp/shared-types';
+import { ILeadStats, LeadStatus, LlmProviderId } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
 export const LEADS_QUERY_KEY = ['leads'];
 
+/**
+ * Every lead matching the search, niche and site-type filters. The bucket filter (REV-76) is applied by
+ * the page, so the bucket counts and the lead inspector see the whole filtered list.
+ */
 export const useLeadsQuery = () => {
-  const { searchQuery, selectedStatus, selectedNiche, selectedComplexity } = useLeadFilterStore();
+  const { searchQuery, selectedNiche, selectedComplexity } = useLeadFilterStore();
 
-  return useQuery<{ leads: ILeadItem[]; kpi: KpiMetrics; total: number }>({
-    queryKey: [...LEADS_QUERY_KEY, searchQuery, selectedStatus, selectedNiche, selectedComplexity],
+  return useQuery<{ leads: ILeadItem[]; total: number }>({
+    queryKey: [...LEADS_QUERY_KEY, searchQuery, selectedNiche, selectedComplexity],
     queryFn: () =>
       apiClient.getLeads({
         search: searchQuery,
-        status: selectedStatus,
         niche: selectedNiche,
         complexity: selectedComplexity,
       }),
@@ -23,6 +26,17 @@ export const useLeadsQuery = () => {
     placeholderData: keepPreviousData,
   });
 };
+
+/** Under LEADS_QUERY_KEY, so every mutation that refreshes the leads refreshes the counts too */
+export const LEAD_STATS_QUERY_KEY = [...LEADS_QUERY_KEY, 'stats'];
+
+/** Pipeline-wide counts by status (REV-43), for the rail's Needs-you badge (REV-76) */
+export const useLeadStatsQuery = () =>
+  useQuery<ILeadStats>({
+    queryKey: LEAD_STATS_QUERY_KEY,
+    queryFn: () => apiClient.getLeadStats(),
+    refetchInterval: 10000,
+  });
 
 export const useCreateLeadMutation = () => {
   const queryClient = useQueryClient();

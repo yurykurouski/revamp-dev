@@ -4,7 +4,6 @@ import {
   apiClient,
   fetchAllLeadPages,
   fetchLeadStats,
-  kpiFromStats,
   LEADS_PAGE_SIZE,
   mapServerAudit,
 } from '../client.js';
@@ -35,16 +34,22 @@ describe('Dashboard apiClient', () => {
       return fetchMock;
     };
 
-    it('returns the leads and KPIs from the API', async () => {
-      stubLeadsApi([
+    it('returns the leads from the API', async () => {
+      const fetchMock = stubLeadsApi([
         { _id: 'l1', businessName: 'Smile', originalUrl: 'https://www.smile.pl/', status: 'NEEDS_APPROVAL', createdAt: 'x' },
       ]);
 
-      const { leads, kpi, total } = await apiClient.getLeads();
+      const { leads, total } = await apiClient.getLeads();
 
       expect(leads).toEqual([expect.objectContaining({ id: 'l1', domain: 'smile.pl', status: 'NEEDS_APPROVAL' })]);
       expect(total).toBe(1);
-      expect(kpi).toEqual({ totalLeads: 5, needsApproval: 2, scheduled: 1, sent: 1, engaged: 1 });
+      // The pipeline counts have their own query for the rail badge (REV-76)
+      expect(fetchMock.mock.calls.some(([u]) => u.includes('/stats'))).toBe(false);
+    });
+
+    it('reads the pipeline-wide counts by status', async () => {
+      stubLeadsApi([]);
+      await expect(apiClient.getLeadStats()).resolves.toEqual(stats);
     });
 
     it('passes the filters to the API instead of filtering locally', async () => {
@@ -768,7 +773,7 @@ describe('Dashboard apiClient', () => {
       await expect(fetchAllLeadPages()).rejects.toThrow(/HTTP 500/);
     });
 
-    it('should read pipeline stats and turn them into KPI counters', async () => {
+    it('should read the pipeline stats', async () => {
       const stats = { total: 41, byStatus: { NEEDS_APPROVAL: 5, SENT: 3, OPENED: 2, CLICKED: 1, QUEUED: 30 } };
       const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: true, data: stats }), { status: 200 }));
       vi.stubGlobal('fetch', fetchMock);
@@ -776,17 +781,7 @@ describe('Dashboard apiClient', () => {
       const result = await fetchLeadStats();
 
       expect(fetchMock.mock.calls[0][0]).toMatch(/\/leads\/stats$/);
-      expect(kpiFromStats(result)).toEqual({ totalLeads: 41, needsApproval: 5, scheduled: 0, sent: 3, engaged: 3 });
-    });
-
-    it('should report zero for statuses with no leads', () => {
-      expect(kpiFromStats({ total: 0, byStatus: {} })).toEqual({
-        totalLeads: 0,
-        needsApproval: 0,
-        scheduled: 0,
-        sent: 0,
-        engaged: 0,
-      });
+      expect(result).toEqual(stats);
     });
   });
 });

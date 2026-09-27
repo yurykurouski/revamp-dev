@@ -15,6 +15,7 @@ import {
 } from '@revamp/validation';
 import { apiClient } from '../api/client.js';
 import { LEADS_QUERY_KEY } from './useLeads.js';
+import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 
 export const DISCOVERY_POLL_INTERVAL_MS = 2000;
 
@@ -243,4 +244,19 @@ export const useImportDiscoveryMutation = (jobId: string | null) => {
       queryClient.invalidateQueries({ queryKey: ['discovery', jobId] });
     },
   });
+};
+
+/**
+ * The background search state for the top bar's "Find businesses" button and the rail's Discovery entry
+ * (REV-40, REV-76). Separate selectors: re-rendering on the modal's own state would fight its focus.
+ */
+export const useDiscoveryIndicator = (): { indicator: DiscoveryIndicator; newCount: number } => {
+  const activeJobId = useDiscoveryStore((s) => s.activeJobId);
+  const resultsSeen = useDiscoveryStore((s) => s.resultsSeen);
+  // Shares the modal's query, so the job keeps polling while the modal is closed and stops once it finishes
+  const status = useDiscoveryStatusQuery(activeJobId);
+  return {
+    indicator: discoveryIndicator({ activeJobId, status: status.data, isError: status.isError, resultsSeen }),
+    newCount: newCandidateCount(status.data?.result),
+  };
 };

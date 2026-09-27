@@ -16,7 +16,7 @@ describe('Zustand Dashboard Stores', () => {
     it('should initialize with default empty filters and kanban view mode', () => {
       const state = useLeadFilterStore.getState();
       expect(state.searchQuery).toBe('');
-      expect(state.selectedStatus).toBe('ALL');
+      expect(state.selectedBucket).toBe('ALL');
       expect(state.selectedNiche).toBe('ALL');
       expect(state.selectedComplexity).toBe('ALL');
       expect(state.viewMode).toBe('kanban');
@@ -31,8 +31,8 @@ describe('Zustand Dashboard Stores', () => {
     });
 
     it('should update selected status', () => {
-      useLeadFilterStore.getState().setSelectedStatus('QUEUED');
-      expect(useLeadFilterStore.getState().selectedStatus).toBe('QUEUED');
+      useLeadFilterStore.getState().setSelectedBucket('in_progress');
+      expect(useLeadFilterStore.getState().selectedBucket).toBe('in_progress');
     });
 
     it('should update selected niche', () => {
@@ -59,7 +59,7 @@ describe('Zustand Dashboard Stores', () => {
       const store = useLeadFilterStore.getState();
       const setters: Array<() => void> = [
         () => store.setSearchQuery('dental'),
-        () => store.setSelectedStatus('NEEDS_APPROVAL'),
+        () => store.setSelectedBucket('needs_you'),
         () => store.setSelectedNiche('dental'),
         () => store.setSelectedComplexity('ONE_PAGE_BROCHURE'),
       ];
@@ -94,7 +94,7 @@ describe('Zustand Dashboard Stores', () => {
 
     it('should reset all filters to default and reset page to 0', () => {
       useLeadFilterStore.getState().setSearchQuery('Test Query');
-      useLeadFilterStore.getState().setSelectedStatus('SENT');
+      useLeadFilterStore.getState().setSelectedBucket('outreach');
       useLeadFilterStore.getState().setSelectedNiche('auto');
       useLeadFilterStore.getState().setSelectedComplexity('COMPLEX');
       useLeadFilterStore.getState().setPage(4);
@@ -103,7 +103,7 @@ describe('Zustand Dashboard Stores', () => {
 
       const state = useLeadFilterStore.getState();
       expect(state.searchQuery).toBe('');
-      expect(state.selectedStatus).toBe('ALL');
+      expect(state.selectedBucket).toBe('ALL');
       expect(state.selectedNiche).toBe('ALL');
       expect(state.selectedComplexity).toBe('ALL');
       expect(state.page).toBe(0);

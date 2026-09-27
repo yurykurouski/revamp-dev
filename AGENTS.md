@@ -99,6 +99,7 @@ Revamp-dev/
    * All test suites must execute and pass cleanly (`npm test`) with 0 failures prior to submitting any task.
 6. **Dashboard Styling (REV-49):**
    * Colors, radii, typography and component overrides live in the MUI theme (`apps/dashboard/src/theme/theme.ts`, `TOKENS` for dark and light). Components use theme tokens (`text.secondary`, `warning.soft`, `stage.sent`, `border.subtle`, …), never hard-coded hex or rgba values.
+   * Pages are routes (`apps/dashboard/src/routes`, REV-76): add a path to `ROUTES` in `routes/paths.ts` and the route to `APP_ROUTES`; open a lead with `useOpenLead` / `LeadLink` (`/leads/:id`), not by opening the inspector store directly.
    * Tinted status chips come from the theme: pass `color="warning"` etc. to `Chip` instead of styling its background. New color pairs must keep WCAG AA contrast; `theme.spec.ts` checks it.
 7. **One Schema per Collection (REV-48):**
    * Mongoose schemas are defined only in `packages/db` (`@revamp/db`). `apps/api/src/models` and `apps/workers/src/models` only re-export them; never add or change a schema inside an app.
@@ -106,7 +107,7 @@ Revamp-dev/
 8. **One Lead State Machine (REV-62):**
    * `LEAD_STATUSES` (`@revamp/shared-types`) lists every lead status; `LEAD_TRANSITIONS`, `canTransition` and `leadStatusesInto` (`@revamp/validation`) define the allowed moves.
    * Every write of `Lead.status` checks the table, normally as an atomic filter (`Lead.findOneAndUpdate({ _id, status: { $in: leadStatusesInto(to) } }, …)`), so stale jobs and late tracking hits never move a lead backwards. Never keep a local list of statuses; add a status or an edge to the table (and its tests) instead.
-   * The dashboard maps each status to a Kanban column in `apps/dashboard/src/utils/leadStages.ts`; a new status must get a column, a chip color and a label in all five locales.
+   * The dashboard maps each status to a Kanban column (`LEAD_STATUS_STAGE`) and a review-queue bucket (`LEAD_STATUS_BUCKET`: Needs you, In progress, Outreach, Closed) in `apps/dashboard/src/utils/leadStages.ts`; a new status must get a column, a bucket, a chip color and a label in all five locales.
 9. **One API Error Format (REV-63):**
    * Every API error is `{ success: false, error: { code, message, details? } }`. Routes and services throw `AppError(statusCode, code, message, details?)`; only `errorHandler` writes error JSON. Never call `res.status(4xx/5xx).json(...)` in a route.
    * Codes come from `API_ERROR_CODES` in `@revamp/shared-types`; add a new code there (and to blueprint.md §5) instead of inventing a string. The dashboard reads only `error.code` / `error.message`, through `ApiError` in `apps/dashboard/src/api/client.ts`.

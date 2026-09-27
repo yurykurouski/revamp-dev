@@ -4,8 +4,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { getTheme } from './theme/theme.js';
 import { useThemeStore } from './store/useThemeStore.js';
 import { useLanguageStore } from './store/useLanguageStore.js';
-import { Layout } from './components/Layout.js';
-import { LeadsPage } from './pages/LeadsPage.js';
+import { BrowserRouter } from 'react-router-dom';
+import { AppRoutes } from './routes/AppRoutes.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -25,9 +25,9 @@ export const App: React.FC = () => {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider theme={currentTheme}>
         <CssBaseline />
-        <Layout activeView="leads">
-          <LeadsPage />
-        </Layout>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
       </ThemeProvider>
     </QueryClientProvider>
   );
