@@ -46,6 +46,7 @@ export const be: Translation = {
     title: 'Чарга праверкі',
     bucketsLabel: 'Групы лідаў',
     detailLabel: 'Выбраны лід',
+    openFullScreen: 'Адкрыць на ўвесь экран',
     listCaption: {
       needs_you: 'Чакаюць вашага рашэння · спачатку старыя',
       in_progress: 'Ідзе аўдыт або стварэнне прататыпа · спачатку новыя',

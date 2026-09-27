@@ -8,12 +8,15 @@ import {
   List,
   ListItemButton,
   Snackbar,
+  IconButton,
   Tab,
   Tabs,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import FilterListIcon from '@mui/icons-material/FilterList';
+import OpenInFullIcon from '@mui/icons-material/OpenInFull';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import type { ILeadItem } from '../api/client.js';
@@ -179,7 +182,8 @@ const FilterChips = <T extends string>({ label, group, options, picked, optionLa
  * the selected lead live in the URL (`?bucket=…&lead=…`), so a reload keeps the operator's place. When
  * the operator approves or rejects the selected lead the next one is selected; a lead a worker moves to
  * another bucket while it is selected stays listed and selected until the operator moves on (REV-86).
- * J / K move through the list and Enter opens the lead as its own page. Quick filters (REV-80) narrow the
+ * J / K move through the list and Enter, or the review's open-full-screen button (REV-89), opens the lead
+ * as its own page. Quick filters (REV-80) narrow the
  * bucket's list by status and score band; they belong to the bucket and reset when it changes.
  */
 export const ReviewQueuePage: React.FC = () => {
@@ -468,7 +472,24 @@ export const ReviewQueuePage: React.FC = () => {
                 </Alert>
               )}
               <Box sx={{ flexGrow: 1, minHeight: 0 }}>
-                <LeadReview key={selectedLead.id} lead={selectedLead} headingComponent="h2" onDecision={handleDecision} />
+                <LeadReview
+                  key={selectedLead.id}
+                  lead={selectedLead}
+                  headingComponent="h2"
+                  onDecision={handleDecision}
+                  headerActions={
+                    <Tooltip title={t('queue.openFullScreen')}>
+                      <IconButton
+                        size="small"
+                        aria-label={t('queue.openFullScreen')}
+                        data-testid="queue-open-full-screen"
+                        onClick={() => openLead(selectedLead.id)}
+                      >
+                        <OpenInFullIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                  }
+                />
               </Box>
             </>
           ) : (

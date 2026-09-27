@@ -28,6 +28,8 @@ interface LeadReviewProps {
   onDecision?: (decision: ReviewDecision) => void;
   /** The lead name's heading level; `h2` when the review sits under a page heading (REV-79) */
   headingComponent?: 'h1' | 'h2';
+  /** Controls shown at the end of the header, e.g. the review queue's open-full-screen button (REV-89) */
+  headerActions?: React.ReactNode;
 }
 
 export type ReviewDecision = 'approved' | 'rejected';
@@ -41,7 +43,7 @@ const panelId = (step: ReviewStep) => `lead-review-panel-${step}`;
  * operator moves between them; approving outreach is offered on the email step only (HITL).
  * Key it by the lead id so another lead starts on the first step with a fresh draft.
  */
-export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecision, headingComponent = 'h1' }) => {
+export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecision, headingComponent = 'h1', headerActions }) => {
   const { t } = useTranslation();
   const [step, setStep] = useState<ReviewStep>('audit');
 
@@ -110,8 +112,11 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
             </Typography>
           </Box>
         </Box>
-        {/* The original site's audit score; no MVP score is measured, so none is shown */}
-        <Chip label={t('inspector.originalScore', { score: lead.totalScore ?? NOT_MEASURED })} size="small" color="error" />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {/* The original site's audit score; no MVP score is measured, so none is shown */}
+          <Chip label={t('inspector.originalScore', { score: lead.totalScore ?? NOT_MEASURED })} size="small" color="error" />
+          {headerActions}
+        </Box>
       </Box>
 
       {/* Steps */}
