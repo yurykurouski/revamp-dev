@@ -10,7 +10,7 @@
   ],
   "scripts": {
     "build": "npm run build:packages && npm run build:apps",
-    "build:packages": "npm run build --workspace=@revamp/shared-types && npm run build --workspace=@revamp/validation",
+    "build:packages": "npm run build --workspace=@revamp/shared-types && npm run build --workspace=@revamp/validation && npm run build --workspace=@revamp/db",
     "build:apps": "npm run build --workspace=@revamp/api && npm run build --workspace=@revamp/workers && npm run build --workspace=@revamp/dashboard",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "lint": "eslint .",

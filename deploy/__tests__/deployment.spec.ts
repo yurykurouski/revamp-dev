@@ -37,6 +37,16 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(content).toContain('apps/workers/dist/index.js');
     });
 
+    it.each(['apps/api/Dockerfile', 'apps/workers/Dockerfile'])(
+      '%s should build and ship the shared @revamp/db models (REV-48)',
+      (dockerfile) => {
+        const content = fs.readFileSync(path.join(rootDir, dockerfile), 'utf-8');
+        expect(content).toContain('COPY packages/db ./packages/db');
+        expect(content).toContain('npm run build --workspace=@revamp/db');
+        expect(content).toMatch(/--from=builder \/app\/packages\/db\/dist \.\/packages\/db\/dist/);
+      },
+    );
+
     it('apps/dashboard/Dockerfile should build Vite SPA and serve through Nginx Alpine', () => {
       const filePath = path.join(rootDir, 'apps/dashboard/Dockerfile');
       expect(fs.existsSync(filePath)).toBe(true);

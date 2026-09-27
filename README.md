@@ -21,8 +21,9 @@ apps/
   workers/      BullMQ workers: discovery, audit, AI generation, deploy, email
   dashboard/    Operator UI: React, Vite, MUI v6, TanStack Query, Zustand, i18next
 packages/
-  shared-types/ Types, enums and DTOs shared across the monorepo
+  shared-types/ Types, enums, DTOs and queue names shared across the monorepo
   validation/   Zod schemas for HTTP payloads and LLM output
+  db/           Mongoose models shared by the API and the workers
 deploy/         Production Docker, Nginx and deploy script
 scripts/        Maintenance and live-crawl scripts
 ```

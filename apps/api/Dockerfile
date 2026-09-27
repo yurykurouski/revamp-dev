@@ -11,6 +11,8 @@ COPY packages/shared-types/package*.json ./packages/shared-types/
 COPY packages/shared-types/tsconfig.json ./packages/shared-types/
 COPY packages/validation/package*.json ./packages/validation/
 COPY packages/validation/tsconfig.json ./packages/validation/
+COPY packages/db/package*.json ./packages/db/
+COPY packages/db/tsconfig.json ./packages/db/
 COPY apps/api/package*.json ./apps/api/
 COPY apps/api/tsconfig.json ./apps/api/
 
@@ -20,11 +22,13 @@ RUN npm ci
 # Copy source code
 COPY packages/shared-types ./packages/shared-types
 COPY packages/validation ./packages/validation
+COPY packages/db ./packages/db
 COPY apps/api ./apps/api
 
-# Build shared packages and API service
+# Build shared packages (types, validation, models) and API service
 RUN npm run build --workspace=@revamp/shared-types && \
     npm run build --workspace=@revamp/validation && \
+    npm run build --workspace=@revamp/db && \
     npm run build --workspace=@revamp/api
 
 # Prune dev dependencies for lean production footprint
@@ -53,6 +57,8 @@ COPY --chown=node:node --from=builder /app/packages/shared-types/dist ./packages
 COPY --chown=node:node --from=builder /app/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --chown=node:node --from=builder /app/packages/validation/dist ./packages/validation/dist
 COPY --chown=node:node --from=builder /app/packages/validation/package.json ./packages/validation/package.json
+COPY --chown=node:node --from=builder /app/packages/db/dist ./packages/db/dist
+COPY --chown=node:node --from=builder /app/packages/db/package.json ./packages/db/package.json
 COPY --chown=node:node --from=builder /app/apps/api/dist ./apps/api/dist
 COPY --chown=node:node --from=builder /app/apps/api/package.json ./apps/api/package.json
 COPY --chown=node:node --from=builder /app/apps/api/src/public ./apps/api/dist/public
