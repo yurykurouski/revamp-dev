@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { IEmailTestJobData, IEmailTestJobResult } from '@revamp/shared-types';
+import { IEmailTestJobData, IEmailTestJobResult, draftToHtml } from '@revamp/shared-types';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { emailService } from '../services/email.service.js';
@@ -9,21 +9,6 @@ export const TEST_SUBJECT_PREFIX = '[Test] ';
 
 /** Links in the footer of a test send point at this token; no campaign has it */
 export const TEST_TRACKING_TOKEN = 'test-send';
-
-const escapeHtml = (text: string): string =>
-  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-
-/** The plain-text draft as HTML: escaped, with its line breaks and a hidden preheader kept */
-export function draftToHtml(body: string, preheader?: string): string {
-  const hiddenPreheader = preheader
-    ? `<div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(preheader)}</div>\n`
-    : '';
-  const paragraphs = body
-    .split(/\n{2,}/)
-    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
-    .join('\n');
-  return `${hiddenPreheader}${paragraphs}`;
-}
 
 /**
  * Sends the operator's current draft to the operator's own address (REV-60). The email goes through

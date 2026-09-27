@@ -50,7 +50,7 @@ import { MvpSourceChip } from './MvpSourceChip.js';
 import { MvpLayoutChip } from './MvpLayoutChip.js';
 import { ColorPickerToolbar } from './ColorPickerToolbar.js';
 import { EmailDraftEditor } from './EmailDraftEditor.js';
-import type { ITestEmailDraft } from '../api/client.js';
+import type { IEmailDraft } from '../api/client.js';
 import { CompletenessChecklist } from './CompletenessChecklist.js';
 import { criticalIssueFields } from '../utils/completeness.js';
 import { useTranslation } from 'react-i18next';
@@ -131,12 +131,12 @@ export const SideBySideInspectorModal: React.FC = () => {
     handleColorChange(resetColor);
   };
 
-  const handleApprove = async (emailData: { subject: string; preheader: string; body: string }) => {
+  const handleApprove = async (emailData: IEmailDraft) => {
     if (!selectedLeadId) return;
     await approveMutation.mutateAsync({ leadId: selectedLeadId, emailData });
   };
 
-  const handleSendTest = async (testEmail: string, draft: ITestEmailDraft) => {
+  const handleSendTest = async (testEmail: string, draft: IEmailDraft) => {
     if (!selectedLeadId) return;
     await sendTestMutation.mutateAsync({ leadId: selectedLeadId, testEmail, draft });
   };

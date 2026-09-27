@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { auditSummarySentence, renderEmailTemplate, UNKNOWN_VALUE } from '../../utils/emailTemplate.js';
+import { auditSummarySentence, renderEmailDraft, renderEmailTemplate, UNKNOWN_VALUE } from '../../utils/emailTemplate.js';
 
 export const TEMPLATE_VARIABLES = [
   { tag: '{{businessName}}', label: 'Company' },
@@ -85,5 +85,27 @@ describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
       expect(preset.hex).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(preset.name.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe('renderEmailDraft (REV-72)', () => {
+  const context = { businessName: 'Dr. Smile', city: 'Warsaw', demoUrl: 'https://demo.example/dr-smile', score: 42 };
+
+  it('substitutes the variables in the subject, preheader and body', () => {
+    const draft = renderEmailDraft(
+      { subject: 'For {{businessName}}', preheader: 'In {{city}}', body: 'Score {{score}}\n👉 {{demoUrl}}' },
+      context,
+    );
+
+    expect(draft).toEqual({
+      subject: 'For Dr. Smile',
+      preheader: 'In Warsaw',
+      body: 'Score 42/100\n👉 https://demo.example/dr-smile',
+    });
+    expect(JSON.stringify(draft)).not.toMatch(/{{.*}}/);
+  });
+
+  it('leaves out an empty preheader', () => {
+    expect(renderEmailDraft({ subject: 'S', preheader: '  ', body: 'B' }, context)).toEqual({ subject: 'S', body: 'B' });
   });
 });

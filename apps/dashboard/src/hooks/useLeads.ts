@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
-import { apiClient, ILeadItem, ITestEmailDraft, KpiMetrics } from '../api/client.js';
+import { apiClient, ILeadItem, IEmailDraft, KpiMetrics } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
 import { LeadStatus, LlmProviderId } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
@@ -62,7 +62,7 @@ export const useApproveOutreachMutation = () => {
       emailData,
     }: {
       leadId: string;
-      emailData?: { subject: string; preheader: string; body: string };
+      emailData?: IEmailDraft;
     }) => apiClient.approveOutreach(leadId, emailData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY });
@@ -72,7 +72,7 @@ export const useApproveOutreachMutation = () => {
 
 export const useSendTestEmailMutation = () => {
   return useMutation({
-    mutationFn: ({ leadId, testEmail, draft }: { leadId: string; testEmail: string; draft: ITestEmailDraft }) =>
+    mutationFn: ({ leadId, testEmail, draft }: { leadId: string; testEmail: string; draft: IEmailDraft }) =>
       apiClient.sendTestEmail(leadId, testEmail, draft),
   });
 };

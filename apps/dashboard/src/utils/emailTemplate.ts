@@ -30,6 +30,28 @@ export function renderEmailTemplate(text: string, context: EmailTemplateContext)
     );
 }
 
+export interface RenderedEmailDraft {
+  subject: string;
+  preheader?: string;
+  body: string;
+}
+
+/**
+ * The draft as the preview shows it, with its variables substituted. The test send and the approval
+ * both send this, so the prospect gets exactly what the operator reviewed (REV-60, REV-72)
+ */
+export function renderEmailDraft(
+  draft: { subject: string; preheader: string; body: string },
+  context: EmailTemplateContext,
+): RenderedEmailDraft {
+  const preheader = renderEmailTemplate(draft.preheader, context).trim();
+  return {
+    subject: renderEmailTemplate(draft.subject, context),
+    ...(preheader ? { preheader } : {}),
+    body: renderEmailTemplate(draft.body, context),
+  };
+}
+
 /** The audit sentence of the default draft; it quotes the LCP only when the audit measured one */
 export function auditSummarySentence(domain: string, lcpSeconds: number | undefined): string {
   const speed = lcpSeconds != null ? ` the current mobile version loads in ${lcpSeconds}s (LCP) and` : ' the current mobile version';

@@ -1,8 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EMAIL_PROVIDER_NOT_CONFIGURED, QUEUE_NAMES } from '@revamp/shared-types';
+import { EMAIL_PROVIDER_NOT_CONFIGURED, QUEUE_NAMES, draftToHtml } from '@revamp/shared-types';
 import {
   createEmailTestWorker,
-  draftToHtml,
   processEmailTestJob,
   TEST_SUBJECT_PREFIX,
   TEST_TRACKING_TOKEN,
@@ -96,20 +95,5 @@ describe('EmailTestWorker (REV-60)', () => {
     vi.mocked(emailService.sendEmail).mockRejectedValue(new Error('Resend API error (403): forbidden'));
 
     await expect(processEmailTestJob(data)).rejects.toThrow('Resend API error (403)');
-  });
-
-  describe('draftToHtml', () => {
-    it('escapes the draft and keeps its paragraphs and line breaks', () => {
-      expect(draftToHtml('Hi <b>you</b>\nline 2\n\nA & "B"')).toBe(
-        '<p>Hi &lt;b&gt;you&lt;/b&gt;<br>line 2</p>\n<p>A &amp; &quot;B&quot;</p>',
-      );
-    });
-
-    it('adds the preheader as hidden text before the body', () => {
-      const html = draftToHtml('Body', 'Preview <text>');
-      expect(html.startsWith('<div style="display:none;')).toBe(true);
-      expect(html).toContain('Preview &lt;text&gt;');
-      expect(html.endsWith('<p>Body</p>')).toBe(true);
-    });
   });
 });

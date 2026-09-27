@@ -12,6 +12,7 @@ import {
   OUTREACH_APPROVABLE_STATUSES,
   OUTREACH_REJECTABLE_STATUSES,
   canApproveOutreach,
+  draftToHtml,
 } from '@revamp/shared-types';
 import { validateBody } from '../middlewares/validate.js';
 import { Lead } from '../models/Lead.model.js';
@@ -132,9 +133,12 @@ router.post(
       const subject =
         req.body.subject ||
         `3 ways to lift conversions on the ${lead.businessName || 'your company'} website (plus an interactive prototype)`;
-      const bodyHtml =
-        req.body.body ||
-        `<p>Hello! We prepared an interactive website redesign concept for ${lead.businessName || 'your company'}.</p>`;
+      // The operator approves a plain-text draft; it is sent as escaped HTML with its line breaks,
+      // plus the same text as the plain-text part, exactly like the test send (REV-72)
+      const body: string | undefined = req.body.body;
+      const bodyHtml = body
+        ? draftToHtml(body, req.body.preheader)
+        : `<p>Hello! We prepared an interactive website redesign concept for ${lead.businessName || 'your company'}.</p>`;
 
       const campaign = await EmailCampaign.findOneAndUpdate(
         { leadId: lead._id },
@@ -146,6 +150,7 @@ router.post(
           subject,
           previewText: req.body.preheader || 'A new mobile concept',
           bodyHtml,
+          ...(body ? { bodyPlainText: body } : {}),
           trackingToken,
           requiresManualReview: false,
           approvedBy: req.body.approvedBy || 'operator',
