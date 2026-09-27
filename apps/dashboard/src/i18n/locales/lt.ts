@@ -44,8 +44,25 @@ export const lt: Translation = {
   },
   queue: {
     title: 'Peržiūros eilė',
-    subtitle: 'Potencialūs klientai, laukiantys jūsų patvirtinimo arba pakartotinio audito.',
-    empty: 'Šiuo metu niekas nelaukia jūsų sprendimo.',
+    bucketsLabel: 'Potencialių klientų grupės',
+    detailLabel: 'Pasirinktas potencialus klientas',
+    listCaption: {
+      needs_you: 'Laukia jūsų sprendimo · seniausi pirmiau',
+      in_progress: 'Vyksta auditas arba kuriamas prototipas · naujausi pirmiau',
+      outreach: 'Laiškas suplanuotas arba išsiųstas · naujausi pirmiau',
+      closed: 'Atsakė, atmesti arba atsisakė · naujausi pirmiau',
+    },
+    empty: {
+      needs_you: 'Šiuo metu niekas nelaukia jūsų sprendimo.',
+      in_progress: 'Šiuo metu nevyksta joks auditas ar prototipo kūrimas.',
+      outreach: 'Dar nėra suplanuotų ar išsiųstų laiškų.',
+      closed: 'Dar nėra uždarytų potencialių klientų.',
+    },
+    selectLead: 'Pasirinkite potencialų klientą, kad jį peržiūrėtumėte.',
+    keyboardHint: 'J / K – judėti · Enter – atidaryti',
+    auditFailedHint: 'Pakartokite arba atmeskite',
+    approved: '{{name}}: siuntimas patvirtintas.',
+    rejected: '{{name}}: potencialus klientas atmestas.',
   },
   leadRoute: {
     notFound: 'Šio kliento nėra arba jis pašalintas.',

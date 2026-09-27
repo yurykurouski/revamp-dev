@@ -44,8 +44,25 @@ export const pl: Translation = {
   },
   queue: {
     title: 'Kolejka przeglądu',
-    subtitle: 'Leady czekające na twoje zatwierdzenie lub ponowny audyt.',
-    empty: 'Nic teraz na ciebie nie czeka.',
+    bucketsLabel: 'Grupy leadów',
+    detailLabel: 'Wybrany lead',
+    listCaption: {
+      needs_you: 'Czekają na twoją decyzję · najstarsze najpierw',
+      in_progress: 'Trwa audyt lub tworzenie prototypu · najnowsze najpierw',
+      outreach: 'E-mail zaplanowany lub wysłany · najnowsze najpierw',
+      closed: 'Odpowiedzieli, odrzuceni lub wypisani · najnowsze najpierw',
+    },
+    empty: {
+      needs_you: 'Nic teraz na ciebie nie czeka.',
+      in_progress: 'Żaden lead nie jest teraz audytowany ani prototypowany.',
+      outreach: 'Nie zaplanowano ani nie wysłano jeszcze żadnych e-maili.',
+      closed: 'Nie ma jeszcze zamkniętych leadów.',
+    },
+    selectLead: 'Wybierz leada, aby go przejrzeć.',
+    keyboardHint: 'J / K — przejście · Enter — otwórz',
+    auditFailedHint: 'Ponów lub odrzuć',
+    approved: '{{name}}: wysyłka zatwierdzona.',
+    rejected: '{{name}}: lead odrzucony.',
   },
   leadRoute: {
     notFound: 'Ten lead nie istnieje lub został usunięty.',

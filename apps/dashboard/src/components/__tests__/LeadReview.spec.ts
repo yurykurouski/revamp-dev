@@ -10,7 +10,7 @@ import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
 import { apiClient, IAuditDetail, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
-import { LeadReview } from '../leadReview/LeadReview.js';
+import { LeadReview, type ReviewDecision } from '../leadReview/LeadReview.js';
 import { APPROVE_ARM_DELAY_MS } from '../leadReview/ReviewActionBar.js';
 import { REVIEW_STEPS, ReviewStep, nextStep, previousStep } from '../leadReview/steps.js';
 
@@ -57,6 +57,7 @@ describe('LeadReview (REV-77)', () => {
   let container: HTMLDivElement;
   let root: Root;
   let onClose: ReturnType<typeof vi.fn<() => void>>;
+  let onDecision: ReturnType<typeof vi.fn<(decision: ReviewDecision) => void>>;
 
   beforeEach(() => {
     vi.spyOn(apiClient, 'getAudit').mockResolvedValue(audit);
@@ -64,6 +65,7 @@ describe('LeadReview (REV-77)', () => {
     vi.spyOn(apiClient, 'approveOutreach').mockResolvedValue({ success: true, leadId: 'lead-1', status: 'SCHEDULED' });
     vi.spyOn(apiClient, 'rejectLead').mockResolvedValue({ success: true, leadId: 'lead-1', status: 'REJECTED' });
     onClose = vi.fn<() => void>();
+    onDecision = vi.fn<(decision: ReviewDecision) => void>();
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -88,7 +90,7 @@ describe('LeadReview (REV-77)', () => {
           React.createElement(
             ThemeProvider,
             { theme: getTheme('dark', 'en') },
-            React.createElement(LeadReview, { lead: reviewed, onClose }),
+            React.createElement(LeadReview, { lead: reviewed, onClose, onDecision }),
           ),
         ),
       );
@@ -222,6 +224,8 @@ describe('LeadReview (REV-77)', () => {
     expect(leadId).toBe('lead-1');
     expect(draft.subject).toBe('A faster site for Harbor Dental');
     expect(document.body.textContent).toContain(en.email.approved);
+    // The review queue moves on to the next lead and confirms the approval (REV-79)
+    expect(onDecision).toHaveBeenCalledExactlyOnceWith('approved');
   });
 
   it.each<ReviewStep>(['audit', 'prototype', 'email'])('rejects the lead from the %s step and closes', async (step) => {
@@ -233,6 +237,7 @@ describe('LeadReview (REV-77)', () => {
     expect(apiClient.rejectLead).toHaveBeenCalledWith('lead-1', en.email.defaultRejectReason);
     expect(apiClient.approveOutreach).not.toHaveBeenCalled();
     expect(onClose).toHaveBeenCalledTimes(1);
+    expect(onDecision).toHaveBeenCalledExactlyOnceWith('rejected');
   });
 
   it('shows a failed reject and stays open', async () => {
@@ -243,6 +248,7 @@ describe('LeadReview (REV-77)', () => {
 
     expect(document.body.textContent).toContain('Lead can no longer be rejected');
     expect(onClose).not.toHaveBeenCalled();
+    expect(onDecision).not.toHaveBeenCalled();
   });
 
   it('does not offer reject for a lead whose outreach is closed', async () => {

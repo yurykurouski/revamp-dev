@@ -3,6 +3,8 @@ import { LEAD_STATUSES } from '@revamp/shared-types';
 import {
   LEAD_BUCKETS,
   LEAD_STATUS_BUCKET,
+  LEAD_STATUS_CHIP_COLOR,
+  isKnownLeadStatus,
   LEAD_STATUS_STAGE,
   countLeadsByBucket,
   countStatsByBucket,
@@ -99,5 +101,38 @@ describe('Review-queue buckets (REV-76)', () => {
       closed: 5,
     });
     expect(countStatsByBucket({})).toEqual({ ALL: 0, needs_you: 0, in_progress: 0, outreach: 0, closed: 0 });
+  });
+});
+
+describe('status chip colors (REV-79)', () => {
+  it('gives every lead status a chip color', () => {
+    expect(Object.keys(LEAD_STATUS_CHIP_COLOR).sort()).toEqual([...LEAD_STATUSES].sort());
+  });
+
+  it('tints the statuses that wait for the operator', () => {
+    expect(LEAD_STATUS_CHIP_COLOR.NEEDS_APPROVAL).toBe('warning');
+    expect(LEAD_STATUS_CHIP_COLOR.AUDIT_FAILED).toBe('error');
+  });
+
+  it('knows only the shared statuses', () => {
+    for (const status of LEAD_STATUSES) expect(isKnownLeadStatus(status)).toBe(true);
+    for (const unknown of ['ARCHIVED', 'constructor', '']) expect(isKnownLeadStatus(unknown)).toBe(false);
+  });
+});
+
+describe('review-queue bucket texts (REV-79)', () => {
+  it.each([
+    ['en', en],
+    ['ru', ru],
+    ['be', be],
+    ['pl', pl],
+    ['lt', lt],
+  ])('names every bucket and gives it a caption and an empty state in %s', (_language, locale) => {
+    for (const bucket of LEAD_BUCKETS) {
+      expect(locale.buckets[bucket]).toBeTruthy();
+      expect(locale.queue.listCaption[bucket]).toBeTruthy();
+      expect(locale.queue.empty[bucket]).toBeTruthy();
+    }
+    expect(Object.keys(locale.queue.empty).sort()).toEqual([...LEAD_BUCKETS].sort());
   });
 });

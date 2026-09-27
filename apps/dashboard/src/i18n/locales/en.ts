@@ -45,8 +45,25 @@ export const en = {
   },
   queue: {
     title: 'Review queue',
-    subtitle: 'Leads waiting for your approval or a retry.',
-    empty: 'Nothing needs you right now.',
+    bucketsLabel: 'Lead buckets',
+    detailLabel: 'Selected lead',
+    listCaption: {
+      needs_you: 'Awaiting your decision · oldest first',
+      in_progress: 'Being audited or prototyped · newest first',
+      outreach: 'Email scheduled or sent · newest first',
+      closed: 'Replied, rejected or unsubscribed · newest first',
+    },
+    empty: {
+      needs_you: 'Nothing needs you right now.',
+      in_progress: 'No leads are being audited or prototyped.',
+      outreach: 'No outreach is scheduled or sent yet.',
+      closed: 'No closed leads yet.',
+    },
+    selectLead: 'Select a lead to review it.',
+    keyboardHint: 'J / K to move · Enter to open',
+    auditFailedHint: 'Retry or reject',
+    approved: '{{name}}: outreach approved.',
+    rejected: '{{name}}: lead rejected.',
   },
   leadRoute: {
     notFound: 'This lead does not exist or was removed.',

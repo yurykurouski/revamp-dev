@@ -24,7 +24,13 @@ interface LeadReviewProps {
   lead: ILeadItem;
   /** Leaves the review; also called after the lead is rejected */
   onClose?: () => void;
+  /** Called once outreach is approved or the lead rejected, e.g. so the review queue can confirm it (REV-79) */
+  onDecision?: (decision: ReviewDecision) => void;
+  /** The lead name's heading level; `h2` when the review sits under a page heading (REV-79) */
+  headingComponent?: 'h1' | 'h2';
 }
+
+export type ReviewDecision = 'approved' | 'rejected';
 
 const tabId = (step: ReviewStep) => `lead-review-tab-${step}`;
 const panelId = (step: ReviewStep) => `lead-review-panel-${step}`;
@@ -35,7 +41,7 @@ const panelId = (step: ReviewStep) => `lead-review-panel-${step}`;
  * operator moves between them; approving outreach is offered on the email step only (HITL).
  * Key it by the lead id so another lead starts on the first step with a fresh draft.
  */
-export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose }) => {
+export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecision, headingComponent = 'h1' }) => {
   const { t } = useTranslation();
   const [step, setStep] = useState<ReviewStep>('audit');
 
@@ -49,6 +55,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose }) => {
 
   const handleApprove = async (emailData: IEmailDraft) => {
     await approveMutation.mutateAsync({ leadId: lead.id, emailData });
+    onDecision?.('approved');
   };
 
   const handleSendTest = async (testEmail: string, emailDraft: IEmailDraft) => {
@@ -57,6 +64,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose }) => {
 
   const handleReject = async (reason: string) => {
     await rejectMutation.mutateAsync({ leadId: lead.id, reason });
+    onDecision?.('rejected');
     onClose?.();
   };
 
@@ -80,7 +88,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose }) => {
           )}
           <Box sx={{ minWidth: 0 }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-              <Typography variant="h5" component="h1" sx={{ fontWeight: 700 }}>
+              <Typography variant="h5" component={headingComponent} sx={{ fontWeight: 700 }}>
                 {lead.businessName}
               </Typography>
               {lead.niche && (
