@@ -519,6 +519,11 @@ export const en = {
       guidance: 'Guidance',
     },
   },
+  mvpPreviewPage: {
+    backToReview: 'Back to the review',
+    openPublished: 'Open the page the lead receives',
+    noMvp: 'This lead has no MVP yet.',
+  },
   mvpTools: {
     title: 'Design tools',
     move: 'Move the design tools panel. Arrow keys move it, Home resets it',

@@ -518,6 +518,11 @@ export const pl: Translation = {
       guidance: 'Wskazówki',
     },
   },
+  mvpPreviewPage: {
+    backToReview: 'Wróć do przeglądu',
+    openPublished: 'Otwórz stronę, którą otrzyma lead',
+    noMvp: 'Ten lead nie ma jeszcze MVP.',
+  },
   mvpTools: {
     title: 'Narzędzia projektu',
     move: 'Przesuń panel narzędzi projektu. Strzałki go przesuwają, Home przywraca na miejsce',

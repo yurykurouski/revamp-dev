@@ -313,6 +313,13 @@ describe('Prototype step layout picker (REV-84)', () => {
     });
   });
 
+  it('opens the full-window preview with the Design tools in a new tab (REV-91)', () => {
+    render(mvpWith('bento'));
+    const open = container.querySelector<HTMLAnchorElement>(`a[aria-label="${en.inspector.openPrototype}"]`)!;
+    expect(open.getAttribute('href')).toBe('/leads/lead-1/preview');
+    expect(open.getAttribute('target')).toBe('_blank');
+  });
+
   describe('palette saved on the MVP (REV-90)', () => {
     const palette = (primary: string) => ({ primary, secondary: '#b8c4fe', accent: primary });
     const colorInput = () => container.querySelector<HTMLInputElement>('#brand-color-picker-input')!;

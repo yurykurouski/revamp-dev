@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Alert, Box, Button, ButtonGroup, Card, Chip, CircularProgress, IconButton, Snackbar, Tooltip, Typography } from '@mui/material';
+import { Box, Button, ButtonGroup, Card, Chip, CircularProgress, IconButton, Tooltip, Typography } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
@@ -8,16 +8,14 @@ import LaptopIcon from '@mui/icons-material/Laptop';
 import SecurityIcon from '@mui/icons-material/Security';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
-import { mvpRecordId, useIsMvpGenerationPending, useUpdateMvpTokensMutation, withPreviewVersion } from '../../hooks/useLeads.js';
+import { useIsMvpGenerationPending, withPreviewVersion } from '../../hooks/useLeads.js';
 import { MvpPreviewFrame } from '../MvpPreviewFrame.js';
 import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
 import { MvpLayoutChip } from '../MvpLayoutChip.js';
-import { ColorPickerToolbar } from '../ColorPickerToolbar.js';
-import { MvpLayoutPicker } from '../MvpLayoutPicker.js';
-import { useLiveMvpLayout } from '../../hooks/useLiveMvpLayout.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
-import { FloatingToolsPanel } from './FloatingToolsPanel.js';
+import { MvpDesignTools, useMvpDesignTools } from './MvpDesignTools.js';
+import { leadPreviewPath } from '../../routes/paths.js';
 
 type PreviewBreakpoint = 'mobile' | 'tablet' | 'desktop';
 
@@ -30,9 +28,6 @@ const BREAKPOINTS: Array<{ value: PreviewBreakpoint; icon: React.ReactElement; l
   { value: 'tablet', icon: <TabletMacIcon sx={{ fontSize: 16 }} />, label: 'bpTablet' },
   { value: 'desktop', icon: <LaptopIcon sx={{ fontSize: 16 }} />, label: 'bpDesktop' },
 ];
-
-/** Used when the audit found no brand color */
-const DEFAULT_PRIMARY = '#5c5bed';
 
 interface PrototypeStepProps {
   lead: ILeadItem;
@@ -49,40 +44,9 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   const { t } = useTranslation();
   const [breakpoint, setBreakpoint] = useState<PreviewBreakpoint>('desktop');
   const isGenerationRequestPending = useIsMvpGenerationPending(lead.id);
-  const updateTokensMutation = useUpdateMvpTokensMutation();
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const [currentColor, setCurrentColor] = useState<string>(DEFAULT_PRIMARY);
-  const [tokensError, setTokensError] = useState<string | null>(null);
-  const liveLayout = useLiveMvpLayout({ lead, mvp, iframeRef });
-
-  // The palette saved on the MVP (REV-90), else the audit's brand color. Taken again only when another
-  // MVP version or audit arrives, so a late save response never pulls back a newer pick.
-  const savedPrimary = mvp?.colorPalette?.primary || audit?.colorPalette?.primary;
-  const paletteSource = `${mvpRecordId(mvp) ?? ''}|${mvp?.generatedAt ?? ''}|${audit?.colorPalette?.primary ?? ''}`;
-  const [syncedPaletteSource, setSyncedPaletteSource] = useState<string | null>(null);
-  if (syncedPaletteSource !== paletteSource) {
-    setSyncedPaletteSource(paletteSource);
-    if (savedPrimary) setCurrentColor(savedPrimary);
-  }
-
-  const handleColorChange = (newColor: string) => {
-    setCurrentColor(newColor);
-    // Real-time live update inside iframe without reload
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: 'REVAMP_UPDATE_THEME', palette: { primary: newColor, accent: newColor } },
-      '*',
-    );
-    // Saved against the MVP record, not the lead; a failed save is shown instead of passing silently (REV-65)
-    const mvpId = mvpRecordId(mvp);
-    if (!mvpId) return;
-    updateTokensMutation.mutate(
-      { mvpId, leadId: lead.id, tokens: { primaryColor: newColor, accentColor: newColor } },
-      { onError: (err) => setTokensError(err instanceof Error ? err.message : String(err)) },
-    );
-  };
-
-  const handleColorReset = () => handleColorChange(audit?.colorPalette?.primary || DEFAULT_PRIMARY);
+  const tools = useMvpDesignTools({ lead, audit, mvp, iframeRef });
 
   // Versioned by the generation time so the iframe reloads after a regeneration (REV-31), which
   // overwrites the same preview URL
@@ -155,7 +119,8 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
             <span>
               <IconButton
                 size="small"
-                href={previewUrl || ''}
+                // The full-window preview keeps the Design tools (REV-91); the page the lead gets is linked there
+                href={previewUrl ? leadPreviewPath(lead.id) : ''}
                 disabled={!previewUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -222,28 +187,10 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
           )}
 
           {/* Live color (REV-16) and layout (REV-84) pickers, floating over the preview (REV-88) */}
-          <FloatingToolsPanel>
-            <ColorPickerToolbar
-              currentPrimary={currentColor}
-              originalPrimary={audit?.colorPalette?.primary}
-              onColorChange={handleColorChange}
-              onReset={handleColorReset}
-              // A palette change re-publishes the MVP, so it follows the layout picker's lock (REV-90)
-              disabled={!liveLayout.canChange || !previewUrl || isPreviewBusy}
-              disabledReason={t('colorPicker.locked')}
-            />
-            {mvp && (
-              <MvpLayoutPicker
-                value={liveLayout.layout}
-                onChange={liveLayout.changeLayout}
-                disabled={!liveLayout.canChange || !previewUrl || isPreviewBusy}
-                disabledReason={t('mvpLayout.locked')}
-              />
-            )}
-          </FloatingToolsPanel>
+          <MvpDesignTools tools={tools} locked={!previewUrl || isPreviewBusy} />
 
           {previewUrl ? (
-            <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} onLoad={liveLayout.onFrameLoad} />
+            <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} onLoad={tools.liveLayout.onFrameLoad} />
           ) : (
             <Box
               sx={{
@@ -270,26 +217,6 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
         </Box>
       </Box>
 
-      <Snackbar
-        open={Boolean(tokensError)}
-        autoHideDuration={6000}
-        onClose={() => setTokensError(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity="error" onClose={() => setTokensError(null)}>
-          {t('colorPicker.saveFailed', { message: tokensError ?? '' })}
-        </Alert>
-      </Snackbar>
-      <Snackbar
-        open={Boolean(liveLayout.error)}
-        autoHideDuration={6000}
-        onClose={liveLayout.clearError}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity="error" onClose={liveLayout.clearError}>
-          {t('mvpLayout.saveFailed', { message: liveLayout.error ?? '' })}
-        </Alert>
-      </Snackbar>
     </Card>
   );
 };

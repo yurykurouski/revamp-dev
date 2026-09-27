@@ -518,6 +518,11 @@ export const ru: Translation = {
       guidance: 'Ориентир',
     },
   },
+  mvpPreviewPage: {
+    backToReview: 'Назад к проверке',
+    openPublished: 'Открыть страницу, которую получит лид',
+    noMvp: 'У этого лида ещё нет MVP.',
+  },
   mvpTools: {
     title: 'Инструменты дизайна',
     move: 'Переместить панель инструментов дизайна. Стрелки двигают её, Home возвращает на место',
