@@ -12,9 +12,11 @@ router.get('/health', async (_req: Request, res: Response) => {
     redisConnection.status === 'ready' || redisConnection.status === 'connect'
       ? 'connected'
       : redisConnection.status;
+  // A container that can't reach its database must fail the Docker HEALTHCHECK (REV-66)
+  const healthy = mongoStatus === 'connected' && redisStatus === 'connected';
 
-  res.status(200).json({
-    status: 'ok',
+  res.status(healthy ? 200 : 503).json({
+    status: healthy ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
     services: {
       api: 'healthy',

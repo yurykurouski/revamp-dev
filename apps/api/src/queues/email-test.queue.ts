@@ -22,6 +22,13 @@ const getQueueEvents = (): QueueEvents => {
   return queueEvents;
 };
 
+/** Closes the QueueEvents listener, which holds its own Redis connection, if it was ever opened */
+export async function closeEmailTestEvents(): Promise<void> {
+  const events = queueEvents;
+  queueEvents = null;
+  await events?.close();
+}
+
 export type EmailTestOutcome =
   | { status: 'sent'; result: IEmailTestJobResult }
   | { status: 'failed'; reason: string }
