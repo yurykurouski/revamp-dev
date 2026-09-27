@@ -1,11 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createAiWorker } from '../ai.worker.js';
 import { Audit } from '../../models/Audit.model.js';
+import { findGenerationAudit } from '../../services/audit-lookup.js';
 import { Lead } from '../../models/Lead.model.js';
 import { MvpContentService, mvpContentService } from '../../services/mvp-content.service.js';
 import { addDeployJob } from '../../queues/deploy.queue.js';
 
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../services/audit-lookup.js');
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../services/mvp-content.service.js');
 vi.mock('../../queues/deploy.queue.js', () => ({
@@ -122,9 +124,7 @@ describe('AiWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockLead),
     } as any);
 
-    vi.mocked(Audit.findOne).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockAudit),
-    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
     vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
@@ -157,6 +157,8 @@ describe('AiWorker (@revamp/workers)', () => {
     expect(result.success).toBe(true);
     expect(result.leadId).toBe('lead-123');
     expect(result.content).toEqual(mockGeneratedContent);
+    // The job's audit, resolved so a stale or failed audit of the same lead is never used (REV-55)
+    expect(findGenerationAudit).toHaveBeenCalledWith('lead-123', 'audit-456');
 
     // The lead stays GENERATING; the deploy worker moves it to NEEDS_APPROVAL (HITL gate) once
     // the new preview is published (REV-31)
@@ -267,9 +269,7 @@ describe('AiWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockLead),
     } as any);
 
-    vi.mocked(Audit.findOne).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockAudit),
-    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
     vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
@@ -382,9 +382,7 @@ describe('AiWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockLead),
     } as any);
 
-    vi.mocked(Audit.findOne).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockAudit),
-    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
     vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
@@ -416,9 +414,7 @@ describe('AiWorker (@revamp/workers)', () => {
       vi.mocked(Lead.findById).mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Smile Dental', niche: 'dental' }),
       } as any);
-      vi.mocked(Audit.findOne).mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: 'audit-456', leadId: 'lead-123' }),
-      } as any);
+      vi.mocked(findGenerationAudit).mockResolvedValue({ _id: 'audit-456', leadId: 'lead-123' } as any);
       vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
       vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
     };
@@ -513,5 +509,23 @@ describe('AiWorker (@revamp/workers)', () => {
     };
 
     await expect(capturedProcessor!(job)).rejects.toThrow('Lead lead-non-existent not found');
+  });
+
+  it('should fail the job without generating when the lead has no completed audit (REV-55)', async () => {
+    createAiWorker();
+    vi.mocked(Lead.findById).mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Biz' }),
+    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(null);
+    vi.mocked(Lead.findByIdAndUpdate).mockClear();
+    vi.mocked(mvpContentService.generateContent).mockClear();
+    vi.mocked(addDeployJob).mockClear();
+
+    await expect(capturedProcessor!({ id: 'j', data: { leadId: 'lead-123', auditId: 'audit-failed' } })).rejects.toThrow(
+      'No completed audit found for lead lead-123',
+    );
+    expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(mvpContentService.generateContent).not.toHaveBeenCalled();
+    expect(addDeployJob).not.toHaveBeenCalled();
   });
 });

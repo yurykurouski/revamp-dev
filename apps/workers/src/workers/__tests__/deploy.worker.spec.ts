@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDeployWorker } from '../deploy.worker.js';
 import { Lead } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
+import { findGenerationAudit } from '../../services/audit-lookup.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import { bentoTemplateService } from '../../services/template.service.js';
 import { storageService } from '../../services/storage.service.js';
@@ -11,6 +12,7 @@ import { mvpCompletenessService } from '../../services/mvp-completeness.service.
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../services/audit-lookup.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../services/template.service.js');
 vi.mock('../../services/storage.service.js');
@@ -110,9 +112,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(mockLead),
     } as any);
 
-    vi.mocked(Audit.findOne).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockAudit),
-    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
 
     vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<!DOCTYPE html><html>Bento MVP</html>');
 
@@ -217,7 +217,7 @@ describe('DeployWorker (@revamp/workers)', () => {
     const audit = { _id: 'audit-1', leadId, generatedContent: { hero: { headline: 'New copy' } }, toObject: () => audit };
 
     vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
-    vi.mocked(Audit.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(audit) } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
     vi.mocked(MvpProject.findOne).mockReturnValue({
       select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ previewSlug: 'smile-dental-456789' }) }),
     } as any);
@@ -272,7 +272,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         toObject: () => audit,
       };
       vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
-      vi.mocked(Audit.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(audit) } as any);
+      vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
       vi.mocked(MvpProject.findOne).mockReturnValue({
         select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
       } as any);
@@ -436,9 +436,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue({ _id: 'lead-1', businessName: 'Biz' }),
     } as any);
 
-    vi.mocked(Audit.findOne).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(null),
-    } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(null as any);
 
     const job = {
       id: 'job-deploy-err2',
@@ -448,6 +446,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       },
     };
 
-    await expect(capturedProcessor!(job)).rejects.toThrow('Audit missing-audit not found');
+    await expect(capturedProcessor!(job)).rejects.toThrow('No completed audit found for lead lead-1');
+    expect(findGenerationAudit).toHaveBeenCalledWith('lead-1', 'missing-audit');
   });
 });

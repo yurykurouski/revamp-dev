@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import { GenerateMvpSchema, UpdateMvpTokensSchema, mvpGenerationMode } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { Audit } from '../models/Audit.model.js';
+import { findGenerationAudit } from '../services/audit-lookup.js';
 import { Lead } from '../models/Lead.model.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
@@ -37,15 +37,11 @@ router.post(
         });
       }
 
-      const isValidId = mongoose.Types.ObjectId.isValid(auditId);
-      const audit = await Audit.findOne({
-        $or: [
-          ...(isValidId ? [{ _id: auditId }, { leadId: auditId }] : [{ _id: auditId }]),
-        ],
-      }).exec();
+      // A lead can have several audits (one per retry); never build from a failed or stale one (REV-55)
+      const audit = await findGenerationAudit(auditId);
 
       if (!audit) {
-        throw new AppError('Audit not found', 404);
+        throw new AppError('No completed audit found for this lead', 404);
       }
 
       const lead = await Lead.findById(audit.leadId).exec();
