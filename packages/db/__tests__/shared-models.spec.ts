@@ -26,6 +26,7 @@ describe('@revamp/db shared by the API and the workers', () => {
       'ai-gen-queue',
       'deploy-queue',
       'email-queue',
+      'email-test-queue',
       'discovery-queue',
     ]);
   });

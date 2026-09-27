@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
-import { apiClient, ILeadItem, KpiMetrics } from '../api/client.js';
+import { apiClient, ILeadItem, ITestEmailDraft, KpiMetrics } from '../api/client.js';
 import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
 import { LeadStatus, LlmProviderId } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
@@ -72,8 +72,8 @@ export const useApproveOutreachMutation = () => {
 
 export const useSendTestEmailMutation = () => {
   return useMutation({
-    mutationFn: ({ leadId, testEmail }: { leadId: string; testEmail: string }) =>
-      apiClient.sendTestEmail(leadId, testEmail),
+    mutationFn: ({ leadId, testEmail, draft }: { leadId: string; testEmail: string; draft: ITestEmailDraft }) =>
+      apiClient.sendTestEmail(leadId, testEmail, draft),
   });
 };
 

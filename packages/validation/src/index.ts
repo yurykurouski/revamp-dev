@@ -498,6 +498,10 @@ export type RejectOutreachDto = z.infer<typeof RejectOutreachSchema>;
  */
 export const TestEmailOutreachSchema = z.object({
   testEmail: z.string().email(),
+  // The draft as the operator currently sees it, with its variables substituted (REV-60)
+  subject: z.string().trim().min(1).max(300),
+  preheader: z.string().max(300).optional(),
+  body: z.string().trim().min(1).max(20000),
 });
 
 export type TestEmailOutreachDto = z.infer<typeof TestEmailOutreachSchema>;

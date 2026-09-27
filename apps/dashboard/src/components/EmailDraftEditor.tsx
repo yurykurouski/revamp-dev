@@ -23,7 +23,7 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { canApproveOutreach, canRejectLead, type CompletenessField } from '@revamp/shared-types';
-import { ILeadItem, IAuditDetail } from '../api/client.js';
+import { ILeadItem, IAuditDetail, ITestEmailDraft } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import { auditSummarySentence, renderEmailTemplate } from '../utils/emailTemplate.js';
@@ -36,7 +36,8 @@ interface EmailDraftEditorProps {
   lead: ILeadItem;
   audit?: IAuditDetail | null;
   onApprove: (emailData: { subject: string; preheader: string; body: string }) => Promise<void>;
-  onSendTest: (testEmail: string) => Promise<void>;
+  /** Sends the draft, as the preview shows it, to the operator's address (REV-60) */
+  onSendTest: (testEmail: string, draft: ITestEmailDraft) => Promise<void>;
   onReject: (reason: string) => Promise<void>;
   isActionLoading?: boolean;
   /** Critical business data the MVP lost or changed; approving then needs an extra confirmation (REV-36) */
@@ -146,8 +147,15 @@ Best regards, the Revamp SaaS team`;
   };
 
   const handleSendTestSubmit = async () => {
-    const sent = await runAction(() => onSendTest(testEmail));
+    const renderedPreheader = renderSubstitutedText(preheader).trim();
+    const draft: ITestEmailDraft = {
+      subject: renderSubstitutedText(subject),
+      ...(renderedPreheader ? { preheader: renderedPreheader } : {}),
+      body: renderSubstitutedText(body),
+    };
+    // Close first: the outcome shows as an alert, and the opener stays disabled while the send runs
     setTestDialogOpen(false);
+    const sent = await runAction(() => onSendTest(testEmail, draft));
     if (sent) setSuccessAlert(t('email.testSent', { email: testEmail }));
   };
 
@@ -478,7 +486,13 @@ Best regards, the Revamp SaaS team`;
           <Button onClick={() => setTestDialogOpen(false)} color="inherit">
             {t('email.cancel')}
           </Button>
-          <Button onClick={handleSendTestSubmit} variant="contained" color="primary">
+          <Button
+            onClick={handleSendTestSubmit}
+            variant="contained"
+            color="primary"
+            disabled={isActionLoading || !testEmail.trim()}
+            data-testid="send-test-submit"
+          >
             {t('email.sendTest')}
           </Button>
         </DialogActions>

@@ -372,13 +372,32 @@ describe('Validation Schemas (@revamp/validation)', () => {
   });
 
   describe('TestEmailOutreachSchema', () => {
-    it('should validate test email address', () => {
-      const parsed = TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io' });
-      expect(parsed.testEmail).toBe('dev@revamp.io');
+    const draft = { subject: 'A new site for Dr Smile', preheader: 'A prototype', body: 'Hello,\nSee the demo.' };
+
+    it('should validate the test address together with the draft (REV-60)', () => {
+      const parsed = TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', ...draft });
+      expect(parsed).toEqual({ testEmail: 'dev@revamp.io', ...draft });
+    });
+
+    it('should accept a draft without a preheader', () => {
+      const parsed = TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', subject: draft.subject, body: draft.body });
+      expect(parsed.preheader).toBeUndefined();
     });
 
     it('should reject invalid test email', () => {
-      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'not-an-email' })).toThrow();
+      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'not-an-email', ...draft })).toThrow();
+    });
+
+    it('should reject a test send without the draft subject or body', () => {
+      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io' })).toThrow();
+      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', ...draft, subject: '   ' })).toThrow();
+      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', ...draft, body: '' })).toThrow();
+    });
+
+    it('should enforce the subject and body length limits', () => {
+      expect(TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', ...draft, subject: 'a'.repeat(300) }).subject).toHaveLength(300);
+      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', ...draft, subject: 'a'.repeat(301) })).toThrow();
+      expect(() => TestEmailOutreachSchema.parse({ testEmail: 'dev@revamp.io', ...draft, body: 'a'.repeat(20001) })).toThrow();
     });
   });
 

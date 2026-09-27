@@ -7,6 +7,7 @@ import {
   TestEmailOutreachSchema,
 } from '@revamp/validation';
 import {
+  EMAIL_PROVIDER_NOT_CONFIGURED,
   LeadStatus,
   OUTREACH_APPROVABLE_STATUSES,
   OUTREACH_REJECTABLE_STATUSES,
@@ -16,6 +17,7 @@ import { validateBody } from '../middlewares/validate.js';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { addEmailDispatchJob, calculateDispatchDelay } from '../queues/email.queue.js';
+import { sendTestEmailJob } from '../queues/email-test.queue.js';
 import { env } from '../config/env.js';
 
 const router = Router();
@@ -243,15 +245,75 @@ router.post(
   },
 );
 
-// POST /outreach/:id/test - Send test email to operator
+// POST /outreach/:id/test - Send the current draft to the operator (REV-60). It goes to the operator,
+// not the lead, so it is not HITL-gated, and it never changes the lead or its campaign.
 router.post(
   '/:id/test',
   validateBody(TestEmailOutreachSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
+      const id = req.params['id'] || '';
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        res.status(400).json({
+          success: false,
+          error: {
+            code: 'INVALID_ID',
+            message: 'A valid 24-character hexadecimal ObjectId is required',
+          },
+        });
+        return;
+      }
+
+      const lead = await Lead.findById(id).exec();
+      if (!lead) {
+        leadNotFound(res, id);
+        return;
+      }
+
+      const providerMissing = (): void => {
+        res.status(503).json({
+          success: false,
+          error: { code: 'EMAIL_PROVIDER_NOT_CONFIGURED', message: EMAIL_PROVIDER_NOT_CONFIGURED },
+        });
+      };
+
+      // Say so up front instead of reporting a send that cannot happen (REV-45)
+      if (!env.EMAIL_PROVIDER) {
+        providerMissing();
+        return;
+      }
+
+      const { testEmail, subject, preheader, body } = req.body;
+      const outcome = await sendTestEmailJob({ leadId: id, to: testEmail, subject, preheader, body });
+
+      if (outcome.status === 'timeout') {
+        res.status(504).json({
+          success: false,
+          error: {
+            code: 'EMAIL_TEST_TIMEOUT',
+            message: 'The workers did not send the test email in time. Check that the workers are running.',
+          },
+        });
+        return;
+      }
+
+      if (outcome.status === 'failed') {
+        // The workers may be configured differently from the API
+        if (outcome.reason === EMAIL_PROVIDER_NOT_CONFIGURED) {
+          providerMissing();
+          return;
+        }
+        res.status(502).json({
+          success: false,
+          error: { code: 'EMAIL_SEND_FAILED', message: `The test email was not sent: ${outcome.reason}` },
+        });
+        return;
+      }
+
       res.status(200).json({
         success: true,
-        message: `Test email sent to ${req.body.testEmail}`,
+        message: `Test email sent to ${testEmail}`,
+        data: { to: testEmail, ...outcome.result },
       });
     } catch (error) {
       next(error);
