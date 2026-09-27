@@ -23,10 +23,10 @@ import VisibilityIcon from '@mui/icons-material/Visibility';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
 import { canApproveOutreach, canRejectLead, type CompletenessField } from '@revamp/shared-types';
-import { ILeadItem, IAuditDetail, ITestEmailDraft } from '../api/client.js';
+import { ILeadItem, IAuditDetail, IEmailDraft } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
-import { auditSummarySentence, renderEmailTemplate } from '../utils/emailTemplate.js';
+import { auditSummarySentence, renderEmailDraft, renderEmailTemplate } from '../utils/emailTemplate.js';
 import { RADIUS, TOKENS } from '../theme/theme.js';
 
 /** The recipient preview mimics a light inbox in both dashboard modes, colored by the light tokens */
@@ -35,9 +35,10 @@ const INBOX = TOKENS.light;
 interface EmailDraftEditorProps {
   lead: ILeadItem;
   audit?: IAuditDetail | null;
-  onApprove: (emailData: { subject: string; preheader: string; body: string }) => Promise<void>;
+  /** Approves the draft as the preview shows it, with its variables substituted (REV-72) */
+  onApprove: (draft: IEmailDraft) => Promise<void>;
   /** Sends the draft, as the preview shows it, to the operator's address (REV-60) */
-  onSendTest: (testEmail: string, draft: ITestEmailDraft) => Promise<void>;
+  onSendTest: (testEmail: string, draft: IEmailDraft) => Promise<void>;
   onReject: (reason: string) => Promise<void>;
   isActionLoading?: boolean;
   /** Critical business data the MVP lost or changed; approving then needs an extra confirmation (REV-36) */
@@ -100,15 +101,16 @@ Best regards, the Revamp SaaS team`;
   // Substitute variables for preview
   const demoUrl = lead.previewUrl;
 
-  const renderSubstitutedText = (text: string): string =>
-    renderEmailTemplate(text, {
-      businessName: lead.businessName,
-      city: lead.city,
-      demoUrl,
-      score: lead.totalScore,
-      lcpSeconds: audit?.lcpSeconds,
-      criticalFlaws: audit?.criticalFlaws,
-    });
+  const templateContext = {
+    businessName: lead.businessName,
+    city: lead.city,
+    demoUrl,
+    score: lead.totalScore,
+    lcpSeconds: audit?.lcpSeconds,
+    criticalFlaws: audit?.criticalFlaws,
+  };
+  const renderSubstitutedText = (text: string): string => renderEmailTemplate(text, templateContext);
+  const renderedDraft = (): IEmailDraft => renderEmailDraft({ subject, preheader, body }, templateContext);
 
   const handleInsertTag = (tag: string) => {
     setBody((prev) => `${prev} ${tag}`);
@@ -128,7 +130,7 @@ Best regards, the Revamp SaaS team`;
   };
 
   const approve = async () => {
-    if (await runAction(() => onApprove({ subject, preheader, body }))) setSuccessAlert(t('email.approved'));
+    if (await runAction(() => onApprove(renderedDraft()))) setSuccessAlert(t('email.approved'));
   };
 
   // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
@@ -147,12 +149,7 @@ Best regards, the Revamp SaaS team`;
   };
 
   const handleSendTestSubmit = async () => {
-    const renderedPreheader = renderSubstitutedText(preheader).trim();
-    const draft: ITestEmailDraft = {
-      subject: renderSubstitutedText(subject),
-      ...(renderedPreheader ? { preheader: renderedPreheader } : {}),
-      body: renderSubstitutedText(body),
-    };
+    const draft = renderedDraft();
     // Close first: the outcome shows as an alert, and the opener stays disabled while the send runs
     setTestDialogOpen(false);
     const sent = await runAction(() => onSendTest(testEmail, draft));

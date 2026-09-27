@@ -7,7 +7,7 @@ import { createRoot, Root } from 'react-dom/client';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
 import { EmailDraftEditor } from '../EmailDraftEditor.js';
-import type { ILeadItem, ITestEmailDraft } from '../../api/client.js';
+import type { ILeadItem, IEmailDraft } from '../../api/client.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -39,7 +39,7 @@ describe('EmailDraftEditor test send (REV-60)', () => {
     document.body.innerHTML = '';
   });
 
-  const mount = (onSendTest: (email: string, draft: ITestEmailDraft) => Promise<void>, isActionLoading = false) =>
+  const mount = (onSendTest: (email: string, draft: IEmailDraft) => Promise<void>, isActionLoading = false) =>
     act(async () => {
       root.render(
         React.createElement(EmailDraftEditor, {

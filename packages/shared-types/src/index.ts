@@ -57,6 +57,24 @@ export const OUTREACH_REJECTABLE_STATUSES: readonly LeadStatus[] = [
 export const canApproveOutreach = (status: LeadStatus): boolean => OUTREACH_APPROVABLE_STATUSES.includes(status);
 export const canRejectLead = (status: LeadStatus): boolean => OUTREACH_REJECTABLE_STATUSES.includes(status);
 
+const escapeHtml = (text: string): string =>
+  text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+/**
+ * The plain-text draft as HTML: escaped, with its line breaks and a hidden preheader kept. The test
+ * send and the approved outreach both use it, so both emails look the same (REV-60, REV-72)
+ */
+export function draftToHtml(body: string, preheader?: string): string {
+  const hiddenPreheader = preheader
+    ? `<div style="display:none;max-height:0;overflow:hidden;">${escapeHtml(preheader)}</div>\n`
+    : '';
+  const paragraphs = body
+    .split(/\n{2,}/)
+    .map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, '<br>')}</p>`)
+    .join('\n');
+  return `${hiddenPreheader}${paragraphs}`;
+}
+
 /** Pipeline-wide lead counts from GET /api/v1/leads/stats; ignores list filters (REV-43) */
 export interface ILeadStats {
   total: number;

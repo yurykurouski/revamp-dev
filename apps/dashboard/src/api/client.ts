@@ -265,7 +265,7 @@ export const apiClient = {
    */
   async approveOutreach(
     leadId: string,
-    emailData?: { subject: string; preheader: string; body: string },
+    emailData?: IEmailDraft,
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
     const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/approve`, {
       method: 'POST',
@@ -283,7 +283,7 @@ export const apiClient = {
    * Sends the current draft to the operator's own address (REV-60). Resolves only once the email
    * provider accepted it; a missing provider or a failed send rejects with the API's message.
    */
-  async sendTestEmail(leadId: string, testEmail: string, draft: ITestEmailDraft): Promise<ITestEmailResult> {
+  async sendTestEmail(leadId: string, testEmail: string, draft: IEmailDraft): Promise<ITestEmailResult> {
     const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -433,7 +433,8 @@ export const apiClient = {
 
 /** Returns the `data` of a JSON API response, turning non-2xx responses into an Error with the server's message */
 /** The draft as the operator sees it in the preview, with its variables substituted */
-export interface ITestEmailDraft {
+/** An outreach draft with its variables substituted, as the preview shows it (REV-60, REV-72) */
+export interface IEmailDraft {
   subject: string;
   preheader?: string;
   body: string;

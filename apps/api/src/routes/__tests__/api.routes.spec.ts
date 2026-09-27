@@ -14,7 +14,7 @@ import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { sendTestEmailJob } from '../../queues/email-test.queue.js';
 import { env } from '../../config/env.js';
 import { redisConnection } from '../../queues/connection.js';
-import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY } from '@revamp/shared-types';
+import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
 
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
@@ -402,6 +402,29 @@ describe('API Routes Integration Tests (Supertest)', () => {
         expect(addEmailDispatchJob).toHaveBeenCalledTimes(1);
       },
     );
+
+    it('stores the approved draft as escaped HTML with its line breaks, plus the plain text (REV-72)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      const body = 'Hello,\nsee <your> demo & more\n\nhttps://demo.example/x';
+
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Biz', contactEmail: 'owner@business.com' }),
+      } as any);
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: new mongoose.Types.ObjectId() }),
+      } as any);
+
+      const res = await request(app)
+        .post(`/api/v1/outreach/${leadId}/approve`)
+        .send({ approvedBy: 'operator', subject: 'Subject', preheader: 'Pre <view>', body });
+
+      expect(res.status).toBe(200);
+      const update = vi.mocked(EmailCampaign.findOneAndUpdate).mock.calls[0]![1] as Record<string, unknown>;
+      expect(update['bodyHtml']).toBe(draftToHtml(body, 'Pre <view>'));
+      expect(update['bodyHtml']).toContain('<p>Hello,<br>see &lt;your&gt; demo &amp; more</p>\n<p>https://demo.example/x</p>');
+      expect(update['bodyPlainText']).toBe(body);
+    });
 
     it.each([
       'QUEUED',
