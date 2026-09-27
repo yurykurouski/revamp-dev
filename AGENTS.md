@@ -97,7 +97,10 @@ Revamp-dev/
      - **Workers & Queues:** Test job payload handling, state transitions, and error recovery.
      - **Frontend Stores:** Test Zustand state transitions, filter mutations, and reset actions.
    * All test suites must execute and pass cleanly (`npm test`) with 0 failures prior to submitting any task.
-6. **One Schema per Collection (REV-48):**
+6. **Dashboard Styling (REV-49):**
+   * Colors, radii, typography and component overrides live in the MUI theme (`apps/dashboard/src/theme/theme.ts`, `TOKENS` for dark and light). Components use theme tokens (`text.secondary`, `warning.soft`, `stage.sent`, `border.subtle`, …), never hard-coded hex or rgba values.
+   * Tinted status chips come from the theme: pass `color="warning"` etc. to `Chip` instead of styling its background. New color pairs must keep WCAG AA contrast; `theme.spec.ts` checks it.
+7. **One Schema per Collection (REV-48):**
    * Mongoose schemas are defined only in `packages/db` (`@revamp/db`). `apps/api/src/models` and `apps/workers/src/models` only re-export them; never add or change a schema inside an app.
    * Queue names come from `QUEUE_NAMES` in `@revamp/shared-types`.
 
