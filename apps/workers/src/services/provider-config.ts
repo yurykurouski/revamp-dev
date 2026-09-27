@@ -3,13 +3,14 @@
  * is missing: the jobs that need it fail with the same message, so the operator sees it early.
  */
 import { env } from '../config/env.js';
+import { DesignCritiqueService } from './design-critique.service.js';
 import { EMAIL_PROVIDER_NOT_CONFIGURED } from './email.service.js';
 import { LlmClient } from './llm-client.js';
 
 export interface ProviderConfigInputs {
   emailProvider?: string;
-  anthropicApiKey?: string;
-  openaiApiKey?: string;
+  /** Why the Vision design critique cannot run (no key and no local CLI), or undefined when it can */
+  visionUnavailableReason?: string;
   /** Why MVP copy cannot be generated, or undefined when it can */
   llmUnavailableReason?: string;
 }
@@ -17,14 +18,13 @@ export interface ProviderConfigInputs {
 export function providerConfigWarnings(
   inputs: ProviderConfigInputs = {
     emailProvider: env.EMAIL_PROVIDER,
-    anthropicApiKey: env.ANTHROPIC_API_KEY,
-    openaiApiKey: env.OPENAI_API_KEY,
+    visionUnavailableReason: new DesignCritiqueService().unavailableReason(),
     llmUnavailableReason: new LlmClient().unavailableReason(),
   },
 ): string[] {
   const warnings: string[] = [];
-  if (!inputs.anthropicApiKey && !inputs.openaiApiKey) {
-    warnings.push('No Vision LLM key (ANTHROPIC_API_KEY or OPENAI_API_KEY): audits will fail at the design critique');
+  if (inputs.visionUnavailableReason) {
+    warnings.push(`${inputs.visionUnavailableReason}: audits will fail at the design critique`);
   }
   if (inputs.llmUnavailableReason) {
     warnings.push(`${inputs.llmUnavailableReason}: MVP generation without a provider chosen in the dashboard will fail`);

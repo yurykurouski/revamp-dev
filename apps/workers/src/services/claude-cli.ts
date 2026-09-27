@@ -61,57 +61,163 @@ export function parseClaudeCliOutput(stdout: string): string {
   return envelope.result;
 }
 
+/** A screenshot sent to the CLI as an image content block (REV-51) */
+export interface ClaudeCliImage {
+  mediaType: 'image/webp' | 'image/png' | 'image/jpeg';
+  data: Buffer;
+}
+
+export interface ClaudeCliVisionRequest {
+  systemPrompt: string;
+  userPrompt: string;
+  images: ClaudeCliImage[];
+  model?: string;
+}
+
+export interface ClaudeCliUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface ClaudeCliVisionResult {
+  text: string;
+  /** Undefined when the CLI reports no token counts */
+  usage?: ClaudeCliUsage;
+}
+
+export type ClaudeCliVisionRunner = (request: ClaudeCliVisionRequest) => Promise<ClaudeCliVisionResult>;
+
+/**
+ * Same locked-down run as `buildClaudeCliArgs`, but the prompt arrives as one stream-json user
+ * message so it can carry image blocks. The CLI requires stream-json output (and --verbose) then.
+ */
+export function buildClaudeCliVisionArgs(systemPrompt: string, model: string): string[] {
+  const args = buildClaudeCliArgs(systemPrompt, model);
+  args.splice(args.indexOf('json'), 1, 'stream-json');
+  return [...args, '--input-format', 'stream-json', '--verbose'];
+}
+
+/** The single stream-json line that carries the text prompt followed by the images */
+export function buildClaudeCliVisionInput(userPrompt: string, images: ClaudeCliImage[]): string {
+  const content = [
+    { type: 'text', text: userPrompt },
+    ...images.map((image) => ({
+      type: 'image',
+      source: { type: 'base64', media_type: image.mediaType, data: image.data.toString('base64') },
+    })),
+  ];
+  return JSON.stringify({ type: 'user', message: { role: 'user', content } }) + '\n';
+}
+
+/**
+ * Reads the final `result` event from `--output-format stream-json` output, with its token usage.
+ */
+export function parseClaudeCliStreamOutput(stdout: string): ClaudeCliVisionResult {
+  const resultLine = stdout
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .reverse()
+    .find((line) => {
+      try {
+        return (JSON.parse(line) as { type?: string }).type === 'result';
+      } catch {
+        return false;
+      }
+    });
+  if (!resultLine) {
+    throw new Error(`Claude CLI stream did not contain a result event: ${stdout.slice(0, 200)}`);
+  }
+
+  const text = parseClaudeCliOutput(resultLine);
+  const usage = (
+    JSON.parse(resultLine) as {
+      usage?: {
+        input_tokens?: number;
+        cache_creation_input_tokens?: number;
+        cache_read_input_tokens?: number;
+        output_tokens?: number;
+      };
+    }
+  ).usage;
+  // The CLI caches its prompts, so most input tokens are reported under the cache fields
+  const promptTokens =
+    (usage?.input_tokens ?? 0) + (usage?.cache_creation_input_tokens ?? 0) + (usage?.cache_read_input_tokens ?? 0);
+  const completionTokens = usage?.output_tokens ?? 0;
+  return promptTokens || completionTokens
+    ? { text, usage: { promptTokens, completionTokens, totalTokens: promptTokens + completionTokens } }
+    : { text };
+}
+
+/**
+ * Runs the CLI once with the given arguments and stdin, and resolves with its stdout.
+ */
+function runClaudeCli(options: ClaudeCliOptions, args: string[], stdin: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    // A temp cwd keeps the CLI from picking up this repository's CLAUDE.md / AGENTS.md
+    const child = spawn(options.cliPath, args, {
+      cwd: os.tmpdir(),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (err: Error | null, value?: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (err) reject(err);
+      else resolve(value ?? '');
+    };
+
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      finish(new Error(`Claude CLI timed out after ${options.timeoutMs}ms`));
+    }, options.timeoutMs);
+
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (err) => finish(new Error(`Failed to start Claude CLI (${options.cliPath}): ${err.message}`)));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        // On failure the CLI may print its JSON envelope (e.g. "Not logged in") to stdout
+        const reason = stderr.trim() || stdout.trim();
+        finish(new Error(`Claude CLI exited with code ${code}: ${reason.slice(0, 500)}`));
+        return;
+      }
+      finish(null, stdout);
+    });
+
+    // Ignore EPIPE when the process exits before reading stdin; 'close' reports the failure
+    child.stdin.on('error', () => undefined);
+    child.stdin.end(stdin);
+  });
+}
+
 /**
  * Creates a runner that calls the local Claude Code CLI with the account it is logged into.
  */
 export function createClaudeCliRunner(options: ClaudeCliOptions): ClaudeCliRunner {
-  return ({ systemPrompt, userPrompt, model }) =>
-    new Promise((resolve, reject) => {
-      // A temp cwd keeps the CLI from picking up this repository's CLAUDE.md / AGENTS.md
-      const child = spawn(options.cliPath, buildClaudeCliArgs(systemPrompt, model ?? options.model), {
-        cwd: os.tmpdir(),
-        stdio: ['pipe', 'pipe', 'pipe'],
-      });
+  return async ({ systemPrompt, userPrompt, model }) =>
+    parseClaudeCliOutput(await runClaudeCli(options, buildClaudeCliArgs(systemPrompt, model ?? options.model), userPrompt));
+}
 
-      let stdout = '';
-      let stderr = '';
-      let settled = false;
-      const finish = (err: Error | null, value?: string) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (err) reject(err);
-        else resolve(value ?? '');
-      };
-
-      const timer = setTimeout(() => {
-        child.kill('SIGKILL');
-        finish(new Error(`Claude CLI timed out after ${options.timeoutMs}ms`));
-      }, options.timeoutMs);
-
-      child.stdout.on('data', (chunk: Buffer) => {
-        stdout += chunk.toString();
-      });
-      child.stderr.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
-      child.on('error', (err) => finish(new Error(`Failed to start Claude CLI (${options.cliPath}): ${err.message}`)));
-      child.on('close', (code) => {
-        if (code !== 0) {
-          // On failure the CLI may print its JSON envelope (e.g. "Not logged in") to stdout
-          const reason = stderr.trim() || stdout.trim();
-          finish(new Error(`Claude CLI exited with code ${code}: ${reason.slice(0, 500)}`));
-          return;
-        }
-        try {
-          finish(null, parseClaudeCliOutput(stdout));
-        } catch (err) {
-          finish(err as Error);
-        }
-      });
-
-      // Ignore EPIPE when the process exits before reading stdin; 'close' reports the failure
-      child.stdin.on('error', () => undefined);
-      child.stdin.end(userPrompt);
-    });
+/**
+ * Creates a runner that sends a prompt with images to the local Claude Code CLI (REV-51).
+ */
+export function createClaudeCliVisionRunner(options: ClaudeCliOptions): ClaudeCliVisionRunner {
+  return async ({ systemPrompt, userPrompt, images, model }) =>
+    parseClaudeCliStreamOutput(
+      await runClaudeCli(
+        options,
+        buildClaudeCliVisionArgs(systemPrompt, model ?? options.model),
+        buildClaudeCliVisionInput(userPrompt, images),
+      ),
+    );
 }

@@ -2,7 +2,15 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { buildClaudeCliArgs, createClaudeCliRunner, parseClaudeCliOutput } from '../claude-cli.js';
+import {
+  buildClaudeCliArgs,
+  buildClaudeCliVisionArgs,
+  buildClaudeCliVisionInput,
+  createClaudeCliRunner,
+  createClaudeCliVisionRunner,
+  parseClaudeCliOutput,
+  parseClaudeCliStreamOutput,
+} from '../claude-cli.js';
 
 /**
  * A stand-in `claude` executable. FAKE_CLAUDE_MODE picks its behavior; in "echo" mode it
@@ -16,6 +24,11 @@ process.stdin.on('end', () => {
   if (mode === 'echo') {
     const result = JSON.stringify({ args: process.argv.slice(2), stdin: input, cwd: process.cwd() });
     process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result }));
+  } else if (mode === 'stream-echo') {
+    const result = JSON.stringify({ args: process.argv.slice(2), stdin: input, cwd: process.cwd() });
+    process.stdout.write(JSON.stringify({ type: 'system', subtype: 'init' }) + '\\n');
+    process.stdout.write(JSON.stringify({ type: 'assistant', message: { content: [] } }) + '\\n');
+    process.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', is_error: false, result, usage: { input_tokens: 2, cache_creation_input_tokens: 1000, cache_read_input_tokens: 198, output_tokens: 300 } }) + '\\n');
   } else if (mode === 'error-envelope') {
     process.stdout.write(JSON.stringify({ type: 'result', subtype: 'error_during_execution', is_error: true, result: 'Not logged in' }));
   } else if (mode === 'exit-1') {
@@ -112,6 +125,84 @@ describe('Claude CLI runner (REV-30)', () => {
 
     it('rejects an envelope without a result string', () => {
       expect(() => parseClaudeCliOutput('{"is_error":false}')).toThrow(/did not contain a result/);
+    });
+  });
+
+  describe('vision runner (REV-51)', () => {
+    const images = [
+      { mediaType: 'image/webp' as const, data: Buffer.from('mobile') },
+      { mediaType: 'image/webp' as const, data: Buffer.from('desktop') },
+    ];
+
+    it('keeps the locked-down flags and switches to stream-json input and output', () => {
+      expect(buildClaudeCliVisionArgs('SYSTEM', 'opus')).toEqual([
+        '-p',
+        '--output-format',
+        'stream-json',
+        '--model',
+        'opus',
+        '--system-prompt',
+        'SYSTEM',
+        '--tools',
+        '',
+        '--strict-mcp-config',
+        '--setting-sources',
+        '',
+        '--no-session-persistence',
+        '--disable-slash-commands',
+        '--input-format',
+        'stream-json',
+        '--verbose',
+      ]);
+    });
+
+    it('builds one user message with the text first and each image as a base64 block', () => {
+      const line = buildClaudeCliVisionInput('PROMPT', images);
+      expect(line.endsWith('\n')).toBe(true);
+      expect(JSON.parse(line)).toEqual({
+        type: 'user',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'PROMPT' },
+            { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: Buffer.from('mobile').toString('base64') } },
+            { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: Buffer.from('desktop').toString('base64') } },
+          ],
+        },
+      });
+    });
+
+    it('sends the images through stdin from a temp cwd and returns the result with usage', async () => {
+      process.env.FAKE_CLAUDE_MODE = 'stream-echo';
+      const runner = createClaudeCliVisionRunner({ cliPath: fakeCli, model: 'sonnet', timeoutMs: 10000 });
+
+      const result = await runner({ systemPrompt: 'SYSTEM', userPrompt: 'PROMPT', images });
+      const received = JSON.parse(result.text);
+
+      expect(received.args).toEqual(buildClaudeCliVisionArgs('SYSTEM', 'sonnet'));
+      expect(received.stdin).toBe(buildClaudeCliVisionInput('PROMPT', images));
+      expect(fs.realpathSync(received.cwd)).toBe(fs.realpathSync(os.tmpdir()));
+      expect(result.usage).toEqual({ promptTokens: 1200, completionTokens: 300, totalTokens: 1500 });
+    });
+
+    it('rejects when the CLI reports an error in its result event', async () => {
+      process.env.FAKE_CLAUDE_MODE = 'error-envelope';
+      const runner = createClaudeCliVisionRunner({ cliPath: fakeCli, model: 'sonnet', timeoutMs: 10000 });
+      await expect(runner({ systemPrompt: 'S', userPrompt: 'U', images })).rejects.toThrow(/Not logged in/);
+    });
+
+    it('reads the last result event and skips other lines', () => {
+      const stdout = [
+        '{"type":"system","subtype":"init"}',
+        'not json',
+        '{"type":"result","is_error":false,"result":"{}"}',
+        '',
+      ].join('\n');
+      expect(parseClaudeCliStreamOutput(stdout)).toEqual({ text: '{}' });
+    });
+
+    it('rejects a stream without a result event', () => {
+      expect(() => parseClaudeCliStreamOutput('{"type":"system"}\n')).toThrow(/did not contain a result event/);
     });
   });
 });
