@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import type { ICompletenessCheck } from '@revamp/shared-types';
+import type { ICompletenessCheck, IMvpGeneratedContent, IMvpProject } from '@revamp/shared-types';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { isMvpChangeSummaryEmpty, summarizeMvpChanges } from '../mvpChanges.js';
+
+/** Stored copy and palette as older or malformed records hold them; the summary reads them defensively */
+const content = (value: object) => value as IMvpGeneratedContent;
+const palette = (value: Partial<IMvpProjectDetail['colorPalette']>) => value as IMvpProject['colorPalette'];
 
 const audit = (overrides: Partial<IAuditDetail> = {}): IAuditDetail => ({
   id: 'audit-1',
@@ -36,12 +40,12 @@ describe('summarizeMvpChanges (REV-81)', () => {
         layout: { variant: 'split', reasons: ['complexity:ONE_PAGE_BROCHURE', 'rule:visual_niche'] },
         provider: 'anthropic',
         modelUsed: 'claude-sonnet-5',
-        generatedContent: {
+        generatedContent: content({
           about: { heading: 'About us', body: 'Since 2004' },
           services: [{ title: 'Cut' }, { title: 'Color' }, { title: 'Beard' }],
           trustSignals: [{ metric: '20', label: 'years' }],
-        },
-        colorPalette: { primary: '#123456' },
+        }),
+        colorPalette: palette({ primary: '#123456' }),
         completenessReport: {
           status: 'verified',
           hasCriticalIssues: true,
@@ -89,8 +93,8 @@ describe('summarizeMvpChanges (REV-81)', () => {
   it('leaves out what stayed as it was on the original site', () => {
     const summary = summarizeMvpChanges(
       mvp({
-        generatedContent: { services: [{}, {}], trustSignals: [] },
-        colorPalette: { primary: '#aabbcc' },
+        generatedContent: content({ services: [{}, {}], trustSignals: [] }),
+        colorPalette: palette({ primary: '#aabbcc' }),
         completenessReport: {
           status: 'verified',
           hasCriticalIssues: false,
@@ -109,7 +113,7 @@ describe('summarizeMvpChanges (REV-81)', () => {
 
   it('keeps the other section changes when the service count is unchanged', () => {
     const summary = summarizeMvpChanges(
-      mvp({ generatedContent: { services: [{}], about: { heading: 'About' }, trustSignals: [{}, {}] } }),
+      mvp({ generatedContent: content({ services: [{}], about: { heading: 'About' }, trustSignals: [{}, {}] }) }),
       audit({ originalServiceCount: 1 }),
     )!;
     expect(summary.sections).toEqual({ services: undefined, about: true, trustSignals: 2 });
@@ -117,7 +121,7 @@ describe('summarizeMvpChanges (REV-81)', () => {
 
   it('never guesses the original values it does not have', () => {
     const summary = summarizeMvpChanges(
-      mvp({ generatedContent: { services: [{}] }, colorPalette: { primary: '#5c5bed' } }),
+      mvp({ generatedContent: content({ services: [{}] }), colorPalette: palette({ primary: '#5c5bed' }) }),
       audit(),
     )!;
     // No crawler count: nothing to compare the services with
@@ -127,7 +131,7 @@ describe('summarizeMvpChanges (REV-81)', () => {
   });
 
   it('compares with a service list the crawler did not find', () => {
-    const summary = summarizeMvpChanges(mvp({ generatedContent: { services: [{}, {}, {}] } }), audit({ originalServiceCount: 0 }))!;
+    const summary = summarizeMvpChanges(mvp({ generatedContent: content({ services: [{}, {}, {}] }) }), audit({ originalServiceCount: 0 }))!;
     expect(summary.sections?.services).toEqual({ original: 0, mvp: 3 });
   });
 
@@ -135,7 +139,7 @@ describe('summarizeMvpChanges (REV-81)', () => {
     const summary = summarizeMvpChanges(
       mvp({
         layout: { variant: 'masonry' as never, reasons: [] },
-        generatedContent: { hero: 'not an object', services: 'many', about: { heading: ' ' } },
+        generatedContent: content({ hero: 'not an object', services: 'many', about: { heading: ' ' } }),
       }),
       audit({ originalServiceCount: 3 }),
     )!;

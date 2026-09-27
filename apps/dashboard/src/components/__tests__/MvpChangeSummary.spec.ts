@@ -3,6 +3,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import '../../i18n/index.js';
 import { MvpChangeSummary } from '../leadReview/MvpChangeSummary.js';
+import type { IMvpGeneratedContent, IMvpProject } from '@revamp/shared-types';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { en } from '../../i18n/locales/en.js';
 import { ru } from '../../i18n/locales/ru.js';
@@ -10,6 +11,10 @@ import { pl } from '../../i18n/locales/pl.js';
 import { lt } from '../../i18n/locales/lt.js';
 import { be } from '../../i18n/locales/be.js';
 import { useLanguageStore } from '../../store/useLanguageStore.js';
+
+/** Stored copy and palette as older or malformed records hold them; the summary reads them defensively */
+const content = (value: object) => value as IMvpGeneratedContent;
+const palette = (value: Partial<IMvpProjectDetail['colorPalette']>) => value as IMvpProject['colorPalette'];
 
 const audit: IAuditDetail = {
   id: 'audit-1',
@@ -25,12 +30,12 @@ const fullMvp: IMvpProjectDetail = {
   fullPreviewUrl: 'http://localhost:9000/revamp-demos/v/demo/index.html',
   layout: { variant: 'editorial', reasons: ['rule:professional_niche'] },
   provider: 'deterministic',
-  generatedContent: {
+  generatedContent: content({
     about: { heading: 'About', body: 'Since 1999' },
     services: [{ title: 'Contracts' }, { title: 'Disputes' }, { title: 'Tax' }],
     trustSignals: [{ metric: '25', label: 'years' }],
-  },
-  colorPalette: { primary: '#0000aa' },
+  }),
+  colorPalette: palette({ primary: '#0000aa' }),
   completenessReport: {
     status: 'verified',
     hasCriticalIssues: true,
@@ -89,7 +94,7 @@ describe('MvpChangeSummary (REV-81)', () => {
   it('shows only the parts that were recorded with partial data', () => {
     const text = textOf(
       render(
-        { leadId: 'lead-1', fullPreviewUrl: 'x', generatedContent: { services: [] }, colorPalette: { primary: '#5c5bed' } },
+        { leadId: 'lead-1', fullPreviewUrl: 'x', generatedContent: content({ services: [] }), colorPalette: palette({ primary: '#5c5bed' }) },
         null,
       ),
     );
@@ -111,7 +116,7 @@ describe('MvpChangeSummary (REV-81)', () => {
   it('does not claim the original site has no services when the crawler found no list', () => {
     const text = textOf(
       render(
-        { leadId: 'lead-1', fullPreviewUrl: 'x', generatedContent: { services: [{}, {}] } },
+        { leadId: 'lead-1', fullPreviewUrl: 'x', generatedContent: content({ services: [{}, {}] }) },
         { ...audit, originalServiceCount: 0 },
       ),
     );
@@ -129,8 +134,8 @@ describe('MvpChangeSummary (REV-81)', () => {
         {
           leadId: 'lead-1',
           fullPreviewUrl: 'x',
-          generatedContent: { services: [{}, {}] },
-          colorPalette: { primary: '#AA0000' },
+          generatedContent: content({ services: [{}, {}] }),
+          colorPalette: palette({ primary: '#AA0000' }),
           completenessReport: {
             status: 'verified',
             hasCriticalIssues: false,

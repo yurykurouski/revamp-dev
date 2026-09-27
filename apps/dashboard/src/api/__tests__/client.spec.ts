@@ -1,11 +1,15 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach } from 'vitest';
+import type { Serialized } from '@revamp/shared-types';
 import {
   ApiError,
   apiClient,
   fetchAllLeadPages,
   fetchLeadStats,
+  IServerAudit,
+  IServerLead,
   LEADS_PAGE_SIZE,
   mapServerAudit,
+  mapServerLead,
 } from '../client.js';
 
 /** The approve call always carries the draft the operator reviewed (REV-61) */
@@ -36,7 +40,7 @@ describe('Dashboard apiClient', () => {
 
     it('returns the leads from the API', async () => {
       const fetchMock = stubLeadsApi([
-        { _id: 'l1', businessName: 'Smile', originalUrl: 'https://www.smile.pl/', status: 'NEEDS_APPROVAL', createdAt: 'x' },
+        { _id: 'l1', businessName: 'Smile', originalUrl: 'https://www.smile.pl/', domain: 'smile.pl', niche: 'dental', status: 'NEEDS_APPROVAL', createdAt: 'x' },
       ]);
 
       const { leads, total } = await apiClient.getLeads();
@@ -79,6 +83,77 @@ describe('Dashboard apiClient', () => {
     it('throws on a server error', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false }, 500)));
       await expect(apiClient.getLeads()).rejects.toThrow('HTTP 500');
+    });
+
+    it('rejects a lead without an id instead of inventing one (REV-67)', async () => {
+      stubLeadsApi([{ businessName: 'No id', originalUrl: 'https://x.pl', domain: 'x.pl', niche: 'other', status: 'QUEUED', createdAt: 'x' }]);
+      await expect(apiClient.getLeads()).rejects.toThrow('Malformed server response');
+    });
+  });
+
+  describe('mapServerLead (REV-67)', () => {
+    const lead: IServerLead = {
+      _id: 'l1',
+      businessName: 'Smile',
+      originalUrl: 'https://www.smile.pl/',
+      domain: 'smile.pl',
+      niche: 'dental',
+      city: 'Warszawa',
+      contactPhone: '+48 600 000 000',
+      totalScore: 42,
+      status: 'NEEDS_APPROVAL',
+      tags: [],
+      previewUrl: 'http://minio/v/smile/index.html',
+      mvpGeneratedAt: '2026-09-27T10:00:00.000Z',
+      siteComplexity: 'ONE_PAGE_BROCHURE',
+      completeness: { status: 'verified', score: 90, hasCriticalIssues: false, criticalIssues: [] },
+      createdAt: '2026-09-26T00:00:00.000Z',
+      updatedAt: '2026-09-27T00:00:00.000Z',
+    };
+
+    it('maps the fields the API returns', () => {
+      expect(mapServerLead(lead)).toEqual({
+        id: 'l1',
+        businessName: 'Smile',
+        domain: 'smile.pl',
+        originalUrl: 'https://www.smile.pl/',
+        niche: 'dental',
+        city: 'Warszawa',
+        phone: '+48 600 000 000',
+        totalScore: 42,
+        status: 'NEEDS_APPROVAL',
+        previewUrl: 'http://minio/v/smile/index.html',
+        comparisonBannerUrl: undefined,
+        mvpGeneratedAt: '2026-09-27T10:00:00.000Z',
+        generationError: undefined,
+        auditError: undefined,
+        completeness: { status: 'verified', score: 90, hasCriticalIssues: false, criticalIssues: [] },
+        siteComplexity: 'ONE_PAGE_BROCHURE',
+        createdAt: '2026-09-26T00:00:00.000Z',
+      });
+    });
+
+    it('does not use the lead id as an audit id', () => {
+      expect(mapServerLead(lead).auditId).toBeUndefined();
+    });
+
+    it('throws on a lead without an id', () => {
+      expect(() => mapServerLead({ ...lead, _id: '' })).toThrow('Malformed server response');
+      expect(() => mapServerLead({ ...lead, _id: undefined } as unknown as IServerLead)).toThrow('Malformed server response');
+    });
+
+    it('ignores legacy fields no API version returns', () => {
+      const legacy = { ...lead, city: undefined, contactPhone: undefined, totalScore: undefined, url: 'https://old.pl', score: 7, contacts: { city: 'Old', phone: '1' } };
+      expect(mapServerLead(legacy)).toMatchObject({ city: undefined, phone: undefined, totalScore: undefined, originalUrl: lead.originalUrl });
+    });
+
+    it('types dates as the ISO strings JSON carries', () => {
+      expectTypeOf<Serialized<{ at: Date; list: Date[]; nested: { at?: Date | string } }>>().toEqualTypeOf<{
+        at: string;
+        list: string[];
+        nested: { at?: string };
+      }>();
+      expectTypeOf<IServerLead['createdAt']>().toEqualTypeOf<string>();
     });
   });
 
@@ -217,16 +292,31 @@ describe('Dashboard apiClient', () => {
     it("maps the original site's service count (REV-81)", () => {
       expect(mapServerAudit({ leadId: 'l', extractedServices: ['a', 'b'] }, 'a').originalServiceCount).toBe(2);
       // No extracted services: the service items the crawler found
-      expect(mapServerAudit({ leadId: 'l', extractedContent: { serviceItems: [{}] } }, 'a').originalServiceCount).toBe(1);
+      expect(mapServerAudit({ leadId: 'l', extractedContent: { headings: [], paragraphs: [], serviceItems: [{ title: 'Cut' }], navItems: [], testimonials: [], images: [] } }, 'a').originalServiceCount).toBe(1);
       // A site with no services found keeps its zero
       expect(mapServerAudit({ leadId: 'l', extractedServices: [] }, 'a').originalServiceCount).toBe(0);
       const unknown = mapServerAudit({ leadId: 'l' }, 'a');
       expect(unknown.originalServiceCount).toBeUndefined();
     });
 
+    it('ignores legacy fields no API version returns (REV-67)', () => {
+      const legacy = { leadId: 'l', lcp: 2.5, a11yScore: 80, desktopScreenshotUrl: 'http://old/d.png', mobileScreenshotUrl: 'http://old/m.png', scores: { a11y: 70 } };
+      expect(mapServerAudit(legacy as unknown as IServerAudit, 'a')).toMatchObject({
+        lcpSeconds: undefined,
+        a11yScore: undefined,
+        desktopScreenshotUrl: undefined,
+        mobileScreenshotUrl: undefined,
+      });
+    });
+
     it('keeps measured zeros', () => {
       const audit = mapServerAudit(
-        { leadId: 'l', lighthouseMetrics: { lcp: 0 }, scores: { accessibility: 0 }, a11ySummary: { violationsCount: 0 } },
+        {
+          leadId: 'l',
+          lighthouseMetrics: { lcp: 0, cls: 0 },
+          scores: { total: 0, design: 0, accessibility: 0, performance: 0, standards: 0 },
+          a11ySummary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
+        },
         'a',
       );
       expect(audit).toMatchObject({ lcpSeconds: 0, a11yScore: 0, a11yViolationsCount: 0 });
@@ -670,7 +760,10 @@ describe('Dashboard apiClient', () => {
               data: [
                 {
                   _id: 'lead-failed',
+                  businessName: 'Ekomyj',
                   originalUrl: 'https://ekomyj.com',
+                  domain: 'ekomyj.com',
+                  niche: 'other',
                   status: 'AUDIT_FAILED',
                   auditError,
                   createdAt: '2026-09-26T00:00:00.000Z',
@@ -725,6 +818,8 @@ describe('Dashboard apiClient', () => {
       _id: `lead-${i}`,
       businessName: `Business ${i}`,
       originalUrl: `https://www.site-${i}.com/`,
+      domain: `site-${i}.com`,
+      niche: 'other',
       status: 'QUEUED',
       createdAt: '2026-09-26T00:00:00.000Z',
     });
