@@ -1,6 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
-import { TriggerAuditSchema } from '@revamp/validation';
+import { TriggerAuditSchema, canTransition, leadStatusesInto } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { Audit } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
@@ -21,18 +21,32 @@ router.post(
         throw new AppError('Lead not found', 404);
       }
 
+      // Only a queued lead or a failed audit can be (re)run; an audit never moves a lead that is
+      // further along back to AUDITING (REV-62)
+      if (lead.status !== 'QUEUED' && !canTransition(lead.status, 'QUEUED')) {
+        throw new AppError(`An audit cannot be started while the lead is ${lead.status}`, 409, {
+          code: 'LEAD_NOT_AUDITABLE',
+          status: lead.status,
+        });
+      }
+
+      // REV-44: retrying a failed audit clears the error and puts the lead back in the queue
+      if (lead.status !== 'QUEUED' || lead.auditError) {
+        const requeued = await Lead.findOneAndUpdate(
+          { _id: lead._id, status: { $in: leadStatusesInto('QUEUED', { includeSelf: true }) } },
+          { $set: { status: 'QUEUED' }, $unset: { auditError: '' } },
+        ).exec();
+        if (!requeued) {
+          throw new AppError('The lead changed while the audit was being queued; try again', 409, {
+            code: 'LEAD_NOT_AUDITABLE',
+          });
+        }
+      }
+
       const audit = await Audit.create({
         leadId: lead._id,
         status: 'QUEUED',
       });
-
-      // REV-44: retrying a failed audit clears the error and puts the lead back in the queue
-      if (lead.status === 'AUDIT_FAILED' || lead.auditError) {
-        await Lead.findByIdAndUpdate(lead._id, {
-          $set: { status: lead.status === 'AUDIT_FAILED' ? 'QUEUED' : lead.status },
-          $unset: { auditError: '' },
-        }).exec();
-      }
 
       const job = await addAuditJob({
         leadId: lead._id.toString(),

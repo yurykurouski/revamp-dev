@@ -26,7 +26,7 @@ import { KanbanBoard } from '../components/KanbanBoard.js';
 import { LeadsDataGrid } from '../components/LeadsDataGrid.js';
 import { AddLeadModal } from '../components/AddLeadModal.js';
 import { SideBySideInspectorModal } from '../components/SideBySideInspectorModal.js';
-import { LeadStatus, NicheType, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
+import { LEAD_STATUSES, LeadStatus, NicheType, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 import { ComplexityFilter } from '../utils/siteComplexity.js';
 import { useTranslation } from 'react-i18next';
 import { NICHES, NICHE_EMOJI } from '../i18n/niches.js';
@@ -135,13 +135,11 @@ export const LeadsPage: React.FC = () => {
               onChange={(e) => setSelectedStatus(e.target.value as LeadStatus | 'ALL')}
             >
               <MenuItem value="ALL">{t('leadsPage.allStatuses')}</MenuItem>
-              <MenuItem value="QUEUED">{t('statuses.QUEUED')}</MenuItem>
-              <MenuItem value="AUDIT_FAILED">{t('statuses.AUDIT_FAILED')}</MenuItem>
-              <MenuItem value="NEEDS_APPROVAL">{t('statuses.NEEDS_APPROVAL')}</MenuItem>
-              <MenuItem value="SCHEDULED">{t('statuses.SCHEDULED')}</MenuItem>
-              <MenuItem value="SENT">{t('statuses.SENT')}</MenuItem>
-              <MenuItem value="OPENED">{t('statuses.OPENED')}</MenuItem>
-              <MenuItem value="CLICKED">{t('leadsPage.viewingDemo')}</MenuItem>
+              {LEAD_STATUSES.map((status) => (
+                <MenuItem key={status} value={status}>
+                  {t(`statuses.${status}`)}
+                </MenuItem>
+              ))}
             </Select>
           </FormControl>
 

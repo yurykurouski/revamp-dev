@@ -144,7 +144,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue(true),
     } as any);
 
-    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
       exec: vi.fn().mockResolvedValue(true),
     } as any);
 
@@ -180,7 +180,7 @@ describe('DeployWorker (@revamp/workers)', () => {
     expect(ImageService.createComparisonBanner).toHaveBeenCalled();
 
     // Assert Lead transitioned to NEEDS_APPROVAL (HITL constraint) with previewUrl and comparisonBannerUrl
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(mockLeadId, {
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith({ _id: mockLeadId, status: { $in: ['GENERATING'] } }, {
       $set: {
         status: 'NEEDS_APPROVAL',
         previewUrl: 'http://localhost:9000/revamp-demos/v/stomatologiya-ulybka-456789/index.html',
@@ -252,7 +252,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }),
     } as any);
     vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
-    vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
 
     const result = await capturedProcessor!({
       id: 'job-deploy-regen',
@@ -270,8 +270,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect.objectContaining({ previewSlug: 'smile-dental-456789', generatedContent: audit.generatedContent }),
       { upsert: true, new: true },
     );
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      leadId,
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: leadId, status: { $in: ['GENERATING'] } },
       expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
     );
   });
@@ -302,7 +302,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue('http://minio/banners/smile.webp');
       vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }) } as any);
       vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
-      vi.mocked(Lead.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
       return { lead, audit };
     };
 
@@ -327,16 +327,29 @@ describe('DeployWorker (@revamp/workers)', () => {
       );
       // The email is gone from the MVP: flagged, but the lead still reaches review (not blocked)
       expect(report.hasCriticalIssues).toBe(true);
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-        leadId,
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: leadId, status: { $in: ['GENERATING'] } },
         expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
       );
 
       const checkOrder = checkSpy.mock.invocationCallOrder[0]!;
       const saveOrder = vi.mocked(MvpProject.findOneAndUpdate).mock.invocationCallOrder[0]!;
-      const approvalOrder = vi.mocked(Lead.findByIdAndUpdate).mock.invocationCallOrder[0]!;
+      const approvalOrder = vi.mocked(Lead.findOneAndUpdate).mock.invocationCallOrder[0]!;
       expect(checkOrder).toBeLessThan(saveOrder);
       expect(saveOrder).toBeLessThan(approvalOrder);
+    });
+
+    it('leaves a lead rejected during the deploy in its status and still finishes the job (REV-62)', async () => {
+      setUpDeploy();
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+
+      const result = await capturedProcessor!({ id: 'job-rejected', data: { leadId, auditId: 'audit-1' } });
+
+      expect(result.success).toBe(true);
+      // The only lead write is guarded on GENERATING, so a REJECTED lead is not moved to review
+      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls).toEqual([
+        [{ _id: leadId, status: { $in: ['GENERATING'] } }, expect.anything()],
+      ]);
     });
 
     it('recomputes the report on every regeneration', async () => {
@@ -369,8 +382,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect(savedReport()).toEqual(
         expect.objectContaining({ status: 'unverified', hasCriticalIssues: false, checks: [], error: 'parser exploded' }),
       );
-      expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-        leadId,
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: leadId, status: { $in: ['GENERATING'] } },
         expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
       );
     });

@@ -97,6 +97,7 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
+| `npm run migrate:lead-statuses --workspace=@revamp/api` | One-off (REV-62): moves leads stored with a removed status (`PENDING`, `MVP_READY`, `AWAITING_APPROVAL`, `APPROVED`, `DISPATCHED`, `REPLIED`) to the status that replaces it (`-- --dry-run` to preview) |
 
 Production deployment uses `.env.production.example`, `docker-compose.prod.yml` and `deploy/deploy.sh`.
 

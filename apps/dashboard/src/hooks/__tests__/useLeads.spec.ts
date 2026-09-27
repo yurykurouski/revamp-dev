@@ -40,10 +40,10 @@ describe('MVP regeneration helpers (REV-31)', () => {
   });
 
   it('offers regeneration only for leads with an MVP that has not gone out', () => {
-    for (const status of ['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL', 'APPROVED'] as const) {
+    for (const status of ['NEEDS_APPROVAL'] as const) {
       expect(canRegenerateMvp(status)).toBe(true);
     }
-    for (const status of ['AUDITED', 'GENERATING', 'SCHEDULED', 'SENT', 'DISPATCHED', 'REPLIED', 'REJECTED'] as const) {
+    for (const status of ['AUDITED', 'GENERATING', 'SCHEDULED', 'SENT', 'ENGAGED', 'REJECTED', 'UNSUBSCRIBED'] as const) {
       expect(canRegenerateMvp(status)).toBe(false);
     }
     expect(canRegenerateMvp(undefined)).toBe(false);

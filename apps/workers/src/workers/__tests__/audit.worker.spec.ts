@@ -8,6 +8,7 @@ import { ImageService } from '../../services/image.service.js';
 import { storageService } from '../../services/storage.service.js';
 import { designCritiqueService } from '../../services/design-critique.service.js';
 import { UnrecoverableError } from 'bullmq';
+import { addAiGenerationJob } from '../../queues/ai.queue.js';
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
@@ -79,7 +80,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       exec: mockAuditExec,
     } as any);
 
-    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+    vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
       exec: mockLeadExec,
     } as any);
 
@@ -166,8 +167,9 @@ describe('AuditWorker (@revamp/workers)', () => {
       { status: 'PROCESSING' },
       { new: true, sort: { createdAt: -1 } },
     );
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      'lead-123',
+    // Only a queued lead (or this job's earlier attempt) is audited (REV-62)
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-123', status: { $in: ['QUEUED', 'AUDITING'] } },
       { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
       { new: true },
     );
@@ -269,10 +271,9 @@ describe('AuditWorker (@revamp/workers)', () => {
     );
 
     // Lead score and status update
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      'lead-123',
-      expect.objectContaining({
-        status: 'AUDITED',
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-123', status: 'AUDITING' },
+      expect.objectContaining({ status: 'AUDITED',
         totalScore: 85,
         contactPhone: '+1 555-1234',
         siteComplexity: 'UNKNOWN',
@@ -280,9 +281,9 @@ describe('AuditWorker (@revamp/workers)', () => {
       }),
     );
     // The street address is not written into the lead's city (REV-23)
-    expect(vi.mocked(Lead.findByIdAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['city'])).toBe(false);
+    expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['city'])).toBe(false);
     // A lead with an operator-supplied email keeps it (REV-26)
-    expect(vi.mocked(Lead.findByIdAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['contactEmail'])).toBe(false);
+    expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['contactEmail'])).toBe(false);
 
     // Analytics token usage event logging
     expect(AnalyticsEvent.create).toHaveBeenCalledWith(
@@ -318,7 +319,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     createAuditWorker();
 
     vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
-    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+    vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
       exec: vi.fn().mockResolvedValue({
         businessName: 'Found Clinic',
         contactEmail: 'info@found-clinic.lt',
@@ -374,10 +375,9 @@ describe('AuditWorker (@revamp/workers)', () => {
 
     await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
 
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      'lead-disc',
-      expect.objectContaining({
-        status: 'AUDITED',
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-disc', status: 'AUDITING' },
+      expect.objectContaining({ status: 'AUDITED',
         contactEmail: 'reception@found-clinic.lt',
         $pull: { tags: 'email-guessed' },
       }),
@@ -388,7 +388,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     createAuditWorker();
 
     vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
-    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+    vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
       exec: vi.fn().mockResolvedValue({
         businessName: 'Found Clinic',
         tags: [],
@@ -443,11 +443,11 @@ describe('AuditWorker (@revamp/workers)', () => {
 
     await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
 
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      'lead-disc',
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-disc', status: 'AUDITING' },
       expect.objectContaining({ status: 'AUDITED', contactEmail: 'reception@found-clinic.lt' }),
     );
-    const audited = vi.mocked(Lead.findByIdAndUpdate).mock.calls.find(
+    const audited = vi.mocked(Lead.findOneAndUpdate).mock.calls.find(
       (c) => (c[1] as Record<string, unknown>)?.['status'] === 'AUDITED',
     );
     expect(audited?.[1]).not.toHaveProperty('$pull');
@@ -457,7 +457,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     createAuditWorker();
 
     vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
-    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+    vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
       exec: vi.fn().mockResolvedValue({ businessName: 'Brochure Dental', contactPhone: '+48 1', tags: [] }),
     } as any);
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
@@ -534,10 +534,9 @@ describe('AuditWorker (@revamp/workers)', () => {
       }),
       { new: true, sort: { createdAt: -1 } },
     );
-    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
-      'lead-brochure',
-      expect.objectContaining({
-        status: 'AUDITED',
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-brochure', status: 'AUDITING' },
+      expect.objectContaining({ status: 'AUDITED',
         siteComplexity: 'ONE_PAGE_BROCHURE',
         onePageBrochure: true,
       }),
@@ -565,7 +564,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       exec: mockAuditExec,
     } as any);
 
-    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+    vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
       exec: mockLeadExec,
     } as any);
 
@@ -591,8 +590,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     const failingJob = (error: Error, attemptsMade: number, attempts = 3) => {
       createAuditWorker();
       vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
-      vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
-      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+            vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
       vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
       vi.mocked(browserService.captureFullAudit).mockRejectedValue(error);
       return {
@@ -610,7 +608,10 @@ describe('AuditWorker (@revamp/workers)', () => {
 
       expect(error).toBeInstanceOf(Error);
       expect(error).not.toBeInstanceOf(UnrecoverableError);
-      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'AUDIT_FAILED' }) }),
+      );
       expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
         { leadId: 'lead-fail' },
         { status: 'FAILED', errorMessage: 'page.goto: Timeout 30000ms exceeded.' },
@@ -628,7 +629,7 @@ describe('AuditWorker (@revamp/workers)', () => {
 
       const reason = 'browserContext.close: Target page, context or browser has been closed';
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fail', status: 'AUDITING' },
+        { _id: 'lead-fail', status: { $in: ['AUDITING'] } },
         { $set: { status: 'AUDIT_FAILED', auditError: reason } },
       );
       expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
@@ -650,9 +651,91 @@ describe('AuditWorker (@revamp/workers)', () => {
       expect(error).toBeInstanceOf(UnrecoverableError);
       expect((error as Error).message).toBe(reason);
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fail', status: 'AUDITING' },
+        { _id: 'lead-fail', status: { $in: ['AUDITING'] } },
         { $set: { status: 'AUDIT_FAILED', auditError: reason } },
       );
+    });
+  });
+
+  describe('lead status guards (REV-62)', () => {
+    it('skips a lead that is no longer queued, without crawling it', async () => {
+      createAuditWorker();
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+
+      const result = await capturedProcessor!({ id: 'job-x', data: { leadId: 'lead-x', url: 'https://x.example', niche: 'dental' } });
+
+      expect(result).toMatchObject({ success: false, skipped: true, leadId: 'lead-x' });
+      expect(browserService.captureFullAudit).not.toHaveBeenCalled();
+      expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
+        { leadId: 'lead-x' },
+        { status: 'FAILED', errorMessage: expect.stringContaining('no longer waiting for an audit') },
+        { sort: { createdAt: -1 } },
+      );
+    });
+
+    it('does not mark AUDITED or start generation for a lead rejected during the audit', async () => {
+      createAuditWorker();
+      vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate')
+        .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue({ businessName: 'Found Clinic', tags: [] }) } as any)
+        .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(null) } as any);
+      vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+      vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+        desktopBuffer: Buffer.from('d'),
+        mobileBuffer: Buffer.from('m'),
+        desktopFullBuffer: Buffer.from('df'),
+        mobileFullBuffer: Buffer.from('mf'),
+        a11yResult: {
+          a11yScore: 80,
+          summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
+          rawViolations: [],
+        },
+        vitalsResult: {
+          lcpSeconds: 2,
+          lighthouseMetrics: { lcp: 2000, cls: 0.01 },
+          standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+          performanceScore: 90,
+          standardsScore: 100,
+        },
+        rawBrandData: {
+          colors: ['rgb(79, 70, 229)'],
+          fontFamilies: ['Inter'],
+          email: 'reception@found-clinic.lt',
+          socialLinks: [],
+          services: [],
+        },
+      } as any);
+      vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+      vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+      vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+      vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+        critique: {
+          visualHierarchyRating: 60,
+          mobileFriendlinessRating: 60,
+          primaryCtaFound: false,
+          datedDesignFactors: [],
+          criticalFlaws: [
+            { title: 'F1', impact: 'I1', recommendation: 'R1' },
+            { title: 'F2', impact: 'I2', recommendation: 'R2' },
+            { title: 'F3', impact: 'I3', recommendation: 'R3' },
+          ],
+          quickWins: ['W1', 'W2', 'W3'],
+        },
+        aiFallbackUsed: true,
+        modelUsed: 'fallback',
+        attempts: 1,
+      } as any);
+
+
+      const result = await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
+
+      expect(result.success).toBe(true);
+      expect(Lead.findOneAndUpdate).toHaveBeenLastCalledWith(
+        { _id: 'lead-disc', status: 'AUDITING' },
+        expect.objectContaining({ status: 'AUDITED' }),
+      );
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
   });
 });

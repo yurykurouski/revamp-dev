@@ -21,7 +21,6 @@ import LocationOnOutlinedIcon from '@mui/icons-material/LocationOnOutlined';
 import BlockIcon from '@mui/icons-material/Block';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import ReportProblemOutlinedIcon from '@mui/icons-material/ReportProblemOutlined';
-import { LeadStatus } from '@revamp/shared-types';
 import { ILeadItem } from '../api/client.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { withPreviewVersion } from '../hooks/useLeads.js';
@@ -29,63 +28,31 @@ import { RegenerateMvpButton } from './RegenerateMvpButton.js';
 import { GenerateMvpButton } from './GenerateMvpButton.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
 import { ScoreChip } from './ScoreChip.js';
-import { RADIUS } from '../theme/theme.js';
+import { RADIUS, type Stage } from '../theme/theme.js';
+import { leadStage } from '../utils/leadStages.js';
 import { AuditFailedActions } from './AuditFailedActions.js';
 import { isAuditFailed } from '../utils/auditFailure.js';
 import { useTranslation } from 'react-i18next';
-import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { formatDate } from '../i18n/languages.js';
 import { isDashboardNiche } from '../i18n/niches.js';
 import { criticalIssueFields } from '../utils/completeness.js';
 
 interface KanbanColumnConfig {
-  id: keyof Translation['kanban']['columns'];
-  status: LeadStatus | LeadStatus[];
+  id: Stage;
   icon: React.ReactNode;
 }
 
+// One column per pipeline stage; the statuses in each come from LEAD_STATUS_STAGE (REV-62)
 const COLUMNS: KanbanColumnConfig[] = [
-  {
-    id: 'queued',
-    status: ['QUEUED', 'PENDING', 'AUDITING', 'AUDIT_FAILED', 'AUDITED', 'GENERATING'],
-    icon: <PendingActionsIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'needs_approval',
-    status: ['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'],
-    icon: <AutoAwesomeIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'scheduled',
-    status: ['SCHEDULED', 'APPROVED'],
-    icon: <ScheduleIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'sent',
-    status: ['SENT', 'DISPATCHED'],
-    icon: <SendIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'opened',
-    status: ['OPENED'],
-    icon: <MarkEmailReadIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'clicked',
-    status: ['CLICKED'],
-    icon: <TouchAppIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'engaged',
-    status: ['ENGAGED', 'REPLIED'],
-    icon: <WhatshotIcon sx={{ fontSize: 18 }} />,
-  },
-  {
-    id: 'rejected',
-    status: ['REJECTED', 'UNSUBSCRIBED'],
-    icon: <BlockIcon sx={{ fontSize: 18 }} />,
-  },
+  { id: 'queued', icon: <PendingActionsIcon sx={{ fontSize: 18 }} /> },
+  { id: 'needs_approval', icon: <AutoAwesomeIcon sx={{ fontSize: 18 }} /> },
+  { id: 'scheduled', icon: <ScheduleIcon sx={{ fontSize: 18 }} /> },
+  { id: 'sent', icon: <SendIcon sx={{ fontSize: 18 }} /> },
+  { id: 'opened', icon: <MarkEmailReadIcon sx={{ fontSize: 18 }} /> },
+  { id: 'clicked', icon: <TouchAppIcon sx={{ fontSize: 18 }} /> },
+  { id: 'engaged', icon: <WhatshotIcon sx={{ fontSize: 18 }} /> },
+  { id: 'rejected', icon: <BlockIcon sx={{ fontSize: 18 }} /> },
 ];
 
 interface KanbanBoardProps {
@@ -111,7 +78,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
     >
       {COLUMNS.map((col) => {
         const columnLeads = leads.filter((l) =>
-          Array.isArray(col.status) ? col.status.includes(l.status) : l.status === col.status,
+          leadStage(l.status) === col.id,
         );
 
         return (
@@ -328,7 +295,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         })}
                       </Typography>
 
-                      {['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'].includes(lead.status) && (
+                      {leadStage(lead.status) === 'needs_approval' && (
                         <Button
                           variant="contained"
                           color="warning"
@@ -340,7 +307,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         </Button>
                       )}
 
-                      {['QUEUED', 'PENDING'].includes(lead.status) && (
+                      {lead.status === 'QUEUED' && (
                         <Chip
                           label={t('kanban.queued')}
                           size="small"
@@ -369,7 +336,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         />
                       )}
 
-                      {['REJECTED', 'UNSUBSCRIBED'].includes(lead.status) && (
+                      {leadStage(lead.status) === 'rejected' && (
                         <Chip
                           label={t('kanban.rejected')}
                           size="small"
@@ -378,7 +345,7 @@ export const KanbanBoard: React.FC<KanbanBoardProps> = ({ leads }) => {
                         />
                       )}
 
-                      {lead.previewUrl && !['NEEDS_APPROVAL', 'MVP_READY', 'AWAITING_APPROVAL'].includes(lead.status) && (
+                      {lead.previewUrl && leadStage(lead.status) !== 'needs_approval' && (
                         <Button
                           size="small"
                           variant="outlined"

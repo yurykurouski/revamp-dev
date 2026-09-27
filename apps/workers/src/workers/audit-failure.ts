@@ -1,5 +1,6 @@
 import type { Job } from 'bullmq';
 import type { IAuditJobData } from '@revamp/shared-types';
+import { leadStatusesInto } from '@revamp/validation';
 import { Lead } from '../models/Lead.model.js';
 
 /**
@@ -21,7 +22,7 @@ export async function markLeadAuditFailed(job: Job<IAuditJobData>, auditError: s
   try {
     // Only a lead still marked AUDITING by this run is changed; never overwrite a newer state
     await Lead.findOneAndUpdate(
-      { _id: leadId, status: 'AUDITING' },
+      { _id: leadId, status: { $in: leadStatusesInto('AUDIT_FAILED') } },
       { $set: { status: 'AUDIT_FAILED', auditError } },
     ).exec();
     console.warn(`[AuditFailure] Lead ${leadId} marked AUDIT_FAILED: ${auditError}`);

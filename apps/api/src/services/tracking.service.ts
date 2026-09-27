@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { MvpTrackEventDto } from '@revamp/validation';
+import { MvpTrackEventDto, canTransition, leadStatusesInto } from '@revamp/validation';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
@@ -50,7 +50,7 @@ export class TrackingService {
 
       if (campaign.leadId) {
         const lead = await Lead.findById(campaign.leadId).exec();
-        if (lead && ['SENT', 'DISPATCHED', 'SCHEDULED', 'QUEUED'].includes(lead.status)) {
+        if (lead && canTransition(lead.status, 'OPENED')) {
           lead.status = 'OPENED';
           await lead.save();
         }
@@ -108,10 +108,7 @@ export class TrackingService {
 
       if (campaign.leadId) {
         const lead = await Lead.findById(campaign.leadId).exec();
-        if (
-          lead &&
-          ['SENT', 'DISPATCHED', 'SCHEDULED', 'QUEUED', 'OPENED'].includes(lead.status)
-        ) {
+        if (lead && canTransition(lead.status, 'CLICKED')) {
           lead.status = 'CLICKED';
           await lead.save();
         }
@@ -190,16 +187,19 @@ export class TrackingService {
     if (!campaign) {
       const existing = await EmailCampaign.findOne({ trackingToken: token }).exec();
       if (!existing) return { found: false, alreadyUnsubscribed: false };
-      // Keep the lead opted out even if something moved it on after the first call
-      await Lead.findByIdAndUpdate(existing.leadId, { $set: { status: 'UNSUBSCRIBED' } }).exec();
+      // Make sure the lead is opted out too, in case the first call failed before updating it
+      await Lead.findOneAndUpdate(
+        { _id: existing.leadId, status: { $in: leadStatusesInto('UNSUBSCRIBED') } },
+        { $set: { status: 'UNSUBSCRIBED' } },
+      ).exec();
       return { found: true, alreadyUnsubscribed: true, leadId: existing.leadId?.toString() };
     }
 
     // An opt-out applies whatever stage the lead reached; approve and dispatch refuse it from now on
-    await Lead.findByIdAndUpdate(campaign.leadId, {
-      $set: { status: 'UNSUBSCRIBED' },
-      $addToSet: { tags: 'unsubscribed' },
-    }).exec();
+    await Lead.findOneAndUpdate(
+      { _id: campaign.leadId, status: { $in: leadStatusesInto('UNSUBSCRIBED') } },
+      { $set: { status: 'UNSUBSCRIBED' }, $addToSet: { tags: 'unsubscribed' } },
+    ).exec();
 
     await AnalyticsEvent.create({
       leadId: campaign.leadId,
@@ -277,10 +277,7 @@ export class TrackingService {
 
     if (isEngagedTrigger && leadId) {
       const lead = await Lead.findById(leadId).exec();
-      if (
-        lead &&
-        ['SENT', 'DISPATCHED', 'SCHEDULED', 'QUEUED', 'OPENED', 'CLICKED'].includes(lead.status)
-      ) {
+      if (lead && canTransition(lead.status, 'ENGAGED')) {
         lead.status = 'ENGAGED';
         if (!lead.tags.includes('engaged_visitor')) {
           lead.tags.push('engaged_visitor');

@@ -13,32 +13,31 @@ import { isAuditFailed } from '../utils/auditFailure.js';
 import { useHitlModalStore } from '../store/useHitlModalStore.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useTranslation } from 'react-i18next';
-import type { Translation } from '../i18n/locales/en.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { formatDate } from '../i18n/languages.js';
 import { NICHE_EMOJI, isDashboardNiche } from '../i18n/niches.js';
 
 type ChipColor = 'default' | 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning';
 
-const STATUS_COLORS: Record<keyof Translation['statuses'], ChipColor> = {
+// Every status in the shared list has a chip color and a translated label (REV-62)
+const STATUS_COLORS: Record<LeadStatus, ChipColor> = {
   QUEUED: 'default',
   AUDITING: 'info',
   AUDIT_FAILED: 'error',
   AUDITED: 'info',
   GENERATING: 'primary',
   NEEDS_APPROVAL: 'warning',
-  APPROVED: 'primary',
   SCHEDULED: 'primary',
-  DISPATCHED: 'info',
   SENT: 'info',
   OPENED: 'secondary',
   CLICKED: 'success',
   ENGAGED: 'secondary',
-  REPLIED: 'success',
   REJECTED: 'error',
+  UNSUBSCRIBED: 'error',
 };
 
-function isLabelledStatus(status: LeadStatus): status is keyof typeof STATUS_COLORS {
+// A status the dashboard does not know (e.g. from a newer API) is shown as is
+function isLabelledStatus(status: string): status is LeadStatus {
   return Object.prototype.hasOwnProperty.call(STATUS_COLORS, status);
 }
 

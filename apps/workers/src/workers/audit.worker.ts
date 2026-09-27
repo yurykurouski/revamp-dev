@@ -14,7 +14,7 @@ import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
-import { isPermanentAuditError, sanitizeAuditError } from '@revamp/validation';
+import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
 import { isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
@@ -27,19 +27,22 @@ export const createAuditWorker = (): Worker => {
       const { leadId, url, niche } = job.data;
       console.log(`[AuditWorker] Received job ${job.id} for lead: ${leadId}, URL: ${url}, niche: ${niche}`);
 
-      // 1. Update Lead and Audit status to denote active processing
-      const [existingLead] = await Promise.all([
-        Lead.findByIdAndUpdate(
-          leadId,
-          { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
-          { new: true },
-        ).exec(),
-        Audit.findOneAndUpdate(
-          { leadId },
-          { status: 'PROCESSING' },
-          { new: true, ...LATEST_AUDIT },
-        ).exec(),
-      ]);
+      // 1. Move the lead to AUDITING. Only a queued lead (or this job's own earlier attempt) is
+      // audited; a lead that was rejected or moved on meanwhile is left alone (REV-62)
+      const existingLead = await Lead.findOneAndUpdate(
+        { _id: leadId, status: { $in: leadStatusesInto('AUDITING', { includeSelf: true }) } },
+        { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
+        { new: true },
+      ).exec();
+
+      if (!existingLead) {
+        const reason = `Lead ${leadId} is missing or no longer waiting for an audit; skipping it.`;
+        console.warn(`[AuditWorker] ${reason}`);
+        await Audit.findOneAndUpdate({ leadId }, { status: 'FAILED', errorMessage: reason }, LATEST_AUDIT).exec();
+        return { success: false, skipped: true, leadId, reason };
+      }
+
+      await Audit.findOneAndUpdate({ leadId }, { status: 'PROCESSING' }, { new: true, ...LATEST_AUDIT }).exec();
 
       console.log(`[AuditWorker] Status updated to AUDITING/PROCESSING for lead ${leadId}`);
 
@@ -178,17 +181,23 @@ export const createAuditWorker = (): Worker => {
         }
         // The full street address is persisted on the Audit (extractedContacts), not as the lead's city
 
-        await Lead.findByIdAndUpdate(leadId, leadUpdate).exec();
+        // Only a lead this run is still auditing becomes AUDITED (GENERATING → AUDITED is a failed
+        // generation, not an audit); a lead rejected mid-audit stays so (REV-62)
+        const auditedLead = await Lead.findOneAndUpdate({ _id: leadId, status: 'AUDITING' }, leadUpdate).exec();
 
         // 11. Auto-chain to AI Content Generation Queue
-        try {
-          await addAiGenerationJob({
-            leadId,
-            auditId: updatedAudit?._id?.toString() || leadId,
-          });
-          console.log(`[AuditWorker] Dispatched AI generation job for lead ${leadId}`);
-        } catch (chainErr) {
-          console.error(`[AuditWorker] Failed to dispatch AI generation job for lead ${leadId}:`, chainErr);
+        if (!auditedLead) {
+          console.warn(`[AuditWorker] Lead ${leadId} left AUDITING during the audit; not generating an MVP.`);
+        } else {
+          try {
+            await addAiGenerationJob({
+              leadId,
+              auditId: updatedAudit?._id?.toString() || leadId,
+            });
+            console.log(`[AuditWorker] Dispatched AI generation job for lead ${leadId}`);
+          } catch (chainErr) {
+            console.error(`[AuditWorker] Failed to dispatch AI generation job for lead ${leadId}:`, chainErr);
+          }
         }
 
         console.log(

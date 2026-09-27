@@ -14,48 +14,28 @@ export type NicheType =
   | 'fitness'
   | 'other';
 
-export type LeadStatus =
-  | 'QUEUED'
-  | 'PENDING'
-  | 'AUDITING'
-  | 'AUDIT_FAILED'
-  | 'AUDITED'
-  | 'GENERATING'
-  | 'MVP_READY'
-  | 'NEEDS_APPROVAL'
-  | 'AWAITING_APPROVAL'
-  | 'APPROVED'
-  | 'SCHEDULED'
-  | 'SENT'
-  | 'DISPATCHED'
-  | 'OPENED'
-  | 'CLICKED'
-  | 'ENGAGED'
-  | 'REPLIED'
-  | 'REJECTED'
-  | 'UNSUBSCRIBED';
-
-/** Statuses a lead's outreach can be approved from: the MVP is ready for operator review (REV-59) */
-export const OUTREACH_APPROVABLE_STATUSES: readonly LeadStatus[] = ['NEEDS_APPROVAL', 'AWAITING_APPROVAL'];
-
 /**
- * Statuses a lead can still be rejected from: everything before outreach is approved. Once it is
- * approved, dispatched, or the lead is already closed, reject is refused (REV-59)
+ * Every status a lead can be in (REV-62). Only statuses something in the API or the workers writes
+ * are listed; the allowed moves between them are `LEAD_TRANSITIONS` in `@revamp/validation`.
+ * After dispatch the lead is `SENT` (spec.md once called it `DISPATCHED`).
  */
-export const OUTREACH_REJECTABLE_STATUSES: readonly LeadStatus[] = [
+export const LEAD_STATUSES = [
   'QUEUED',
-  'PENDING',
   'AUDITING',
   'AUDIT_FAILED',
   'AUDITED',
   'GENERATING',
-  'MVP_READY',
   'NEEDS_APPROVAL',
-  'AWAITING_APPROVAL',
-];
+  'SCHEDULED',
+  'SENT',
+  'OPENED',
+  'CLICKED',
+  'ENGAGED',
+  'REJECTED',
+  'UNSUBSCRIBED',
+] as const;
 
-export const canApproveOutreach = (status: LeadStatus): boolean => OUTREACH_APPROVABLE_STATUSES.includes(status);
-export const canRejectLead = (status: LeadStatus): boolean => OUTREACH_REJECTABLE_STATUSES.includes(status);
+export type LeadStatus = (typeof LEAD_STATUSES)[number];
 
 const escapeHtml = (text: string): string =>
   text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

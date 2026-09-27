@@ -65,11 +65,17 @@ router.post(
         });
       }
 
+      // Only if the lead is still in the status checked above, so two requests can't both start (REV-62)
       const previousStatus = lead.status;
-      await Lead.findByIdAndUpdate(lead._id, {
-        $set: { status: 'GENERATING' },
-        $unset: { generationError: '' },
-      }).exec();
+      const claimed = await Lead.findOneAndUpdate(
+        { _id: lead._id, status: previousStatus },
+        { $set: { status: 'GENERATING' }, $unset: { generationError: '' } },
+      ).exec();
+      if (!claimed) {
+        throw new AppError('The lead changed while generation was being queued; try again', 409, {
+          code: 'MVP_GENERATION_NOT_ALLOWED',
+        });
+      }
 
       const job = await addAiGenerationJob({
         leadId: lead._id.toString(),

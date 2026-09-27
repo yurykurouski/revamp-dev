@@ -1,6 +1,7 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import type { Types } from 'mongoose';
 import { IEmailDispatchJobData } from '@revamp/shared-types';
+import { canTransition, leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
@@ -31,7 +32,7 @@ const markLeadSent = async (
   reason: string,
 ): Promise<IEmailWorkerResult> => {
   console.warn(`[EmailWorker] ${reason}`);
-  await Lead.findByIdAndUpdate(leadId, { status: 'SENT' }).exec();
+  await Lead.findOneAndUpdate({ _id: leadId, status: { $in: leadStatusesInto('SENT') } }, { status: 'SENT' }).exec();
   return {
     success: true,
     alreadySent: true,
@@ -56,8 +57,8 @@ export const createEmailWorker = (): Worker => {
       }
 
       // 2. Strict Human-In-The-Loop (HITL) Gate Enforcement
-      // Only leads in 'SCHEDULED' or 'APPROVED' status are permitted to receive external outreach
-      if (lead.status !== 'SCHEDULED' && lead.status !== 'APPROVED') {
+      // Only a lead the operator approved (SCHEDULED, the one status that can move to SENT) is emailed
+      if (!canTransition(lead.status, 'SENT')) {
         const warning = `Lead ${leadId} has status "${lead.status}". Outreach requires explicit operator approval ('SCHEDULED'). Aborting dispatch.`;
         console.warn(`[EmailWorker] ${warning}`);
         return {
@@ -107,11 +108,11 @@ export const createEmailWorker = (): Worker => {
           bounceReason,
         }).exec();
 
-        // Update Lead status to REJECTED and tag with bounce metadata
-        await Lead.findByIdAndUpdate(lead._id, {
-          status: 'REJECTED',
-          $addToSet: { tags: 'mx_bounced' },
-        }).exec();
+        // Update Lead status to REJECTED and tag with bounce metadata, unless it opted out meanwhile
+        await Lead.findOneAndUpdate(
+          { _id: lead._id, status: { $in: leadStatusesInto('REJECTED') } },
+          { status: 'REJECTED', $addToSet: { tags: 'mx_bounced' } },
+        ).exec();
 
         return {
           success: false,
@@ -174,11 +175,11 @@ export const createEmailWorker = (): Worker => {
         sentAt: now,
       }).exec();
 
-      // 8. Update Lead status to SENT
-      await Lead.findByIdAndUpdate(lead._id, {
-        status: 'SENT',
-        updatedAt: now,
-      }).exec();
+      // 8. Update Lead status to SENT, unless it opted out while the email was being sent
+      await Lead.findOneAndUpdate(
+        { _id: lead._id, status: { $in: leadStatusesInto('SENT') } },
+        { status: 'SENT', updatedAt: now },
+      ).exec();
 
       console.log(`[EmailWorker] Lead ${leadId} status updated to 'SENT'. Dispatch complete.`);
 

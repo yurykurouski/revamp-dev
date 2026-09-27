@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleGenerationFailure, statusAfterFailedGeneration } from '../generation-failure.js';
+import { canTransition } from '@revamp/validation';
 import { Lead } from '../../models/Lead.model.js';
 
 vi.mock('../../models/Lead.model.js');
@@ -22,9 +23,12 @@ describe('MVP generation failure handling (REV-31)', () => {
     expect(statusAfterFailedGeneration(undefined)).toBe('AUDITED');
     expect(statusAfterFailedGeneration('AUDITED')).toBe('AUDITED');
     expect(statusAfterFailedGeneration('NEEDS_APPROVAL')).toBe('NEEDS_APPROVAL');
-    expect(statusAfterFailedGeneration('MVP_READY')).toBe('NEEDS_APPROVAL');
-    // Never restores an approved state without a fresh operator review
-    expect(statusAfterFailedGeneration('APPROVED')).toBe('NEEDS_APPROVAL');
+  });
+
+  it('only resets to a status the lead may move to from GENERATING (REV-62)', () => {
+    for (const previous of [undefined, 'AUDITED', 'NEEDS_APPROVAL'] as const) {
+      expect(canTransition('GENERATING', statusAfterFailedGeneration(previous))).toBe(true);
+    }
   });
 
   it('does nothing while BullMQ still has retries left', async () => {

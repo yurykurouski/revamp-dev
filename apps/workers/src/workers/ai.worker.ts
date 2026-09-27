@@ -1,5 +1,6 @@
 import { Worker, Job } from 'bullmq';
 import { IAiGenerationJobData } from '@revamp/shared-types';
+import { leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
@@ -33,8 +34,17 @@ export const createAiWorker = (): Worker => {
         throw new Error(`No completed audit found for lead ${leadId}`);
       }
 
-      // 1. Transition Lead status to GENERATING
-      await Lead.findByIdAndUpdate(leadId, { status: 'GENERATING' }).exec();
+      // 1. Transition Lead status to GENERATING (the API usually did already). A lead that was
+      // rejected or moved on since the job was queued is not generated for (REV-62)
+      const generating = await Lead.findOneAndUpdate(
+        { _id: leadId, status: { $in: leadStatusesInto('GENERATING', { includeSelf: true }) } },
+        { $set: { status: 'GENERATING' } },
+      ).exec();
+      if (!generating) {
+        const reason = `Lead ${leadId} is ${lead.status}, which cannot move to GENERATING; skipping generation.`;
+        console.warn(`[AiWorker] ${reason}`);
+        return { success: false, skipped: true, leadId, reason };
+      }
 
       // 2. Synthesize high-converting MVP copy with Strict Grounding. Always a fresh LLM run: the
       // copy stored on the audit is never reused, so a regeneration (REV-31) gets new copy.

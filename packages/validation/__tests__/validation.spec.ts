@@ -16,8 +16,6 @@ import {
   DiscoveredBusinessSchema,
   ReverseGeocodeQuerySchema,
   ImportDiscoverySchema,
-  mvpGenerationMode,
-  MVP_REGENERATABLE_STATUSES,
   MvpCompletenessReportSchema,
   CompletenessCheckSchema,
   criticalCompletenessIssues,
@@ -185,24 +183,6 @@ describe('Validation Schemas (@revamp/validation)', () => {
         expect(GenerateMvpSchema.safeParse({ auditId: 'a', provider: 'claude-cli', model: '' }).success).toBe(false);
         expect(GenerateMvpSchema.safeParse({ auditId: 'a', provider: 'claude-cli', model: 'x'.repeat(101) }).success).toBe(false);
       });
-    });
-  });
-
-  describe('mvpGenerationMode (REV-31)', () => {
-    it('allows a first generation only from AUDITED', () => {
-      expect(mvpGenerationMode('AUDITED')).toBe('first');
-    });
-
-    it.each(['MVP_READY', 'NEEDS_APPROVAL', 'AWAITING_APPROVAL', 'APPROVED'])('allows regenerating a %s lead', (status) => {
-      expect(mvpGenerationMode(status)).toBe('regenerate');
-      expect(MVP_REGENERATABLE_STATUSES).toContain(status);
-    });
-
-    it.each([
-      'QUEUED', 'PENDING', 'AUDITING', 'GENERATING', 'SCHEDULED', 'SENT', 'DISPATCHED',
-      'OPENED', 'CLICKED', 'ENGAGED', 'REPLIED', 'REJECTED', 'UNSUBSCRIBED', '', undefined, null,
-    ])('blocks generation for %s', (status) => {
-      expect(mvpGenerationMode(status)).toBe('blocked');
     });
   });
 
