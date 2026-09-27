@@ -55,16 +55,22 @@ The `minio-init` container creates the `revamp-assets` and `revamp-demos` bucket
 
 ### LLM providers
 
-All LLM settings live in `.env`. With no provider configured, the pipeline still runs and uses deterministic copy built from the site's own content.
+All LLM settings live in `.env`. Nothing is faked when a provider is missing: without a Vision key (`ANTHROPIC_API_KEY` or `OPENAI_API_KEY`) audits fail at the design critique, and without an MVP provider generation fails with an error the dashboard shows. Deterministic copy and critique are only used as a fallback after a configured LLM fails every retry (the result is marked `aiFallbackUsed`). The workers log a warning at startup for each missing provider.
 
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | Enable the matching API provider |
-| `MVP_LLM_PROVIDER` | Default provider: `anthropic`, `openai`, `gemini`, `claude-cli` or `mock`. When empty, the first provider with a key is used |
+| `MVP_LLM_PROVIDER` | Default provider: `anthropic`, `openai`, `gemini` or `claude-cli`. When empty, the first provider with a key is used |
 | `CLAUDE_CLI_PATH`, `CLAUDE_CLI_MODEL`, `CLAUDE_CLI_TIMEOUT_MS` | `claude-cli` runs the local Claude Code CLI with the account it is logged into, so it needs no API key |
 | `MVP_COMPLETENESS_LLM` | `true` lets the LLM judge the MVP completeness check (every verdict is verified in code); `false` uses the code-only check |
 
 The operator can override the provider and model for each generation from the dashboard.
+
+### Email
+
+`EMAIL_PROVIDER` picks the outreach provider: `resend` (`RESEND_API_KEY`), `sendgrid` (`SENDGRID_API_KEY`) or `smtp` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`). It has no default: without it, an approved email fails at dispatch instead of being reported as sent.
+
+A lead can be added without a contact email; the audit then fills it in from the email published on the site. Outreach cannot be approved for a lead that still has no email (409).
 
 ### Discovery
 
@@ -90,6 +96,7 @@ Production deployment uses `.env.production.example`, `docker-compose.prod.yml` 
 
 - **Human in the loop:** workers stop at `NEEDS_APPROVAL`. Emails go out only after an operator approves them in the dashboard.
 - **Strict grounding:** metrics and contact data come from deterministic code, never from an LLM. The MVP shows only data found on the original site.
+- **No mock data at runtime:** the dashboard shows only what the API returns. When the API is unreachable or a request fails, it shows an error or an empty state, and a value the audit did not measure is shown as missing (`—`). Mocks live only in test files.
 - **Zod everywhere:** HTTP payloads and LLM responses are validated with `@revamp/validation` before they are processed or stored.
 - **Sandboxed previews:** MVPs are static bundles in the `revamp-demos` bucket, embedded with `<iframe sandbox="allow-scripts allow-same-origin">`.
 - **Tests:** every change ships with Vitest tests, and `npm test` must pass with 0 failures.

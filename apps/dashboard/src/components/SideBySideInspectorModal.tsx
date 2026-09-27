@@ -15,6 +15,7 @@ import {
   Tabs,
   Card,
   CircularProgress,
+  Alert,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
@@ -26,7 +27,6 @@ import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import SecurityIcon from '@mui/icons-material/Security';
-import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
@@ -51,6 +51,9 @@ import { criticalIssueFields } from '../utils/completeness.js';
 import { useTranslation } from 'react-i18next';
 import { isDashboardNiche } from '../i18n/niches.js';
 
+/** Shown for a metric the audit did not measure */
+const NOT_MEASURED = '—';
+
 export const SideBySideInspectorModal: React.FC = () => {
   const {
     isOpen,
@@ -69,7 +72,14 @@ export const SideBySideInspectorModal: React.FC = () => {
   const { t } = useTranslation();
   const currentLead = leadsData?.leads.find((l) => l.id === selectedLeadId);
 
-  const { data: audit, isLoading: isAuditLoading } = useAuditQuery(selectedAuditId);
+  const {
+    data: audit,
+    isLoading: isAuditLoading,
+    isError: isAuditError,
+    error: auditError,
+  } = useAuditQuery(selectedAuditId);
+  // Screenshot URL that failed to load; the viewer then says so instead of showing another image
+  const [brokenScreenshotUrl, setBrokenScreenshotUrl] = useState<string | null>(null);
   const { data: mvp } = useMvpQuery(selectedLeadId);
 
   const approveMutation = useApproveOutreachMutation();
@@ -102,10 +112,12 @@ export const SideBySideInspectorModal: React.FC = () => {
       );
     }
     // Persist to backend API
-    updateTokensMutation.mutate({
-      mvpId: currentLead?.id || 'demo',
-      tokens: { primaryColor: newColor, accentColor: newColor },
-    });
+    if (currentLead) {
+      updateTokensMutation.mutate({
+        mvpId: currentLead.id,
+        tokens: { primaryColor: newColor, accentColor: newColor },
+      });
+    }
   };
 
   const handleColorReset = () => {
@@ -142,12 +154,9 @@ export const SideBySideInspectorModal: React.FC = () => {
   // Prefer the full-page capture (REV-21); fall back to the above-the-fold shot for older audits
   const originalScreenshotUrl =
     originalScreenTab === 'desktop'
-      ? audit?.desktopFullScreenshotUrl ||
-        audit?.desktopScreenshotUrl ||
-        'http://localhost:9000/revamp-assets/screenshots/listonosz_desktop.webp'
-      : audit?.mobileFullScreenshotUrl ||
-        audit?.mobileScreenshotUrl ||
-        'http://localhost:9000/revamp-assets/screenshots/listonosz_mobile.webp';
+      ? audit?.desktopFullScreenshotUrl || audit?.desktopScreenshotUrl
+      : audit?.mobileFullScreenshotUrl || audit?.mobileScreenshotUrl;
+  const screenshotAvailable = Boolean(originalScreenshotUrl) && brokenScreenshotUrl !== originalScreenshotUrl;
   const isFullPageScreenshot =
     originalScreenTab === 'desktop'
       ? Boolean(audit?.desktopFullScreenshotUrl)
@@ -238,26 +247,15 @@ export const SideBySideInspectorModal: React.FC = () => {
           </Tabs>
         </Box>
 
-        {/* Right: Score Uplift Badge & Close Action */}
+        {/* Right: the original site's audit score (no MVP score is measured, so none is shown) & Close Action */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
           <Box sx={{ display: { xs: 'none', lg: 'flex' }, alignItems: 'center', gap: 1 }}>
             <Chip
-              label={t('inspector.originalScore', { score: currentLead?.totalScore ?? 42 })}
+              label={t('inspector.originalScore', { score: currentLead?.totalScore ?? NOT_MEASURED })}
               size="small"
               sx={{
                 backgroundColor: 'error.light',
                 color: 'error.main',
-                fontWeight: 700,
-              }}
-            />
-            <ArrowForwardIcon sx={{ color: 'text.secondary', fontSize: 16 }} />
-            <Chip
-              icon={<AutoAwesomeIcon sx={{ fontSize: 16 }} />}
-              label={t('inspector.mvpScore', { score: 96 })}
-              size="small"
-              sx={{
-                backgroundColor: 'success.light',
-                color: 'success.main',
                 fontWeight: 700,
               }}
             />
@@ -322,7 +320,13 @@ export const SideBySideInspectorModal: React.FC = () => {
                 </Tabs>
               </Box>
 
-              {/* Diagnostic Metrics Pills */}
+              {isAuditError && (
+                <Alert severity="error">
+                  {t('inspector.auditLoadError', { error: auditError instanceof Error ? auditError.message : '' })}
+                </Alert>
+              )}
+
+              {/* Diagnostic Metrics Pills: a value the audit did not measure shows as missing (REV-45) */}
               <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>
                 <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
                   <SpeedIcon sx={{ color: '#EF4444', fontSize: 24 }} />
@@ -331,7 +335,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       {t('inspector.lcp')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#EF4444' }}>
-                      {t('inspector.seconds', { value: audit?.lcpSeconds ? audit.lcpSeconds.toFixed(1) : '3.4' })}
+                      {audit?.lcpSeconds != null ? t('inspector.seconds', { value: audit.lcpSeconds.toFixed(1) }) : NOT_MEASURED}
                     </Typography>
                   </Box>
                 </Card>
@@ -343,7 +347,9 @@ export const SideBySideInspectorModal: React.FC = () => {
                       {t('inspector.a11yIssues')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#F59E0B' }}>
-                      {t('inspector.violations', { count: audit?.a11yViolationsCount ?? 14 })}
+                      {audit?.a11yViolationsCount != null
+                        ? t('inspector.violations', { count: audit.a11yViolationsCount })
+                        : NOT_MEASURED}
                     </Typography>
                   </Box>
                 </Card>
@@ -355,7 +361,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                       {t('inspector.mobileFriendliness')}
                     </Typography>
                     <Typography variant="body2" sx={{ fontWeight: 800, color: '#6366F1' }}>
-                      {audit?.mobileFriendlinessRating ?? 45}/100
+                      {audit?.mobileFriendlinessRating != null ? `${audit.mobileFriendlinessRating}/100` : NOT_MEASURED}
                     </Typography>
                   </Box>
                 </Card>
@@ -372,7 +378,8 @@ export const SideBySideInspectorModal: React.FC = () => {
                   </Typography>
                   <Button
                     size="small"
-                    href={originalScreenshotUrl}
+                    href={originalScreenshotUrl ?? ''}
+                    disabled={!screenshotAvailable}
                     target="_blank"
                     rel="noopener noreferrer"
                     endIcon={<OpenInNewIcon sx={{ fontSize: 14 }} />}
@@ -403,6 +410,10 @@ export const SideBySideInspectorModal: React.FC = () => {
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
                       <CircularProgress size={24} />
                     </Box>
+                  ) : !screenshotAvailable ? (
+                    <Typography variant="body2" color="text.secondary" sx={{ alignSelf: 'center', p: 3, textAlign: 'center' }}>
+                      {t('inspector.noScreenshot')}
+                    </Typography>
                   ) : (
                     <Box
                       component="img"
@@ -415,10 +426,7 @@ export const SideBySideInspectorModal: React.FC = () => {
                         height: 'auto',
                         display: 'block',
                       }}
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src =
-                          'https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=800&q=80';
-                      }}
+                      onError={() => setBrokenScreenshotUrl(originalScreenshotUrl ?? null)}
                     />
                   )}
                 </Box>

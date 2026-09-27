@@ -114,17 +114,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction): Prom
     }
 
     if (!project) {
-      // Fallback for mocked or pre-existing demos
-      res.status(200).json({
-        success: true,
-        data: {
-          id,
-          previewSlug: id,
-          fullPreviewUrl: `http://localhost:9000/revamp-demos/v/${id}/index.html`,
-          isPublished: true,
-        },
-      });
-      return;
+      throw new AppError('MVP not found', 404);
     }
 
     res.status(200).json({

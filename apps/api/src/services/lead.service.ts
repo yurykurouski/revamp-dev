@@ -142,21 +142,10 @@ export class LeadService {
       string,
       { fullPreviewUrl?: string; comparisonBannerUrl?: string; completenessReport?: MvpCompletenessReportDto }
     >();
-    try {
-      const leadIds = leads.map((l: any) => l._id || l.id).filter(Boolean);
-      if (leadIds.length > 0 && MvpProject && typeof MvpProject.find === 'function') {
-        const mvpQuery = MvpProject.find({ leadId: { $in: leadIds } });
-        const mvps = (mvpQuery && typeof mvpQuery.lean === 'function')
-          ? await mvpQuery.lean().exec()
-          : (mvpQuery && typeof mvpQuery.exec === 'function')
-          ? await mvpQuery.exec()
-          : [];
-        if (Array.isArray(mvps)) {
-          mvpMap = new Map(mvps.map((m: any) => [m.leadId?.toString(), m]));
-        }
-      }
-    } catch {
-      // Graceful fallback for mock tests or missing collection
+    const leadIds = leads.map((l: any) => l._id || l.id).filter(Boolean);
+    if (leadIds.length > 0) {
+      const mvps = await MvpProject.find({ leadId: { $in: leadIds } }).lean().exec();
+      mvpMap = new Map(mvps.map((m: any) => [m.leadId?.toString(), m]));
     }
 
     const enrichedLeads = leads.map((lead: any) => {

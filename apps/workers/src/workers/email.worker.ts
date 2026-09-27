@@ -103,7 +103,7 @@ export const createEmailWorker = (): Worker => {
         `Hello! We prepared an interactive website redesign concept for ${lead.businessName}.`;
 
       // 6. Dispatch Email via Provider with Compliance Headers
-      console.log(`[EmailWorker] Dispatching email to ${recipientEmail} via ${emailService.getProvider().name}...`);
+      console.log(`[EmailWorker] Dispatching email to ${recipientEmail} via ${emailService.getProvider()?.name ?? 'no configured provider'}...`);
       const sendResult = await emailService.sendEmail({
         to: recipientEmail,
         subject,

@@ -25,7 +25,7 @@ export const EnvSchema = z.object({
   // MVP copywriting provider; when unset it is picked from whichever API key is present
   MVP_LLM_PROVIDER: z.preprocess(
     (v) => (v === '' ? undefined : v),
-    z.enum(['anthropic', 'openai', 'gemini', 'claude-cli', 'mock']).optional(),
+    z.enum(['anthropic', 'openai', 'gemini', 'claude-cli']).optional(),
   ),
   // Local Claude Code CLI provider (REV-30); uses the account the CLI is logged into
   CLAUDE_CLI_PATH: z.string().default('claude'),
@@ -38,7 +38,8 @@ export const EnvSchema = z.object({
     z.boolean().default(true),
   ),
   MVP_COMPLETENESS_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
-  EMAIL_PROVIDER: z.enum(['mock', 'resend', 'sendgrid', 'smtp']).default('mock'),
+  // Outreach email provider; without one, approved emails fail at dispatch instead of being faked
+  EMAIL_PROVIDER: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['resend', 'sendgrid', 'smtp']).optional()),
   RESEND_API_KEY: z.string().optional(),
   SENDGRID_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('Revamp Team <outreach@revampdemo.com>'),

@@ -158,36 +158,28 @@ export class MvpContentService {
     this.llm = new LlmClient(options);
   }
 
-  private get provider(): MvpContentProvider {
-    return this.llm.provider;
-  }
-
   /** The fields a result gets when the deterministic fallback wrote the copy */
-  private fallbackSource() {
+  private fallbackSource(provider: MvpContentProvider) {
     return {
       provider: 'deterministic' as const,
       modelUsed: 'deterministic-fallback',
-      requestedProvider: this.provider,
+      requestedProvider: provider,
       requestedModel: this.llm.modelName,
     };
   }
 
   /**
    * Generates high-converting Bento landing page copy with Strict Grounding.
-   * On failure or missing keys, falls back gracefully with aiFallbackUsed: true.
+   * When every LLM attempt fails, falls back to deterministic copy with aiFallbackUsed: true.
+   * Throws when no provider can be called at all: no copy is invented without an LLM (REV-45).
    */
   async generateContent(input: GenerateMvpContentInput): Promise<MvpContentGenerationResult> {
     // The local Claude CLI authenticates itself, so it needs no API key. A provider without its key
-    // falls back to deterministic copy; it never switches to another paid provider (REV-32).
-    if (!this.llm.isAvailable()) {
-      console.log('[MvpContentService] No LLM provider configured. Using deterministic grounded copy.');
-      const fallback = this.generateDeterministicFallback(input);
-      return {
-        content: fallback,
-        aiFallbackUsed: true,
-        ...this.fallbackSource(),
-        attempts: 1,
-      };
+    // fails the job; it never switches to another paid provider (REV-32)
+    const provider = this.llm.provider;
+    const unavailable = this.llm.unavailableReason();
+    if (!provider || unavailable) {
+      throw new Error(unavailable ?? 'No LLM provider configured');
     }
 
     const temperatures = [0.3, 0.0, 0.0];
@@ -216,9 +208,9 @@ export class MvpContentService {
         return {
           content: groundedContent,
           aiFallbackUsed: false,
-          provider: this.provider,
+          provider,
           modelUsed: this.llm.modelName,
-          requestedProvider: this.provider,
+          requestedProvider: provider,
           requestedModel: this.llm.modelName,
           attempts: attemptsCount,
         };
@@ -237,7 +229,7 @@ export class MvpContentService {
     return {
       content: fallback,
       aiFallbackUsed: true,
-      ...this.fallbackSource(),
+      ...this.fallbackSource(provider),
       attempts: attemptsCount,
     };
   }

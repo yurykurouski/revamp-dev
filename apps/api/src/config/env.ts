@@ -25,9 +25,6 @@ const EnvSchema = z.object({
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
   PREVIEW_DOMAIN: z.string().default('preview.revampdemo.com'),
   PUBLIC_API_URL: z.string().default('http://localhost:4000/api/v1'),
-  EMAIL_PROVIDER: z.enum(['mock', 'resend', 'sendgrid', 'smtp']).default('mock'),
-  RESEND_API_KEY: z.string().optional(),
-  SENDGRID_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default('Revamp Team <outreach@revampdemo.com>'),
   // Reverse geocoding for discovery location auto-detect (REV-28)
   NOMINATIM_REVERSE_URL: z.string().url().default('https://nominatim.openstreetmap.org/reverse'),

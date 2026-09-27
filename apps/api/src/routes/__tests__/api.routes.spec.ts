@@ -10,8 +10,8 @@ import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
+import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { redisConnection } from '../../queues/connection.js';
-import { env } from '../../config/env.js';
 import { LLM_CAPABILITIES_REDIS_KEY } from '@revamp/shared-types';
 
 vi.mock('../../services/lead.service.js');
@@ -91,6 +91,19 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.success).toBe(true);
       expect(res.body.data.id).toBe('lead-123');
       expect(res.body.data.auditId).toBe('audit-123');
+    });
+
+    it('should accept a lead without a contact email and pass none on (REV-45)', async () => {
+      const create = vi
+        .spyOn(LeadService, 'createLead')
+        .mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'audit-1', jobId: 'job-1' } as any);
+
+      const res = await request(app)
+        .post('/api/v1/leads')
+        .send({ businessName: 'No Email Clinic', originalUrl: 'https://no-email.com', contactEmail: '' });
+
+      expect(res.status).toBe(201);
+      expect(create.mock.calls[0]![0].contactEmail).toBeUndefined();
     });
   });
 
@@ -332,6 +345,9 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const leadId = new mongoose.Types.ObjectId().toString();
       const campaignId = new mongoose.Types.ObjectId().toString();
 
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: leadId, contactEmail: 'custom@business.com' }),
+      } as any);
       vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
         exec: vi.fn().mockResolvedValue({
           _id: leadId,
@@ -372,6 +388,27 @@ describe('API Routes Integration Tests (Supertest)', () => {
         { $set: { status: 'SCHEDULED' } },
         { new: true },
       );
+      expect(vi.mocked(EmailCampaign.findOneAndUpdate).mock.calls[0]![1]).toMatchObject({
+        recipientEmail: 'custom@business.com',
+      });
+    });
+
+    it('should return 409 and schedule nothing when the lead has no contact email (REV-45)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'No Email' }),
+      } as any);
+      const update = vi.spyOn(Lead, 'findByIdAndUpdate');
+      const campaign = vi.spyOn(EmailCampaign, 'findOneAndUpdate');
+      vi.mocked(addEmailDispatchJob).mockClear();
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send({ approvedBy: 'operator' });
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('NO_CONTACT_EMAIL');
+      expect(update).not.toHaveBeenCalled();
+      expect(campaign).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
     });
   });
 
@@ -584,18 +621,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
 
-    it('should reject the dev-only mock provider in production (REV-32)', async () => {
+    it('should reject the removed mock provider (REV-45)', async () => {
       mockLeadWithStatus('AUDITED');
-      const previous = env.NODE_ENV;
-      env.NODE_ENV = 'production';
-      try {
-        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, provider: 'mock' });
-        expect(res.status).toBe(400);
-        expect(res.body.details.code).toBe('LLM_PROVIDER_NOT_ALLOWED');
-        expect(addAiGenerationJob).not.toHaveBeenCalled();
-      } finally {
-        env.NODE_ENV = previous;
-      }
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, provider: 'mock' });
+      expect(res.status).toBe(400);
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
 
     it('should return 404 when audit is not found', async () => {
@@ -630,7 +660,6 @@ describe('API Routes Integration Tests (Supertest)', () => {
         { id: 'openai', available: true },
         { id: 'gemini', available: false, reason: 'missing_api_key' },
         { id: 'claude-cli', available: true },
-        { id: 'mock', available: true },
       ],
     };
 
@@ -645,7 +674,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data.defaultProvider).toBe('claude-cli');
       expect(res.body.data.defaultModel).toBe('sonnet');
       const byId = Object.fromEntries(res.body.data.providers.map((p: any) => [p.id, p]));
-      expect(Object.keys(byId)).toEqual(['anthropic', 'openai', 'gemini', 'claude-cli', 'mock']);
+      expect(Object.keys(byId)).toEqual(['anthropic', 'openai', 'gemini', 'claude-cli']);
       expect(byId['anthropic']).toMatchObject({ available: false, reason: 'missing_api_key' });
       expect(byId['claude-cli']).toMatchObject({ available: true, local: true });
       expect(byId['claude-cli'].models.map((m: any) => m.id)).toEqual(['sonnet', 'opus', 'haiku']);
@@ -671,16 +700,62 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data.workersOnline).toBe(false);
     });
 
-    it('should leave out the dev-only mock provider in production', async () => {
-      vi.spyOn(redisConnection, 'get').mockResolvedValue(JSON.stringify(capabilities));
-      const previous = env.NODE_ENV;
-      env.NODE_ENV = 'production';
-      try {
-        const res = await request(app).get('/api/v1/mvp/providers');
-        expect(res.body.data.providers.map((p: any) => p.id)).not.toContain('mock');
-      } finally {
-        env.NODE_ENV = previous;
-      }
+    it('should offer no mock provider and no default when the workers have none configured (REV-45)', async () => {
+      vi.spyOn(redisConnection, 'get').mockResolvedValue(
+        JSON.stringify({ checkedAt: capabilities.checkedAt, providers: capabilities.providers }),
+      );
+
+      const res = await request(app).get('/api/v1/mvp/providers');
+
+      expect(res.body.data.workersOnline).toBe(true);
+      expect(res.body.data.defaultProvider).toBeUndefined();
+      expect(res.body.data.defaultModel).toBeUndefined();
+      expect(res.body.data.providers.map((p: any) => p.id)).not.toContain('mock');
+    });
+  });
+
+  describe('GET /api/v1/mvp/:id', () => {
+    it('should return the MVP project looked up by id, lead or audit', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      const project = { leadId, fullPreviewUrl: 'http://minio/revamp-demos/v/smile/index.html' };
+      const findOne = vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue(project) } as any);
+
+      const res = await request(app).get(`/api/v1/mvp/${leadId}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual(project);
+      expect(findOne).toHaveBeenCalledWith({ $or: [{ _id: leadId }, { leadId }, { auditId: leadId }] });
+    });
+
+    it('should look up a slug by previewSlug', async () => {
+      const findOne = vi.spyOn(MvpProject, 'findOne').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ previewSlug: 'smile-1' }),
+      } as any);
+
+      const res = await request(app).get('/api/v1/mvp/smile-1');
+
+      expect(res.status).toBe(200);
+      expect(findOne).toHaveBeenCalledWith({ previewSlug: 'smile-1' });
+    });
+
+    it.each([new mongoose.Types.ObjectId().toString(), 'unknown-slug'])(
+      'should return 404 instead of a made-up preview when no MVP exists (%s) (REV-45)',
+      async (id) => {
+        vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+
+        const res = await request(app).get(`/api/v1/mvp/${id}`);
+
+        expect(res.status).toBe(404);
+        expect(res.body.success).toBe(false);
+        expect(res.body.message).toBe('MVP not found');
+        expect(res.body.data).toBeUndefined();
+      },
+    );
+
+    it('should return 500 when the lookup fails', async () => {
+      vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockRejectedValue(new Error('db down')) } as any);
+      const res = await request(app).get('/api/v1/mvp/some-slug');
+      expect(res.status).toBe(500);
     });
   });
 

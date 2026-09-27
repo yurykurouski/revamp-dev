@@ -73,7 +73,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     };
 
     const mockAuditExec = vi.fn().mockResolvedValue({});
-    const mockLeadExec = vi.fn().mockResolvedValue({});
+    const mockLeadExec = vi.fn().mockResolvedValue({ contactEmail: 'owner@test-dental.com' });
 
     vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({
       exec: mockAuditExec,
@@ -382,6 +382,75 @@ describe('AuditWorker (@revamp/workers)', () => {
         $pull: { tags: 'email-guessed' },
       }),
     );
+  });
+
+  it('should fill in the email found on the site for a lead created without one (REV-45)', async () => {
+    createAuditWorker();
+
+    vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+    vi.spyOn(Lead, 'findByIdAndUpdate').mockReturnValue({
+      exec: vi.fn().mockResolvedValue({
+        businessName: 'Found Clinic',
+        tags: [],
+      }),
+    } as any);
+    vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+    vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+      desktopBuffer: Buffer.from('d'),
+      mobileBuffer: Buffer.from('m'),
+      desktopFullBuffer: Buffer.from('df'),
+      mobileFullBuffer: Buffer.from('mf'),
+      a11yResult: {
+        a11yScore: 80,
+        summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
+        rawViolations: [],
+      },
+      vitalsResult: {
+        lcpSeconds: 2,
+        lighthouseMetrics: { lcp: 2000, cls: 0.01 },
+        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        performanceScore: 90,
+        standardsScore: 100,
+      },
+      rawBrandData: {
+        colors: ['rgb(79, 70, 229)'],
+        fontFamilies: ['Inter'],
+        email: 'reception@found-clinic.lt',
+        socialLinks: [],
+        services: [],
+      },
+    } as any);
+    vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+    vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+    vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+    vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+      critique: {
+        visualHierarchyRating: 60,
+        mobileFriendlinessRating: 60,
+        primaryCtaFound: false,
+        datedDesignFactors: [],
+        criticalFlaws: [
+          { title: 'F1', impact: 'I1', recommendation: 'R1' },
+          { title: 'F2', impact: 'I2', recommendation: 'R2' },
+          { title: 'F3', impact: 'I3', recommendation: 'R3' },
+        ],
+        quickWins: ['W1', 'W2', 'W3'],
+      },
+      aiFallbackUsed: true,
+      modelUsed: 'fallback',
+      attempts: 1,
+    } as any);
+
+    await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
+
+    expect(Lead.findByIdAndUpdate).toHaveBeenCalledWith(
+      'lead-disc',
+      expect.objectContaining({ status: 'AUDITED', contactEmail: 'reception@found-clinic.lt' }),
+    );
+    const audited = vi.mocked(Lead.findByIdAndUpdate).mock.calls.find(
+      (c) => (c[1] as Record<string, unknown>)?.['status'] === 'AUDITED',
+    );
+    expect(audited?.[1]).not.toHaveProperty('$pull');
   });
 
   it('should classify site complexity and flag one-page brochure sites on the audit and the lead (REV-38)', async () => {

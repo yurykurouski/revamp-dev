@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { LlmClient, defaultModelFor, extractJsonObject } from '../llm-client.js';
+import { LlmClient, extractJsonObject } from '../llm-client.js';
 import { env } from '../../config/env.js';
 
 const okJson = (body: unknown) =>
@@ -17,11 +17,11 @@ describe('LlmClient (REV-37)', () => {
       expect(new LlmClient({ anthropicApiKey: 'a', openaiApiKey: 'o' }).provider).toBe('anthropic');
       expect(new LlmClient({ openaiApiKey: 'o' }).provider).toBe('openai');
       expect(new LlmClient({ geminiApiKey: 'g' }).provider).toBe('gemini');
-      expect(new LlmClient({}).provider).toBe('mock');
+      expect(new LlmClient({}).provider).toBeUndefined();
     });
 
-    it('is available with an API key or the local CLI, never with mock', () => {
-      expect(new LlmClient({ provider: 'mock' }).isAvailable()).toBe(false);
+    it('is available with an API key or the local CLI, never without a provider', () => {
+      expect(new LlmClient({}).isAvailable()).toBe(false);
       expect(new LlmClient({ provider: 'claude-cli' }).isAvailable()).toBe(true);
       expect(new LlmClient({ provider: 'openai', openaiApiKey: 'o' }).isAvailable()).toBe(true);
       expect(new LlmClient({ provider: 'anthropic' }).isAvailable()).toBe(false);
@@ -42,7 +42,7 @@ describe('LlmClient (REV-37)', () => {
       expect(new LlmClient({ provider: 'anthropic', anthropicApiKey: 'a' }).model).toBe('claude-opus-5');
       expect(new LlmClient({ provider: 'gemini', geminiApiKey: 'g' }).model).toBe('gemini-1.5-pro');
       expect(new LlmClient({ provider: 'claude-cli' }).model).toBe(env.CLAUDE_CLI_MODEL);
-      expect(defaultModelFor('mock')).toBe('mock');
+      expect(new LlmClient({}).model).toBe('');
     });
 
     it('uses the model it is given (REV-32)', () => {
@@ -148,8 +148,21 @@ describe('LlmClient (REV-37)', () => {
       expect(fetcher.mock.calls[1]![1].signal).toBeInstanceOf(AbortSignal);
     });
 
-    it('refuses to run without a provider', async () => {
-      await expect(new LlmClient({ provider: 'mock' }).complete(request)).rejects.toThrow('No LLM provider configured');
+    it('refuses to run without a provider (REV-45)', async () => {
+      await expect(new LlmClient({}).complete(request)).rejects.toThrow('No LLM provider is configured');
+    });
+
+    it('explains why no model can be called (REV-45)', () => {
+      expect(new LlmClient({}).unavailableReason()).toBe(
+        'No LLM provider is configured: set MVP_LLM_PROVIDER or one of ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY',
+      );
+      expect(new LlmClient({ provider: 'openai', openaiApiKey: '' }).unavailableReason()).toBe(
+        'LLM provider "openai" has no API key: set OPENAI_API_KEY',
+      );
+      expect(new LlmClient({ provider: 'gemini', geminiApiKey: '' }).unavailableReason()).toContain('GEMINI_API_KEY');
+      expect(new LlmClient({ provider: 'anthropic', anthropicApiKey: 'a' }).unavailableReason()).toBeUndefined();
+      expect(new LlmClient({ provider: 'claude-cli' }).unavailableReason()).toBeUndefined();
+      expect(new LlmClient({}).modelName).toBe('none');
     });
   });
 

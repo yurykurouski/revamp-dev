@@ -27,36 +27,6 @@ export interface IEmailProvider {
 }
 
 /**
- * In-memory Mock Provider for offline dev and deterministic Vitest suites
- */
-export class MockEmailProvider implements IEmailProvider {
-  public name = 'mock';
-  public sentMessages: Array<ISendEmailOptions & { messageId: string; sentAt: Date }> = [];
-
-  async send(options: ISendEmailOptions): Promise<ISendEmailResult> {
-    const messageId = `mock-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    const sentAt = new Date();
-
-    this.sentMessages.push({
-      ...options,
-      messageId,
-      sentAt,
-    });
-
-    return {
-      success: true,
-      messageId,
-      provider: 'mock',
-      sentAt,
-    };
-  }
-
-  public clear(): void {
-    this.sentMessages = [];
-  }
-}
-
-/**
  * Resend API Email Provider (Native fetch to api.resend.com)
  */
 export class ResendEmailProvider implements IEmailProvider {
@@ -213,39 +183,47 @@ export class SmtpEmailProvider implements IEmailProvider {
  * Main Email Service
  * Enforces List-Unsubscribe, List-Unsubscribe-Post, 1-Click HTML footer, and tracking token
  */
-export class EmailService {
-  private provider: IEmailProvider;
+export const EMAIL_PROVIDER_NOT_CONFIGURED =
+  'No email provider is configured: set EMAIL_PROVIDER to resend, sendgrid or smtp';
 
-  constructor(provider?: IEmailProvider) {
-    this.provider = provider || this.resolveDefaultProvider();
+/** The provider EMAIL_PROVIDER names, or null when it is unset (REV-45) */
+export function createEmailProvider(name: typeof env.EMAIL_PROVIDER = env.EMAIL_PROVIDER): IEmailProvider | null {
+  switch (name) {
+    case 'resend':
+      return new ResendEmailProvider();
+    case 'sendgrid':
+      return new SendGridEmailProvider();
+    case 'smtp':
+      return new SmtpEmailProvider();
+    default:
+      return null;
+  }
+}
+
+export class EmailService {
+  private provider: IEmailProvider | null;
+
+  constructor(provider?: IEmailProvider | null) {
+    this.provider = provider === undefined ? createEmailProvider() : provider;
   }
 
-  public setProvider(provider: IEmailProvider): void {
+  public setProvider(provider: IEmailProvider | null): void {
     this.provider = provider;
   }
 
-  public getProvider(): IEmailProvider {
+  /** The configured provider, or null when EMAIL_PROVIDER is unset */
+  public getProvider(): IEmailProvider | null {
     return this.provider;
-  }
-
-  private resolveDefaultProvider(): IEmailProvider {
-    switch (env.EMAIL_PROVIDER) {
-      case 'resend':
-        return new ResendEmailProvider();
-      case 'sendgrid':
-        return new SendGridEmailProvider();
-      case 'smtp':
-        return new SmtpEmailProvider();
-      case 'mock':
-      default:
-        return new MockEmailProvider();
-    }
   }
 
   /**
    * Dispatches email with RFC compliance headers and mandatory 1-click unsubscribe links
    */
   public async sendEmail(options: ISendEmailOptions): Promise<ISendEmailResult> {
+    // Fail the dispatch instead of pretending the email went out (REV-45)
+    const provider = this.provider;
+    if (!provider) throw new Error(EMAIL_PROVIDER_NOT_CONFIGURED);
+
     const trackingToken = options.trackingToken;
     const publicUrl = env.PUBLIC_API_URL.replace(/\/$/, '');
     const unsubscribeUrl = options.unsubscribeUrl || `${publicUrl}/track/unsubscribe/${trackingToken}`;
@@ -291,7 +269,7 @@ export class EmailService {
       preparedText = `${preparedText}${unsubscribeTextFooter}`.trim();
     }
 
-    return await this.provider.send({
+    return await provider.send({
       ...options,
       from: options.from || env.EMAIL_FROM,
       html: preparedHtml,

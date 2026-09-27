@@ -34,16 +34,19 @@ describe('MvpContentService (@revamp/workers)', () => {
     ],
   };
 
-  it('should use deterministic fallback when no API keys are provided', async () => {
-    const service = new MvpContentService({ provider: 'mock' });
-    const result = await service.generateContent(sampleInput);
+  it('should fail with a clear error, not invent copy, when no LLM provider is configured (REV-45)', async () => {
+    const fetcher = vi.fn();
+    const service = new MvpContentService({ customFetcher: fetcher as unknown as typeof fetch });
 
-    expect(result.aiFallbackUsed).toBe(true);
-    expect(result.modelUsed).toBe('deterministic-fallback');
-    expect(result.attempts).toBe(1);
+    await expect(service.generateContent(sampleInput)).rejects.toThrow('No LLM provider is configured');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('should build grounded deterministic copy for the fallback after LLM failures', () => {
+    const content = new MvpContentService().generateDeterministicFallback(sampleInput);
 
     // Validate with Zod schema
-    const validated = MvpContentOutputSchema.parse(result.content);
+    const validated = MvpContentOutputSchema.parse(content);
     expect(validated.hero.headline).toContain('Dent-Prestige');
     expect(validated.services.length).toBeGreaterThanOrEqual(3);
     expect(validated.services.length).toBeLessThanOrEqual(6);
@@ -51,24 +54,22 @@ describe('MvpContentService (@revamp/workers)', () => {
     expect(validated.trustSignals).toEqual([]);
   });
 
-  it('should ground extracted services in deterministic fallback', async () => {
-    const service = new MvpContentService({ provider: 'mock' });
-    const result = await service.generateContent(sampleInput);
+  it('should ground extracted services in deterministic fallback', () => {
+    const content = new MvpContentService().generateDeterministicFallback(sampleInput);
 
-    const serviceTitles = result.content.services.map((s) => s.title);
+    const serviceTitles = content.services.map((s) => s.title);
     expect(serviceTitles).toContain('Dental implants');
     expect(serviceTitles).toContain('Professional hygiene');
   });
 
-  it('should not fabricate boilerplate services or metrics when the site provides nothing (REV-23)', async () => {
-    const service = new MvpContentService({ provider: 'mock' });
+  it('should not fabricate boilerplate services or metrics when the site provides nothing (REV-23)', () => {
     const autoInput: GenerateMvpContentInput = {
       businessName: 'Motor-Pro Auto Service',
       niche: 'auto',
       city: 'Moscow',
     };
 
-    const result = await service.generateContent(autoInput);
+    const result = { content: new MvpContentService().generateDeterministicFallback(autoInput) };
     expect(result.content.hero.headline).toBe('Motor-Pro Auto Service');
     expect(result.content.hero.badge).toBe('📍 Moscow');
     expect(result.content.services).toHaveLength(1);
@@ -201,7 +202,7 @@ describe('MvpContentService (@revamp/workers)', () => {
   });
 
   it('should normalize invalid or aliased Lucide icons to valid supported icons', () => {
-    const service = new MvpContentService({ provider: 'mock' });
+    const service = new MvpContentService();
     const supported = new Set(getSupportedIconNames());
 
     const rawOutput = {
@@ -491,7 +492,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     };
 
     it('should produce different MVP copy for two different sites', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const dental = service.generateDeterministicFallback(dentalSite);
       const mall = service.generateDeterministicFallback(mallSite);
 
@@ -502,7 +503,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     });
 
     it('should build hero, about and services from the site own copy', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const content = service.generateDeterministicFallback(dentalSite);
 
       expect(content.hero.headline).toBe('Best dental clinic in Warsaw: implants, orthodontics, root canals');
@@ -521,7 +522,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     });
 
     it('should derive trust signals only from verifiable site data', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const content = service.generateDeterministicFallback(dentalSite);
 
       expect(content.trustSignals).toEqual([
@@ -532,21 +533,21 @@ describe('MvpContentService (@revamp/workers)', () => {
     });
 
     it('should skip generic page and section titles when picking the headline', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const content = service.generateDeterministicFallback(mallSite);
 
       expect(content.hero.headline).toBe('Wyjątkowe miejsce na zakupy!');
     });
 
     it('should use navigation sections as services and drop site chrome links', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const titles = service.generateDeterministicFallback(mallSite).services.map((s) => s.title);
 
       expect(titles).toEqual(['Sklepy', 'Restauracje', 'Usługi']);
     });
 
     it('should drop LLM trust signals whose numbers are not on the original site', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const grounded = service.enforceStrictGrounding(
         {
           hero: { badge: 'b', headline: 'h', subheadline: 's', primaryCtaText: 'p', secondaryCtaText: 'c' },
@@ -565,7 +566,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     });
 
     it('should pad short LLM service lists only with services extracted from the site', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const grounded = service.enforceStrictGrounding(
         {
           hero: { badge: 'b', headline: 'h', subheadline: 's', primaryCtaText: 'p', secondaryCtaText: 'c' },
@@ -617,7 +618,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     });
 
     it('should let the LLM follow the source text when the site declares no valid language (REV-25)', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const unknown = 'the language the original site text is written in (English if it cannot be determined)';
       expect(service.resolveOutputLanguage(mallSite)).toBe(unknown);
       expect(service.resolveOutputLanguage({ ...mallSite, siteContent: { ...mallSite.siteContent!, language: '??' } })).toBe(unknown);
@@ -625,7 +626,7 @@ describe('MvpContentService (@revamp/workers)', () => {
     });
 
     it('should write the deterministic fallback wording in the site language (REV-25)', () => {
-      const service = new MvpContentService({ provider: 'mock' });
+      const service = new MvpContentService();
       const polish = service.generateDeterministicFallback({
         ...dentalSite,
         siteContent: { ...dentalSite.siteContent!, language: 'pl' },
@@ -687,7 +688,7 @@ describe('MvpContentService provider/model choice (REV-32)', () => {
     expect(result).toMatchObject({ aiFallbackUsed: false, provider, modelUsed: model, requestedModel: model });
   });
 
-  it("falls back to deterministic copy, never to another paid provider, when the chosen provider's key is missing", async () => {
+  it("fails, and never switches to another paid provider, when the chosen provider's key is missing (REV-45)", async () => {
     const fetcher = vi.fn();
     const service = new MvpContentService({
       provider: 'openai',
@@ -696,16 +697,8 @@ describe('MvpContentService provider/model choice (REV-32)', () => {
       customFetcher: fetcher as unknown as typeof fetch,
     });
 
-    const result = await service.generateContent(input);
-
+    await expect(service.generateContent(input)).rejects.toThrow('LLM provider "openai" has no API key: set OPENAI_API_KEY');
     expect(fetcher).not.toHaveBeenCalled();
-    expect(result).toMatchObject({
-      aiFallbackUsed: true,
-      provider: 'deterministic',
-      modelUsed: 'deterministic-fallback',
-      requestedProvider: 'openai',
-      requestedModel: 'gpt-4o',
-    });
   });
 
   it('falls back to deterministic copy after the chosen provider fails every attempt', async () => {

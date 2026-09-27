@@ -25,6 +25,7 @@ import type { CompletenessField } from '@revamp/shared-types';
 import { ILeadItem, IAuditDetail } from '../api/client.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
+import { auditSummarySentence, renderEmailTemplate } from '../utils/emailTemplate.js';
 
 interface EmailDraftEditorProps {
   lead: ILeadItem;
@@ -61,13 +62,13 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({
   const defaultPreheader = `We built an interactive prototype on a modern Bento stack${lead.city ? ` for ${lead.city}` : ''}`;
   const defaultBody = `Hello,
 
-We took a look at your website ${lead.domain}. According to our automated express audit, the current mobile version loads in ${audit?.lcpSeconds ?? 3.4}s (LCP) and has a few mobile layout issues.
+${auditSummarySentence(lead.domain, audit?.lcpSeconds)}
 
 To show what a modern, high-converting site could look like, our platform automatically generated a responsive Bento prototype for you:
 👉 {{demoUrl}}
 
 Key improvements in the prototype:
-1. Instant loading (LCP < 1.8s) and a 96/100 quality score
+1. Fast loading on mobile with a lightweight static page
 2. One-tap booking from any mobile device
 3. A responsive services grid that keeps your brand identity
 
@@ -83,32 +84,41 @@ Best regards, the Revamp SaaS team`;
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState(() => t('email.defaultRejectReason'));
   const [successAlert, setSuccessAlert] = useState<string | null>(null);
+  const [errorAlert, setErrorAlert] = useState<string | null>(null);
   const [dataConfirmOpen, setDataConfirmOpen] = useState(false);
 
   // Substitute variables for preview
-  const demoUrl = lead.previewUrl || `http://localhost:9000/revamp-demos/v/${lead.domain}/index.html`;
+  const demoUrl = lead.previewUrl;
 
-  const renderSubstitutedText = (text: string): string => {
-    return text
-      .replace(/{{businessName}}/g, lead.businessName)
-      .replace(/{{city}}/g, lead.city || 'your city')
-      .replace(/{{demoUrl}}/g, demoUrl)
-      .replace(/{{score}}/g, `${lead.totalScore ?? 42}/100`)
-      .replace(/{{lcpSeconds}}/g, `${audit?.lcpSeconds ?? 3.4}s`)
-      .replace(
-        /{{criticalFlaws}}/g,
-        audit?.criticalFlaws.map((f, i) => `${i + 1}. ${f.title}`).join('\n') ||
-          '1. Slow LCP loading\n2. WCAG contrast errors',
-      );
-  };
+  const renderSubstitutedText = (text: string): string =>
+    renderEmailTemplate(text, {
+      businessName: lead.businessName,
+      city: lead.city,
+      demoUrl,
+      score: lead.totalScore,
+      lcpSeconds: audit?.lcpSeconds,
+      criticalFlaws: audit?.criticalFlaws,
+    });
 
   const handleInsertTag = (tag: string) => {
     setBody((prev) => `${prev} ${tag}`);
   };
 
+  /** Runs an action and shows its failure instead of reporting a success that did not happen (REV-45) */
+  const runAction = async (action: () => Promise<void>): Promise<boolean> => {
+    setErrorAlert(null);
+    try {
+      await action();
+      return true;
+    } catch (err) {
+      setSuccessAlert(null);
+      setErrorAlert(t('email.actionFailed', { error: err instanceof Error ? err.message : String(err) }));
+      return false;
+    }
+  };
+
   const approve = async () => {
-    await onApprove({ subject, preheader, body });
-    setSuccessAlert(t('email.approved'));
+    if (await runAction(() => onApprove({ subject, preheader, body }))) setSuccessAlert(t('email.approved'));
   };
 
   // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
@@ -126,13 +136,13 @@ Best regards, the Revamp SaaS team`;
   };
 
   const handleSendTestSubmit = async () => {
-    await onSendTest(testEmail);
+    const sent = await runAction(() => onSendTest(testEmail));
     setTestDialogOpen(false);
-    setSuccessAlert(t('email.testSent', { email: testEmail }));
+    if (sent) setSuccessAlert(t('email.testSent', { email: testEmail }));
   };
 
   const handleRejectSubmit = async () => {
-    await onReject(rejectReason);
+    await runAction(() => onReject(rejectReason));
     setRejectDialogOpen(false);
   };
 
@@ -157,6 +167,11 @@ Best regards, the Revamp SaaS team`;
           sx={{ borderRadius: 2 }}
         >
           {successAlert}
+        </Alert>
+      )}
+      {errorAlert && (
+        <Alert severity="error" onClose={() => setErrorAlert(null)} sx={{ borderRadius: 2 }}>
+          {errorAlert}
         </Alert>
       )}
 
@@ -235,7 +250,7 @@ Best regards, the Revamp SaaS team`;
           />
         </Box>
 
-        {/* RIGHT: Live Recipient Email Client Mock */}
+        {/* RIGHT: Live preview of the email as the recipient sees it */}
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           <Typography variant="subtitle1" sx={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: 1 }}>
             <VisibilityIcon color="action" />
@@ -342,7 +357,8 @@ Best regards, the Revamp SaaS team`;
               <Box sx={{ pt: 1 }}>
                 <Button
                   variant="contained"
-                  href={demoUrl}
+                  href={demoUrl ?? ''}
+                  disabled={!demoUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   endIcon={<OpenInNewIcon sx={{ fontSize: 16 }} />}

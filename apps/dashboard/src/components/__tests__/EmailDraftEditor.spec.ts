@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { auditSummarySentence, renderEmailTemplate, UNKNOWN_VALUE } from '../../utils/emailTemplate.js';
 
 export const TEMPLATE_VARIABLES = [
   { tag: '{{businessName}}', label: 'Company' },
@@ -20,36 +21,12 @@ export const COLOR_PRESETS = [
   { name: 'Slate', hex: '#334155' },
 ];
 
-function interpolateEmailTemplate(
-  text: string,
-  context: {
-    businessName: string;
-    city?: string;
-    demoUrl: string;
-    score?: number;
-    lcpSeconds?: number;
-    criticalFlaws?: Array<{ title: string }>;
-  },
-): string {
-  return text
-    .replace(/{{businessName}}/g, context.businessName)
-    .replace(/{{city}}/g, context.city || 'your city')
-    .replace(/{{demoUrl}}/g, context.demoUrl)
-    .replace(/{{score}}/g, `${context.score ?? 42}/100`)
-    .replace(/{{lcpSeconds}}/g, `${context.lcpSeconds ?? 3.4}s`)
-    .replace(
-      /{{criticalFlaws}}/g,
-      context.criticalFlaws?.map((f, i) => `${i + 1}. ${f.title}`).join('\n') ||
-        '1. Slow LCP loading\n2. WCAG contrast errors',
-    );
-}
-
 describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
   it('should interpolate all standard variables accurately into subject and body', () => {
     const rawTemplate =
       'Hello! Preparing an MVP for {{businessName}} in {{city}}. Score: {{score}}, LCP: {{lcpSeconds}}. Demo: {{demoUrl}}.\nIssues:\n{{criticalFlaws}}';
 
-    const result = interpolateEmailTemplate(rawTemplate, {
+    const result = renderEmailTemplate(rawTemplate, {
       businessName: 'Listonosz Courier',
       city: 'Warszawa',
       demoUrl: 'http://localhost:9000/revamp-demos/v/listonosz/index.html',
@@ -73,16 +50,27 @@ describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
     expect(result).not.toContain('{{demoUrl}}');
   });
 
-  it('should gracefully handle missing optional fields with sensible fallbacks', () => {
-    const rawTemplate = 'Business: {{businessName}}, Region: {{city}}, Score: {{score}}';
-    const result = interpolateEmailTemplate(rawTemplate, {
-      businessName: 'Dental Clinic',
-      demoUrl: 'https://demo.url',
-    });
+  it('never invents values the audit did not measure (REV-45)', () => {
+    const rawTemplate =
+      'Business: {{businessName}}, Region: {{city}}, Score: {{score}}, LCP: {{lcpSeconds}}, Demo: {{demoUrl}}\n{{criticalFlaws}}';
+    const result = renderEmailTemplate(rawTemplate, { businessName: 'Dental Clinic' });
 
-    expect(result).toContain('Business: Dental Clinic');
-    expect(result).toContain('Region: your city');
-    expect(result).toContain('Score: 42/100');
+    expect(result).toBe(
+      `Business: Dental Clinic, Region: your city, Score: ${UNKNOWN_VALUE}, LCP: ${UNKNOWN_VALUE}, Demo: ${UNKNOWN_VALUE}\n${UNKNOWN_VALUE}`,
+    );
+    expect(result).not.toContain('42/100');
+    expect(result).not.toContain('3.4s');
+  });
+
+  it('keeps a measured score of 0 instead of treating it as missing', () => {
+    expect(renderEmailTemplate('{{score}} {{lcpSeconds}}', { businessName: 'X', score: 0, lcpSeconds: 0 })).toBe('0/100 0s');
+  });
+
+  it('quotes the LCP in the default draft only when the audit measured it (REV-45)', () => {
+    expect(auditSummarySentence('smile.pl', 2.7)).toContain('loads in 2.7s (LCP)');
+    const withoutLcp = auditSummarySentence('smile.pl', undefined);
+    expect(withoutLcp).toContain('smile.pl');
+    expect(withoutLcp).not.toMatch(/\d+(\.\d+)?s \(LCP\)/);
   });
 
   it('should have valid template variable tags matching double curly brace syntax', () => {
