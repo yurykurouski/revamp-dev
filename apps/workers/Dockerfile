@@ -11,6 +11,8 @@ COPY packages/shared-types/package*.json ./packages/shared-types/
 COPY packages/shared-types/tsconfig.json ./packages/shared-types/
 COPY packages/validation/package*.json ./packages/validation/
 COPY packages/validation/tsconfig.json ./packages/validation/
+COPY packages/db/package*.json ./packages/db/
+COPY packages/db/tsconfig.json ./packages/db/
 COPY apps/workers/package*.json ./apps/workers/
 COPY apps/workers/tsconfig.json ./apps/workers/
 
@@ -20,11 +22,13 @@ RUN npm ci
 # Copy source code
 COPY packages/shared-types ./packages/shared-types
 COPY packages/validation ./packages/validation
+COPY packages/db ./packages/db
 COPY apps/workers ./apps/workers
 
-# Build shared packages and background workers
+# Build shared packages (types, validation, models) and background workers
 RUN npm run build --workspace=@revamp/shared-types && \
     npm run build --workspace=@revamp/validation && \
+    npm run build --workspace=@revamp/db && \
     npm run build --workspace=@revamp/workers
 
 # Prune dev dependencies
@@ -46,6 +50,8 @@ COPY --from=builder /app/packages/shared-types/dist ./packages/shared-types/dist
 COPY --from=builder /app/packages/shared-types/package.json ./packages/shared-types/package.json
 COPY --from=builder /app/packages/validation/dist ./packages/validation/dist
 COPY --from=builder /app/packages/validation/package.json ./packages/validation/package.json
+COPY --from=builder /app/packages/db/dist ./packages/db/dist
+COPY --from=builder /app/packages/db/package.json ./packages/db/package.json
 COPY --from=builder /app/apps/workers/dist ./apps/workers/dist
 COPY --from=builder /app/apps/workers/package.json ./apps/workers/package.json
 

@@ -13,6 +13,7 @@ export default defineConfig({
     alias: {
       '@revamp/shared-types': path.resolve(__dirname, 'packages/shared-types/src/index.ts'),
       '@revamp/validation': path.resolve(__dirname, 'packages/validation/src/index.ts'),
+      '@revamp/db': path.resolve(__dirname, 'packages/db/src/index.ts'),
     },
   },
 });

@@ -1,9 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import mongoose from 'mongoose';
-import { Lead } from '../Lead.model.js';
-import { Audit } from '../Audit.model.js';
-import { EmailCampaign } from '../EmailCampaign.model.js';
-import { AnalyticsEvent } from '../AnalyticsEvent.model.js';
+import { Lead } from '../src/models/Lead.model.js';
+import { Audit } from '../src/models/Audit.model.js';
+import { EmailCampaign } from '../src/models/EmailCampaign.model.js';
+import { AnalyticsEvent } from '../src/models/AnalyticsEvent.model.js';
 
 describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => {
 

@@ -13,6 +13,7 @@
     "backfill:stuck-audits": "tsx src/scripts/backfill-stuck-audits.ts"
   },
   "dependencies": {
+    "@revamp/db": "*",
     "@revamp/shared-types": "*",
     "@revamp/validation": "*",
     "bullmq": "^5.34.0",

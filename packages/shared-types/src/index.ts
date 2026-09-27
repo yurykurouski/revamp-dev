@@ -543,7 +543,18 @@ export interface IAnalyticsEvent {
   timestamp: string | Date;
 }
 
-// 7. BullMQ Queue Data Payloads
+// 7. BullMQ Queue Names and Data Payloads
+/** Redis queue names; the API produces and the workers consume, so both read them from here (REV-48) */
+export const QUEUE_NAMES = {
+  AUDIT: 'audit-queue',
+  AI_GENERATION: 'ai-gen-queue',
+  DEPLOY: 'deploy-queue',
+  EMAIL_DISPATCH: 'email-queue',
+  DISCOVERY: 'discovery-queue',
+} as const;
+
+export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
+
 export interface IAuditJobData {
   leadId: string;
   url: string;
