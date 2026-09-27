@@ -4,7 +4,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { IconRail } from './IconRail.js';
 import { TopBar } from './TopBar.js';
 import { AddLeadModal } from './AddLeadModal.js';
-import { DiscoveryModal } from './DiscoveryModal.js';
+import { DiscoveryDrawer } from './DiscoveryDrawer.js';
 import { DiscoveryFinishWatcher } from './DiscoveryFinishWatcher.js';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import { useDiscoveryIndicator } from '../hooks/useDiscovery.js';
@@ -40,8 +40,8 @@ export const Layout: React.FC = () => {
 
       {/* "Add lead" sits in the top bar, so its dialog is available on every page */}
       <AddLeadModal />
-      {/* Business discovery (REV-27) lives here so a background search is picked up on every page (REV-41) */}
-      <DiscoveryModal />
+      {/* Business discovery (REV-27, a drawer since REV-78) lives here so a background search is picked up on every page (REV-41) */}
+      <DiscoveryDrawer />
       <DiscoveryFinishWatcher />
     </Box>
   );

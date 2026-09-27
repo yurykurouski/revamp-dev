@@ -2,6 +2,8 @@ import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/r
 import {
   DiscoveryCandidateStatus,
   DiscoveryJobState,
+  DiscoveryProvider,
+  NicheType,
   IDiscoveryCandidate,
   IDiscoveryImportResult,
   IDiscoveryJobResult,
@@ -39,6 +41,55 @@ export function discoveryStateBucket(state: DiscoveryJobState): DiscoveryStateBu
   return 'queued';
 }
 
+/** The steps of the discovery drawer (REV-78), in order */
+export const DISCOVERY_STEPS = ['where', 'review', 'import'] as const;
+
+export type DiscoveryStep = (typeof DISCOVERY_STEPS)[number];
+
+/**
+ * The drawer step for the store's state: the form until a search starts, then the search's progress
+ * and candidates, then the outcome of an import. Derived rather than stored, so closing the drawer
+ * during a search and reopening it lands on the same step.
+ */
+export function discoveryStep({
+  activeJobId,
+  importResult,
+}: {
+  activeJobId: string | null;
+  importResult: IDiscoveryImportResult | null;
+}): DiscoveryStep {
+  if (!activeJobId) return 'where';
+  return importResult ? 'import' : 'review';
+}
+
+/** The search form's fields as the operator typed them */
+export interface DiscoveryFormValues {
+  provider: DiscoveryProvider;
+  niche: NicheType;
+  location: string;
+  keyword: string;
+  limit: string;
+}
+
+export const DEFAULT_DISCOVERY_FORM: DiscoveryFormValues = {
+  provider: 'osm',
+  niche: 'dental',
+  location: '',
+  keyword: '',
+  limit: '20',
+};
+
+/** Refills the form from a search's parameters, so "Change search" starts from what was asked */
+export function discoveryFormFromParams(params: IDiscoveryJobStatus['params']): DiscoveryFormValues {
+  return {
+    provider: params.provider,
+    niche: params.niche,
+    location: params.location,
+    keyword: params.keyword ?? '',
+    limit: String(params.limit),
+  };
+}
+
 /** What the header button shows about the background search (REV-40) */
 export type DiscoveryIndicator = 'idle' | 'running' | 'ready' | 'failed';
 
@@ -47,7 +98,7 @@ export interface DiscoveryIndicatorInput {
   status?: Pick<IDiscoveryJobStatus, 'state'> | null;
   /** The status request itself failed */
   isError?: boolean;
-  /** The operator has already seen the finished job in the modal */
+  /** The operator has already seen the finished job in the drawer */
   resultsSeen: boolean;
 }
 
@@ -65,7 +116,7 @@ export type DiscoveryFinishAction = 'none' | 'notifyReady' | 'notifyEmpty' | 'no
 
 export interface DiscoveryFinishInput extends DiscoveryIndicatorInput {
   status?: (Pick<IDiscoveryJobStatus, 'state'> & Partial<Pick<IDiscoveryJobStatus, 'result'>>) | null;
-  /** The discovery modal is open, so the operator watches the job finish there */
+  /** The discovery drawer is open, so the operator watches the job finish there */
   isOpen: boolean;
   /** The job whose finish was already announced */
   notifiedJobId: string | null;
@@ -73,7 +124,7 @@ export interface DiscoveryFinishInput extends DiscoveryIndicatorInput {
 
 /**
  * Which notification to show when a background search finishes: new businesses to review, nothing
- * new, or a failure. Once per job, and never while the modal is open, since the operator sees it there.
+ * new, or a failure. Once per job, and never while the drawer is open, since the operator sees it there.
  */
 export function discoveryFinishAction({
   activeJobId,
@@ -222,7 +273,7 @@ export const useStartDiscoveryMutation = () =>
     mutationFn: (input: StartDiscoveryInput) => apiClient.startDiscovery(input),
   });
 
-/** Shared by the modal and the header button, which keeps the job polling while the modal is closed (REV-40) */
+/** Shared by the drawer and the header button, which keeps the job polling while the drawer is closed (REV-40) */
 export const discoveryStatusQueryOptions = (jobId: string | null) =>
   queryOptions({
     queryKey: ['discovery', jobId],
@@ -248,12 +299,12 @@ export const useImportDiscoveryMutation = (jobId: string | null) => {
 
 /**
  * The background search state for the top bar's "Find businesses" button and the rail's Discovery entry
- * (REV-40, REV-76). Separate selectors: re-rendering on the modal's own state would fight its focus.
+ * (REV-40, REV-76). Separate selectors: re-rendering on the drawer's own state would fight its focus.
  */
 export const useDiscoveryIndicator = (): { indicator: DiscoveryIndicator; newCount: number } => {
   const activeJobId = useDiscoveryStore((s) => s.activeJobId);
   const resultsSeen = useDiscoveryStore((s) => s.resultsSeen);
-  // Shares the modal's query, so the job keeps polling while the modal is closed and stops once it finishes
+  // Shares the drawer's query, so the job keeps polling while the drawer is closed and stops once it finishes
   const status = useDiscoveryStatusQuery(activeJobId);
   return {
     indicator: discoveryIndicator({ activeJobId, status: status.data, isError: status.isError, resultsSeen }),

@@ -80,7 +80,9 @@ A lead can be added without a contact email; the audit then fills it in from the
 
 OpenStreetMap works with no configuration. Google Places needs `GOOGLE_PLACES_API_KEY`. Set `DISCOVERY_USER_AGENT` to something that identifies you: the Nominatim and Overpass usage policies require it.
 
-A search can keep running in the background after the operator closes the discovery window. When it finishes, the dashboard shows a notification on any page: the number of new businesses to review, "nothing new", or a failure. Clicking the notification opens the results. The window never opens by itself.
+Discovery opens in a side drawer with three steps: **Where** (the search form), **Review** (progress, then the businesses found) and **Import** (what was imported). Closing the drawer keeps the search and its step, so reopening it lands where the operator left off.
+
+A search can keep running in the background after the operator closes the drawer. When it finishes, the dashboard shows a notification on any page: the number of new businesses to review, "nothing new", or a failure. Clicking the notification opens the results. The drawer never opens by itself.
 
 ### MVP telemetry
 

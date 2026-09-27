@@ -20,6 +20,9 @@ import {
   isDiscoveryFinished,
   LocationDetectError,
   validateDiscoveryForm,
+  DEFAULT_DISCOVERY_FORM,
+  discoveryFormFromParams,
+  discoveryStep,
 } from '../useDiscovery.js';
 
 describe('discovery hook helpers (REV-27)', () => {
@@ -352,5 +355,36 @@ describe('background discovery finish (REV-41)', () => {
 
   it('announces a new job even if an earlier one was announced', () => {
     expect(discoveryFinishAction({ ...base, notifiedJobId: 'disc-0', status: completed('new') })).toBe('notifyReady');
+  });
+});
+
+describe('discovery drawer steps (REV-78)', () => {
+  const imported = { imported: 1, results: [{ externalId: 'a', outcome: 'imported' as const, leadId: 'lead-1' }] };
+
+  it('discoveryStep should show Where until a search starts', () => {
+    expect(discoveryStep({ activeJobId: null, importResult: null })).toBe('where');
+    // An import without a job cannot happen, but the form still wins
+    expect(discoveryStep({ activeJobId: null, importResult: imported })).toBe('where');
+  });
+
+  it('discoveryStep should show Review for a started search and Import after an import', () => {
+    expect(discoveryStep({ activeJobId: 'disc-1', importResult: null })).toBe('review');
+    expect(discoveryStep({ activeJobId: 'disc-1', importResult: imported })).toBe('import');
+  });
+
+  it('discoveryFormFromParams should refill the form from a search', () => {
+    expect(discoveryFormFromParams({ provider: 'google', niche: 'auto', location: 'Kaunas', keyword: 'tyres', limit: 35 })).toEqual({
+      provider: 'google',
+      niche: 'auto',
+      location: 'Kaunas',
+      keyword: 'tyres',
+      limit: '35',
+    });
+    expect(discoveryFormFromParams({ provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 20 }).keyword).toBe('');
+  });
+
+  it('the default form should pass validation once a location is typed', () => {
+    const { provider, niche, limit } = DEFAULT_DISCOVERY_FORM;
+    expect(validateDiscoveryForm({ provider, niche, location: 'Vilnius', limit: Number(limit) }).success).toBe(true);
   });
 });
