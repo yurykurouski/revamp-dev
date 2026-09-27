@@ -46,6 +46,7 @@ export const pl: Translation = {
     title: 'Kolejka przeglądu',
     bucketsLabel: 'Grupy leadów',
     detailLabel: 'Wybrany lead',
+    openFullScreen: 'Otwórz na pełnym ekranie',
     listCaption: {
       needs_you: 'Czekają na twoją decyzję · najstarsze najpierw',
       in_progress: 'Trwa audyt lub tworzenie prototypu · najnowsze najpierw',

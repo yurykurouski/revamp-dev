@@ -80,7 +80,7 @@ describe('LeadReview (REV-77)', () => {
 
   const flush = () => act(async () => new Promise((r) => setTimeout(r, 0)));
 
-  const mount = async (reviewed: ILeadItem = lead) => {
+  const mount = async (reviewed: ILeadItem = lead, headerActions?: React.ReactNode) => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await act(async () => {
       root.render(
@@ -90,7 +90,7 @@ describe('LeadReview (REV-77)', () => {
           React.createElement(
             ThemeProvider,
             { theme: getTheme('dark', 'en') },
-            React.createElement(LeadReview, { lead: reviewed, onClose, onDecision }),
+            React.createElement(LeadReview, { lead: reviewed, onClose, onDecision, headerActions }),
           ),
         ),
       );
@@ -137,6 +137,12 @@ describe('LeadReview (REV-77)', () => {
     expect(panel('audit').textContent).toContain('No call to action above the fold');
     expect(panel('audit').textContent).toContain('4.8s');
     expect(document.querySelector('h1')?.textContent).toBe('Harbor Dental');
+  });
+
+  it('shows the header actions it is given next to the score (REV-89)', async () => {
+    await mount(lead, React.createElement('button', { 'data-testid': 'header-action' }, 'expand'));
+    const action = document.querySelector('[data-testid="header-action"]')!;
+    expect(action.parentElement!.textContent).toContain(en.inspector.originalScore.split('{{')[0]);
   });
 
   it('moves forward with Next and back with Back, one step on screen at a time', async () => {

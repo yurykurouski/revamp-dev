@@ -46,6 +46,7 @@ export const lt: Translation = {
     title: 'Peržiūros eilė',
     bucketsLabel: 'Potencialių klientų grupės',
     detailLabel: 'Pasirinktas potencialus klientas',
+    openFullScreen: 'Atidaryti per visą ekraną',
     listCaption: {
       needs_you: 'Laukia jūsų sprendimo · seniausi pirmiau',
       in_progress: 'Vyksta auditas arba kuriamas prototipas · naujausi pirmiau',

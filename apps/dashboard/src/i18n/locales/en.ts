@@ -47,6 +47,7 @@ export const en = {
     title: 'Review queue',
     bucketsLabel: 'Lead buckets',
     detailLabel: 'Selected lead',
+    openFullScreen: 'Open full screen',
     listCaption: {
       needs_you: 'Awaiting your decision · oldest first',
       in_progress: 'Being audited or prototyped · newest first',

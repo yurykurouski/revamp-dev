@@ -16,14 +16,27 @@ import { LEADS_QUERY_KEY } from '../../hooks/useLeads.js';
 import { AppRoutes } from '../../routes/AppRoutes.js';
 import type { ReviewDecision } from '../../components/leadReview/LeadReview.js';
 
-// The review has its own tests; here it only shows which lead it holds and reports a decision
+// The review has its own tests; here it only shows which lead it holds, its header actions, and reports
+// a decision or a close
 vi.mock('../../components/leadReview/LeadReview.js', () => ({
-  LeadReview: ({ lead, onDecision }: { lead: { id: string }; onDecision?: (d: ReviewDecision) => void }) =>
+  LeadReview: ({
+    lead,
+    onDecision,
+    onClose,
+    headerActions,
+  }: {
+    lead: { id: string };
+    onDecision?: (d: ReviewDecision) => void;
+    onClose?: () => void;
+    headerActions?: React.ReactNode;
+  }) =>
     React.createElement(
       'div',
       { 'data-testid': 'review', 'data-lead': lead.id },
+      headerActions,
       React.createElement('button', { 'data-testid': 'decide-approve', onClick: () => onDecision?.('approved') }, 'approve'),
       React.createElement('button', { 'data-testid': 'decide-reject', onClick: () => onDecision?.('rejected') }, 'reject'),
+      onClose && React.createElement('button', { 'data-testid': 'review-close', onClick: onClose }, 'close'),
     ),
 }));
 
@@ -277,6 +290,36 @@ describe('review queue home (REV-79)', () => {
     await key('Enter', item);
     await flush();
     expect(location()).toBe('/leads/n3');
+  });
+
+  describe('open full screen (REV-89)', () => {
+    const fullScreenButton = () => document.querySelector<HTMLButtonElement>('[data-testid="queue-open-full-screen"]');
+
+    it('opens the selected lead as its own page and closing it returns to the queue where it was', async () => {
+      await mount('/?bucket=outreach');
+      await act(async () => document.querySelector<HTMLElement>('[data-queue-item="o1"]')!.click());
+      await flush();
+      expect(fullScreenButton()?.getAttribute('aria-label')).toBe(en.queue.openFullScreen);
+
+      await act(async () => fullScreenButton()!.click());
+      await flush();
+      expect(location()).toBe('/leads/o1');
+      expect(reviewed()).toBe('o1');
+      expect(fullScreenButton()).toBeNull();
+
+      await act(async () => document.querySelector<HTMLElement>('[data-testid="review-close"]')!.click());
+      await flush();
+      expect(location().split('?')[0]).toBe('/');
+      expect(query().get('bucket')).toBe('outreach');
+      expect(query().get('lead')).toBe('o1');
+      expect(selected()).toBe('o1');
+    });
+
+    it('offers nothing to open while no lead is selected', async () => {
+      await mount('/?bucket=closed');
+      expect(reviewed()).toBeNull();
+      expect(fullScreenButton()).toBeNull();
+    });
   });
 
   it('ignores J / K / Enter while the search field has focus', async () => {

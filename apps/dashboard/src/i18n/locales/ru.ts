@@ -46,6 +46,7 @@ export const ru: Translation = {
     title: 'Очередь проверки',
     bucketsLabel: 'Группы лидов',
     detailLabel: 'Выбранный лид',
+    openFullScreen: 'Открыть на весь экран',
     listCaption: {
       needs_you: 'Ждут вашего решения · сначала старые',
       in_progress: 'Идёт аудит или создание прототипа · сначала новые',
