@@ -105,6 +105,15 @@ export function shortcutMatches(def: ShortcutDef, event: ShortcutEvent, mac = is
   return true;
 }
 
+/** The registry entry for an id */
+export const getShortcut = (id: ShortcutId): ShortcutDef => SHORTCUTS.find((def) => def.id === id)!;
+
+/** The shortcut as an `aria-keyshortcuts` value, e.g. "Meta+Enter" on macOS, "Control+Enter" elsewhere */
+export function ariaKeyShortcuts(def: ShortcutDef, mac = isMacPlatform()): string {
+  const key = def.key.length === 1 ? def.key.toUpperCase() : def.key;
+  return def.mod ? `${mac ? 'Meta' : 'Control'}+${key}` : key;
+}
+
 const KEY_LABELS: Record<string, string> = { Escape: 'Esc', Enter: 'Enter' };
 
 /** The key caps to show for a shortcut, e.g. ['⌘', 'Enter'] on macOS or ['Ctrl', 'Enter'] elsewhere */

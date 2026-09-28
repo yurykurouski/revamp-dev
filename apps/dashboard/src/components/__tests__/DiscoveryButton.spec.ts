@@ -21,6 +21,10 @@ describe('DiscoveryButton (REV-40)', () => {
     expect(html).toContain('MuiButton-colorPrimary');
   });
 
+  it('exposes its D shortcut (REV-97)', () => {
+    expect(render('idle')).toMatch(/<button[^>]*aria-keyshortcuts="D"/);
+  });
+
   it('shows a spinner while the search runs in the background', () => {
     const html = render('running');
     expect(ariaLabel(html)).toBe(en.header.discoveryRunning);

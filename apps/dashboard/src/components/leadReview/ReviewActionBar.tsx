@@ -10,6 +10,7 @@ import {
   DialogContent,
   DialogTitle,
   TextField,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import SendIcon from '@mui/icons-material/Send';
@@ -23,6 +24,8 @@ import { canApproveOutreach, canRejectLead } from '@revamp/validation';
 import { useTranslation } from 'react-i18next';
 import type { IEmailDraft, ILeadItem } from '../../api/client.js';
 import { useShortcuts } from '../../hooks/useShortcuts.js';
+import { ariaKeyShortcuts, getShortcut } from '../../utils/shortcuts.js';
+import { ShortcutTitle } from '../KeyCaps.js';
 import { REVIEW_STEPS, ReviewStep } from './steps.js';
 
 /**
@@ -220,17 +223,22 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
 
           {/* Keyed by step, so the button remounts and focus never carries from Next to Approve */}
           {isEmailStep ? (
-            <Button
-              key="approve"
-              color="primary"
-              variant="contained"
-              startIcon={isActionLoading ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
-              onClick={handleApproveSubmit}
-              disabled={isActionLoading || !canApprove || !approveArmed}
-              sx={{ px: 2 }}
-            >
-              {t('email.approve')}
-            </Button>
+            <Tooltip key="approve" title={<ShortcutTitle label={t('email.approve')} shortcut="approve" />}>
+              {/* A disabled button fires no events, so the tooltip listens on this wrapper */}
+              <Box component="span" sx={{ display: 'inline-flex' }}>
+                <Button
+                  color="primary"
+                  variant="contained"
+                  startIcon={isActionLoading ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
+                  onClick={handleApproveSubmit}
+                  disabled={isActionLoading || !canApprove || !approveArmed}
+                  aria-keyshortcuts={ariaKeyShortcuts(getShortcut('approve'))}
+                  sx={{ px: 2 }}
+                >
+                  {t('email.approve')}
+                </Button>
+              </Box>
+            </Tooltip>
           ) : (
             <Button
               key={`next-${step}`}
