@@ -313,6 +313,35 @@ describe('app shell and routes (REV-76)', () => {
       expect(path()).toBe('/leads');
     });
 
+    it('shows the / hint on the empty search until it is focused or filled (REV-97)', async () => {
+      await mount('/leads');
+      const hint = () => document.querySelector('header [data-key-caps="focusSearch"]');
+      expect(search().getAttribute('aria-keyshortcuts')).toBe('/');
+      expect(hint()?.textContent).toBe('/');
+
+      await press('/');
+      expect(hint()).toBeNull();
+      await act(async () => search().blur());
+      expect(hint()).not.toBeNull();
+
+      await act(async () => useLeadFilterStore.getState().setSearchQuery('dental'));
+      expect(hint()).toBeNull();
+    });
+
+    it('shows the key in the Add lead tooltip (REV-97)', async () => {
+      await mount('/leads');
+      const addLead = buttonNamed(en.topBar.addLead)!;
+      expect(addLead.getAttribute('aria-keyshortcuts')).toBe('N');
+
+      await act(async () => {
+        addLead.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+      });
+      await act(async () => new Promise((r) => setTimeout(r, 200)));
+      const tooltip = document.querySelector('[role="tooltip"]');
+      expect(tooltip?.textContent).toContain(en.topBar.addLead);
+      expect(tooltip?.querySelector('[data-key-caps="addLead"]')?.textContent).toBe('N');
+    });
+
     it('lists every shortcut in the help overlay, from ? or the rail, and closes it on Esc', async () => {
       await mount('/');
       await press('?');

@@ -85,6 +85,14 @@ describe('IconRail (REV-76)', () => {
     expect(shortcuts).toContain('aria-keyshortcuts="?"');
   });
 
+  it('exposes the shortcut of each entry (REV-97)', () => {
+    const html = render();
+    expect(entry(html, 'queue')).toContain('aria-keyshortcuts="1"');
+    expect(entry(html, 'leads')).toContain('aria-keyshortcuts="2"');
+    expect(entry(html, 'settings')).toContain('aria-keyshortcuts="3"');
+    expect(entry(html, 'discovery')).toContain('aria-keyshortcuts="D"');
+  });
+
   it('shows the operator avatar', () => {
     expect(render()).toContain(`>${en.header.operatorInitials}</div>`);
   });

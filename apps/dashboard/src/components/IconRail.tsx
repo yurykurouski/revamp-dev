@@ -10,9 +10,14 @@ import TuneIcon from '@mui/icons-material/Tune';
 import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
 import { useTranslation } from 'react-i18next';
 import { ROUTES, RailPage } from '../routes/paths.js';
+import { ariaKeyShortcuts, getShortcut, type ShortcutId } from '../utils/shortcuts.js';
+import { ShortcutTitle } from './KeyCaps.js';
 import type { DiscoveryIndicator } from '../hooks/useDiscovery.js';
 
 export const RAIL_WIDTH = 64;
+
+/** The shortcut that opens each rail page (REV-47), shown in its tooltip (REV-97) */
+const PAGE_SHORTCUT: Record<RailPage, ShortcutId> = { queue: 'goQueue', leads: 'goLeads', settings: 'goSettings' };
 
 /** The rail's page entries, top to bottom; Settings sits at the bottom, above the operator */
 export const RAIL_PAGES: ReadonlyArray<{ page: RailPage; to: string; icon: React.ReactNode }> = [
@@ -60,12 +65,13 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
         item.icon
       );
     return (
-      <Tooltip key={page} title={label} placement="right">
+      <Tooltip key={page} title={<ShortcutTitle label={label} shortcut={PAGE_SHORTCUT[page]} />} placement="right">
         <ButtonBase
           component={RouterLink}
           to={item.to}
           aria-label={page === 'queue' && needsYouCount > 0 ? t('rail.queueWithCount', { count: needsYouCount }) : label}
           aria-current={active ? 'page' : undefined}
+          aria-keyshortcuts={ariaKeyShortcuts(getShortcut(PAGE_SHORTCUT[page]))}
           data-rail={page}
           sx={itemSx(active)}
         >
@@ -123,8 +129,11 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
       {pageItem('queue')}
       {pageItem('leads')}
 
-      <Tooltip title={discoveryLabel} placement="right">
-        <ButtonBase onClick={onOpenDiscovery} aria-label={discoveryLabel} data-rail="discovery" data-indicator={discovery} sx={itemSx(false)}>
+      <Tooltip title={<ShortcutTitle label={discoveryLabel} shortcut="openDiscovery" />} placement="right">
+        <ButtonBase
+          onClick={onOpenDiscovery}
+          aria-label={discoveryLabel}
+          aria-keyshortcuts={ariaKeyShortcuts(getShortcut('openDiscovery'))} data-rail="discovery" data-indicator={discovery} sx={itemSx(false)}>
           {discovery === 'running' ? (
             <CircularProgress size={18} color="inherit" />
           ) : (
@@ -136,8 +145,14 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
       </Tooltip>
 
       <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
-        <Tooltip title={`${t('shortcuts.title')} (?)`} placement="right">
-          <ButtonBase onClick={onOpenShortcuts} aria-label={t('shortcuts.title')} aria-keyshortcuts="?" data-rail="shortcuts" sx={itemSx(false)}>
+        <Tooltip title={<ShortcutTitle label={t('shortcuts.title')} shortcut="showHelp" />} placement="right">
+          <ButtonBase
+            onClick={onOpenShortcuts}
+            aria-label={t('shortcuts.title')}
+            aria-keyshortcuts={ariaKeyShortcuts(getShortcut('showHelp'))}
+            data-rail="shortcuts"
+            sx={itemSx(false)}
+          >
             <KeyboardOutlinedIcon />
           </ButtonBase>
         </Tooltip>

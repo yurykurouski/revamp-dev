@@ -3,6 +3,8 @@ import { Badge, Box, Button, CircularProgress, Tooltip } from '@mui/material';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import { useTranslation } from 'react-i18next';
 import { DiscoveryIndicator } from '../hooks/useDiscovery.js';
+import { ariaKeyShortcuts, getShortcut } from '../utils/shortcuts.js';
+import { ShortcutTitle } from './KeyCaps.js';
 
 interface DiscoveryButtonProps {
   indicator: DiscoveryIndicator;
@@ -30,12 +32,13 @@ export const DiscoveryButton: React.FC<DiscoveryButtonProps> = ({ indicator, new
     );
 
   return (
-    <Tooltip title={label}>
+    <Tooltip title={<ShortcutTitle label={label} shortcut="openDiscovery" />}>
       <Button
         variant="outlined"
         color={indicator === 'failed' ? 'error' : indicator === 'ready' ? 'success' : 'primary'}
         onClick={onClick}
         aria-label={label}
+        aria-keyshortcuts={ariaKeyShortcuts(getShortcut('openDiscovery'))}
         data-indicator={indicator}
         sx={{ px: 1.25, minWidth: 0, gap: 1, whiteSpace: 'nowrap' }}
       >

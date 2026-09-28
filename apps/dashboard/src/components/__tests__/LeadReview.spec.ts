@@ -186,6 +186,7 @@ describe('LeadReview (REV-77)', () => {
     await click(button(en.review.next.prototype));
     expect(button(en.email.approve)).toBeDefined();
     expect(document.body.textContent).toContain(en.inspector.hitlNotice);
+    expect(button(en.email.approve)!.getAttribute('aria-keyshortcuts')).toBe(isMacPlatform() ? 'Meta+Enter' : 'Control+Enter');
   });
 
   it('does not send when a click meant for Next lands on Approve', async () => {

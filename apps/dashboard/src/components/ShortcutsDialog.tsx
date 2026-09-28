@@ -2,7 +2,8 @@ import React from 'react';
 import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
 import { useTranslation } from 'react-i18next';
-import { isMacPlatform, SHORTCUT_SCOPES, SHORTCUTS, shortcutKeys } from '../utils/shortcuts.js';
+import { isMacPlatform, SHORTCUT_SCOPES, SHORTCUTS } from '../utils/shortcuts.js';
+import { KeyCaps } from './KeyCaps.js';
 
 interface ShortcutsDialogProps {
   open: boolean;
@@ -37,28 +38,8 @@ export const ShortcutsDialog: React.FC<ShortcutsDialogProps> = ({ open, onClose,
                   <Typography component="dt" variant="body2">
                     {t(`shortcuts.actions.${def.id}`)}
                   </Typography>
-                  <Box component="dd" sx={{ m: 0, display: 'flex', gap: 0.5, flexShrink: 0 }}>
-                    {shortcutKeys(def, mac).map((key) => (
-                      <Box
-                        key={key}
-                        component="kbd"
-                        sx={{
-                          minWidth: 24,
-                          px: 0.75,
-                          py: 0.25,
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          borderRadius: 0.5,
-                          backgroundColor: 'action.hover',
-                          fontFamily: 'inherit',
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          textAlign: 'center',
-                        }}
-                      >
-                        {key}
-                      </Box>
-                    ))}
+                  <Box component="dd" sx={{ m: 0 }}>
+                    <KeyCaps shortcut={def} mac={mac} />
                   </Box>
                 </Box>
               ))}

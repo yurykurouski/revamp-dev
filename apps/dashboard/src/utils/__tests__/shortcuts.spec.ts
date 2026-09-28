@@ -3,7 +3,9 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import {
+  ariaKeyShortcuts,
   findShortcutConflicts,
+  getShortcut,
   isMacPlatform,
   isTypingTarget,
   SHORTCUT_SCOPES,
@@ -155,5 +157,15 @@ describe('platform modifier (REV-47)', () => {
     expect(shortcutKeys(def('next'), true)).toEqual(['J']);
     expect(shortcutKeys(def('closeDialog'), false)).toEqual(['Esc']);
     expect(shortcutKeys(def('showHelp'), false)).toEqual(['?']);
+  });
+
+  it('describes each shortcut for aria-keyshortcuts (REV-97)', () => {
+    expect(getShortcut('focusSearch').key).toBe('/');
+    expect(ariaKeyShortcuts(getShortcut('approve'), true)).toBe('Meta+Enter');
+    expect(ariaKeyShortcuts(getShortcut('approve'), false)).toBe('Control+Enter');
+    expect(ariaKeyShortcuts(getShortcut('addLead'), true)).toBe('N');
+    expect(ariaKeyShortcuts(getShortcut('goQueue'), true)).toBe('1');
+    expect(ariaKeyShortcuts(getShortcut('focusSearch'), false)).toBe('/');
+    expect(ariaKeyShortcuts(getShortcut('showHelp'), false)).toBe('?');
   });
 });
