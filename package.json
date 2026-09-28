@@ -8,7 +8,12 @@
     "packages/*",
     "apps/*"
   ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
     "build": "npm run build:packages && npm run build:apps",
     "build:packages": "npm run build --workspace=@revamp/shared-types && npm run build --workspace=@revamp/validation && npm run build --workspace=@revamp/db",
     "build:apps": "npm run build --workspace=@revamp/api && npm run build --workspace=@revamp/workers && npm run build --workspace=@revamp/dashboard",
