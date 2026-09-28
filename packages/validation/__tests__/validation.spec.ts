@@ -825,6 +825,8 @@ describe('Validation Schemas (@revamp/validation)', () => {
     const assessed = {
       outcome: 'assessed',
       verdict: 'good',
+      verdictReason: 'simple_with_signs',
+      signScore: 4,
       simple: true,
       badSigns: ['no_https', 'no_viewport'],
       complexitySigns: [],
@@ -847,6 +849,7 @@ describe('Validation Schemas (@revamp/validation)', () => {
 
     it('should reject unknown verdicts, signs and failures, and duplicate signs', () => {
       expect(SiteAssessmentSchema.safeParse({ ...assessed, verdict: 'great' }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdictReason: 'looks_bad' }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, badSigns: ['ugly'] }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, badSigns: ['no_https', 'no_https'] }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, complexitySigns: ['huge'] }).success).toBe(false);
@@ -857,6 +860,9 @@ describe('Validation Schemas (@revamp/validation)', () => {
     it('should never accept a failed check without its reason, or a verdict without its evidence', () => {
       expect(SiteAssessmentSchema.safeParse({ outcome: 'failed', assessedAt: failed.assessedAt }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, badSigns: undefined }).success).toBe(false);
+      // The verdict always carries its argument
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdictReason: undefined }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, signScore: undefined }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, assessedAt: 'yesterday' }).success).toBe(false);
     });
 
@@ -864,6 +870,9 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(SiteAssessmentSchema.safeParse({ ...assessed, httpStatus: 99 }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, httpStatus: 600 }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, responseMs: -1 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, signScore: -1 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, signScoreNeeded: 0 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdict: 'poor', verdictReason: 'complex_few_signs', signScore: 1, signScoreNeeded: 3 }).success).toBe(true);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, internalPages: 1.5 }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, copyrightYear: 1989 }).success).toBe(false);
       expect(SiteAssessmentSchema.safeParse({ ...assessed, copyrightYear: 2101 }).success).toBe(false);

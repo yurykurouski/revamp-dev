@@ -358,6 +358,14 @@ export const en = {
       simple: 'Simple site',
       noSigns: 'No redesign signs found',
       hint: 'Each home page was checked with one quick request. The verdict only informs your choice.',
+      scoring: 'Scoring: no HTTPS, a bad certificate, not mobile-friendly, table or frame layout and Flash count 2, other signs 1.',
+      verdictReason: {
+        simple_with_signs: 'Why: a simple site whose redesign signs score {{score}}, so a one-page MVP is a realistic offer.',
+        simple_few_signs: 'Why: a simple site, but its redesign signs score only {{score}} of the {{needed}} a good candidate needs.',
+        simple_no_signs: 'Why: a simple site with no redesign signs. It already looks up to date, so a redesign is a hard sell.',
+        complex_with_signs: 'Why: outdated (signs score {{score}}), but too big or complex for a one-page MVP.',
+        complex_few_signs: 'Why: too big or complex for a one-page MVP, and its redesign signs score only {{score}} of the {{needed}} a complex site needs.',
+      },
       complexitySign: {
         many_pages: 'Many pages ({{count}})',
         ecommerce: 'Online shop',

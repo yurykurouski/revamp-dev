@@ -357,6 +357,14 @@ export const pl: Translation = {
       simple: 'Prosta strona',
       noSigns: 'Brak oznak do przeprojektowania',
       hint: 'Każdą stronę główną sprawdzono jednym szybkim zapytaniem. Ocena jedynie pomaga w wyborze.',
+      scoring: 'Punkty: brak HTTPS, zły certyfikat, brak wersji mobilnej, układ tabelowy lub ramkowy i Flash dają 2, pozostałe oznaki 1.',
+      verdictReason: {
+        simple_with_signs: 'Dlaczego: prosta strona, oznaki do przeprojektowania dają {{score}} pkt, więc jednostronicowe MVP to realna oferta.',
+        simple_few_signs: 'Dlaczego: prosta strona, ale oznaki do przeprojektowania dają tylko {{score}} z {{needed}} pkt potrzebnych dobremu kandydatowi.',
+        simple_no_signs: 'Dlaczego: prosta strona bez oznak do przeprojektowania. Wygląda już nowocześnie, więc trudno sprzedać redesign.',
+        complex_with_signs: 'Dlaczego: przestarzała (oznaki dają {{score}} pkt), ale zbyt duża lub złożona na jednostronicowe MVP.',
+        complex_few_signs: 'Dlaczego: zbyt duża lub złożona na jednostronicowe MVP, a oznaki do przeprojektowania dają tylko {{score}} z {{needed}} pkt potrzebnych złożonej stronie.',
+      },
       complexitySign: {
         many_pages: 'Wiele podstron ({{count}})',
         ecommerce: 'Sklep internetowy',

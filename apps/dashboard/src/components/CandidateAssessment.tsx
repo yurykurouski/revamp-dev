@@ -2,7 +2,13 @@ import React from 'react';
 import { Chip, Typography } from '@mui/material';
 import { ISiteAssessment } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
-import { ASSESSMENT_CHIP_COLOR, AssessmentDetail, assessmentBucket, assessmentDetails } from '../utils/siteAssessment.js';
+import {
+  ASSESSMENT_CHIP_COLOR,
+  AssessmentDetail,
+  assessmentBucket,
+  assessmentDetails,
+  verdictArgument,
+} from '../utils/siteAssessment.js';
 
 /** The verdict chip of a discovered site's pre-assessment (REV-98) */
 export const AssessmentVerdictChip: React.FC<{ assessment: ISiteAssessment }> = ({ assessment }) => {
@@ -20,7 +26,10 @@ export const AssessmentVerdictChip: React.FC<{ assessment: ISiteAssessment }> = 
   );
 };
 
-/** One line with what the check found: simple or complex, then the redesign signs, or why it failed */
+/**
+ * What the check found: one line with simple or complex and the redesign signs (or why the check
+ * failed), then the argument for the verdict, e.g. why the site is a poor candidate
+ */
 export const AssessmentDetails: React.FC<{ assessment: ISiteAssessment }> = ({ assessment }) => {
   const { t } = useTranslation();
   const label = (detail: AssessmentDetail): string => {
@@ -38,10 +47,18 @@ export const AssessmentDetails: React.FC<{ assessment: ISiteAssessment }> = ({ a
   const parts = assessmentDetails(assessment).map(label);
   if (assessment.outcome === 'assessed' && assessment.simple) parts.unshift(t('discovery.assessment.simple'));
   const text = parts.join(' · ');
+  const argument = verdictArgument(assessment);
 
   return (
-    <Typography variant="caption" color="text.secondary" component="div" noWrap title={text} data-testid="assessment-details">
-      {text}
-    </Typography>
+    <>
+      <Typography variant="caption" color="text.secondary" component="div" noWrap title={text} data-testid="assessment-details">
+        {text}
+      </Typography>
+      {argument && (
+        <Typography variant="caption" color="text.secondary" component="div" sx={{ fontStyle: 'italic' }} data-testid="assessment-reason">
+          {t(`discovery.assessment.verdictReason.${argument.reason}`, argument.values)}
+        </Typography>
+      )}
+    </>
   );
 };

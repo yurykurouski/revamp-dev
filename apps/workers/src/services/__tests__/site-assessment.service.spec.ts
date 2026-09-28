@@ -12,6 +12,7 @@ import {
   assessmentVerdict,
   detectBadSigns,
   detectComplexitySigns,
+  explainVerdict,
   fetchHomePage,
   findCopyrightYear,
   isBlockedHost,
@@ -235,6 +236,21 @@ describe('assessmentVerdict', () => {
   });
 });
 
+describe('explainVerdict', () => {
+  it('should give the reason, the score and the score the site fell short of', () => {
+    expect(explainVerdict(true, ['no_viewport', 'stale_copyright'])).toEqual({ verdict: 'good', reason: 'simple_with_signs', score: 3 });
+    expect(explainVerdict(true, ['no_title'])).toEqual({ verdict: 'maybe', reason: 'simple_few_signs', score: 1, scoreNeeded: 2 });
+    expect(explainVerdict(true, [])).toEqual({ verdict: 'poor', reason: 'simple_no_signs', score: 0, scoreNeeded: 2 });
+    expect(explainVerdict(false, ['no_https', 'flash'])).toEqual({ verdict: 'maybe', reason: 'complex_with_signs', score: 4 });
+    expect(explainVerdict(false, ['old_jquery', 'no_meta_description'])).toEqual({
+      verdict: 'poor',
+      reason: 'complex_few_signs',
+      score: 2,
+      scoreNeeded: 3,
+    });
+  });
+});
+
 describe('fetchHomePage', () => {
   it('should follow redirects by hand and report the final URL', async () => {
     const fetchFn = fetchTable({
@@ -338,6 +354,7 @@ describe('assessSite', () => {
     expect(result).toMatchObject({
       outcome: 'assessed',
       verdict: 'good',
+      verdictReason: 'simple_with_signs',
       simple: true,
       complexitySigns: [],
       internalPages: 2,
@@ -357,6 +374,9 @@ describe('assessSite', () => {
     await expect(assessSite('https://clinic.lt/', options(fetchFn))).resolves.toMatchObject({
       outcome: 'assessed',
       verdict: 'poor',
+      verdictReason: 'simple_no_signs',
+      signScore: 0,
+      signScoreNeeded: 2,
       badSigns: [],
     });
   });

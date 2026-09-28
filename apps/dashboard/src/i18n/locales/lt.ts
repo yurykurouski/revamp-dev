@@ -357,6 +357,14 @@ export const lt: Translation = {
       simple: 'Paprasta svetainė',
       noSigns: 'Pertvarkymo požymių nerasta',
       hint: 'Kiekvienas pagrindinis puslapis patikrintas viena greita užklausa. Įvertinimas tik padeda pasirinkti.',
+      scoring: 'Balai: nėra HTTPS, blogas sertifikatas, nepritaikyta mobiliesiems, lentelių ar rėmelių maketas ir Flash duoda 2, kiti požymiai 1.',
+      verdictReason: {
+        simple_with_signs: 'Kodėl: paprasta svetainė, pertvarkymo požymiai surenka {{score}}, todėl vieno puslapio MVP yra reali pasiūla.',
+        simple_few_signs: 'Kodėl: paprasta svetainė, bet pertvarkymo požymiai surenka tik {{score}} iš {{needed}}, reikalingų geram kandidatui.',
+        simple_no_signs: 'Kodėl: paprasta svetainė be pertvarkymo požymių. Ji jau atrodo šiuolaikiškai, todėl pertvarkymą parduoti sunku.',
+        complex_with_signs: 'Kodėl: pasenusi (požymiai surenka {{score}}), bet per didelė ar sudėtinga vieno puslapio MVP.',
+        complex_few_signs: 'Kodėl: per didelė ar sudėtinga vieno puslapio MVP, o pertvarkymo požymiai surenka tik {{score}} iš {{needed}}, reikalingų sudėtingai svetainei.',
+      },
       complexitySign: {
         many_pages: 'Daug puslapių ({{count}})',
         ecommerce: 'Internetinė parduotuvė',

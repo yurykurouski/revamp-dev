@@ -195,7 +195,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
                 }
               />
               <Typography variant="caption" color="text.secondary" component="p" sx={{ width: '100%', m: 0 }}>
-                {t('discovery.assessment.hint')}
+                {t('discovery.assessment.hint')} {t('discovery.assessment.scoring')}
               </Typography>
             </Box>
           )}

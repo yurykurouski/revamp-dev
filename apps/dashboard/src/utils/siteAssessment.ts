@@ -6,6 +6,7 @@ import {
   SiteAssessmentVerdict,
   SiteBadSign,
   SiteComplexitySign,
+  SiteVerdictReason,
 } from '@revamp/shared-types';
 
 /**
@@ -104,4 +105,18 @@ export function assessmentDetails(assessment: ISiteAssessment): AssessmentDetail
   }
   if (assessment.badSigns.length === 0) details.push({ kind: 'noSigns' });
   return details;
+}
+
+/**
+ * The argument for a verdict: the worker's reason with the sign score and the score it fell short
+ * of. Null for a failed check (its reason is the failure) and for results without a reason.
+ */
+export function verdictArgument(
+  assessment: ISiteAssessment,
+): { reason: SiteVerdictReason; values: { score: number; needed?: number } } | null {
+  if (assessment.outcome !== 'assessed' || !assessment.verdictReason) return null;
+  return {
+    reason: assessment.verdictReason,
+    values: { score: assessment.signScore, needed: assessment.signScoreNeeded },
+  };
 }

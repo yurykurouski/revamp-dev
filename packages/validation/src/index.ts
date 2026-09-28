@@ -21,6 +21,7 @@ import {
   SITE_BAD_SIGNS,
   SITE_COMPLEXITY_CLASSES,
   SITE_COMPLEXITY_SIGNS,
+  SITE_VERDICT_REASONS,
   findLlmProvider,
 } from '@revamp/shared-types';
 
@@ -294,6 +295,9 @@ export const SiteAssessmentSchema = z.discriminatedUnion('outcome', [
   z.object({
     outcome: z.literal('assessed'),
     verdict: z.enum(SITE_ASSESSMENT_VERDICTS),
+    verdictReason: z.enum(SITE_VERDICT_REASONS),
+    signScore: z.number().int().min(0),
+    signScoreNeeded: z.number().int().min(1).optional(),
     simple: z.boolean(),
     badSigns: uniqueList(z.enum(SITE_BAD_SIGNS), SITE_BAD_SIGNS.length),
     complexitySigns: uniqueList(z.enum(SITE_COMPLEXITY_SIGNS), SITE_COMPLEXITY_SIGNS.length),

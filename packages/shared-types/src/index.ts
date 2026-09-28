@@ -665,6 +665,20 @@ export const SITE_BAD_SIGNS = [
 ] as const;
 export type SiteBadSign = (typeof SITE_BAD_SIGNS)[number];
 
+/**
+ * Why a site got its verdict, from its structure and the score of its redesign signs (strong
+ * signs count 2, the rest 1). A simple site needs a score of 2 to be a good candidate; a complex
+ * one needs 3 to be a maybe and is never a good candidate.
+ */
+export const SITE_VERDICT_REASONS = [
+  'simple_with_signs',
+  'simple_few_signs',
+  'simple_no_signs',
+  'complex_with_signs',
+  'complex_few_signs',
+] as const;
+export type SiteVerdictReason = (typeof SITE_VERDICT_REASONS)[number];
+
 /** What makes a site too big or too involved for a one-page MVP */
 export const SITE_COMPLEXITY_SIGNS = ['many_pages', 'ecommerce', 'login', 'app_framework'] as const;
 export type SiteComplexitySign = (typeof SITE_COMPLEXITY_SIGNS)[number];
@@ -683,6 +697,12 @@ export type SiteAssessmentFailure = (typeof SITE_ASSESSMENT_FAILURES)[number];
 export interface ISiteAssessmentAssessed {
   outcome: 'assessed';
   verdict: SiteAssessmentVerdict;
+  /** Why the site got this verdict, shown to the operator as the argument for it */
+  verdictReason: SiteVerdictReason;
+  /** Score of the redesign signs: 2 per strong sign, 1 per other sign */
+  signScore: number;
+  /** Score the verdict rule needed for the next better verdict; absent for a good candidate */
+  signScoreNeeded?: number;
   /** Small and simple enough for a one-page MVP: no complexity signs */
   simple: boolean;
   badSigns: SiteBadSign[];

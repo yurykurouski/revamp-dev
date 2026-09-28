@@ -213,6 +213,8 @@ describe('DiscoveryDrawer (REV-78)', () => {
     const assessed = (verdict: 'good' | 'maybe' | 'poor', badSigns: string[], extra: Record<string, unknown> = {}) => ({
       outcome: 'assessed' as const,
       verdict,
+      verdictReason: verdict === 'good' ? 'simple_with_signs' : 'simple_few_signs',
+      signScore: 3,
       simple: true,
       badSigns,
       complexitySigns: [],
@@ -225,7 +227,16 @@ describe('DiscoveryDrawer (REV-78)', () => {
       ...extra,
     });
     const assessedCandidates = () => [
-      { ...candidate('poor', 'new'), assessment: assessed('poor', [], { simple: false, complexitySigns: ['ecommerce'] }) },
+      {
+        ...candidate('poor', 'new'),
+        assessment: assessed('poor', ['no_title'], {
+          simple: false,
+          complexitySigns: ['ecommerce'],
+          verdictReason: 'complex_few_signs',
+          signScore: 1,
+          signScoreNeeded: 3,
+        }),
+      },
       { ...candidate('fail', 'new'), assessment: { outcome: 'failed' as const, failure: 'http_error' as const, httpStatus: 503, assessedAt } },
       { ...candidate('good', 'new'), assessment: assessed('good', ['no_viewport', 'stale_copyright'], { copyrightYear: 2014 }) },
       candidate('none', 'new'),
@@ -245,7 +256,11 @@ describe('DiscoveryDrawer (REV-78)', () => {
       expect(rowNames()).toEqual(['Business good', 'Business fail', 'Business none', 'Business poor']);
       expect(page()).toContain(a.verdict.good);
       expect(page()).toContain(`${a.simple} · ${a.badSign.no_viewport} · ${a.badSign.stale_copyright.replace('{{year}}', '2014')}`);
-      expect(page()).toContain(`${a.complexitySign.ecommerce} · ${a.noSigns}`);
+      expect(page()).toContain(`${a.complexitySign.ecommerce} · ${a.badSign.no_title}`);
+      // The argument for the poor verdict
+      expect(page()).toContain(a.verdictReason.complex_few_signs.replace('{{score}}', '1').replace('{{needed}}', '3'));
+      expect(page()).toContain(a.verdictReason.simple_with_signs.replace('{{score}}', '3'));
+      expect(page()).toContain(a.scoring);
       // A failed check says so and why, never a verdict
       expect(page()).toContain(a.verdict.failed);
       expect(page()).toContain(a.failure.http_error.replace('{{status}}', '503'));

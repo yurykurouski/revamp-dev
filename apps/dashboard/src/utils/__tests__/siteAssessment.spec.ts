@@ -8,6 +8,7 @@ import {
   filterByAssessment,
   hasAssessments,
   sortByAssessment,
+  verdictArgument,
 } from '../siteAssessment.js';
 
 const assessedAt = '2026-09-28T10:00:00.000Z';
@@ -81,6 +82,24 @@ describe('siteAssessment utils (REV-98)', () => {
 
   it('defaultSelection should preselect new candidates except poor ones', () => {
     expect(defaultSelection(list)).toEqual(['none', 'good1', 'failed', 'maybe', 'good2']);
+  });
+
+  describe('verdictArgument', () => {
+    it('should return the reason with the score and the score needed', () => {
+      expect(
+        verdictArgument(
+          assessed('poor', { verdictReason: 'complex_few_signs', signScore: 1, signScoreNeeded: 3 } as Partial<ISiteAssessment>),
+        ),
+      ).toEqual({ reason: 'complex_few_signs', values: { score: 1, needed: 3 } });
+      expect(
+        verdictArgument(assessed('good', { verdictReason: 'simple_with_signs', signScore: 4 } as Partial<ISiteAssessment>)),
+      ).toEqual({ reason: 'simple_with_signs', values: { score: 4, needed: undefined } });
+    });
+
+    it('should have nothing to argue for a failed check or a result without a reason', () => {
+      expect(verdictArgument(failed)).toBeNull();
+      expect(verdictArgument(assessed('poor'))).toBeNull();
+    });
   });
 
   describe('assessmentDetails', () => {

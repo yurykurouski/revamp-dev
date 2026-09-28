@@ -15,6 +15,7 @@ import {
   SiteAssessmentVerdict,
   SiteBadSign,
   SiteComplexitySign,
+  SiteVerdictReason,
 } from '@revamp/shared-types';
 import { SiteAssessmentSchema } from '@revamp/validation';
 import { collectInternalPages, SMALL_SITE_MAX_PAGES } from './site-complexity.service.js';
@@ -346,20 +347,40 @@ export function detectComplexitySigns(signals: HomePageSignals, internalPages: n
   return signs;
 }
 
-/**
- * The verdict from the signs. Strong signs (no HTTPS, bad certificate, not mobile-friendly,
- * table or frame layout, Flash) weigh 2, the rest 1.
- * - simple site: weight 2+ is a good candidate, 1 is maybe, 0 (a modern site) is poor
- * - complex site: weight 3+ is maybe, otherwise poor, since a one-page MVP is a hard sell
- */
-export function assessmentVerdict(simple: boolean, badSigns: SiteBadSign[]): SiteAssessmentVerdict {
-  const weight = badSigns.reduce((sum, sign) => sum + (STRONG_SIGNS.has(sign) ? 2 : 1), 0);
-  if (simple) {
-    if (weight >= 2) return 'good';
-    return weight === 1 ? 'maybe' : 'poor';
-  }
-  return weight >= 3 ? 'maybe' : 'poor';
+/** Sign score a simple site needs to be a good candidate */
+export const SIMPLE_GOOD_SCORE = 2;
+/** Sign score a complex site needs to be a maybe; it is never a good candidate */
+export const COMPLEX_MAYBE_SCORE = 3;
+
+export interface VerdictExplanation {
+  verdict: SiteAssessmentVerdict;
+  reason: SiteVerdictReason;
+  /** Strong signs (no HTTPS, bad certificate, not mobile-friendly, table or frame layout, Flash) score 2, the rest 1 */
+  score: number;
+  /** Score needed for the next better verdict; absent for a good candidate */
+  scoreNeeded?: number;
 }
+
+/**
+ * The verdict from the signs, with the argument for it:
+ * - simple site: score 2+ is a good candidate, 1 is maybe, 0 (an up-to-date site) is poor
+ * - complex site: score 3+ is maybe, otherwise poor, since a one-page MVP is a hard sell
+ */
+export function explainVerdict(simple: boolean, badSigns: SiteBadSign[]): VerdictExplanation {
+  const score = badSigns.reduce((sum, sign) => sum + (STRONG_SIGNS.has(sign) ? 2 : 1), 0);
+  if (simple) {
+    if (score >= SIMPLE_GOOD_SCORE) return { verdict: 'good', reason: 'simple_with_signs', score };
+    return score > 0
+      ? { verdict: 'maybe', reason: 'simple_few_signs', score, scoreNeeded: SIMPLE_GOOD_SCORE }
+      : { verdict: 'poor', reason: 'simple_no_signs', score, scoreNeeded: SIMPLE_GOOD_SCORE };
+  }
+  return score >= COMPLEX_MAYBE_SCORE
+    ? { verdict: 'maybe', reason: 'complex_with_signs', score }
+    : { verdict: 'poor', reason: 'complex_few_signs', score, scoreNeeded: COMPLEX_MAYBE_SCORE };
+}
+
+export const assessmentVerdict = (simple: boolean, badSigns: SiteBadSign[]): SiteAssessmentVerdict =>
+  explainVerdict(simple, badSigns).verdict;
 
 /** Assesses one site; never throws, a failed check is returned as such */
 export async function assessSite(url: string, options: SiteAssessmentOptions): Promise<ISiteAssessment> {
@@ -381,10 +402,14 @@ export async function assessSite(url: string, options: SiteAssessmentOptions): P
   const badSigns = detectBadSigns(page, signals, now);
   const complexitySigns = detectComplexitySigns(signals, internalPages);
   const simple = complexitySigns.length === 0;
+  const explanation = explainVerdict(simple, badSigns);
 
   return SiteAssessmentSchema.parse({
     outcome: 'assessed',
-    verdict: assessmentVerdict(simple, badSigns),
+    verdict: explanation.verdict,
+    verdictReason: explanation.reason,
+    signScore: explanation.score,
+    signScoreNeeded: explanation.scoreNeeded,
     simple,
     badSigns,
     complexitySigns,
