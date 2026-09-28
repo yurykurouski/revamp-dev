@@ -241,6 +241,49 @@ describe('MvpEditService (REV-85)', () => {
       await expect(service.interpret(input())).rejects.toThrow(/The model's change is not valid \(design/);
     });
 
+    it('tells the model to prefer the tokens and which hooks custom CSS may use (REV-93)', () => {
+      expect(MVP_EDIT_SYSTEM_PROMPT).toContain('only for a look none of the fields above can express');
+      expect(MVP_EDIT_SYSTEM_PROMPT).toContain('.hero-headline');
+      expect(MVP_EDIT_SYSTEM_PROMPT).toContain('[data-revamp-cta="primary-booking|call|block"]');
+    });
+
+    it('saves custom CSS that passes the check, normalized (REV-93)', async () => {
+      const { service } = serviceAnswering({
+        summary: 'Gradient headline',
+        design: {
+          customCss:
+            '/* gradient */ .hero-headline { background: linear-gradient(90deg, var(--brand-primary), var(--brand-accent)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; }',
+        },
+      });
+      const plan = await service.interpret(input());
+      expect(plan.changes).toEqual(['design']);
+      expect(plan.design!.customCss).not.toContain('/* gradient */');
+      expect(plan.design!.customCss).toContain('background-clip: text');
+    });
+
+    it('rejects the whole change when its custom CSS fails the check (REV-93)', async () => {
+      const { service } = serviceAnswering({
+        summary: 'Hid the footer contacts',
+        content: withHeadline('Warsaw smiles'),
+        design: { theme: { corners: 'sharp' }, customCss: '.site-footer { display: none; }' },
+      });
+      await expect(service.interpret(input())).rejects.toThrow('The custom CSS was not applied: "display: none" hides content');
+    });
+
+    it('refuses over-long custom CSS instead of cutting it mid-rule (REV-93)', async () => {
+      const { service } = serviceAnswering({
+        summary: 'Lots of CSS',
+        design: { customCss: '.hero-badge { color: red; }'.repeat(200) },
+      });
+      await expect(service.interpret(input())).rejects.toThrow(/the limit is 4096/);
+    });
+
+    it('drops empty custom CSS', async () => {
+      const { service } = serviceAnswering({ summary: 'Sharp', design: { theme: { corners: 'sharp' }, customCss: '  ' } });
+      const plan = await service.interpret(input());
+      expect(plan.design).toEqual({ theme: { corners: 'sharp' } });
+    });
+
     it('clips an over-long block title like the rest of the copy', async () => {
       const { service } = serviceAnswering({
         summary: 'Added a highlight',

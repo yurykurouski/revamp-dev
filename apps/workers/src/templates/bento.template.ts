@@ -3,6 +3,7 @@ import { getLucideIconSvg } from './icons.js';
 import { getMvpStrings } from './mvp-locale.js';
 import { escapeHtml } from './html.js';
 import { designCss, hasDesign, isHidden, renderDesignBlock, resolveSectionOrder } from './design.js';
+import { renderableCustomCss } from './css-sanitizer.js';
 
 /**
  * Converts Hex color string (#RRGGBB or #RGB) to "R, G, B" triplet.
@@ -257,6 +258,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   // The operator's custom design (REV-92); without one the page renders exactly as before
   const design = hasDesign(data.design) ? data.design : undefined;
   const customCss = designCss(design);
+  // CSS for what the tokens can't express (REV-93), after the design's own styles
+  const fallbackCss = renderableCustomCss(design?.customCss);
 
   // Contacts are rendered only when they were verified on the original site (Strict Grounding)
   const phone = data.contacts?.phone;
@@ -1576,7 +1579,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     }
     ${LAYOUT_TRANSITION_CSS}
   </style>
-  <style id="revamp-layout-css">${LAYOUT_CSS[layout]}</style>${customCss ? `\n  <style id="revamp-design-css">\n    ${customCss}\n  </style>` : ''}
+  <style id="revamp-layout-css">${LAYOUT_CSS[layout]}</style>${customCss ? `\n  <style id="revamp-design-css">\n    ${customCss}\n  </style>` : ''}${fallbackCss ? `\n  <style id="revamp-custom-css">\n${fallbackCss}\n  </style>` : ''}
 
   ${data.customHeadSnippet ? data.customHeadSnippet : ''}
 </head>

@@ -24,7 +24,8 @@ export function hasDesign(design: IMvpDesign | undefined | null): design is IMvp
       (design.hero && Object.values(design.hero).some((value) => value !== undefined && (!Array.isArray(value) || value.length))) ||
       (design.theme && Object.values(design.theme).some((value) => value !== undefined)) ||
       (design.elements && Object.values(design.elements).some((style) => style && Object.keys(style).length)) ||
-      design.blocks?.length,
+      design.blocks?.length ||
+      design.customCss?.trim(),
   );
 }
 

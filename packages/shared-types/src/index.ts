@@ -918,6 +918,11 @@ export interface IMvpDesign {
   };
   elements?: Partial<Record<MvpDesignElement, MvpDesignElementStyle>>;
   blocks?: IMvpDesignBlock[];
+  /**
+   * CSS for looks the tokens can't express (REV-93), scoped to the page's own hooks and checked by the
+   * workers' sanitizer before it is saved and again when it is rendered
+   */
+  customCss?: string;
 }
 
 /** The reason code of a layout the operator picked in the dashboard instead of the automatic one (REV-84) */

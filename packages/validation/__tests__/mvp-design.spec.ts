@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { MVP_DESIGN_ELEMENTS } from '@revamp/shared-types';
-import { MvpDesignSchema, MvpEditOutputSchema, BentoTemplateDataSchema } from '../src/index.js';
+import { MVP_CUSTOM_CSS_MAX, MvpDesignSchema, MvpEditOutputSchema, BentoTemplateDataSchema } from '../src/index.js';
 
 const full = {
   sectionOrder: ['reviews', 'block-1', 'services', 'about', 'gallery'],
@@ -53,6 +53,12 @@ describe('MvpDesignSchema (REV-92)', () => {
     ['five feature items', { blocks: [{ ...full.blocks[1], items: Array(5).fill({ title: 'x' }) }] }],
   ])('rejects %s', (_label, design) => {
     expect(MvpDesignSchema.safeParse(design).success).toBe(false);
+  });
+
+  it('carries custom CSS up to its size limit (REV-93)', () => {
+    expect(MvpDesignSchema.parse({ customCss: '.hero-badge { color: red; }' }).customCss).toBe('.hero-badge { color: red; }');
+    expect(MvpDesignSchema.safeParse({ customCss: 'a'.repeat(MVP_CUSTOM_CSS_MAX) }).success).toBe(true);
+    expect(MvpDesignSchema.safeParse({ customCss: 'a'.repeat(MVP_CUSTOM_CSS_MAX + 1) }).success).toBe(false);
   });
 
   it('is part of the edit output and of the template data', () => {

@@ -183,6 +183,27 @@ describe('MVP design spec (REV-92)', () => {
       }
     });
 
+    it('adds the custom CSS in its own style after the design styles (REV-93)', () => {
+      const html = generateBentoHtml({
+        ...data,
+        design: { theme: { corners: 'sharp' }, customCss: '/* x */ .hero-headline { letter-spacing: .1em; }' },
+      });
+      const designAt = html.indexOf('<style id="revamp-design-css">');
+      const customAt = html.indexOf('<style id="revamp-custom-css">');
+      expect(designAt).toBeGreaterThan(0);
+      expect(customAt).toBeGreaterThan(designAt);
+      expect(html).toContain('.hero-headline { letter-spacing: .1em; }');
+      expect(html).not.toContain('/* x */');
+    });
+
+    it('treats custom CSS alone as a design, and leaves out CSS that fails the check', () => {
+      expect(hasDesign({ customCss: '.hero-badge { color: red; }' })).toBe(true);
+      expect(generateBentoHtml({ ...data, design: { customCss: '.hero-badge { color: red; }' } })).toContain('revamp-custom-css');
+      const unsafe = generateBentoHtml({ ...data, design: { customCss: '.site-footer { display: none; }' } });
+      expect(unsafe).not.toContain('revamp-custom-css');
+      expect(unsafe).not.toContain('.site-footer { display: none; }');
+    });
+
     it('orders sections and blocks, drops hidden ones and keeps the hero and booking form', async () => {
       const page = await openPage('bento');
       const doc = page.document;
