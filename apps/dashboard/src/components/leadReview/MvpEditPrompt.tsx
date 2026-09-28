@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Box, Button, CircularProgress, TextField, Tooltip, Typography } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
+import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useTranslation } from 'react-i18next';
 import { MVP_EDIT_INSTRUCTION_MAX } from '@revamp/validation';
 import type { MvpEditState } from './MvpDesignTools.js';
@@ -84,7 +85,21 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, disabled, di
       <Typography variant="caption" color="text.secondary">
         {t('mvpEdit.grounding')}
       </Typography>
-      <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+        {/* The layout, sections and styles the agent set (REV-92) can be dropped in one go */}
+        {edit.hasCustomDesign && (
+          <Button
+            size="small"
+            variant="text"
+            color="inherit"
+            disabled={disabled || edit.isPending}
+            onClick={edit.resetDesign}
+            startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
+            sx={{ mr: 'auto' }}
+          >
+            {t('mvpEdit.resetDesign')}
+          </Button>
+        )}
         <Button
           type="submit"
           size="small"
@@ -102,7 +117,13 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, disabled, di
           data-testid="mvp-edit-outcome"
           sx={{ py: 0 }}
         >
-          {edit.outcome.applied ? t('mvpEdit.applied', { summary: edit.outcome.summary }) : t('mvpEdit.unchanged', { summary: edit.outcome.summary })}
+          {edit.outcome.reset
+            ? edit.outcome.applied
+              ? t('mvpEdit.designReset')
+              : t('mvpEdit.noDesign')
+            : edit.outcome.applied
+              ? t('mvpEdit.applied', { summary: edit.outcome.summary })
+              : t('mvpEdit.unchanged', { summary: edit.outcome.summary })}
         </Alert>
       )}
       {edit.error && (

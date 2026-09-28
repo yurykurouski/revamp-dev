@@ -208,6 +208,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       mockAudit,
       mockAudit.generatedContent,
       'compact',
+      undefined,
+      undefined,
     );
     expect(MvpProject.findOneAndUpdate).toHaveBeenCalledWith(
       { leadId: mockLeadId },
@@ -238,7 +240,9 @@ describe('DeployWorker (@revamp/workers)', () => {
     vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
     vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
     vi.mocked(MvpProject.findOne).mockReturnValue({
-      select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue({ previewSlug: 'smile-dental-456789' }) }),
+      select: vi.fn().mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ previewSlug: 'smile-dental-456789', design: { hidden: ['reviews'] } }),
+      }),
     } as any);
     vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<html>v2</html>');
     vi.mocked(storageService.uploadHtml).mockResolvedValue({
@@ -259,6 +263,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       data: { leadId, auditId: 'audit-1', forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' },
     });
 
+    // The operator's custom design survives the regeneration (REV-92)
+    expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![5]).toEqual({ hidden: ['reviews'] });
     // Same slug even though the business was renamed, so the shared preview URL keeps working
     expect(result.previewSlug).toBe('smile-dental-456789');
     expect(storageService.uploadHtml).toHaveBeenCalledWith('smile-dental-456789', '<html>v2</html>', expect.any(String));
@@ -528,7 +534,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect(result).toMatchObject({ success: true, relayout: true, layout: 'editorial', mvpProjectId: projectId });
       // Deterministic render of the copy saved on the MVP; the LLM is never involved
       expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledTimes(1);
-      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'editorial', { primary: undefined, secondary: undefined, accent: undefined });
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'editorial', { primary: undefined, secondary: undefined, accent: undefined }, undefined);
       expect(findGenerationAudit).toHaveBeenCalledWith(leadId, auditId);
       expect(storageService.uploadHtml).toHaveBeenCalledWith('smile-dental-456789', '<html>editorial</html>', expect.any(String));
       // The banner shows the new look
@@ -547,7 +553,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(legacy) } as any);
 
       await capturedProcessor!(job);
-      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'bento', { primary: undefined, secondary: undefined, accent: undefined });
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'bento', { primary: undefined, secondary: undefined, accent: undefined }, undefined);
     });
 
     it('renders the palette the operator saved on the MVP (REV-90)', async () => {
@@ -562,11 +568,43 @@ describe('DeployWorker (@revamp/workers)', () => {
       await capturedProcessor!(job);
 
       expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledTimes(1);
-      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(lead, audit, storedCopy, 'split', {
-        primary: '#059669',
-        secondary: '#b8c4fe',
-        accent: '#059669',
-      });
+      expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(
+        lead,
+        audit,
+        storedCopy,
+        'split',
+        { primary: '#059669', secondary: '#b8c4fe', accent: '#059669' },
+        undefined,
+      );
+    });
+
+    it('renders the custom design saved on the MVP (REV-92)', async () => {
+      setUp();
+      const design = { hidden: ['gallery'], theme: { corners: 'sharp' } };
+      const designed = { ...project('bento'), design };
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(designed) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(designed) } as any);
+
+      await capturedProcessor!(job);
+
+      expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![5]).toEqual(design);
+    });
+
+    it('publishes again when the custom design changed while it was publishing (REV-92)', async () => {
+      setUp();
+      const withDesign = (corners: string) => ({ ...project('bento'), design: { theme: { corners } } });
+      vi.mocked(bentoTemplateService.renderFromAudit).mockImplementation(
+        (_lead, _audit, _content, _layout, _palette, design) => `<html>${design?.theme?.corners}</html>`,
+      );
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(withDesign('sharp')) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(withDesign('soft')) } as any);
+
+      await capturedProcessor!(job);
+
+      expect(vi.mocked(storageService.uploadHtml).mock.calls.map((call) => call[1])).toEqual([
+        '<html>sharp</html>',
+        '<html>soft</html>',
+      ]);
     });
 
     it('publishes again when the palette changed while it was publishing (REV-90)', async () => {

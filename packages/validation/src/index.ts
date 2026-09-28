@@ -2,7 +2,20 @@ import { z } from 'zod';
 import {
   DiscoveryCandidateStatus,
   LLM_PROVIDER_IDS,
+  MVP_DESIGN_BLOCK_IDS,
+  MVP_DESIGN_BLOCK_STYLES,
+  MVP_DESIGN_BLOCK_TYPES,
+  MVP_DESIGN_CORNERS,
+  MVP_DESIGN_DENSITIES,
+  MVP_DESIGN_ELEMENTS,
+  MVP_DESIGN_FONTS,
+  MVP_DESIGN_HERO_PARTS,
+  MVP_DESIGN_HERO_STYLES,
+  MVP_DESIGN_HIDEABLE,
+  MVP_DESIGN_SECTIONS,
+  MVP_DESIGN_TOKENS,
   MVP_LAYOUT_VARIANTS,
+  MvpDesignElement,
   SITE_COMPLEXITY_CLASSES,
   findLlmProvider,
 } from '@revamp/shared-types';
@@ -548,6 +561,102 @@ export const EditMvpSchema = z.object({
 
 export type EditMvpDto = z.infer<typeof EditMvpSchema>;
 
+/** Whether a list names each value at most once */
+const uniqueItems = <T extends z.ZodTypeAny>(item: T, max: number) =>
+  z
+    .array(item)
+    .max(max)
+    .refine((values) => new Set(values).size === values.length, { message: 'Each value may appear only once' });
+
+const tokenEnum = <K extends keyof typeof MVP_DESIGN_TOKENS>(key: K) =>
+  z.enum(MVP_DESIGN_TOKENS[key] as unknown as [string, ...string[]]) as z.ZodEnum<
+    [(typeof MVP_DESIGN_TOKENS)[K][number], ...(typeof MVP_DESIGN_TOKENS)[K][number][]]
+  >;
+
+export const MvpDesignElementStyleSchema = z.object({
+  size: tokenEnum('size').optional(),
+  weight: tokenEnum('weight').optional(),
+  align: tokenEnum('align').optional(),
+  transform: tokenEnum('transform').optional(),
+  tracking: tokenEnum('tracking').optional(),
+  color: tokenEnum('color').optional(),
+  background: tokenEnum('background').optional(),
+  radius: tokenEnum('radius').optional(),
+  shadow: tokenEnum('shadow').optional(),
+  border: tokenEnum('border').optional(),
+});
+
+export const MvpDesignBlockSchema = z
+  .object({
+    id: z.enum(MVP_DESIGN_BLOCK_IDS),
+    type: z.enum(MVP_DESIGN_BLOCK_TYPES),
+    style: z.enum(MVP_DESIGN_BLOCK_STYLES).optional(),
+    title: z.string().trim().min(1).max(80),
+    body: z.string().trim().max(280).optional(),
+    items: z
+      .array(
+        z.object({
+          title: z.string().trim().min(1).max(50),
+          text: z.string().trim().max(140).optional(),
+          icon: z.string().max(40).optional(),
+        }),
+      )
+      .max(4)
+      .optional(),
+    buttonText: z.string().trim().min(1).max(35).optional(),
+  })
+  .superRefine((block, ctx) => {
+    if (block.type === 'features' && !block.items?.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['items'], message: 'A features block needs 1-4 items' });
+    }
+    if (block.type === 'cta' && !block.buttonText) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['buttonText'], message: 'A CTA block needs its button text' });
+    }
+  });
+
+/**
+ * An MVP's custom design (REV-92): section order and hiding, the hero's arrangement, element styles from
+ * fixed tokens, the overall look and up to three custom blocks. The template applies it deterministically;
+ * the hero, the booking form and the verified contacts cannot be hidden, since none of them has a name here.
+ */
+export const MvpDesignSchema = z
+  .object({
+    sectionOrder: uniqueItems(z.enum([...MVP_DESIGN_SECTIONS, ...MVP_DESIGN_BLOCK_IDS]), 7).optional(),
+    hidden: uniqueItems(z.enum(MVP_DESIGN_HIDEABLE), MVP_DESIGN_HIDEABLE.length).optional(),
+    hero: z
+      .object({
+        align: z.enum(['left', 'center']).optional(),
+        order: uniqueItems(z.enum(MVP_DESIGN_HERO_PARTS), MVP_DESIGN_HERO_PARTS.length).optional(),
+        imageSide: z.enum(['left', 'right']).optional(),
+      })
+      .optional(),
+    theme: z
+      .object({
+        font: z.enum(MVP_DESIGN_FONTS).optional(),
+        density: z.enum(MVP_DESIGN_DENSITIES).optional(),
+        corners: z.enum(MVP_DESIGN_CORNERS).optional(),
+        heroStyle: z.enum(MVP_DESIGN_HERO_STYLES).optional(),
+      })
+      .optional(),
+    elements: z
+      .object(
+        Object.fromEntries(MVP_DESIGN_ELEMENTS.map((element) => [element, MvpDesignElementStyleSchema.optional()])) as Record<
+          MvpDesignElement,
+          z.ZodOptional<typeof MvpDesignElementStyleSchema>
+        >,
+      )
+      .optional(),
+    blocks: z.array(MvpDesignBlockSchema).max(3).optional(),
+  })
+  .superRefine((design, ctx) => {
+    const ids = (design.blocks ?? []).map((block) => block.id);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['blocks'], message: 'Each block id may be used once' });
+    }
+  });
+
+export type MvpDesign = z.infer<typeof MvpDesignSchema>;
+
 /**
  * 5. MVP Edit Agent Output Schema (REV-85): how the model applies an operator's free-text change. Every
  * field but the summary is optional; null or absent leaves that part of the MVP as it is. The copy is the
@@ -562,12 +671,15 @@ export const MvpEditOutputSchema = z.object({
     .nullable()
     .optional(),
   layout: MvpLayoutVariantSchema.nullable().optional(),
+  /** The whole new custom design (REV-92); an empty object drops it */
+  design: MvpDesignSchema.nullable().optional(),
 });
 
 export type MvpEditOutput = z.infer<typeof MvpEditOutputSchema>;
 
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
+  design: MvpDesignSchema.optional(),
   layout: MvpLayoutVariantSchema.optional(),
   language: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i).optional(),
   niche: NicheEnumSchema.optional(),

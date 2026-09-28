@@ -15,6 +15,7 @@ import { MvpProject } from '../models/MvpProject.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpColorCandidate, MvpEditService, mvpEditService } from '../services/mvp-edit.service.js';
 import { republishSavedMvp } from './deploy.worker.js';
+import { hasDesign } from '../templates/design.js';
 
 /** #RGB or #RRGGBB as #RRGGBB; anything else (rgb(), names) is not offered to the model */
 function toSixDigitHex(color: string | undefined): string | undefined {
@@ -68,6 +69,17 @@ export async function processMvpEditJob(
   if (!lead) throw new Error(`Lead ${leadId} not found.`);
   if (!canChangeMvpLayout(lead.status)) throw leadLocked(lead.status);
 
+  // Dropping the custom design asks no model: the template's own look is re-published (REV-92)
+  if (data.action === 'reset-design') {
+    if (!hasDesign(project.design)) {
+      return { applied: false, summary: 'The MVP has no custom design.', changes: [] };
+    }
+    await MvpProject.findByIdAndUpdate(project._id, { $set: { editedAt: new Date() }, $unset: { design: '' } }).exec();
+    await republishSavedMvp(leadId);
+    console.log(`[MvpEditWorker] Dropped the custom design of MVP ${data.mvpProjectId}`);
+    return { applied: true, summary: 'The custom design was removed.', changes: ['design'] };
+  }
+
   const audit = await findGenerationAudit(leadId, project.auditId?.toString());
   if (!audit) throw new Error(`No completed audit found for lead ${leadId}.`);
 
@@ -97,6 +109,7 @@ export async function processMvpEditJob(
       content: project.generatedContent as MvpContentOutput,
       primaryColor: project.colorPalette?.primary,
       layout,
+      design: project.design ?? undefined,
     },
     colorCandidates: colorCandidates(project.colorPalette?.primary, audit.extractedBrandTokens),
   });
@@ -126,7 +139,10 @@ export async function processMvpEditJob(
       reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
     });
   }
-  await MvpProject.findByIdAndUpdate(project._id, { $set: update }).exec();
+  // An empty design drops the custom design (REV-92)
+  const dropDesign = plan.design !== undefined && !hasDesign(plan.design);
+  if (plan.design && !dropDesign) update['design'] = JSON.parse(JSON.stringify(plan.design));
+  await MvpProject.findByIdAndUpdate(project._id, { $set: update, ...(dropDesign ? { $unset: { design: '' } } : {}) }).exec();
 
   await republishSavedMvp(leadId);
   console.log(`[MvpEditWorker] Applied ${plan.changes.join(', ')} to MVP ${data.mvpProjectId}: ${plan.summary}`);

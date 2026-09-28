@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import type { MvpContentOutput } from '@revamp/validation';
+import { MVP_DESIGN_ELEMENTS, MVP_DESIGN_FONTS } from '@revamp/shared-types';
 import { MVP_EDIT_SYSTEM_PROMPT, MvpEditInput, MvpEditService } from '../mvp-edit.service.js';
 
 const currentContent: MvpContentOutput = {
@@ -73,7 +74,7 @@ describe('MvpEditService (REV-85)', () => {
     expect(prompt.instruction).toBe('Make the headline punchier and use a warmer color');
     expect(prompt.businessName).toBe('Warsaw Dental Center');
     expect(prompt.originalSite.h1).toBe('Best dental clinic in Warsaw');
-    expect(prompt.current).toEqual({ content: currentContent, primaryColor: '#4F46E5', layout: 'bento' });
+    expect(prompt.current).toEqual({ content: currentContent, primaryColor: '#4F46E5', layout: 'bento', design: {} });
     expect(prompt.allowedColors).toEqual(input().colorCandidates);
     expect(prompt.allowedLayouts.map((layout: { id: string }) => layout.id)).toEqual(['bento', 'split', 'editorial', 'compact']);
     // Contacts are never handed to the model, only whether they exist
@@ -178,6 +179,76 @@ describe('MvpEditService (REV-85)', () => {
     });
     await expect(service.interpret(input())).rejects.toThrow(/ANTHROPIC_API_KEY/);
     expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  describe('design spec (REV-92)', () => {
+    const design = {
+      sectionOrder: ['reviews', 'block-1'],
+      hidden: ['gallery'],
+      theme: { font: 'serif-display', heroStyle: 'dark' },
+      elements: { 'hero.headline': { size: 'xl', align: 'left' } },
+      blocks: [{ id: 'block-1', type: 'highlight', title: 'Serving Warsaw since 2009', body: 'Implants and veneers.' }],
+    };
+
+    it('describes every element, font and token to the model, and sends the current design', async () => {
+      for (const element of MVP_DESIGN_ELEMENTS) expect(MVP_EDIT_SYSTEM_PROMPT).toContain(element);
+      for (const font of MVP_DESIGN_FONTS) expect(MVP_EDIT_SYSTEM_PROMPT).toContain(font);
+      expect(MVP_EDIT_SYSTEM_PROMPT).toContain('size (sm | md | lg | xl | 2xl)');
+      // Only icons the page can draw are offered for a feature
+      expect(MVP_EDIT_SYSTEM_PROMPT).toMatch(/icon: one of wrench, shield-check, sparkles/);
+      expect(MVP_EDIT_SYSTEM_PROMPT).not.toMatch(/icon: one of [^}]*chevron-down/);
+
+      const { runner, service } = serviceAnswering({ summary: 'Nothing', design: null });
+      await service.interpret(input());
+      expect(JSON.parse(runner.mock.calls[0]![0].userPrompt).current.design).toEqual({});
+      await service.interpret(input({ current: { content: currentContent, layout: 'bento', design: design as never } }));
+      expect(JSON.parse(runner.mock.calls[1]![0].userPrompt).current.design).toEqual(design);
+    });
+
+    it('returns a new design as a change', async () => {
+      const { service } = serviceAnswering({ summary: 'Reviews first, serif headings, dark hero', design });
+      const plan = await service.interpret(input());
+      expect(plan.changes).toEqual(['design']);
+      expect(plan.design).toEqual(design);
+    });
+
+    it('reports no change for the design the MVP already has', async () => {
+      const { service } = serviceAnswering({ summary: 'Same', design });
+      const plan = await service.interpret(input({ current: { content: currentContent, layout: 'bento', design: design as never } }));
+      expect(plan.changes).toEqual([]);
+    });
+
+    it('drops the custom design with an empty one', async () => {
+      const { service } = serviceAnswering({ summary: 'Back to the original look', design: {} });
+      const plan = await service.interpret(input({ current: { content: currentContent, layout: 'bento', design: design as never } }));
+      expect(plan).toMatchObject({ changes: ['design'], design: {} });
+    });
+
+    it('rejects a block that adds a fact the site never states', async () => {
+      const { service } = serviceAnswering({
+        summary: 'Added a highlight',
+        design: { blocks: [{ id: 'block-1', type: 'highlight', title: '30% off this month' }] },
+      });
+      await expect(service.interpret(input())).rejects.toThrow(/not on the original site \(30\)/);
+    });
+
+    it('rejects a design outside the vocabulary, applying nothing', async () => {
+      const { service } = serviceAnswering({
+        summary: 'Hid the booking form',
+        content: withHeadline('Warsaw smiles'),
+        design: { hidden: ['booking'] },
+      });
+      await expect(service.interpret(input())).rejects.toThrow(/The model's change is not valid \(design/);
+    });
+
+    it('clips an over-long block title like the rest of the copy', async () => {
+      const { service } = serviceAnswering({
+        summary: 'Added a highlight',
+        design: { blocks: [{ id: 'block-1', type: 'highlight', title: `Warsaw ${'implants '.repeat(20)}` }] },
+      });
+      const plan = await service.interpret(input());
+      expect(plan.design!.blocks![0]!.title.length).toBeLessThanOrEqual(80);
+    });
   });
 
   it('passes a provider error on', async () => {

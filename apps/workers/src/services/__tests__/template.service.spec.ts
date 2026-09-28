@@ -325,6 +325,31 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     });
   });
 
+  describe('saved custom design (REV-92)', () => {
+    const lead: Partial<ILead> = { businessName: 'Listonosz Auto Service' };
+
+    it('applies the design saved on the MVP', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, {}, undefined, 'bento', undefined, {
+        theme: { corners: 'sharp' },
+      });
+      expect(html).toContain('class="layout-bento revamp-designed"');
+      expect(html).toContain('<style id="revamp-design-css">');
+    });
+
+    it('renders without one, including a null read back from Mongo', () => {
+      for (const design of [undefined, null]) {
+        const html = bentoTemplateService.renderFromAudit(lead, {}, undefined, 'bento', undefined, design);
+        expect(html).not.toContain('revamp-design-css');
+      }
+    });
+
+    it('rejects a design the schema does not allow instead of rendering it', () => {
+      expect(() =>
+        bentoTemplateService.renderFromAudit(lead, {}, undefined, 'bento', undefined, { hidden: ['booking'] } as never),
+      ).toThrow();
+    });
+  });
+
   describe('MVP language (REV-25)', () => {
     it('declares the site language and localises the template chrome', () => {
       const html = bentoTemplateService.render({ ...sampleTemplateData, language: 'pl' });

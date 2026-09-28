@@ -85,8 +85,8 @@ describe('Prototype step free-text change (REV-85)', () => {
     vi.restoreAllMocks();
   });
 
-  const render = (leadOverrides: Partial<ILeadItem> = {}) => {
-    queryClient.setQueryData(['mvp', 'lead-1'], mvp);
+  const render = (leadOverrides: Partial<ILeadItem> = {}, current: IMvpProjectDetail = mvp) => {
+    queryClient.setQueryData(['mvp', 'lead-1'], current);
     vi.spyOn(apiClient, 'getMvp').mockImplementation(async () => queryClient.getQueryData(['mvp', 'lead-1']) ?? null);
     act(() => {
       root.render(
@@ -216,6 +216,56 @@ describe('Prototype step free-text change (REV-85)', () => {
 
     pressKey('Enter');
     await vi.waitFor(() => expect(edit).toHaveBeenCalledWith('mvp-1', 'Warmer color'));
+  });
+
+  describe('custom design reset (REV-92)', () => {
+    const designed: IMvpProjectDetail = { ...mvp, design: { hidden: ['gallery'], theme: { corners: 'sharp' } } };
+    const resetButton = () =>
+      Array.from(prompt().querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent === en.mvpEdit.resetDesign,
+      );
+
+    it('offers a reset only when the MVP has a custom design', () => {
+      render();
+      expect(resetButton()).toBeUndefined();
+      act(() => root.unmount());
+      root = createRoot(container);
+      render({}, designed);
+      expect(resetButton()).toBeDefined();
+      expect(resetButton()!.disabled).toBe(false);
+    });
+
+    it('drops the design, reloads the re-published preview and says so', async () => {
+      render({}, designed);
+      const saved = { ...mvp, editedAt: '2026-09-28T19:00:00.000Z' };
+      const reset = vi
+        .spyOn(apiClient, 'resetMvpDesign')
+        .mockResolvedValue({ applied: true, summary: 'The custom design was removed.', changes: ['design'], mvp: saved });
+
+      act(() => resetButton()!.click());
+
+      await vi.waitFor(() => expect(prompt().querySelector('[data-testid="mvp-edit-outcome"]')).not.toBeNull());
+      expect(reset).toHaveBeenCalledWith('mvp-1');
+      expect(prompt().querySelector('[data-testid="mvp-edit-outcome"]')!.textContent).toContain(en.mvpEdit.designReset);
+      expect(queryClient.getQueryData(['mvp', 'lead-1'])).toEqual(saved);
+      expect(iframeSrc()).toContain(`v=${Date.parse(saved.editedAt)}`);
+      // The saved MVP has no design any more, so the reset is gone
+      expect(resetButton()).toBeUndefined();
+      expect(apiClient.generateMvp).not.toHaveBeenCalled();
+    });
+
+    it('shows a failed reset', async () => {
+      render({}, designed);
+      vi.spyOn(apiClient, 'resetMvpDesign').mockRejectedValue(new ApiError('The change was not applied: boom', 502, 'MVP_EDIT_FAILED'));
+      act(() => resetButton()!.click());
+      await vi.waitFor(() => expect(prompt().querySelector('[data-testid="mvp-edit-error"]')).not.toBeNull());
+      expect(queryClient.getQueryData(['mvp', 'lead-1'])).toEqual(designed);
+    });
+
+    it('is locked with the rest of the prompt once the lead leaves review', () => {
+      render({ status: 'SCHEDULED' }, designed);
+      expect(resetButton()!.disabled).toBe(true);
+    });
   });
 
   it.each(['GENERATING', 'SCHEDULED', 'SENT'] as const)('is locked while the lead is %s', (status) => {

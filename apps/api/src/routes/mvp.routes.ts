@@ -274,56 +274,82 @@ router.patch(
   },
 );
 
+/**
+ * Runs a change to an MVP on the workers and answers with its result (REV-85, REV-92). The MVP must exist
+ * and its lead must still be in review: the published page changes, so the rule of a layout change applies.
+ */
+async function runMvpChange(
+  req: Request,
+  res: Response,
+  job: { action: 'edit' | 'reset-design'; instruction: string },
+): Promise<void> {
+  const id = req.params['id'] || '';
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
+  }
+
+  const project = await MvpProject.findById(id).exec();
+  if (!project) {
+    throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
+  }
+  const lead = await Lead.findById(project.leadId).exec();
+  if (!lead) {
+    throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
+  }
+  if (!canChangeMvpLayout(lead.status)) {
+    throw new AppError(409, 'MVP_EDIT_NOT_ALLOWED', `The MVP cannot be changed while the lead is ${lead.status}`, {
+      status: lead.status,
+    });
+  }
+
+  const outcome = await runMvpEditJob({
+    mvpProjectId: id,
+    instruction: job.instruction,
+    ...(job.action === 'reset-design' ? { action: 'reset-design' as const } : {}),
+  });
+  if (outcome.status === 'timeout') {
+    throw new AppError(
+      504,
+      'MVP_EDIT_TIMEOUT',
+      'The change took too long and was not applied. Check that the workers are running, then try again.',
+    );
+  }
+  if (outcome.status === 'failed') {
+    throw new AppError(502, 'MVP_EDIT_FAILED', `The change was not applied: ${outcome.reason}`);
+  }
+
+  const saved = await MvpProject.findById(id).exec();
+  res.status(200).json({
+    success: true,
+    message: outcome.result.applied ? 'Change applied; the published MVP was re-rendered' : 'Nothing was changed',
+    data: { ...outcome.result, mvp: saved ?? project },
+  });
+}
+
 // POST /mvp/:id/edit: the operator describes a change in their own words; the workers' LLM applies it to
-// the copy, palette and/or layout under Strict Grounding and the page is re-published (REV-85). The request
-// waits for the result, so the operator is told what changed or why nothing did.
+// the copy, palette, layout and/or custom design (REV-92) under Strict Grounding and the page is
+// re-published (REV-85). The request waits for the result, so the operator is told what changed or why
+// nothing did.
 router.post(
   '/:id/edit',
   validateBody(EditMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const id = req.params['id'] || '';
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
-      }
-
-      const project = await MvpProject.findById(id).exec();
-      if (!project) {
-        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
-      }
-      const lead = await Lead.findById(project.leadId).exec();
-      if (!lead) {
-        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
-      }
-      // The published page changes, so the same rule as a layout change applies (HITL)
-      if (!canChangeMvpLayout(lead.status)) {
-        throw new AppError(409, 'MVP_EDIT_NOT_ALLOWED', `The MVP cannot be changed while the lead is ${lead.status}`, {
-          status: lead.status,
-        });
-      }
-
-      const outcome = await runMvpEditJob({ mvpProjectId: id, instruction: req.body.instruction });
-      if (outcome.status === 'timeout') {
-        throw new AppError(
-          504,
-          'MVP_EDIT_TIMEOUT',
-          'The change took too long and was not applied. Check that the workers are running, then try again.',
-        );
-      }
-      if (outcome.status === 'failed') {
-        throw new AppError(502, 'MVP_EDIT_FAILED', `The change was not applied: ${outcome.reason}`);
-      }
-
-      const saved = await MvpProject.findById(id).exec();
-      res.status(200).json({
-        success: true,
-        message: outcome.result.applied ? 'Change applied; the published MVP was re-rendered' : 'Nothing was changed',
-        data: { ...outcome.result, mvp: saved ?? project },
-      });
+      await runMvpChange(req, res, { action: 'edit', instruction: req.body.instruction });
     } catch (error) {
       next(error);
     }
   },
 );
+
+// DELETE /mvp/:id/design: drops the MVP's custom design and re-publishes it in the template's own look
+// (REV-92); no LLM call.
+router.delete('/:id/design', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    await runMvpChange(req, res, { action: 'reset-design', instruction: '' });
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

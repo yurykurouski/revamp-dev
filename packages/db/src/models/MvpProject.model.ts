@@ -75,6 +75,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     layout: { type: Schema.Types.Mixed },
     // REV-85: when an operator's free-text change was last applied and re-published
     editedAt: { type: Date },
+    // REV-92: the operator's custom design spec, applied by the template on every render
+    design: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,

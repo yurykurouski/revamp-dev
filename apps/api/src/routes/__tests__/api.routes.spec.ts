@@ -1663,6 +1663,65 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
   });
 
+  describe('DELETE /api/v1/mvp/:id/design (REV-92)', () => {
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const project = { _id: projectId, leadId, design: { hidden: ['gallery'] } };
+    const mockProject = (...docs: unknown[]) => {
+      const spy = vi.spyOn(MvpProject, 'findById');
+      for (const doc of docs) spy.mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(doc) } as any);
+      return spy;
+    };
+    const mockLead = (status: string | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
+      } as any);
+
+    it('drops the design through the workers, without a model, and returns the saved MVP', async () => {
+      const saved = { _id: projectId, leadId, editedAt: '2026-09-28T18:00:00.000Z' };
+      mockProject(project, saved);
+      mockLead('NEEDS_APPROVAL');
+      const result = { applied: true, summary: 'The custom design was removed.', changes: ['design'] };
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
+
+      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({ ...result, mvp: saved });
+      expect(runMvpEditJob).toHaveBeenCalledWith({ mvpProjectId: projectId, instruction: '', action: 'reset-design' });
+    });
+
+    it.each(['GENERATING', 'SCHEDULED', 'SENT'])('returns 409 MVP_EDIT_NOT_ALLOWED while the lead is %s', async (status) => {
+      mockProject(project);
+      mockLead(status);
+      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('MVP_EDIT_NOT_ALLOWED');
+      expect(runMvpEditJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 400 INVALID_ID and 404 MVP_NOT_FOUND', async () => {
+      expect((await request(app).delete('/api/v1/mvp/demo/design')).body.error.code).toBe('INVALID_ID');
+      mockProject(null);
+      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('MVP_NOT_FOUND');
+    });
+
+    it('returns 502 MVP_EDIT_FAILED and 504 MVP_EDIT_TIMEOUT from the workers', async () => {
+      mockProject(project);
+      mockLead('NEEDS_APPROVAL');
+      vi.mocked(runMvpEditJob).mockResolvedValueOnce({ status: 'failed', reason: 'Storage unavailable' });
+      const failed = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
+      expect(failed.status).toBe(502);
+      expect(failed.body.error.message).toBe('The change was not applied: Storage unavailable');
+
+      mockProject(project);
+      vi.mocked(runMvpEditJob).mockResolvedValueOnce({ status: 'timeout' });
+      expect((await request(app).delete(`/api/v1/mvp/${projectId}/design`)).status).toBe(504);
+    });
+  });
+
   describe('Unknown route handling', () => {
     it('should return 404 for non-existent endpoint', async () => {
       const res = await request(app).get('/api/v1/non-existent-route');

@@ -532,7 +532,7 @@ export const lt: Translation = {
   },
   mvpEdit: {
     label: 'Aprašykite pakeitimą',
-    placeholder: 'Pvz.: padaryk antraštę ryškesnę, naudok šiltesnę spalvą',
+    placeholder: 'Pvz.: atsiliepimai virš paslaugų, antraštės su užraitais, tamsus pirmas ekranas, apvalūs mygtukai',
     hint: '{{count}}/{{max}} · Enter — pritaikyti, Shift+Enter — nauja eilutė',
     grounding: 'DI perrašo ir pertvarko tai, kas jau yra svetainėje; jis niekada neprideda faktų ar kontaktų.',
     apply: 'Pritaikyti',
@@ -542,6 +542,9 @@ export const lt: Translation = {
     failed: 'Nepavyko pritaikyti pakeitimo: {{message}}',
     locked: 'MVP galima keisti tik tol, kol jis laukia peržiūros',
     busy: 'Palaukite, kol DI pritaikys pakeitimą',
+    resetDesign: 'Atkurti numatytąjį dizainą',
+    designReset: 'Savas dizainas pašalintas: puslapis vėl atrodo kaip pasirinktame makete.',
+    noDesign: 'MVP neturi savo dizaino, nėra ko atkurti.',
   },
   colorPicker: {
     brandPalette: 'Prekės ženklo paletė:',

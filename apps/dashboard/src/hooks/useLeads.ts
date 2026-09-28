@@ -180,6 +180,21 @@ export const useEditMvpMutation = () => {
   });
 };
 
+/** Drops the MVP's custom design (REV-92); the saved MVP comes back with the answer */
+export const useResetMvpDesignMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ mvpId }: { mvpId: string; leadId: string }) => apiClient.resetMvpDesign(mvpId),
+    onSuccess: (result, { leadId }) => {
+      if (result.applied) queryClient.setQueryData(['mvp', leadId], result.mvp);
+    },
+  });
+};
+
+/** Whether the MVP has a custom design the operator can reset (REV-92) */
+export const mvpHasCustomDesign = (mvp: Pick<IMvpProjectDetail, 'design'> | null | undefined): boolean =>
+  Boolean(mvp?.design && Object.keys(mvp.design).length > 0);
+
 export interface GenerateMvpVariables {
   auditId: string;
   leadId?: string;
