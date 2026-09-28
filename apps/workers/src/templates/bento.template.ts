@@ -1,6 +1,8 @@
 import { IBentoTemplateData, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
 import { getMvpStrings } from './mvp-locale.js';
+import { escapeHtml } from './html.js';
+import { designCss, hasDesign, isHidden, renderDesignBlock, resolveSectionOrder } from './design.js';
 
 /**
  * Converts Hex color string (#RRGGBB or #RGB) to "R, G, B" triplet.
@@ -28,19 +30,6 @@ function hexToRgb(hex: string): string {
  */
 function scriptJson(value: unknown): string {
   return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-}
-
-/**
- * Escape HTML special characters for strict security and valid markup.
- */
-function escapeHtml(str: string | undefined | null): string {
-  if (!str) return '';
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 /**
@@ -265,6 +254,9 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const tracker = resolveTrackerUrls(data.publicApiUrl);
   // The layout only arranges the same grounded content differently (REV-54)
   const layout: MvpLayoutVariant = data.layout ?? 'bento';
+  // The operator's custom design (REV-92); without one the page renders exactly as before
+  const design = hasDesign(data.design) ? data.design : undefined;
+  const customCss = designCss(design);
 
   // Contacts are rendered only when they were verified on the original site (Strict Grounding)
   const phone = data.contacts?.phone;
@@ -479,7 +471,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
           </a>
         </div>`;
   const heroBadgeHtml = heroBadge ? `<div class="hero-badge">${heroBadge}</div>` : '';
-  const trustBarHtml = trustSignals.length ? `<div class="trust-signals-bar">${trustSignalsHtml}</div>` : '';
+  const trustBarHtml =
+    trustSignals.length && !isHidden(design, 'trust') ? `<div class="trust-signals-bar">${trustSignalsHtml}</div>` : '';
   const heroImageHtml = data.heroImageUrl
     ? `<img class="hero-image" src="${escapeHtml(data.heroImageUrl)}" alt="${businessName}" />`
     : '';
@@ -689,13 +682,19 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
       </div>
     </section>`;
 
-  const sectionHtml: Record<MvpSection, string> = {
-    about: aboutHtml,
-    services: servicesSectionHtml,
-    gallery: galleryHtml,
-    reviews: reviewsSectionHtml,
+  // Sections the design hides are not rendered; its custom blocks sit among the sections (REV-92)
+  const sectionHtml: Record<string, string> = {
+    about: isHidden(design, 'about') ? '' : aboutHtml,
+    services: isHidden(design, 'services') ? '' : servicesSectionHtml,
+    gallery: isHidden(design, 'gallery') ? '' : galleryHtml,
+    reviews: isHidden(design, 'reviews') ? '' : reviewsSectionHtml,
+    ...Object.fromEntries((design?.blocks ?? []).map((block) => [block.id, renderDesignBlock(block)])),
   };
-  const mainHtml = [heroByLayout[layout], ...LAYOUT_SECTION_ORDER[layout].map((name) => sectionHtml[name]), bookingSectionHtml]
+  // Section order per layout with the design's order applied; the page script reorders by it too
+  const sectionOrder = Object.fromEntries(
+    MVP_LAYOUT_VARIANTS.map((variant) => [variant, resolveSectionOrder(LAYOUT_SECTION_ORDER[variant], design)]),
+  ) as Record<MvpLayoutVariant, string[]>;
+  const mainHtml = [heroByLayout[layout], ...sectionOrder[layout].map((name) => sectionHtml[name]), bookingSectionHtml]
     .filter(Boolean)
     .join('\n');
 
@@ -1577,11 +1576,11 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     }
     ${LAYOUT_TRANSITION_CSS}
   </style>
-  <style id="revamp-layout-css">${LAYOUT_CSS[layout]}</style>
+  <style id="revamp-layout-css">${LAYOUT_CSS[layout]}</style>${customCss ? `\n  <style id="revamp-design-css">\n    ${customCss}\n  </style>` : ''}
 
   ${data.customHeadSnippet ? data.customHeadSnippet : ''}
 </head>
-<body class="layout-${layout}">
+<body class="layout-${layout}${design ? ' revamp-designed' : ''}">
 
   <!-- MODULE 1: HEADER -->
   <header class="site-header">
@@ -1666,7 +1665,7 @@ ${layoutTemplatesHtml}
   <!-- LIVE LAYOUT SWITCH from the dashboard preview (REV-84) -->
   <script>
     (function() {
-      const sectionOrder = ${scriptJson(LAYOUT_SECTION_ORDER)};
+      const sectionOrder = ${scriptJson(sectionOrder)};
       const layoutStyle = document.getElementById('revamp-layout-css');
       const main = document.querySelector('main');
       const booking = document.getElementById('booking');

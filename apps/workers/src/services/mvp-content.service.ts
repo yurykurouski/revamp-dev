@@ -135,6 +135,10 @@ export function clipToSchemaLimits(value: unknown, schema: z.ZodTypeAny): unknow
   if (schema instanceof z.ZodOptional || schema instanceof z.ZodNullable) {
     return clipToSchemaLimits(value, schema.unwrap());
   }
+  // Refined schemas (e.g. the MVP design, REV-92) clip by the schema they refine
+  if (schema instanceof z.ZodEffects) {
+    return clipToSchemaLimits(value, schema.innerType());
+  }
   if (schema instanceof z.ZodString) {
     const max = schema.maxLength;
     return typeof value === 'string' && max !== null && value.length > max ? clipText(value, max) : value;

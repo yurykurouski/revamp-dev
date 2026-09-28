@@ -2,7 +2,13 @@ import React, { RefObject, useState } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
-import { mvpRecordId, useEditMvpMutation, useUpdateMvpTokensMutation } from '../../hooks/useLeads.js';
+import {
+  mvpHasCustomDesign,
+  mvpRecordId,
+  useEditMvpMutation,
+  useResetMvpDesignMutation,
+  useUpdateMvpTokensMutation,
+} from '../../hooks/useLeads.js';
 import { useLiveMvpLayout } from '../../hooks/useLiveMvpLayout.js';
 import { ColorPickerToolbar } from '../ColorPickerToolbar.js';
 import { MvpLayoutPicker } from '../MvpLayoutPicker.js';
@@ -24,6 +30,8 @@ interface MvpEditOutcome {
   leadId: string;
   applied: boolean;
   summary: string;
+  /** A reset of the custom design (REV-92) rather than a described change */
+  reset?: boolean;
 }
 
 /**
@@ -32,6 +40,7 @@ interface MvpEditOutcome {
  */
 function useMvpEdit(lead: Pick<ILeadItem, 'id'>, mvp: IMvpProjectDetail | null | undefined) {
   const mutation = useEditMvpMutation();
+  const resetMutation = useResetMvpDesignMutation();
   const [outcome, setOutcome] = useState<MvpEditOutcome | null>(null);
   const [error, setError] = useState<{ leadId: string; message: string } | null>(null);
 
@@ -54,9 +63,29 @@ function useMvpEdit(lead: Pick<ILeadItem, 'id'>, mvp: IMvpProjectDetail | null |
     );
   };
 
+  /** Drops the custom design (REV-92) and re-publishes the page without it */
+  const resetDesign = () => {
+    const mvpId = mvpRecordId(mvp);
+    if (!mvpId) return;
+    const leadId = lead.id;
+    setOutcome(null);
+    setError(null);
+    resetMutation.mutate(
+      { mvpId, leadId },
+      {
+        onSuccess: (result) => setOutcome({ leadId, applied: result.applied, summary: result.summary, reset: true }),
+        onError: (err) => setError({ leadId, message: err instanceof Error ? err.message : String(err) }),
+      },
+    );
+  };
+
   return {
     submit,
-    isPending: mutation.isPending && mutation.variables?.leadId === lead.id,
+    resetDesign,
+    hasCustomDesign: mvpHasCustomDesign(mvp),
+    isPending:
+      (mutation.isPending && mutation.variables?.leadId === lead.id) ||
+      (resetMutation.isPending && resetMutation.variables?.leadId === lead.id),
     outcome: outcome?.leadId === lead.id ? outcome : null,
     clearOutcome: () => setOutcome(null),
     error: error?.leadId === lead.id ? error.message : null,

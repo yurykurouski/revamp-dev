@@ -314,6 +314,12 @@ export const apiClient = {
     return readDataOrThrow<IMvpEditResult>(res);
   },
 
+  /** Drops the MVP's custom design (REV-92) and answers once the page is re-published without it */
+  async resetMvpDesign(mvpId: string): Promise<IMvpEditResult> {
+    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/design`, { method: 'DELETE' });
+    return readDataOrThrow<IMvpEditResult>(res);
+  },
+
   /**
    * Fetches MVP project details by leadId, mvpId, or slug
    */

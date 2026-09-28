@@ -5,6 +5,7 @@ import {
   IMvpGeneratedContent,
   IBentoServiceCard,
   IBentoReviewItem,
+  IMvpDesign,
   MvpLayoutVariant,
 } from '@revamp/shared-types';
 import { BentoTemplateDataSchema } from '@revamp/validation';
@@ -51,7 +52,8 @@ export class BentoTemplateService {
   /**
    * Convenience helper to construct and render a Bento landing page directly
    * from MongoDB Lead and Audit documents, in the given layout (Bento when omitted, REV-54).
-   * A palette the operator saved on the MVP (REV-90) takes the place of the audit's brand colors.
+   * A palette the operator saved on the MVP (REV-90) takes the place of the audit's brand colors, and
+   * the MVP's custom design (REV-92) is applied on top of the layout.
    */
   public renderFromAudit(
     lead: Partial<ILead>,
@@ -59,6 +61,7 @@ export class BentoTemplateService {
     generatedContent?: Partial<IMvpGeneratedContent>,
     layout?: MvpLayoutVariant,
     savedPalette?: MvpPaletteOverride,
+    design?: IMvpDesign | null,
   ): string {
     const site = audit?.extractedContent;
     // The MVP speaks the original site's language (REV-25)
@@ -104,6 +107,8 @@ export class BentoTemplateService {
     const templateData: IBentoTemplateData = {
       businessName,
       layout,
+      // Mixed Mongo fields round-trip undefined as null
+      ...(design ? { design } : {}),
       language,
       niche: lead.niche,
       logoUrl,

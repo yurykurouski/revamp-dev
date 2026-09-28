@@ -410,6 +410,8 @@ export interface IMvpProject {
   layout?: IMvpLayoutSelection;
   /** When an operator's free-text change was last applied and re-published (REV-85) */
   editedAt?: string | Date;
+  /** The operator's custom design, applied by the template on every render (REV-92) */
+  design?: IMvpDesign;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -737,12 +739,14 @@ export interface IDeployJobData {
 }
 
 /** What a free-text change altered on the MVP (REV-85) */
-export type MvpEditChange = 'content' | 'palette' | 'layout';
+export type MvpEditChange = 'content' | 'palette' | 'layout' | 'design';
 
 /** An operator's free-text change to a generated MVP (REV-85) */
 export interface IMvpEditJobData {
   mvpProjectId: string;
-  /** The operator's own words, e.g. "make the headline punchier" */
+  /** `reset-design` drops the custom design (REV-92) without asking the model; `edit` when absent */
+  action?: 'edit' | 'reset-design';
+  /** The operator's own words, e.g. "make the headline punchier"; empty for a reset */
   instruction: string;
   /**
    * Epoch ms after which the change is no longer applied: the API has stopped waiting and told the
@@ -824,6 +828,98 @@ export const MVP_COLOR_PRESETS = [
   { name: 'Slate', hex: '#334155' },
 ] as const;
 
+// An MVP's custom design (REV-92): a spec the edit agent writes and the template applies
+// deterministically. Only these names and tokens exist, so the model never writes markup or CSS.
+
+/** Content sections between the hero and the booking form; the hero, booking and contacts always stay */
+export const MVP_DESIGN_SECTIONS = ['about', 'services', 'gallery', 'reviews'] as const;
+export type MvpDesignSection = (typeof MVP_DESIGN_SECTIONS)[number];
+
+/** Custom blocks the spec may add, each placed in the section order by its id */
+export const MVP_DESIGN_BLOCK_IDS = ['block-1', 'block-2', 'block-3'] as const;
+export type MvpDesignBlockId = (typeof MVP_DESIGN_BLOCK_IDS)[number];
+
+/** What can be hidden: content sections and the hero's trust bar */
+export const MVP_DESIGN_HIDEABLE = [...MVP_DESIGN_SECTIONS, 'trust'] as const;
+export type MvpDesignHideable = (typeof MVP_DESIGN_HIDEABLE)[number];
+
+/** Parts of the hero copy that can be reordered */
+export const MVP_DESIGN_HERO_PARTS = ['badge', 'headline', 'subheadline', 'actions', 'trust', 'image'] as const;
+export type MvpDesignHeroPart = (typeof MVP_DESIGN_HERO_PARTS)[number];
+
+/** Named elements the spec can style */
+export const MVP_DESIGN_ELEMENTS = [
+  'header',
+  'hero.badge',
+  'hero.headline',
+  'hero.subheadline',
+  'cta.primary',
+  'cta.secondary',
+  'section.title',
+  'service.card',
+  'review.card',
+  'about.body',
+  'trust.badge',
+] as const;
+export type MvpDesignElement = (typeof MVP_DESIGN_ELEMENTS)[number];
+
+/** Style tokens an element can take; colors are palette roles, never raw values */
+export const MVP_DESIGN_TOKENS = {
+  size: ['sm', 'md', 'lg', 'xl', '2xl'],
+  weight: ['regular', 'medium', 'semibold', 'bold', 'black'],
+  align: ['left', 'center', 'right'],
+  transform: ['none', 'uppercase', 'capitalize'],
+  tracking: ['tight', 'normal', 'wide'],
+  color: ['text', 'muted', 'primary', 'accent', 'white'],
+  background: ['none', 'surface', 'tint', 'primary', 'accent', 'dark'],
+  radius: ['none', 'sm', 'md', 'lg', 'pill'],
+  shadow: ['none', 'sm', 'md', 'lg', 'brand'],
+  border: ['none', 'subtle', 'primary'],
+} as const;
+export type MvpDesignElementStyle = { -readonly [K in keyof typeof MVP_DESIGN_TOKENS]?: (typeof MVP_DESIGN_TOKENS)[K][number] };
+
+/** Font pairings from system font stacks only: the page loads no external fonts */
+export const MVP_DESIGN_FONTS = ['system', 'humanist', 'geometric', 'rounded', 'serif', 'serif-display', 'mono-display'] as const;
+export const MVP_DESIGN_DENSITIES = ['compact', 'comfortable', 'airy'] as const;
+export const MVP_DESIGN_CORNERS = ['sharp', 'soft', 'rounded', 'extra-round'] as const;
+export const MVP_DESIGN_HERO_STYLES = ['light', 'tinted', 'dark', 'brand'] as const;
+export const MVP_DESIGN_BLOCK_TYPES = ['highlight', 'features', 'cta'] as const;
+export const MVP_DESIGN_BLOCK_STYLES = ['plain', 'tinted', 'brand', 'dark'] as const;
+
+/** A block the spec adds; its text follows Strict Grounding like the rest of the copy */
+export interface IMvpDesignBlock {
+  id: MvpDesignBlockId;
+  type: (typeof MVP_DESIGN_BLOCK_TYPES)[number];
+  style?: (typeof MVP_DESIGN_BLOCK_STYLES)[number];
+  title: string;
+  body?: string;
+  /** features: up to 4 items */
+  items?: Array<{ title: string; text?: string; icon?: string }>;
+  /** cta: the button text; the button always leads to the booking form */
+  buttonText?: string;
+}
+
+export interface IMvpDesign {
+  /** Sections and blocks in page order; any not listed follow in the layout's own order */
+  sectionOrder?: Array<MvpDesignSection | MvpDesignBlockId>;
+  hidden?: MvpDesignHideable[];
+  hero?: {
+    align?: 'left' | 'center';
+    /** Order of the hero copy's parts */
+    order?: MvpDesignHeroPart[];
+    /** Side of the photo in the split layout */
+    imageSide?: 'left' | 'right';
+  };
+  theme?: {
+    font?: (typeof MVP_DESIGN_FONTS)[number];
+    density?: (typeof MVP_DESIGN_DENSITIES)[number];
+    corners?: (typeof MVP_DESIGN_CORNERS)[number];
+    heroStyle?: (typeof MVP_DESIGN_HERO_STYLES)[number];
+  };
+  elements?: Partial<Record<MvpDesignElement, MvpDesignElementStyle>>;
+  blocks?: IMvpDesignBlock[];
+}
+
 /** The reason code of a layout the operator picked in the dashboard instead of the automatic one (REV-84) */
 export const MVP_LAYOUT_MANUAL_REASON = 'rule:manual';
 
@@ -838,6 +934,8 @@ export interface IBentoTemplateData {
   businessName: string;
   /** Page layout; the original Bento layout when absent (REV-54) */
   layout?: MvpLayoutVariant;
+  /** The operator's custom design (REV-92); the template's own look when absent */
+  design?: IMvpDesign;
   /** The original site's BCP 47 language tag ("pl-PL"); drives `<html lang>` and the template UI text (REV-25) */
   language?: string;
   niche?: NicheType;

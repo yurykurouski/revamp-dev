@@ -1,6 +1,24 @@
 import { MvpContentOutput, MvpEditOutputSchema } from '@revamp/validation';
-import { MVP_LAYOUT_VARIANTS, MvpEditChange, MvpLayoutVariant } from '@revamp/shared-types';
+import {
+  IMvpDesign,
+  MVP_DESIGN_BLOCK_IDS,
+  MVP_DESIGN_BLOCK_STYLES,
+  MVP_DESIGN_BLOCK_TYPES,
+  MVP_DESIGN_CORNERS,
+  MVP_DESIGN_DENSITIES,
+  MVP_DESIGN_ELEMENTS,
+  MVP_DESIGN_FONTS,
+  MVP_DESIGN_HERO_PARTS,
+  MVP_DESIGN_HERO_STYLES,
+  MVP_DESIGN_HIDEABLE,
+  MVP_DESIGN_SECTIONS,
+  MVP_DESIGN_TOKENS,
+  MVP_LAYOUT_VARIANTS,
+  MvpEditChange,
+  MvpLayoutVariant,
+} from '@revamp/shared-types';
 import { ClaudeCliRunner } from './claude-cli.js';
+import { getSupportedIconNames } from '../templates/icons.js';
 import { LlmClient, LlmProvider, extractJsonObject } from './llm-client.js';
 import { GenerateMvpContentInput, MvpContentService, clipToSchemaLimits, mvpContentService } from './mvp-content.service.js';
 
@@ -20,6 +38,8 @@ export interface MvpEditInput {
     content: MvpContentOutput;
     primaryColor?: string;
     layout: MvpLayoutVariant;
+    /** The MVP's custom design (REV-92), if it has one */
+    design?: IMvpDesign;
   };
   /** The only primary colors the edit may pick */
   colorCandidates: MvpColorCandidate[];
@@ -31,6 +51,8 @@ export interface MvpEditPlan {
   content?: MvpContentOutput;
   primaryColor?: string;
   layout?: MvpLayoutVariant;
+  /** The whole new custom design; `{}` drops the current one (REV-92) */
+  design?: IMvpDesign;
   changes: MvpEditChange[];
 }
 
@@ -56,24 +78,43 @@ const LAYOUT_DESCRIPTIONS: Record<MvpLayoutVariant, string> = {
   compact: 'a short single-column page',
 };
 
+const list = (values: readonly string[]) => values.join(', ');
+
+/** Icons the page uses for its own controls, not offered for a feature */
+const BLOCK_UI_ICONS = new Set(['arrow-right', 'external-link', 'chevron-down', 'send', 'check', 'alert-circle', 'info']);
+
+/** The design vocabulary (REV-92), written from the same constants the schema and template use */
+const DESIGN_VOCABULARY = `Design spec ("design"): a JSON object; every field is optional and anything left out keeps the template's own look.
+- sectionOrder: page order of content sections and custom blocks, from: ${list([...MVP_DESIGN_SECTIONS, ...MVP_DESIGN_BLOCK_IDS])}. Unlisted ones follow in the layout's order. The hero is always first and the booking form always last.
+- hidden: what to leave out, from: ${list(MVP_DESIGN_HIDEABLE)} ("trust" is the hero's trust bar). The hero, the booking form and the contacts can never be hidden.
+- hero: { align: left | center, order: the hero parts in display order, from ${list(MVP_DESIGN_HERO_PARTS)}, imageSide: left | right (split layout photo) }.
+- theme: { font: ${MVP_DESIGN_FONTS.join(' | ')} (serif-display and mono-display change headings only), density: ${MVP_DESIGN_DENSITIES.join(' | ')}, corners: ${MVP_DESIGN_CORNERS.join(' | ')}, heroStyle: ${MVP_DESIGN_HERO_STYLES.join(' | ')} }.
+- elements: styles for named elements, keyed by ${list(MVP_DESIGN_ELEMENTS)}. Each style may set: ${Object.entries(MVP_DESIGN_TOKENS)
+  .map(([token, values]) => `${token} (${values.join(' | ')})`)
+  .join('; ')}. size applies to text elements; colors are palette roles, never hex values.
+- blocks: up to 3 custom sections { id: ${MVP_DESIGN_BLOCK_IDS.join(' | ')}, type: ${MVP_DESIGN_BLOCK_TYPES.join(' | ')}, style: ${MVP_DESIGN_BLOCK_STYLES.join(' | ')}, title (up to 80 characters), body (up to 280), items (features only: 1-4 of { title up to 50, text up to 140, icon: one of ${list(getSupportedIconNames().filter((icon) => !BLOCK_UI_ICONS.has(icon)))} }), buttonText (cta only, up to 35; the button opens the booking form) }. Place a block with sectionOrder. Block text is copy: the same grounding rules apply.`;
+
 export const MVP_EDIT_SYSTEM_PROMPT = `You are the editor of a generated one-page landing page (MVP) for a local business.
-The operator describes, in their own words, a change they want. Apply it to the MVP's current copy, primary color and layout, and change nothing else.
+The operator describes, in their own words, a change they want. Apply it to the MVP's current copy, primary color, layout and design, and change nothing else.
 
 FUNDAMENTAL GROUNDING RULES:
 - Every fact (services, products, locations, numbers, years, ratings, prices, staff, awards) must come from "originalSite" or the current copy. Never invent any of them, even when the operator asks for one.
 - Never output phone numbers, email addresses, street addresses or links; they are rendered separately from verified data.
 - You may rephrase, shorten, reorder, restyle or drop what is already there.
-- primaryColor must be one of the hex values in "allowedColors". layout must be one of "allowedLayouts".
+- primaryColor must be one of the hex values in "allowedColors". layout must be one of "allowedLayouts". The design may only use the names and values listed below.
 - When the request cannot be met within these rules, change nothing and say why in the summary.
+
+${DESIGN_VOCABULARY}
 
 Output:
 - summary: one sentence (up to 300 characters) telling the operator what you changed, or why you changed nothing. Write it in the language of the operator's instruction.
 - content: the complete revised copy in exactly the shape of "current.content", written in "outputLanguage", with the same length limits: hero.badge 40, hero.headline 90, hero.subheadline 180, hero CTA texts 35 each, about.heading 80, about.body 700, servicesHeading 80, 1-6 services (title 50, description 120, a Lucide icon name), at most 3 trustSignals (metric 20, label 50), offerNotice 100. Use null when the copy should stay as it is.
 - primaryColor: the new primary color, or null to keep the current one.
-- layout: the new layout, or null to keep the current one.
+- layout: the new layout, or null to keep the current one. Moving sections or restyling elements is a design change, not a layout change.
+- design: the complete new design, starting from "current.design" and keeping every earlier choice the operator did not ask to change; {} removes the custom design; null keeps it as it is. Block text goes in "outputLanguage".
 
 Respond with a raw JSON object only, with no preamble and no markdown, in exactly this shape:
-{"summary":string,"content":object|null,"primaryColor":string|null,"layout":string|null}`;
+{"summary":string,"content":object|null,"primaryColor":string|null,"layout":string|null,"design":object|null}`;
 
 const NUMBER_PATTERN = /\d+(?:[.,]\d+)?/g;
 const EMAIL_PATTERN = /[^\s@]+@[^\s@]+\.[a-z]{2,}/gi;
@@ -176,6 +217,14 @@ export class MvpEditService {
       plan.changes.push('layout');
     }
 
+    if (output.design) {
+      this.assertBlocksGrounded(output.design, input);
+      if (stableJson(output.design) !== stableJson(input.current.design ?? {})) {
+        plan.design = output.design;
+        plan.changes.push('design');
+      }
+    }
+
     return plan;
   }
 
@@ -184,9 +233,28 @@ export class MvpEditService {
    * content or the current copy: the model may restyle facts, never add them (AGENTS.md §3.2.2).
    */
   private assertGrounded(content: MvpContentOutput, input: MvpEditInput): void {
+    this.assertTextsGrounded(copyTexts(content), input);
+  }
+
+  /** A custom block's text is copy too (REV-92): the same facts check applies */
+  private assertBlocksGrounded(design: IMvpDesign, input: MvpEditInput): void {
+    const texts = (design.blocks ?? []).flatMap((block) => [
+      block.title,
+      block.body,
+      block.buttonText,
+      ...(block.items ?? []).flatMap((item) => [item.title, item.text]),
+    ]);
+    this.assertTextsGrounded(
+      texts.filter((text): text is string => Boolean(text)),
+      input,
+    );
+  }
+
+  private assertTextsGrounded(texts: string[], input: MvpEditInput): void {
     const corpus = [
       this.contentService.buildGroundingCorpus(input.grounding),
       ...copyTexts(input.current.content),
+      ...(input.current.design?.blocks ?? []).flatMap((block) => [block.title, block.body ?? '', block.buttonText ?? '']),
       input.grounding.businessName,
       input.grounding.city ?? '',
     ]
@@ -194,7 +262,7 @@ export class MvpEditService {
       .toLowerCase();
 
     const ungrounded = new Set<string>();
-    for (const text of copyTexts(content)) {
+    for (const text of texts) {
       for (const number of text.match(NUMBER_PATTERN) ?? []) {
         const variants = [number, number.replace(',', '.'), number.replace('.', ',')];
         if (!variants.some((variant) => corpus.includes(variant))) ungrounded.add(number);
@@ -220,6 +288,7 @@ export class MvpEditService {
           content: input.current.content,
           primaryColor: input.current.primaryColor ?? null,
           layout: input.current.layout,
+          design: input.current.design ?? {},
         },
         allowedColors: input.colorCandidates,
         allowedLayouts: MVP_LAYOUT_VARIANTS.map((variant) => ({ id: variant, description: LAYOUT_DESCRIPTIONS[variant] })),

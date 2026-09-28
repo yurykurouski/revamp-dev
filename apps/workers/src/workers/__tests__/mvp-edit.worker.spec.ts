@@ -136,6 +136,65 @@ describe('mvp edit worker (REV-85)', () => {
     expect(service.interpret.mock.calls[0]![0].current.layout).toBe('bento');
   });
 
+  describe('custom design (REV-92)', () => {
+    const design = { hidden: ['gallery'], theme: { corners: 'sharp' } };
+
+    it('hands the saved design to the agent and saves the new one', async () => {
+      vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...project, design }));
+      const next = { ...design, theme: { corners: 'soft' } };
+      const service = serviceReturning({ summary: 'Softer corners', design: next as never, changes: ['design'] });
+
+      await processMvpEditJob(job(), service);
+
+      expect(service.interpret.mock.calls[0]![0].current.design).toEqual(design);
+      const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+      expect(update.$set.design).toEqual(next);
+      expect(update.$unset).toBeUndefined();
+      expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
+    });
+
+    it('unsets the design when the agent returns an empty one', async () => {
+      vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...project, design }));
+      const service = serviceReturning({ summary: 'Original look', design: {}, changes: ['design'] });
+
+      await processMvpEditJob(job(), service);
+
+      const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+      expect(update.$set).not.toHaveProperty('design');
+      expect(update.$unset).toEqual({ design: '' });
+    });
+
+    it('resets the design without asking the model and re-publishes', async () => {
+      vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...project, design }));
+      const service = serviceReturning({ summary: 'unused', changes: [] });
+
+      const result = await processMvpEditJob({ ...job(), action: 'reset-design', instruction: '' }, service);
+
+      expect(result).toEqual({ applied: true, summary: 'The custom design was removed.', changes: ['design'] });
+      expect(service.interpret).not.toHaveBeenCalled();
+      const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+      expect(update.$unset).toEqual({ design: '' });
+      expect(update.$set.editedAt).toBeInstanceOf(Date);
+      expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
+    });
+
+    it('changes nothing on a reset when there is no custom design', async () => {
+      const service = serviceReturning({ summary: 'unused', changes: [] });
+      const result = await processMvpEditJob({ ...job(), action: 'reset-design', instruction: '' }, service);
+      expect(result).toEqual({ applied: false, summary: 'The MVP has no custom design.', changes: [] });
+      expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(republishSavedMvp).not.toHaveBeenCalled();
+    });
+
+    it('refuses a reset once the lead has left review', async () => {
+      vi.mocked(Lead.findById).mockReturnValue(exec({ ...lead, status: 'SCHEDULED' }));
+      const service = serviceReturning({ summary: 'unused', changes: [] });
+      await expect(processMvpEditJob({ ...job(), action: 'reset-design', instruction: '' }, service)).rejects.toThrow(
+        'while the lead is SCHEDULED',
+      );
+    });
+  });
+
   it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED'])('refuses to change the MVP while the lead is %s', async (status) => {
     vi.mocked(Lead.findById).mockReturnValue(exec({ ...lead, status }));
     const service = serviceReturning({ summary: 'ok', changes: [] });

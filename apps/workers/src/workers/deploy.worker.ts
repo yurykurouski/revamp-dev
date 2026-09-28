@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit, MvpLayoutVariant } from '@revamp/shared-types';
+import { IDeployJobData, ILead, IAudit, IMvpDesign, MvpLayoutVariant } from '@revamp/shared-types';
 import { canChangeMvpLayout, leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -81,9 +81,16 @@ async function publishMvp(
 /** How many times a relayout re-renders when the operator keeps changing the MVP while it publishes */
 const MAX_RELAYOUT_PASSES = 3;
 
-type SavedMvpDesign = { layout?: { variant?: MvpLayoutVariant } | null; colorPalette?: MvpPaletteOverride | null };
+type SavedMvpDesign = {
+  layout?: { variant?: MvpLayoutVariant } | null;
+  colorPalette?: MvpPaletteOverride | null;
+  design?: IMvpDesign | null;
+};
 
-/** The layout and palette the operator saved on the MVP (Bento for an MVP saved without a layout) */
+/**
+ * The layout, palette and custom design (REV-92) the operator saved on the MVP (Bento for an MVP saved
+ * without a layout)
+ */
 const savedDesign = (project: SavedMvpDesign) => ({
   variant: (project.layout?.variant ?? 'bento') as MvpLayoutVariant,
   palette: {
@@ -91,13 +98,15 @@ const savedDesign = (project: SavedMvpDesign) => ({
     secondary: project.colorPalette?.secondary || undefined,
     accent: project.colorPalette?.accent || undefined,
   },
+  design: project.design ?? undefined,
 });
 
 const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof savedDesign>) =>
   a.variant === b.variant &&
   a.palette.primary === b.palette.primary &&
   a.palette.secondary === b.palette.secondary &&
-  a.palette.accent === b.palette.accent;
+  a.palette.accent === b.palette.accent &&
+  JSON.stringify(a.design ?? null) === JSON.stringify(b.design ?? null);
 
 /**
  * Re-publishes an existing MVP in the layout (REV-84) and palette (REV-90) the operator saved: the
@@ -140,6 +149,7 @@ export async function republishSavedMvp(leadId: string) {
       project.generatedContent,
       design.variant,
       design.palette,
+      design.design,
     );
     published = await publishMvp(project.previewSlug, html, lead, audit);
     const latest = await MvpProject.findById(project._id).exec();
@@ -181,7 +191,7 @@ export const createDeployWorker = (): Worker => {
 
       // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
       // the same objects in the demos bucket and the preview URL already shared stays valid.
-      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug').exec();
+      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design').exec();
       const transliterated = transliterate(lead.businessName || lead.domain || 'demo');
       const rawSlug = transliterated
         .replace(/[^a-z0-9]+/g, '-')
@@ -193,7 +203,15 @@ export const createDeployWorker = (): Worker => {
       const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
       const layout = selectMvpLayout(buildLayoutSignals(leadData, auditData, audit.generatedContent));
       console.log(`[DeployWorker] Layout: ${layout.variant} (${layout.reasons.join(', ')})`);
-      const html = bentoTemplateService.renderFromAudit(leadData, auditData, audit.generatedContent, layout.variant);
+      // The operator's custom design survives a regeneration (REV-92); the palette comes from the new audit run
+      const html = bentoTemplateService.renderFromAudit(
+        leadData,
+        auditData,
+        audit.generatedContent,
+        layout.variant,
+        undefined,
+        existingProject?.design,
+      );
 
       // 2b. Compare the MVP with the original site's key data (REV-36): judged by the LLM with its
       // quotes verified in code when one is configured (REV-37), else by code. Advisory only: it

@@ -533,7 +533,7 @@ export const en = {
   },
   mvpEdit: {
     label: 'Describe a change',
-    placeholder: 'e.g. Make the headline punchier, use a warmer color',
+    placeholder: 'e.g. Reviews above services, serif headings, a dark hero, pill buttons',
     hint: '{{count}}/{{max}} · Enter to apply, Shift+Enter for a new line',
     grounding: 'AI rewrites and restyles what the site already says; it never adds facts or contacts.',
     apply: 'Apply',
@@ -543,6 +543,9 @@ export const en = {
     failed: 'Could not apply the change: {{message}}',
     locked: 'The MVP can be changed only while it awaits review',
     busy: 'Wait until the AI has applied the change',
+    resetDesign: 'Reset custom design',
+    designReset: 'The custom design was removed; the page is back to the look of its layout.',
+    noDesign: 'The MVP has no custom design to reset.',
   },
   colorPicker: {
     brandPalette: 'Brand palette:',

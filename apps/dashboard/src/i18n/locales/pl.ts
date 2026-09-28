@@ -532,7 +532,7 @@ export const pl: Translation = {
   },
   mvpEdit: {
     label: 'Opisz zmianę',
-    placeholder: 'Np. zrób mocniejszy nagłówek, użyj cieplejszego koloru',
+    placeholder: 'Np. opinie nad usługami, nagłówki szeryfowe, ciemny hero, zaokrąglone przyciski',
     hint: '{{count}}/{{max}} · Enter — zastosuj, Shift+Enter — nowa linia',
     grounding: 'AI przeredagowuje i restylizuje to, co już jest na stronie; nigdy nie dodaje faktów ani kontaktów.',
     apply: 'Zastosuj',
@@ -542,6 +542,9 @@ export const pl: Translation = {
     failed: 'Nie udało się zastosować zmiany: {{message}}',
     locked: 'MVP można zmieniać tylko, gdy czeka na przegląd',
     busy: 'Poczekaj, aż AI zastosuje zmianę',
+    resetDesign: 'Resetuj własny projekt',
+    designReset: 'Własny projekt usunięto: strona znów wygląda jak w wybranym układzie.',
+    noDesign: 'MVP nie ma własnego projektu do zresetowania.',
   },
   colorPicker: {
     brandPalette: 'Paleta marki:',
