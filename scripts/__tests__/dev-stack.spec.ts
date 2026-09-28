@@ -65,6 +65,17 @@ describe('checkDocker', () => {
     expect(() => checkDocker(runner({ 'docker info': 1 }))).toThrow(/not running/);
   });
 
+  it('gives up on a daemon that does not answer, with a timeout', () => {
+    const calls: unknown[] = [];
+    const run = (_cmd: string, args: string[], options?: { timeout?: number }) => {
+      calls.push(options);
+      if (args[0] !== 'info') return { status: 0 };
+      return { status: null, error: Object.assign(new Error('spawnSync docker ETIMEDOUT'), { code: 'ETIMEDOUT' }) };
+    };
+    expect(() => checkDocker(run)).toThrow(/did not answer within 20 s/);
+    expect(calls).toContainEqual({ timeout: 20000 });
+  });
+
   it("passes the daemon's own error on in the hint", () => {
     const run = (cmd: string, args: string[]) =>
       args[0] === 'info'

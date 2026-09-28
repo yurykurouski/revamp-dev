@@ -59,9 +59,11 @@ export function checkNodeVersion(version) {
   return major;
 }
 
+export const DOCKER_INFO_TIMEOUT_MS = 20000;
+
 /**
  * Throws unless the Docker CLI, Docker Compose v2 and a running daemon are available.
- * `run(cmd, args)` returns `{ status, stderr }` (spawnSync-like) so tests can stub it.
+ * `run(cmd, args, options)` returns `{ status, stderr, error }` (spawnSync-like) so tests can stub it.
  */
 export function checkDocker(run = runQuiet) {
   const cli = run('docker', ['--version']);
@@ -77,7 +79,14 @@ export function checkDocker(run = runQuiet) {
       'Update Docker Desktop, or install the compose plugin: https://docs.docker.com/compose/install/',
     );
   }
-  const info = run('docker', ['info']);
+  // `docker info` hangs while Docker Desktop is starting; don't hang with it.
+  const info = run('docker', ['info'], { timeout: DOCKER_INFO_TIMEOUT_MS });
+  if (info.error?.code === 'ETIMEDOUT') {
+    throw new SetupError(
+      `Docker did not answer within ${DOCKER_INFO_TIMEOUT_MS / 1000} s.`,
+      'Docker Desktop may still be starting. Wait until it says it is running, then try again\n(restart Docker Desktop if it stays stuck).',
+    );
+  }
   if (info.status !== 0) {
     const reason = (info.stderr || '').split('\n').find((line) => /error/i.test(line));
     throw new SetupError(
