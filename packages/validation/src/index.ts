@@ -561,6 +561,9 @@ export const EditMvpSchema = z.object({
 
 export type EditMvpDto = z.infer<typeof EditMvpSchema>;
 
+/** Longest custom CSS an MVP design may carry (REV-93) */
+export const MVP_CUSTOM_CSS_MAX = 4096;
+
 /** Whether a list names each value at most once */
 const uniqueItems = <T extends z.ZodTypeAny>(item: T, max: number) =>
   z
@@ -647,6 +650,8 @@ export const MvpDesignSchema = z
       )
       .optional(),
     blocks: z.array(MvpDesignBlockSchema).max(3).optional(),
+    /** Fallback CSS (REV-93); its content is checked by the workers' sanitizer, not by this schema */
+    customCss: z.string().max(MVP_CUSTOM_CSS_MAX).optional(),
   })
   .superRefine((design, ctx) => {
     const ids = (design.blocks ?? []).map((block) => block.id);

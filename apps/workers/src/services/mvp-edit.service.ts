@@ -19,6 +19,7 @@ import {
 } from '@revamp/shared-types';
 import { ClaudeCliRunner } from './claude-cli.js';
 import { getSupportedIconNames } from '../templates/icons.js';
+import { MVP_CSS_HOOKS, MVP_CUSTOM_CSS_MAX, UnsafeCssError, sanitizeMvpCss } from '../templates/css-sanitizer.js';
 import { LlmClient, LlmProvider, extractJsonObject } from './llm-client.js';
 import { GenerateMvpContentInput, MvpContentService, clipToSchemaLimits, mvpContentService } from './mvp-content.service.js';
 
@@ -92,7 +93,8 @@ const DESIGN_VOCABULARY = `Design spec ("design"): a JSON object; every field is
 - elements: styles for named elements, keyed by ${list(MVP_DESIGN_ELEMENTS)}. Each style may set: ${Object.entries(MVP_DESIGN_TOKENS)
   .map(([token, values]) => `${token} (${values.join(' | ')})`)
   .join('; ')}. size applies to text elements; colors are palette roles, never hex values.
-- blocks: up to 3 custom sections { id: ${MVP_DESIGN_BLOCK_IDS.join(' | ')}, type: ${MVP_DESIGN_BLOCK_TYPES.join(' | ')}, style: ${MVP_DESIGN_BLOCK_STYLES.join(' | ')}, title (up to 80 characters), body (up to 280), items (features only: 1-4 of { title up to 50, text up to 140, icon: one of ${list(getSupportedIconNames().filter((icon) => !BLOCK_UI_ICONS.has(icon)))} }), buttonText (cta only, up to 35; the button opens the booking form) }. Place a block with sectionOrder. Block text is copy: the same grounding rules apply.`;
+- blocks: up to 3 custom sections { id: ${MVP_DESIGN_BLOCK_IDS.join(' | ')}, type: ${MVP_DESIGN_BLOCK_TYPES.join(' | ')}, style: ${MVP_DESIGN_BLOCK_STYLES.join(' | ')}, title (up to 80 characters), body (up to 280), items (features only: 1-4 of { title up to 50, text up to 140, icon: one of ${list(getSupportedIconNames().filter((icon) => !BLOCK_UI_ICONS.has(icon)))} }), buttonText (cta only, up to 35; the button opens the booking form) }. Place a block with sectionOrder. Block text is copy: the same grounding rules apply.
+- customCss: plain CSS, only for a look none of the fields above can express (e.g. gradient text, a hover tilt, an accent line under titles). Prefer the fields above whenever one fits. Rules: target only these hooks and classes: ${MVP_CSS_HOOKS.join(', ')} (combined with descendant elements, pseudo-classes, ::before and ::after as needed); no url(), @import, @font-face or other at-rules except @media, @supports and @keyframes; never hide, shrink, cover or move content off the page (no display:none, visibility, opacity below 0.2, zero sizes, clip or mask), no text through content (only content: ""), position fixed or sticky only on .site-header; use palette variables such as var(--brand-primary), var(--brand-accent), var(--color-text-main); add !important to override the design's styles; at most ${MVP_CUSTOM_CSS_MAX} characters. CSS that breaks a rule rejects the whole change.`;
 
 export const MVP_EDIT_SYSTEM_PROMPT = `You are the editor of a generated one-page landing page (MVP) for a local business.
 The operator describes, in their own words, a change they want. Apply it to the MVP's current copy, primary color, layout and design, and change nothing else.
@@ -179,6 +181,11 @@ export class MvpEditService {
     } catch {
       throw new Error('The model did not answer with a change the MVP can apply.');
     }
+    // CSS cut to the length limit would break mid-rule, so over-long CSS is refused rather than clipped
+    const customCss = (parsed as { design?: { customCss?: unknown } } | null)?.design?.customCss;
+    if (typeof customCss === 'string' && customCss.length > MVP_CUSTOM_CSS_MAX) {
+      throw new UnsafeCssError([`it is ${customCss.length} characters long; the limit is ${MVP_CUSTOM_CSS_MAX}`]);
+    }
     const result = MvpEditOutputSchema.safeParse(clipToSchemaLimits(parsed, MvpEditOutputSchema));
     if (!result.success) {
       const issue = result.error.issues[0];
@@ -219,6 +226,9 @@ export class MvpEditService {
 
     if (output.design) {
       this.assertBlocksGrounded(output.design, input);
+      // Checked and normalized here, so only CSS that passes is ever saved (REV-93)
+      if (output.design.customCss?.trim()) output.design.customCss = sanitizeMvpCss(output.design.customCss);
+      else delete output.design.customCss;
       if (stableJson(output.design) !== stableJson(input.current.design ?? {})) {
         plan.design = output.design;
         plan.changes.push('design');
