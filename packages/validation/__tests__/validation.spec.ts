@@ -14,6 +14,7 @@ import {
   MvpTrackEventSchema,
   StartDiscoverySchema,
   DiscoveredBusinessSchema,
+  SiteAssessmentSchema,
   ReverseGeocodeQuerySchema,
   ImportDiscoverySchema,
   MvpCompletenessReportSchema,
@@ -817,6 +818,65 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(DiscoveredBusinessSchema.safeParse({ ...base, phone: '1'.repeat(31) }).success).toBe(false);
       expect(DiscoveredBusinessSchema.safeParse({ ...base, lat: 91 }).success).toBe(false);
       expect(DiscoveredBusinessSchema.safeParse({ ...base, name: 'A' }).success).toBe(false);
+    });
+  });
+
+  describe('SiteAssessmentSchema (REV-98)', () => {
+    const assessed = {
+      outcome: 'assessed',
+      verdict: 'good',
+      verdictReason: 'simple_with_signs',
+      signScore: 4,
+      simple: true,
+      badSigns: ['no_https', 'no_viewport'],
+      complexitySigns: [],
+      internalPages: 2,
+      finalUrl: 'http://clinic.lt/',
+      httpStatus: 200,
+      responseMs: 420,
+      htmlBytes: 12000,
+      copyrightYear: 2014,
+      assessedAt: '2026-09-28T10:00:00.000Z',
+    };
+    const failed = { outcome: 'failed', failure: 'timeout', assessedAt: '2026-09-28T10:00:00.000Z' };
+
+    it('should accept an assessed site and a failed check', () => {
+      expect(SiteAssessmentSchema.safeParse(assessed).success).toBe(true);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, copyrightYear: undefined, badSigns: [] }).success).toBe(true);
+      expect(SiteAssessmentSchema.safeParse(failed).success).toBe(true);
+      expect(SiteAssessmentSchema.safeParse({ ...failed, failure: 'http_error', httpStatus: 503 }).success).toBe(true);
+    });
+
+    it('should reject unknown verdicts, signs and failures, and duplicate signs', () => {
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdict: 'great' }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdictReason: 'looks_bad' }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, badSigns: ['ugly'] }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, badSigns: ['no_https', 'no_https'] }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, complexitySigns: ['huge'] }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...failed, failure: 'nope' }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, outcome: 'maybe' }).success).toBe(false);
+    });
+
+    it('should never accept a failed check without its reason, or a verdict without its evidence', () => {
+      expect(SiteAssessmentSchema.safeParse({ outcome: 'failed', assessedAt: failed.assessedAt }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, badSigns: undefined }).success).toBe(false);
+      // The verdict always carries its argument
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdictReason: undefined }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, signScore: undefined }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, assessedAt: 'yesterday' }).success).toBe(false);
+    });
+
+    it('should enforce the numeric and URL bounds', () => {
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, httpStatus: 99 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, httpStatus: 600 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, responseMs: -1 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, signScore: -1 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, signScoreNeeded: 0 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, verdict: 'poor', verdictReason: 'complex_few_signs', signScore: 1, signScoreNeeded: 3 }).success).toBe(true);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, internalPages: 1.5 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, copyrightYear: 1989 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, copyrightYear: 2101 }).success).toBe(false);
+      expect(SiteAssessmentSchema.safeParse({ ...assessed, finalUrl: 'ftp://clinic.lt/' }).success).toBe(false);
     });
   });
 

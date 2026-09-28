@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { IDiscoveryImportResult } from '@revamp/shared-types';
+import { AssessmentFilter } from '../utils/siteAssessment.js';
 
 interface DiscoveryState {
   isOpen: boolean;
@@ -11,6 +12,10 @@ interface DiscoveryState {
   notifiedJobId: string | null;
   /** The active job's last import; while set the drawer shows the Import step (REV-78) */
   importResult: IDiscoveryImportResult | null;
+  /** Review step: show only candidates with this site verdict (REV-98) */
+  assessmentFilter: AssessmentFilter;
+  /** Review step: best-rated candidates first instead of search order (REV-98) */
+  sortByAssessment: boolean;
 
   open: () => void;
   close: () => void;
@@ -24,7 +29,12 @@ interface DiscoveryState {
   backToReview: () => void;
   /** Clears the finished job so the form can start a new search */
   startNewSearch: () => void;
+  setAssessmentFilter: (filter: AssessmentFilter) => void;
+  setSortByAssessment: (sort: boolean) => void;
 }
+
+/** A new job starts with every candidate shown, best first */
+const REVIEW_VIEW = { assessmentFilter: 'all', sortByAssessment: true } as const;
 
 export const useDiscoveryStore = create<DiscoveryState>((set) => ({
   isOpen: false,
@@ -32,14 +42,19 @@ export const useDiscoveryStore = create<DiscoveryState>((set) => ({
   resultsSeen: false,
   notifiedJobId: null,
   importResult: null,
+  ...REVIEW_VIEW,
 
   open: () => set({ isOpen: true }),
   close: () => set({ isOpen: false }),
-  setActiveJob: (jobId) => set({ activeJobId: jobId, resultsSeen: false, notifiedJobId: null, importResult: null }),
+  setActiveJob: (jobId) =>
+    set({ activeJobId: jobId, resultsSeen: false, notifiedJobId: null, importResult: null, ...REVIEW_VIEW }),
   markResultsSeen: () => set({ resultsSeen: true }),
   // A stale call for an earlier job changes nothing
   markJobNotified: (jobId) => set((s) => (s.activeJobId === jobId ? { notifiedJobId: jobId } : s)),
   setImportResult: (jobId, result) => set((s) => (s.activeJobId === jobId ? { importResult: result } : s)),
   backToReview: () => set({ importResult: null }),
-  startNewSearch: () => set({ activeJobId: null, resultsSeen: false, notifiedJobId: null, importResult: null }),
+  startNewSearch: () =>
+    set({ activeJobId: null, resultsSeen: false, notifiedJobId: null, importResult: null, ...REVIEW_VIEW }),
+  setAssessmentFilter: (assessmentFilter) => set({ assessmentFilter }),
+  setSortByAssessment: (sortByAssessment) => set({ sortByAssessment }),
 }));

@@ -191,7 +191,52 @@ describe('Zustand Dashboard Stores', () => {
 
   describe('useDiscoveryStore (REV-27)', () => {
     beforeEach(() => {
-      useDiscoveryStore.setState({ isOpen: false, activeJobId: null, resultsSeen: false, notifiedJobId: null, importResult: null });
+      useDiscoveryStore.setState({
+        isOpen: false,
+        activeJobId: null,
+        resultsSeen: false,
+        notifiedJobId: null,
+        importResult: null,
+        assessmentFilter: 'all',
+        sortByAssessment: true,
+      });
+    });
+
+    describe('verdict filter and sort (REV-98)', () => {
+      it('should start with every candidate shown, best first', () => {
+        expect(useDiscoveryStore.getState()).toMatchObject({ assessmentFilter: 'all', sortByAssessment: true });
+      });
+
+      it('should change the filter and the sort, and keep them while the drawer is closed', () => {
+        const s = useDiscoveryStore.getState();
+        s.setActiveJob('disc-7');
+        s.setAssessmentFilter('poor');
+        s.setSortByAssessment(false);
+        s.close();
+        s.open();
+        expect(useDiscoveryStore.getState()).toMatchObject({ assessmentFilter: 'poor', sortByAssessment: false });
+      });
+
+      it('should reset them for a new job and on a new search', () => {
+        const s = useDiscoveryStore.getState();
+        s.setAssessmentFilter('good');
+        s.setSortByAssessment(false);
+        s.setActiveJob('disc-8');
+        expect(useDiscoveryStore.getState()).toMatchObject({ assessmentFilter: 'all', sortByAssessment: true });
+
+        s.setAssessmentFilter('failed');
+        s.startNewSearch();
+        expect(useDiscoveryStore.getState()).toMatchObject({ assessmentFilter: 'all', sortByAssessment: true });
+      });
+
+      it('should keep them when moving between Review and Import', () => {
+        const s = useDiscoveryStore.getState();
+        s.setActiveJob('disc-7');
+        s.setAssessmentFilter('maybe');
+        s.setImportResult('disc-7', { imported: 1, results: [] });
+        s.backToReview();
+        expect(useDiscoveryStore.getState().assessmentFilter).toBe('maybe');
+      });
     });
 
     it('should start closed with no active job', () => {

@@ -230,6 +230,41 @@ describe('DiscoveryService (API)', () => {
       expect(result).toMatchObject({ counts, requests: 1, exhausted: true });
     });
 
+    it("should return each candidate's site assessment as the worker stored it (REV-98)", async () => {
+      mockExistingLeads(['clinic-2.lt']);
+      const good = {
+        outcome: 'assessed',
+        verdict: 'good',
+        simple: true,
+        badSigns: ['no_viewport'],
+        complexitySigns: [],
+        internalPages: 1,
+        finalUrl: 'https://clinic-1.lt/',
+        httpStatus: 200,
+        responseMs: 310,
+        htmlBytes: 9000,
+        assessedAt: '2026-09-28T10:00:00.000Z',
+      };
+      const failed = { outcome: 'failed', failure: 'timeout', assessedAt: '2026-09-28T10:00:00.000Z' };
+      vi.mocked(getDiscoveryJob).mockResolvedValue(
+        completedJob([
+          candidate('1', { assessment: good }),
+          candidate('2', { assessment: failed }),
+          candidate('3'),
+        ]) as any,
+      );
+
+      const { result } = await DiscoveryService.getDiscoveryStatus('disc-9');
+
+      expect(result?.candidates.map((c) => [c.externalId, c.status, c.assessment])).toEqual([
+        ['node/1', 'new', good],
+        // Imported since the search: the assessment stays with the row
+        ['node/2', 'existing_lead', failed],
+        // Found before REV-98: no assessment, never a made-up one
+        ['node/3', 'new', undefined],
+      ]);
+    });
+
     it('should skip the lead lookup when nothing is new, and pass legacy results through', async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1', { status: 'duplicate' })]) as any);
       await DiscoveryService.getDiscoveryStatus('disc-9');

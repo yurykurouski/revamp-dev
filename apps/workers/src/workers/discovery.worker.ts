@@ -26,6 +26,15 @@ export const createDiscoveryWorker = (): Worker => {
             `already leads ${counts.existing_lead}, duplicates ${counts.duplicate}, ` +
             `no website ${counts.no_website}, invalid ${counts.invalid}`,
         );
+        const assessments = result.candidates.flatMap((c) => (c.assessment ? [c.assessment] : []));
+        if (assessments.length > 0) {
+          const tally = (key: string) =>
+            assessments.filter((a) => (a.outcome === 'assessed' ? a.verdict : 'failed') === key).length;
+          console.log(
+            `[DiscoveryWorker] Job ${job.id} assessed ${assessments.length} site(s): good ${tally('good')}, ` +
+              `maybe ${tally('maybe')}, poor ${tally('poor')}, could not assess ${tally('failed')}`,
+          );
+        }
         return result;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);

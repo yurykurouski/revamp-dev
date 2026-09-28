@@ -24,7 +24,17 @@ import {
 } from '../hooks/useDiscovery.js';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import { useOpenLead } from '../hooks/useOpenLead.js';
+import {
+  ASSESSMENT_CHIP_COLOR,
+  ASSESSMENT_FILTER_BUCKETS,
+  countAssessments,
+  defaultSelection,
+  filterByAssessment,
+  hasAssessments,
+  sortByAssessment,
+} from '../utils/siteAssessment.js';
 import { DiscoveryDrawerFooter } from './DiscoveryDrawerFooter.js';
+import { AssessmentDetails, AssessmentVerdictChip } from './CandidateAssessment.js';
 
 const STATUS_ORDER: DiscoveryCandidateStatus[] = ['new', 'existing_lead', 'duplicate', 'no_website', 'invalid'];
 
@@ -48,32 +58,45 @@ interface DiscoveryReviewProps {
 /**
  * The Review step of the discovery drawer (REV-78): lists the new businesses a search found and
  * imports the operator's selection as leads (REV-29). Businesses that are already leads are hidden
- * behind a toggle (REV-35). Renders the step's scrolling body and its footer.
+ * behind a toggle (REV-35). Each new business shows its site pre-assessment, and the list can be
+ * filtered and sorted by its verdict (REV-98); select all and import act on the listed rows only.
+ * Renders the step's scrolling body and its footer.
  */
 export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result, limit, onBack }) => {
   const { t } = useTranslation();
   const importMutation = useImportDiscoveryMutation(jobId);
   const closeDiscovery = useDiscoveryStore((s) => s.close);
   const setImportResult = useDiscoveryStore((s) => s.setImportResult);
+  const assessmentFilter = useDiscoveryStore((s) => s.assessmentFilter);
+  const setAssessmentFilter = useDiscoveryStore((s) => s.setAssessmentFilter);
+  const sortBest = useDiscoveryStore((s) => s.sortByAssessment);
+  const setSortBest = useDiscoveryStore((s) => s.setSortByAssessment);
   const openLead = useOpenLead();
   const { candidates } = result;
 
   const counts = useMemo(() => countCandidates(candidates), [candidates]);
   const otherSkippedCount = counts.duplicate + counts.no_website + counts.invalid;
   const searchOutcome = discoverySearchOutcome(result, limit);
+  const assessed = hasAssessments(candidates);
+  const assessmentCounts = useMemo(() => countAssessments(candidates), [candidates]);
 
-  // New businesses start selected; imported ones drop out as polling marks them existing_lead
-  const [selected, setSelected] = useState<Set<string>>(() => new Set(importableIds(candidates)));
+  // New businesses start selected unless rated poor; imported ones drop out as polling marks them existing_lead
+  const [selected, setSelected] = useState<Set<string>>(() => new Set(defaultSelection(candidates)));
   const [showExisting, setShowExisting] = useState(false);
   const [showSkipped, setShowSkipped] = useState(false);
   const [importError, setImportError] = useState<string | null>(null);
 
-  useEffect(() => {
-    setSelected((current) => pruneSelection(current, candidates));
-  }, [candidates]);
+  const rows = useMemo(() => {
+    const visible = filterByAssessment(visibleCandidates(candidates, { showExisting, showSkipped }), assessmentFilter);
+    return sortBest ? sortByAssessment(visible) : visible;
+  }, [candidates, showExisting, showSkipped, assessmentFilter, sortBest]);
 
-  const rows = visibleCandidates(candidates, { showExisting, showSkipped });
-  const importable = importableIds(candidates);
+  // Only listed rows stay selected, so a filter never imports businesses the operator can't see
+  useEffect(() => {
+    setSelected((current) => pruneSelection(current, rows));
+  }, [rows]);
+
+  const importable = importableIds(rows);
   const allSelected = importable.length > 0 && importable.every((id) => selected.has(id));
 
   const toggle = (externalId: string) =>
@@ -127,6 +150,55 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
           )}
           {counts.new === 0 && <Alert severity="info">{t('discovery.nothingNewHint')}</Alert>}
           {importError && <Alert severity="error">{importError}</Alert>}
+
+          {assessed && (
+            <Box
+              role="group"
+              aria-label={t('discovery.assessment.filterLabel')}
+              sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}
+            >
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, mr: 0.5 }}>
+                {t('discovery.assessment.filterLabel')}
+              </Typography>
+              <Chip
+                size="small"
+                clickable
+                variant={assessmentFilter === 'all' ? 'filled' : 'outlined'}
+                color={assessmentFilter === 'all' ? 'primary' : 'default'}
+                aria-pressed={assessmentFilter === 'all'}
+                label={t('discovery.assessment.all')}
+                onClick={() => setAssessmentFilter('all')}
+              />
+              {ASSESSMENT_FILTER_BUCKETS.filter((bucket) => assessmentCounts[bucket] > 0 || assessmentFilter === bucket).map(
+                (bucket) => (
+                  <Chip
+                    key={bucket}
+                    size="small"
+                    clickable
+                    variant={assessmentFilter === bucket ? 'filled' : 'outlined'}
+                    color={ASSESSMENT_CHIP_COLOR[bucket]}
+                    aria-pressed={assessmentFilter === bucket}
+                    label={`${t(`discovery.assessment.verdict.${bucket}`)}: ${assessmentCounts[bucket]}`}
+                    onClick={() => setAssessmentFilter(bucket)}
+                    data-testid={`assessment-filter-${bucket}`}
+                  />
+                ),
+              )}
+              <Box sx={{ flexGrow: 1 }} />
+              <FormControlLabel
+                sx={{ mr: 0 }}
+                control={<Switch size="small" checked={sortBest} onChange={(e) => setSortBest(e.target.checked)} />}
+                label={
+                  <Typography variant="body2" color="text.secondary">
+                    {t('discovery.assessment.sortBest')}
+                  </Typography>
+                }
+              />
+              <Typography variant="caption" color="text.secondary" component="p" sx={{ width: '100%', m: 0 }}>
+                {t('discovery.assessment.hint')} {t('discovery.assessment.scoring')}
+              </Typography>
+            </Box>
+          )}
         </Box>
 
         {/* Toolbar: select all on the left, the hidden groups' toggles on the right */}
@@ -225,8 +297,10 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
                     {c.website && details && ' · '}
                     {details}
                   </Typography>
+                  {c.assessment && <AssessmentDetails assessment={c.assessment} />}
                 </Box>
-                <Box sx={{ textAlign: 'right' }}>
+                <Box sx={{ textAlign: 'right', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 0.5 }}>
+                  {c.assessment && <AssessmentVerdictChip assessment={c.assessment} />}
                   <Chip
                     size="small"
                     variant="outlined"
@@ -239,7 +313,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
                       type="button"
                       variant="caption"
                       onClick={() => handleOpenLead(c.leadId as string)}
-                      sx={{ display: 'block', mt: 0.5, ml: 'auto', fontWeight: 600 }}
+                      sx={{ display: 'block', ml: 'auto', fontWeight: 600 }}
                     >
                       {t('discovery.openLead')}
                     </Link>

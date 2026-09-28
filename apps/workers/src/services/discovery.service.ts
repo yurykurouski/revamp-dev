@@ -4,6 +4,7 @@ import {
   IDiscoveryCandidate,
   IDiscoveryJobData,
   IDiscoveryJobResult,
+  ISiteAssessment,
   NicheType,
 } from '@revamp/shared-types';
 import {
@@ -20,6 +21,7 @@ import { env } from '../config/env.js';
 import { Lead } from '../models/Lead.model.js';
 import { OsmDiscoveryProvider } from './osm-discovery.provider.js';
 import { GooglePlacesProvider } from './google-places.provider.js';
+import { assessCandidates, assessSite } from './site-assessment.service.js';
 
 export type FetchFn = typeof fetch;
 
@@ -44,7 +46,18 @@ export interface DiscoveryProviderClient {
 export interface RunDiscoveryOptions {
   /** Hard cap on provider requests per job, which bounds API cost and fair-use load */
   maxRequests: number;
+  /** Pre-assesses one site (REV-98) */
+  assess: (url: string) => Promise<ISiteAssessment>;
+  /** Sites assessed at the same time */
+  assessConcurrency: number;
 }
+
+const defaultRunOptions = (): RunDiscoveryOptions => ({
+  maxRequests: env.DISCOVERY_MAX_REQUESTS,
+  assess: (url) =>
+    assessSite(url, { timeoutMs: env.DISCOVERY_ASSESS_TIMEOUT_MS, userAgent: env.DISCOVERY_USER_AGENT }),
+  assessConcurrency: env.DISCOVERY_ASSESS_CONCURRENCY,
+});
 
 // Hosts that are profiles or directories rather than the business's own site
 const NON_AUDITABLE_HOSTS = [
@@ -169,6 +182,8 @@ async function markExistingLeads(candidates: IDiscoveryCandidate[]): Promise<voi
  * Searches a maps provider and classifies every listing for operator review. Nothing is imported
  * here: the operator picks which `new` businesses become leads (POST /discovery/:jobId/import).
  *
+ * Each offered business's home page is then pre-assessed with one plain fetch (REV-98).
+ *
  * Businesses that are already leads don't count toward the limit, so the search keeps paging
  * through the provider until it has `limit` new ones, the provider runs out, or it hits the
  * request cap.
@@ -176,8 +191,9 @@ async function markExistingLeads(candidates: IDiscoveryCandidate[]): Promise<voi
 export async function runDiscovery(
   data: IDiscoveryJobData,
   provider: DiscoveryProviderClient = createDiscoveryProvider(data.provider),
-  options: RunDiscoveryOptions = { maxRequests: env.DISCOVERY_MAX_REQUESTS },
+  overrides: Partial<RunDiscoveryOptions> = {},
 ): Promise<IDiscoveryJobResult> {
+  const options = { ...defaultRunOptions(), ...overrides };
   const params: DiscoverySearchParams = {
     niche: data.niche,
     location: data.location,
@@ -211,6 +227,9 @@ export async function runDiscovery(
   // Offer at most `limit` new businesses; skipped listings are all kept so the operator sees why
   let offered = 0;
   const limited = candidates.filter((c) => c.status !== 'new' || ++offered <= data.limit);
+
+  // Checks each offered site so the operator can skip poor candidates before importing (REV-98)
+  await assessCandidates(limited, options.assess, options.assessConcurrency);
 
   return {
     found: seenListings.size,

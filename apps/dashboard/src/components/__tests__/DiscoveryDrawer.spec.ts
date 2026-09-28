@@ -53,7 +53,15 @@ describe('DiscoveryDrawer (REV-78)', () => {
   let client: QueryClient;
 
   beforeEach(() => {
-    useDiscoveryStore.setState({ isOpen: true, activeJobId: null, resultsSeen: false, notifiedJobId: null, importResult: null });
+    useDiscoveryStore.setState({
+      isOpen: true,
+      activeJobId: null,
+      resultsSeen: false,
+      notifiedJobId: null,
+      importResult: null,
+      assessmentFilter: 'all',
+      sortByAssessment: true,
+    });
     client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -198,6 +206,97 @@ describe('DiscoveryDrawer (REV-78)', () => {
     // b is still new, so the operator can go back for it
     await click(button(en.discovery.reviewRemaining.replace('{{count}}', '2')));
     expect(currentStep()).toBe(en.discovery.steps.review);
+  });
+
+  describe('site pre-assessment (REV-98)', () => {
+    const assessedAt = '2026-09-28T10:00:00.000Z';
+    const assessed = (verdict: 'good' | 'maybe' | 'poor', badSigns: string[], extra: Record<string, unknown> = {}) => ({
+      outcome: 'assessed' as const,
+      verdict,
+      verdictReason: verdict === 'good' ? 'simple_with_signs' : 'simple_few_signs',
+      signScore: 3,
+      simple: true,
+      badSigns,
+      complexitySigns: [],
+      internalPages: 1,
+      finalUrl: 'https://x.example/',
+      httpStatus: 200,
+      responseMs: 400,
+      htmlBytes: 9000,
+      assessedAt,
+      ...extra,
+    });
+    const assessedCandidates = () => [
+      {
+        ...candidate('poor', 'new'),
+        assessment: assessed('poor', ['no_title'], {
+          simple: false,
+          complexitySigns: ['ecommerce'],
+          verdictReason: 'complex_few_signs',
+          signScore: 1,
+          signScoreNeeded: 3,
+        }),
+      },
+      { ...candidate('fail', 'new'), assessment: { outcome: 'failed' as const, failure: 'http_error' as const, httpStatus: 503, assessedAt } },
+      { ...candidate('good', 'new'), assessment: assessed('good', ['no_viewport', 'stale_copyright'], { copyrightYear: 2014 }) },
+      candidate('none', 'new'),
+    ] as IDiscoveryCandidate[];
+    const rowNames = () =>
+      [...document.body.querySelectorAll('[data-testid="discovery-candidate"]')].map(
+        (row) => row.querySelector('p, span.MuiTypography-body2, .MuiTypography-body2')?.textContent,
+      );
+    const checked = (name: string) =>
+      document.body.querySelector<HTMLInputElement>(`input[aria-label="Business ${name}"]`)?.checked;
+    const filterChip = (bucket: string) => document.body.querySelector<HTMLElement>(`[data-testid="assessment-filter-${bucket}"]`);
+
+    it('shows each verdict with its signs, best first, and leaves poor candidates unselected', async () => {
+      await mountWithJob(completed(assessedCandidates()));
+      const a = en.discovery.assessment;
+
+      expect(rowNames()).toEqual(['Business good', 'Business fail', 'Business none', 'Business poor']);
+      expect(page()).toContain(a.verdict.good);
+      expect(page()).toContain(`${a.simple} · ${a.badSign.no_viewport} · ${a.badSign.stale_copyright.replace('{{year}}', '2014')}`);
+      expect(page()).toContain(`${a.complexitySign.ecommerce} · ${a.badSign.no_title}`);
+      // The argument for the poor verdict
+      expect(page()).toContain(a.verdictReason.complex_few_signs.replace('{{score}}', '1').replace('{{needed}}', '3'));
+      expect(page()).toContain(a.verdictReason.simple_with_signs.replace('{{score}}', '3'));
+      expect(page()).toContain(a.scoring);
+      // A failed check says so and why, never a verdict
+      expect(page()).toContain(a.verdict.failed);
+      expect(page()).toContain(a.failure.http_error.replace('{{status}}', '503'));
+      expect(page()).toContain(a.hint);
+
+      expect(checked('good')).toBe(true);
+      expect(checked('fail')).toBe(true);
+      expect(checked('none')).toBe(true);
+      expect(checked('poor')).toBe(false);
+    });
+
+    it('keeps search order when best-first is off', async () => {
+      useDiscoveryStore.setState({ sortByAssessment: false });
+      await mountWithJob(completed(assessedCandidates()));
+      expect(rowNames()).toEqual(['Business poor', 'Business fail', 'Business good', 'Business none']);
+    });
+
+    it('filters by verdict and imports only the listed rows', async () => {
+      await mountWithJob(completed(assessedCandidates()));
+      const importSpy = vi.spyOn(apiClient, 'importDiscoveryCandidates').mockResolvedValue({ imported: 1, results: [] });
+
+      expect(filterChip('maybe')).toBeNull();
+      await click(filterChip('good')!);
+      expect(useDiscoveryStore.getState().assessmentFilter).toBe('good');
+      expect(filterChip('good')?.getAttribute('aria-pressed')).toBe('true');
+      expect(rowNames()).toEqual(['Business good']);
+
+      await click(button(en.discovery.import.replace('{{selected}}', '1')));
+      expect(importSpy).toHaveBeenCalledWith('disc-1', ['good']);
+    });
+
+    it('shows no verdict filter for a search from before REV-98', async () => {
+      await mountWithJob(completed([candidate('a', 'new')]));
+      expect(page()).not.toContain(en.discovery.assessment.filterLabel);
+      expect(document.body.querySelector('[data-testid="assessment-verdict"]')).toBeNull();
+    });
   });
 
   it('closes from the Import step with Done and reopens on it', async () => {
