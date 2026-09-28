@@ -9,8 +9,20 @@ import {
 import { OsmDiscoveryProvider } from '../osm-discovery.provider.js';
 import { GooglePlacesProvider } from '../google-places.provider.js';
 import { Lead } from '../../models/Lead.model.js';
+import { assessSite } from '../site-assessment.service.js';
 
 vi.mock('../../models/Lead.model.js');
+// Discovery tests never fetch real sites; the assessment itself is covered in site-assessment.service.spec
+vi.mock('../site-assessment.service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../site-assessment.service.js')>()),
+  assessSite: vi.fn(),
+}));
+
+const ASSESSMENT = {
+  outcome: 'failed',
+  failure: 'timeout',
+  assessedAt: '2026-09-28T10:00:00.000Z',
+} as const;
 
 const jobData: IDiscoveryJobData = { provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 10 };
 
@@ -86,6 +98,7 @@ describe('runDiscovery', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockExistingDomains([]);
+    vi.mocked(assessSite).mockResolvedValue(ASSESSMENT);
   });
 
   it('should over-fetch from the provider relative to the limit, capped at 300', async () => {
@@ -126,6 +139,7 @@ describe('runDiscovery', () => {
           phone: '+370 600 00000',
           address: undefined,
           city: 'Vilnius',
+          assessment: ASSESSMENT,
         },
       ],
       counts: { new: 1, existing_lead: 0, duplicate: 0, no_website: 0, invalid: 0 },
@@ -248,6 +262,50 @@ describe('runDiscovery', () => {
     it('should skip the lookup when there is nothing new to match', async () => {
       await runDiscovery(jobData, providerReturning([business('7', { website: undefined })]));
       expect(Lead.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pre-assessment (REV-98)', () => {
+    it('should assess only the offered new candidates, with the configured timeout and user agent', async () => {
+      mockExistingDomains(['clinic-2.lt']);
+      const provider = providerReturning([
+        business('1'),
+        business('2'),
+        business('3', { website: undefined }),
+        business('4', { website: 'https://clinic-1.lt' }),
+        business('5'),
+      ]);
+
+      const { candidates } = await runDiscovery({ ...jobData, limit: 1 }, provider);
+
+      expect(assessSite).toHaveBeenCalledTimes(1);
+      expect(assessSite).toHaveBeenCalledWith(
+        'https://clinic-1.lt/',
+        expect.objectContaining({ timeoutMs: expect.any(Number), userAgent: expect.any(String) }),
+      );
+      const byId = Object.fromEntries(candidates.map((c) => [c.externalId, c]));
+      expect(byId['node/1'].assessment).toEqual(ASSESSMENT);
+      for (const id of ['node/2', 'node/3', 'node/4']) expect(byId[id].assessment).toBeUndefined();
+      // Over the limit: not offered, so not assessed
+      expect(byId['node/5']).toBeUndefined();
+    });
+
+    it('should use an injected assessor and keep its result per candidate', async () => {
+      const assess = vi.fn(async (url: string) => ({
+        outcome: 'failed' as const,
+        failure: url.includes('clinic-1') ? ('http_error' as const) : ('unreachable' as const),
+        httpStatus: url.includes('clinic-1') ? 503 : undefined,
+        assessedAt: '2026-09-28T10:00:00.000Z',
+      }));
+      const { candidates } = await runDiscovery(jobData, providerReturning([business('1'), business('2')]), {
+        assess,
+        assessConcurrency: 1,
+      });
+      expect(assessSite).not.toHaveBeenCalled();
+      expect(candidates.map((c) => c.assessment)).toEqual([
+        expect.objectContaining({ failure: 'http_error', httpStatus: 503 }),
+        expect.objectContaining({ failure: 'unreachable' }),
+      ]);
     });
   });
 

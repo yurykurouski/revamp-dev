@@ -640,6 +640,76 @@ export interface IDiscoveredBusiness {
  */
 export type DiscoveryCandidateStatus = 'new' | 'existing_lead' | 'duplicate' | 'no_website' | 'invalid';
 
+// Pre-assessment of a discovered site before import (REV-98): one plain HTTP fetch of the home
+// page, parsed without running scripts. Every signal is computed by code; no LLM is involved.
+
+/** How worth pursuing a site looks: a simple site with redesign signs is a good candidate */
+export const SITE_ASSESSMENT_VERDICTS = ['good', 'maybe', 'poor'] as const;
+export type SiteAssessmentVerdict = (typeof SITE_ASSESSMENT_VERDICTS)[number];
+
+/** Deterministic "bad" signs that suggest the site needs a redesign */
+export const SITE_BAD_SIGNS = [
+  'no_https',
+  'invalid_certificate',
+  'no_viewport',
+  'table_layout',
+  'frames',
+  'flash',
+  'old_jquery',
+  'legacy_tags',
+  'no_title',
+  'no_meta_description',
+  'stale_copyright',
+  'slow_response',
+  'heavy_html',
+] as const;
+export type SiteBadSign = (typeof SITE_BAD_SIGNS)[number];
+
+/** What makes a site too big or too involved for a one-page MVP */
+export const SITE_COMPLEXITY_SIGNS = ['many_pages', 'ecommerce', 'login', 'app_framework'] as const;
+export type SiteComplexitySign = (typeof SITE_COMPLEXITY_SIGNS)[number];
+
+/** Why a site could not be assessed */
+export const SITE_ASSESSMENT_FAILURES = [
+  'timeout',
+  'unreachable',
+  'invalid_certificate',
+  'http_error',
+  'not_html',
+  'blocked_host',
+] as const;
+export type SiteAssessmentFailure = (typeof SITE_ASSESSMENT_FAILURES)[number];
+
+export interface ISiteAssessmentAssessed {
+  outcome: 'assessed';
+  verdict: SiteAssessmentVerdict;
+  /** Small and simple enough for a one-page MVP: no complexity signs */
+  simple: boolean;
+  badSigns: SiteBadSign[];
+  complexitySigns: SiteComplexitySign[];
+  /** Distinct internal pages linked from the home page */
+  internalPages: number;
+  /** URL of the home page after redirects */
+  finalUrl: string;
+  httpStatus: number;
+  responseMs: number;
+  htmlBytes: number;
+  /** Latest year found in the copyright notice, when there is one */
+  copyrightYear?: number;
+  assessedAt: string;
+}
+
+export interface ISiteAssessmentFailed {
+  /** The check did not produce a verdict; the operator sees "could not assess", never a guess */
+  outcome: 'failed';
+  failure: SiteAssessmentFailure;
+  /** Status code of the failing response (http_error only) */
+  httpStatus?: number;
+  assessedAt: string;
+}
+
+export type ISiteAssessment = ISiteAssessmentAssessed | ISiteAssessmentFailed;
+
 export interface IDiscoveryCandidate {
   provider: DiscoveryProvider;
   externalId: string;
@@ -654,6 +724,8 @@ export interface IDiscoveryCandidate {
   city?: string;
   /** The lead that already covers this business (existing_lead only) */
   leadId?: string;
+  /** Pre-assessment of the site, for `new` candidates found since REV-98 */
+  assessment?: ISiteAssessment;
 }
 
 export interface IDiscoveryJobResult {

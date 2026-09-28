@@ -61,6 +61,9 @@ export const EnvSchema = z.object({
   DISCOVERY_USER_AGENT: z.string().default('RevampBot/0.1 (+https://revampdemo.com)'),
   // Cap on provider requests per search while paging for enough new businesses (REV-35)
   DISCOVERY_MAX_REQUESTS: z.coerce.number().int().min(1).max(20).default(5),
+  // Pre-assessment of each new candidate's home page: one plain fetch per site (REV-98)
+  DISCOVERY_ASSESS_TIMEOUT_MS: z.coerce.number().int().min(1000).max(30000).default(8000),
+  DISCOVERY_ASSESS_CONCURRENCY: z.coerce.number().int().min(1).max(20).default(6),
 });
 
 export const env = EnvSchema.parse(process.env);

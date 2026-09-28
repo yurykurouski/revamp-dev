@@ -16,7 +16,11 @@ import {
   MVP_DESIGN_TOKENS,
   MVP_LAYOUT_VARIANTS,
   MvpDesignElement,
+  SITE_ASSESSMENT_FAILURES,
+  SITE_ASSESSMENT_VERDICTS,
+  SITE_BAD_SIGNS,
   SITE_COMPLEXITY_CLASSES,
+  SITE_COMPLEXITY_SIGNS,
   findLlmProvider,
 } from '@revamp/shared-types';
 
@@ -274,6 +278,42 @@ export const DiscoveredBusinessSchema = z.object({
 });
 
 export type DiscoveredBusinessDto = z.infer<typeof DiscoveredBusinessSchema>;
+
+/**
+ * Pre-assessment of a discovered site (REV-98): either a verdict with the signs that produced it,
+ * or the reason no verdict could be given. Signs are unique and the verdict is never invented for
+ * a site that was not reached.
+ */
+const uniqueList = <T extends z.ZodTypeAny>(item: T, max: number) =>
+  z
+    .array(item)
+    .max(max)
+    .refine((list) => new Set(list).size === list.length, { message: 'Signs must be unique' });
+
+export const SiteAssessmentSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('assessed'),
+    verdict: z.enum(SITE_ASSESSMENT_VERDICTS),
+    simple: z.boolean(),
+    badSigns: uniqueList(z.enum(SITE_BAD_SIGNS), SITE_BAD_SIGNS.length),
+    complexitySigns: uniqueList(z.enum(SITE_COMPLEXITY_SIGNS), SITE_COMPLEXITY_SIGNS.length),
+    internalPages: z.number().int().min(0),
+    finalUrl: z.string().url().regex(/^https?:\/\//i),
+    httpStatus: z.number().int().min(100).max(599),
+    responseMs: z.number().int().min(0),
+    htmlBytes: z.number().int().min(0),
+    copyrightYear: z.number().int().min(1990).max(2100).optional(),
+    assessedAt: z.string().datetime(),
+  }),
+  z.object({
+    outcome: z.literal('failed'),
+    failure: z.enum(SITE_ASSESSMENT_FAILURES),
+    httpStatus: z.number().int().min(100).max(599).optional(),
+    assessedAt: z.string().datetime(),
+  }),
+]);
+
+export type SiteAssessmentDto = z.infer<typeof SiteAssessmentSchema>;
 
 /**
  * Schema for POST /api/v1/audits/trigger
