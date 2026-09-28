@@ -1,7 +1,4 @@
-/**
- * @vitest-environment happy-dom
- */
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import {
   activeFilterCount,
   DEFAULT_QUEUE_BUCKET,
@@ -9,10 +6,8 @@ import {
   formatAge,
   isLeadBucket,
   keepSelectedLead,
-  isTypingTarget,
   leadScoreBand,
   NO_QUEUE_FILTERS,
-  queueKeyAction,
   queueStatusOptions,
   resolveSelection,
   scoreBand,
@@ -124,67 +119,6 @@ describe('queue selection (REV-79)', () => {
     expect(stepSelection(ids, null, 1)).toBe('a');
     expect(stepSelection(ids, 'gone', -1)).toBe('a');
     expect(stepSelection([], 'a', 1)).toBeNull();
-  });
-});
-
-describe('queue keyboard (REV-79)', () => {
-  afterEach(() => {
-    document.body.innerHTML = '';
-  });
-
-  const press = (key: string, target: EventTarget | null = document.body, init: Partial<KeyboardEvent> = {}) =>
-    queueKeyAction({ key, metaKey: false, ctrlKey: false, altKey: false, defaultPrevented: false, target, ...init });
-
-  const element = (html: string) => {
-    document.body.innerHTML = html;
-    return document.body.querySelector<HTMLElement>('[data-target]')!;
-  };
-
-  it('moves with J / K and opens with Enter', () => {
-    expect(press('j')).toBe('next');
-    expect(press('k')).toBe('previous');
-    expect(press('J')).toBe('next');
-    expect(press('Enter')).toBe('open');
-    expect(press('x')).toBeNull();
-    expect(press('ArrowDown')).toBeNull();
-  });
-
-  it('does nothing while a text field has focus', () => {
-    for (const html of [
-      '<input data-target>',
-      '<textarea data-target></textarea>',
-      '<select data-target></select>',
-      '<div contenteditable="true" data-target></div>',
-      '<div role="combobox" data-target></div>',
-    ]) {
-      const target = element(html);
-      expect(isTypingTarget(target), html).toBe(true);
-      expect(press('j', target), html).toBeNull();
-      expect(press('Enter', target), html).toBeNull();
-    }
-  });
-
-  it('does nothing inside a dialog', () => {
-    const target = element('<div role="dialog"><button data-target>Cancel</button></div>');
-    expect(press('j', target)).toBeNull();
-    expect(press('k', target)).toBeNull();
-  });
-
-  it('leaves modified keys alone, so Cmd + Enter still approves', () => {
-    expect(press('Enter', document.body, { metaKey: true })).toBeNull();
-    expect(press('Enter', document.body, { ctrlKey: true })).toBeNull();
-    expect(press('j', document.body, { altKey: true })).toBeNull();
-  });
-
-  it('leaves a key another element already handled alone', () => {
-    expect(press('Enter', document.body, { defaultPrevented: true })).toBeNull();
-  });
-
-  it('moves from a focused button but never takes Enter from it', () => {
-    const target = element('<button data-target>Next</button>');
-    expect(isTypingTarget(target)).toBe(false);
-    expect(press('j', target)).toBe('next');
-    expect(press('Enter', target)).toBeNull();
   });
 });
 

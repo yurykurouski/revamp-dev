@@ -13,6 +13,7 @@ import { getTheme } from '../../theme/theme.js';
 import { LeadReview, type ReviewDecision } from '../leadReview/LeadReview.js';
 import { APPROVE_ARM_DELAY_MS } from '../leadReview/ReviewActionBar.js';
 import { REVIEW_STEPS, ReviewStep, nextStep, previousStep } from '../leadReview/steps.js';
+import { isMacPlatform } from '../../utils/shortcuts.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -209,6 +210,26 @@ describe('LeadReview (REV-77)', () => {
       window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true }));
     });
     expect(apiClient.approveOutreach).not.toHaveBeenCalled();
+  });
+
+  it('approves once with the platform modifier + Enter, from the draft, after Approve arms (REV-47)', async () => {
+    await mount();
+    await goToEmail();
+    await armApprove();
+    const modifier = isMacPlatform() ? { metaKey: true } : { ctrlKey: true };
+    const wrongModifier = isMacPlatform() ? { ctrlKey: true } : { metaKey: true };
+
+    await act(async () => {
+      subject().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...wrongModifier }));
+    });
+    expect(apiClient.approveOutreach).not.toHaveBeenCalled();
+
+    await act(async () => {
+      subject().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...modifier }));
+    });
+    await flush();
+    expect(apiClient.approveOutreach).toHaveBeenCalledTimes(1);
+    expect(onDecision).toHaveBeenCalledExactlyOnceWith('approved');
   });
 
   it('keeps unsaved email edits while moving between steps and approves them', async () => {

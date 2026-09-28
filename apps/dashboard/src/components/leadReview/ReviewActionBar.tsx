@@ -22,6 +22,7 @@ import type { CompletenessField } from '@revamp/shared-types';
 import { canApproveOutreach, canRejectLead } from '@revamp/validation';
 import { useTranslation } from 'react-i18next';
 import type { IEmailDraft, ILeadItem } from '../../api/client.js';
+import { useShortcuts } from '../../hooks/useShortcuts.js';
 import { REVIEW_STEPS, ReviewStep } from './steps.js';
 
 /**
@@ -131,18 +132,8 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
     setRejectDialogOpen(false);
   };
 
-  // Cmd + Enter / Ctrl + Enter approves, on the email step only
-  useEffect(() => {
-    if (!isEmailStep) return;
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
-        e.preventDefault();
-        handleApproveSubmit();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  });
+  // ⌘ + Enter / Ctrl + Enter approves, on the email step only, through the button's own checks (REV-47)
+  useShortcuts({ approve: isEmailStep ? () => void handleApproveSubmit() : undefined });
 
   return (
     <Box sx={{ flexShrink: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>

@@ -12,6 +12,7 @@ import { en } from '../../i18n/locales/en.js';
 import { apiClient, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
+import { useDiscoveryStore } from '../../store/useDiscoveryStore.js';
 import { AppRoutes } from '../AppRoutes.js';
 
 // The review itself has its own tests; here only which lead it shows and its close callback matter
@@ -256,5 +257,81 @@ describe('app shell and routes (REV-76)', () => {
     await mount('/leads');
     const link = [...document.querySelectorAll('a')].find((a) => a.textContent === 'Bright Smile');
     expect(link?.getAttribute('href')).toBe('/leads/l4');
+  });
+
+  describe('keyboard shortcuts (REV-47)', () => {
+    const press = (key: string, target: EventTarget = document.body, init: KeyboardEventInit = {}) =>
+      act(async () => {
+        target.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true, ...init }));
+      });
+    const shortcutsDialog = () => document.querySelector('[role="dialog"][aria-labelledby="shortcuts-dialog-title"]');
+    const search = () => document.querySelector<HTMLInputElement>(`input[aria-label="${en.topBar.searchLabel}"]`)!;
+
+    afterEach(() => {
+      useLeadFilterStore.getState().closeAddModal();
+      useDiscoveryStore.getState().close();
+    });
+
+    it('moves between the sections with 1, 2 and 3', async () => {
+      await mount('/');
+      await press('2');
+      expect(path()).toBe('/leads');
+      await press('3');
+      expect(path()).toBe('/settings');
+      await press('1');
+      expect(path()).toBe('/');
+    });
+
+    it('opens discovery with D and Add lead with N', async () => {
+      await mount('/leads');
+      await press('d');
+      expect(useDiscoveryStore.getState().isOpen).toBe(true);
+      await act(async () => useDiscoveryStore.getState().close());
+      await press('n');
+      expect(useLeadFilterStore.getState().isAddModalOpen).toBe(true);
+    });
+
+    it('focuses the lead search with /', async () => {
+      await mount('/leads');
+      await press('/');
+      expect(document.activeElement).toBe(search());
+    });
+
+    it('ignores shortcuts while typing in the search field', async () => {
+      await mount('/leads');
+      await press('/');
+      await press('1', search());
+      await press('?', search());
+      expect(path()).toBe('/leads');
+      expect(shortcutsDialog()).toBeNull();
+    });
+
+    it('ignores a key held with a modifier, leaving browser shortcuts alone', async () => {
+      await mount('/leads');
+      await press('1', document.body, { metaKey: true });
+      await press('1', document.body, { ctrlKey: true });
+      expect(path()).toBe('/leads');
+    });
+
+    it('lists every shortcut in the help overlay, from ? or the rail, and closes it on Esc', async () => {
+      await mount('/');
+      await press('?');
+      const dialog = shortcutsDialog()!;
+      expect(dialog.textContent).toContain(en.shortcuts.title);
+      for (const text of [en.shortcuts.actions.goQueue, en.shortcuts.actions.next, en.shortcuts.actions.approve, en.shortcuts.actions.closeDialog]) {
+        expect(dialog.textContent).toContain(text);
+      }
+      // Keys pressed inside the overlay belong to it
+      await press('2', dialog.querySelector('button')!);
+      expect(path()).toBe('/');
+
+      await press('Escape', dialog.querySelector('button')!);
+      // The dialog stays mounted for its exit transition
+      await act(async () => new Promise((r) => setTimeout(r, 400)));
+      expect(shortcutsDialog()).toBeNull();
+
+      await act(async () => railEntry('shortcuts').click());
+      expect(shortcutsDialog()).not.toBeNull();
+    });
   });
 });

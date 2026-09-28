@@ -13,13 +13,15 @@ import { activeRailPage, ROUTES } from '../routes/paths.js';
 interface TopBarProps {
   discovery: DiscoveryIndicator;
   discoveryNewCount: number;
+  /** The search field, so the `/` shortcut can focus it (REV-47) */
+  searchRef?: React.Ref<HTMLInputElement>;
 }
 
 /**
  * The review-queue top bar (REV-76): lead search, "Find businesses" and "Add lead". Language and theme
  * live on the Settings page.
  */
-export const TopBar: React.FC<TopBarProps> = ({ discovery, discoveryNewCount }) => {
+export const TopBar: React.FC<TopBarProps> = ({ discovery, discoveryNewCount, searchRef }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { pathname } = useLocation();
@@ -43,6 +45,7 @@ export const TopBar: React.FC<TopBarProps> = ({ discovery, discoveryNewCount }) 
           size="small"
           value={searchQuery}
           onChange={(e) => handleSearch(e.target.value)}
+          inputRef={searchRef}
           inputProps={{ 'aria-label': t('topBar.searchLabel') }}
           InputProps={{
             startAdornment: (
