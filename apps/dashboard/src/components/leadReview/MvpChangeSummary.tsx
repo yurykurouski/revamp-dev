@@ -272,7 +272,7 @@ export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit }
   if (!summary) return null;
 
   return (
-    <Box component="section" aria-labelledby="mvp-changes-title" sx={{ px: 2, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
+    <Box component="section" aria-labelledby="mvp-changes-title" sx={{ px: 2, py: 1, borderTop: '1px solid', borderColor: 'divider' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
         <Typography id="mvp-changes-title" variant="subtitle2" component="h3" sx={{ fontWeight: 700 }}>
           {t('mvpChanges.title')}
