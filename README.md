@@ -13,6 +13,52 @@ Manual URL ──┘
 - **MVP:** an LLM rewrites the original site's content in the site's own language. One of four layouts (Bento, split, editorial, compact), picked deterministically from the audit data, renders it, and the page is checked against the original site's data before it is published to S3/MinIO.
 - **Dashboard:** a review-queue layout with an icon rail and client-side routes (`/` review queue: tabs for the Needs you, In progress, Outreach and Closed buckets with counts, a list of the bucket's leads next to the selected lead's review, quick filters by status and score band (Filter next to the list caption; they reset when the bucket changes), the next lead selected after an approve or reject while a lead a worker or a regeneration moves to another bucket stays selected, J / K / Enter to move and open, and an open-full-screen button in the selected lead's header; `/leads` all leads as a table or board filtered by bucket, niche and site type, `/leads/:id` a lead's review, `/leads/:id/preview` the lead's MVP full-window with the same Design tools (opened in a new tab from the Prototype step, with a link to the published page the lead receives), `/settings` theme, language and the default LLM), a lead review in three steps (1 Audit: original-site screenshots, metrics, the MVP data check, flaws and quick wins; 2 Prototype: the sandboxed MVP with breakpoints, regeneration with a choice of LLM provider and model, and a Design tools panel floating over the preview (drag it by its handle or move it with the arrow keys, Home or reset position puts it back in the top-right corner, collapse it to its header; its place lasts for the browser session) holding the color toolbar, a layout picker that switches the MVP between its four layouts live, with an animated transition and no regeneration, and a "Describe a change" field where the operator asks for a change in their own words (the LLM applies it to the copy, primary color, layout and/or a custom design — section order and hiding, the hero's arrangement, element styles, font, density, corners, hero style and up to three custom blocks — without inventing facts, and says what it changed or why it changed nothing; "Reset custom design" drops the design); a color, layout or described change also re-renders the published MVP, so the page opened in a new tab and sent to the lead matches it, and the tools lock once the lead leaves review; 3 Email: the email editor with an inbox preview) and a bottom action bar where Approve & send exists only on the email step and Reject on every step. The UI is available in English, Russian, Belarusian, Polish and Lithuanian, with a Hyperliquid-inspired dark theme (the default target) and a matching light theme.
 
+## Quick start
+
+You need three things installed:
+
+- [Node.js](https://nodejs.org) 20 or newer (`node -v` to check)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop), running (it provides MongoDB, Redis and MinIO)
+- Git
+
+Then, from the cloned folder:
+
+```bash
+npm run setup   # once: dependencies, Chromium, .env, databases, shared packages
+npm run dev     # every time: starts everything, then open http://localhost:5173
+```
+
+`npm run setup` checks Node and Docker, runs `npm install`, downloads the Chromium build Playwright uses for site audits, creates `.env` from `.env.example` (an existing `.env` is never overwritten), starts MongoDB, Redis and MinIO in Docker and waits until they are healthy, creates the MinIO buckets and builds the shared packages. It is safe to run again, for example after pulling changes that add dependencies.
+
+`npm run dev` starts the Docker services if they are not running, rebuilds a shared package only when its sources changed, then runs the API, the workers and the dashboard in one terminal. Every line is tagged with the app it came from (`[api      ]`, `[workers  ]`, `[dashboard]`). If one app crashes the others stop too, so the error stays at the bottom of the output.
+
+| Address | What |
+|---|---|
+| http://localhost:5173 | Dashboard |
+| http://localhost:4000/api/v1 | API |
+| http://localhost:9001 | MinIO console (`minioadmin` / `minioadmin`), where the generated MVPs are stored |
+
+Press **Ctrl+C** to stop the apps. The Docker containers keep running so the next start is fast; `npm run docker:down` stops them (your data stays in Docker volumes).
+
+### Add an LLM provider
+
+The app starts without one, but audits and MVP generation need an LLM, and nothing is faked when it is missing. Pick one:
+
+- Put `ANTHROPIC_API_KEY` (or `OPENAI_API_KEY`) in `.env`, then restart `npm run dev`.
+- Or install the [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code), log in (`claude`) and set `MVP_LLM_PROVIDER=claude-cli` in `.env`. It uses the account the CLI is logged into, so no API key is needed.
+
+`npm run setup` ends by listing the providers it found and warns about anything still missing. [LLM providers](#llm-providers) covers every option. Discovery (OpenStreetMap) works with no key; sending email needs `EMAIL_PROVIDER` (see [Email](#email)).
+
+### Troubleshooting
+
+| Message | Fix |
+|---|---|
+| `Docker is installed but not running.` | Start Docker Desktop and wait until it reports it is running. |
+| `Port 5173 (dashboard) is already in use.` (or 4000) | Another copy of the app is running, maybe in another terminal. Stop it, or find it with `lsof -i :5173`. |
+| `docker compose up` fails with a port error | Another MongoDB (27017), Redis (6379) or MinIO (9000/9001) is running on your machine. Stop it, then run `npm run dev` again. |
+| `The project is not set up yet.` | Run `npm run setup` first. |
+| An audit fails at the design critique | No LLM provider is configured, see above. |
+
 ## Repository layout
 
 ```
@@ -25,16 +71,12 @@ packages/
   validation/   Zod schemas for HTTP payloads and LLM output
   db/           Mongoose models shared by the API and the workers
 deploy/         Production Docker, Nginx and deploy script
-scripts/        Maintenance and live-crawl scripts
+scripts/        setup / dev launchers, maintenance and live-crawl scripts
 ```
 
-## Requirements
+## Local development
 
-- Node.js 20+
-- Docker with Docker Compose (MongoDB 7, Redis 7, MinIO)
-- Chromium for Playwright: `npx playwright install chromium`
-
-## Getting started
+See [Quick start](#quick-start) to get the app running. The pieces behind `npm run setup` and `npm run dev`, if you want to run them yourself:
 
 ```bash
 npm install
@@ -42,11 +84,6 @@ npx playwright install chromium
 cp .env.example .env
 npm run docker:up        # MongoDB :27017, Redis :6379, MinIO :9000 (console :9001)
 npm run build:packages   # the apps typecheck against the packages' compiled dist
-```
-
-Then start the three apps, each in its own terminal:
-
-```bash
 npm run dev:api          # http://localhost:4000/api/v1
 npm run dev:workers
 npm run dev:dashboard    # http://localhost:5173
@@ -94,6 +131,9 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 
 | Command | What it does |
 |---|---|
+| `npm run setup` | First-time setup, safe to re-run (see [Quick start](#quick-start)) |
+| `npm run dev` | Docker services + API, workers and dashboard in one terminal |
+| `npm run dev:api` / `dev:workers` / `dev:dashboard` | One app on its own |
 | `npm run build` | Builds the packages, then every app |
 | `npm run typecheck` | Type-checks every workspace |
 | `npm run lint` | ESLint |

@@ -14,7 +14,7 @@ const {
   checkNodeVersion,
   ensureEnvFile,
   isPortInUse,
-  llmProviders,
+  llmAdvice,
   parseEnv,
   prefixLines,
   stalePackages,
@@ -64,6 +64,20 @@ describe('checkDocker', () => {
   it('explains a stopped daemon', () => {
     expect(() => checkDocker(runner({ 'docker info': 1 }))).toThrow(/not running/);
   });
+
+  it("passes the daemon's own error on in the hint", () => {
+    const run = (cmd: string, args: string[]) =>
+      args[0] === 'info'
+        ? { status: 1, stderr: 'Server:\nERROR: Error response from daemon: Docker Desktop is unable to start\n' }
+        : { status: 0 };
+    try {
+      checkDocker(run);
+      expect.unreachable();
+    } catch (error: any) {
+      expect(error.hint).toContain('Docker says: ERROR: Error response from daemon: Docker Desktop is unable to start');
+      expect(error.hint).toContain('restart');
+    }
+  });
 });
 
 describe('parseEnv', () => {
@@ -97,17 +111,29 @@ describe('parseEnv', () => {
   });
 });
 
-describe('llmProviders', () => {
-  it('lists the providers with a key, then the CLI', () => {
-    expect(llmProviders({ ANTHROPIC_API_KEY: 'sk', OPENAI_API_KEY: '', GEMINI_API_KEY: 'g' }, true)).toEqual([
-      'anthropic',
-      'gemini',
-      'claude-cli',
-    ]);
+describe('llmAdvice', () => {
+  it('lists the providers with a key, then the CLI, with no warning', () => {
+    expect(llmAdvice({ ANTHROPIC_API_KEY: 'sk', OPENAI_API_KEY: '', GEMINI_API_KEY: 'g' }, true)).toEqual({
+      providers: ['anthropic', 'gemini', 'claude-cli'],
+      warnings: [],
+    });
   });
 
-  it('is empty when nothing is configured', () => {
-    expect(llmProviders({ ANTHROPIC_API_KEY: '' }, false)).toEqual([]);
+  it('warns when nothing is configured', () => {
+    const { providers, warnings } = llmAdvice({ ANTHROPIC_API_KEY: '' }, false);
+    expect(providers).toEqual([]);
+    expect(warnings[0]).toMatch(/No LLM provider/);
+    expect(warnings.join(' ')).toContain('MVP_LLM_PROVIDER=claude-cli');
+  });
+
+  it('asks for MVP_LLM_PROVIDER when the CLI is the only provider', () => {
+    const { providers, warnings } = llmAdvice({ MVP_LLM_PROVIDER: '' }, true);
+    expect(providers).toEqual(['claude-cli']);
+    expect(warnings).toEqual([expect.stringContaining('MVP_LLM_PROVIDER=claude-cli')]);
+  });
+
+  it('is satisfied by the CLI once MVP_LLM_PROVIDER picks it', () => {
+    expect(llmAdvice({ MVP_LLM_PROVIDER: 'claude-cli' }, true).warnings).toEqual([]);
   });
 });
 

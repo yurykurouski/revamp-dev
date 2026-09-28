@@ -77,8 +77,13 @@ export function checkDocker(run = runQuiet) {
       'Update Docker Desktop, or install the compose plugin: https://docs.docker.com/compose/install/',
     );
   }
-  if (run('docker', ['info']).status !== 0) {
-    throw new SetupError('Docker is installed but not running.', 'Start Docker Desktop, wait until it says it is running, then try again.');
+  const info = run('docker', ['info']);
+  if (info.status !== 0) {
+    const reason = (info.stderr || '').split('\n').find((line) => /error/i.test(line));
+    throw new SetupError(
+      'Docker is installed but not running.',
+      `${reason ? `Docker says: ${reason.trim()}\n` : ''}Start (or restart) Docker Desktop, wait until it says it is running, then try again.`,
+    );
   }
 }
 
@@ -106,13 +111,24 @@ export function parseEnv(text) {
 }
 
 /**
- * Which LLM providers the workers can use: API keys set in `env`, and the Claude Code CLI when
- * `cliFound`. Audits need at least one (the design critique), so setup warns when there is none.
+ * Which LLM providers the workers can use (API keys set in `env`, and the Claude Code CLI when
+ * `cliFound`) and what is still missing. The design critique picks the CLI on its own; MVP copy
+ * uses it only when MVP_LLM_PROVIDER=claude-cli, since without a key it falls back to no provider.
  */
-export function llmProviders(env, cliFound) {
-  const providers = LLM_KEY_VARS.filter((key) => env[key]).map((key) => key.replace('_API_KEY', '').toLowerCase());
-  if (cliFound) providers.push('claude-cli');
-  return providers;
+export function llmAdvice(env, cliFound) {
+  const keyed = LLM_KEY_VARS.filter((key) => env[key]).map((key) => key.replace('_API_KEY', '').toLowerCase());
+  const providers = cliFound ? [...keyed, 'claude-cli'] : keyed;
+  const warnings = [];
+  if (!providers.length) {
+    warnings.push(
+      'No LLM provider configured. Audits and MVP generation will fail until you add one:',
+      'put ANTHROPIC_API_KEY or OPENAI_API_KEY in .env, or install and log in to the Claude Code CLI',
+      'and set MVP_LLM_PROVIDER=claude-cli in .env.',
+    );
+  } else if (!keyed.length && !env.MVP_LLM_PROVIDER) {
+    warnings.push('Only the Claude Code CLI was found. Set MVP_LLM_PROVIDER=claude-cli in .env so MVP generation uses it too.');
+  }
+  return { providers, warnings };
 }
 
 /** True when `cmd` resolves on PATH (or is an existing file path). */
@@ -208,7 +224,7 @@ export function startInfrastructure(root) {
 
 /** Spawns an app's dev server in its own process group so the whole tree can be stopped. */
 export function spawnApp(app, root) {
-  return spawn(npm, ['run', 'dev', `--workspace=${app.workspace}`], {
+  return spawn(npm, ['run', 'dev', '--silent', `--workspace=${app.workspace}`], {
     cwd: root,
     // Output is piped for the prefixes; keep the apps' colors anyway.
     env: process.env.NO_COLOR ? process.env : { ...process.env, FORCE_COLOR: '1' },

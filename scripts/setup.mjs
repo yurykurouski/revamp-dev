@@ -10,7 +10,7 @@ import {
   commandExists,
   ensureEnvFile,
   fail,
-  llmProviders,
+  llmAdvice,
   log,
   npm,
   paint,
@@ -29,7 +29,7 @@ try {
   log.ok('Docker is running');
 
   log.step('Installing dependencies (npm install)');
-  runOrFail(npm, ['install'], { cwd: root, hint: 'Check your network connection and re-run `npm run setup`.' });
+  runOrFail(npm, ['install'], { cwd: root, hint: 'See the npm error above (network access, free disk space, permissions), then re-run `npm run setup`.' });
   log.ok('Dependencies installed');
 
   log.step('Installing Chromium for Playwright (used by the site audit)');
@@ -52,17 +52,16 @@ try {
   log.ok('Packages built');
 
   const env = parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8'));
-  const providers = llmProviders(env, commandExists(env.CLAUDE_CLI_PATH || 'claude'));
+  const { providers, warnings } = llmAdvice(env, commandExists(env.CLAUDE_CLI_PATH || 'claude'));
 
   console.log(`\n${paint('1;32', '✓ Setup complete.')} Start the app with:\n\n    ${paint(1, 'npm run dev')}\n`);
   console.log(`  Dashboard  http://localhost:5173`);
   console.log(`  API        http://localhost:4000/api/v1`);
   console.log(`  MinIO      http://localhost:9001 (minioadmin / minioadmin)\n`);
-  if (providers.length) {
-    log.ok(`LLM providers available: ${providers.join(', ')}`);
-  } else {
-    log.warn('No LLM provider configured. Audits and MVP generation will fail until you add one.');
-    log.info('Put ANTHROPIC_API_KEY or OPENAI_API_KEY in .env, or install and log in to the Claude Code CLI.');
+  if (providers.length) log.ok(`LLM providers available: ${providers.join(', ')}`);
+  if (warnings.length) {
+    log.warn(warnings[0]);
+    for (const line of warnings.slice(1)) log.info(line);
   }
   console.log('');
 } catch (error) {

@@ -68,12 +68,18 @@ Revamp-dev/
 │   ├── shared-types/    # Shared interfaces, enums, DTOs and queue names across the monorepo
 │   ├── validation/      # Shared Zod validation schemas (API and frontend forms)
 │   └── db/              # Mongoose models shared by the API and workers (REV-48)
+├── scripts/             # setup.mjs / dev.mjs (REV-95, plain Node, no deps), maintenance and live-crawl scripts
 ├── docker-compose.yml   # Containerized services: MongoDB 7.0, Redis 7.0, MinIO + minio-init
 ├── package.json         # Root npm workspace configuration
 ├── AGENTS.md            # This instruction file
 ├── .env.example         # Environment variables template
 └── tsconfig.base.json   # Base TypeScript compiler configuration
 ```
+
+### 3.1.1. Running the Stack Locally (REV-95)
+* `npm run setup` (once, idempotent) checks Node 20+ and Docker, installs dependencies and Playwright Chromium, creates `.env` from `.env.example` without overwriting it, starts MongoDB/Redis/MinIO (waits until healthy, runs `minio-init`) and builds the packages.
+* `npm run dev` starts the infrastructure, rebuilds stale packages, then runs API, workers and dashboard in one terminal with prefixed output; it refuses to start while port 4000 or 5173 is taken. Ctrl+C stops the apps, not the containers. Use `dev:api` / `dev:workers` / `dev:dashboard` to run one app.
+* `scripts/setup.mjs` and `scripts/dev.mjs` run before `npm install`, so they stay plain Node with no dependencies; their logic lives in `scripts/lib/dev-stack.mjs` and is tested in `scripts/__tests__/dev-stack.spec.ts`.
 
 ### 3.2. Fundamental Engineering Constraints
 1. **Human-In-The-Loop (HITL):**
