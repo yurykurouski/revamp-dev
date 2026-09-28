@@ -17,7 +17,7 @@ const render = ({
     React.createElement(
       MemoryRouter,
       null,
-      React.createElement(IconRail, { activePage, needsYouCount, discovery, onOpenDiscovery: () => {} }),
+      React.createElement(IconRail, { activePage, needsYouCount, discovery, onOpenDiscovery: () => {}, onOpenShortcuts: () => {} }),
     ),
   );
 
@@ -76,6 +76,13 @@ describe('IconRail (REV-76)', () => {
     expect(render({ discovery: 'running' })).toContain('MuiCircularProgress');
     expect(entry(render({ discovery: 'ready' }), 'discovery')).toContain(`aria-label="${en.rail.discoveryReady}"`);
     expect(entry(render({ discovery: 'failed' }), 'discovery')).toContain(`aria-label="${en.header.discoveryFailed}"`);
+  });
+
+  it('offers the keyboard shortcuts overlay as a labelled button (REV-47)', () => {
+    const shortcuts = entry(render(), 'shortcuts');
+    expect(shortcuts).toMatch(/^<button/);
+    expect(shortcuts).toContain(`aria-label="${en.shortcuts.title}"`);
+    expect(shortcuts).toContain('aria-keyshortcuts="?"');
   });
 
   it('shows the operator avatar', () => {

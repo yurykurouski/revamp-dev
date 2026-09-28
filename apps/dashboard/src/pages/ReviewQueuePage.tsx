@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import type { ILeadItem } from '../api/client.js';
 import { useLeadsQuery } from '../hooks/useLeads.js';
 import { useOpenLead } from '../hooks/useOpenLead.js';
-import { useQueueHotkeys } from '../hooks/useQueueHotkeys.js';
+import { useShortcuts } from '../hooks/useShortcuts.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { LeadReview, type ReviewDecision } from '../components/leadReview/LeadReview.js';
 import { AuditFailedActions } from '../components/AuditFailedActions.js';
@@ -263,7 +263,7 @@ export const ReviewQueuePage: React.FC = () => {
 
   const select = useCallback((id: string | null) => setQuery({ lead: id }), [setQuery]);
 
-  useQueueHotkeys({
+  useShortcuts({
     next: () => select(stepSelection(ids, selectedId, 1)),
     previous: () => select(stepSelection(ids, selectedId, -1)),
     open: () => {

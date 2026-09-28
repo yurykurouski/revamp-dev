@@ -7,6 +7,7 @@ import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import TuneIcon from '@mui/icons-material/Tune';
+import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
 import { useTranslation } from 'react-i18next';
 import { ROUTES, RailPage } from '../routes/paths.js';
 import type { DiscoveryIndicator } from '../hooks/useDiscovery.js';
@@ -27,6 +28,8 @@ interface IconRailProps {
   needsYouCount: number;
   discovery: DiscoveryIndicator;
   onOpenDiscovery: () => void;
+  /** Opens the keyboard shortcuts overlay (REV-47) */
+  onOpenShortcuts: () => void;
 }
 
 const itemSx = (active: boolean): SxProps<Theme> => ({
@@ -41,7 +44,7 @@ const itemSx = (active: boolean): SxProps<Theme> => ({
 });
 
 /** 64px navigation rail of the review-queue layout (REV-76); replaces the collapsible sidebar */
-export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, discovery, onOpenDiscovery }) => {
+export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, discovery, onOpenDiscovery, onOpenShortcuts }) => {
   const { t } = useTranslation();
 
   const pageItem = (page: RailPage) => {
@@ -133,6 +136,11 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
       </Tooltip>
 
       <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
+        <Tooltip title={`${t('shortcuts.title')} (?)`} placement="right">
+          <ButtonBase onClick={onOpenShortcuts} aria-label={t('shortcuts.title')} aria-keyshortcuts="?" data-rail="shortcuts" sx={itemSx(false)}>
+            <KeyboardOutlinedIcon />
+          </ButtonBase>
+        </Tooltip>
         {pageItem('settings')}
         <Tooltip title={`${t('header.operator')} · ${t('header.operatorRole')}`} placement="right">
           <Avatar

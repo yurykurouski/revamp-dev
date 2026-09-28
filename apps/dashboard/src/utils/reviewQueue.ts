@@ -156,46 +156,6 @@ export function scoreBandOptions(leads: readonly FilterableLead[]): FilterOption
 export const toggleValue = <T>(values: readonly T[], value: T): T[] =>
   values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
 
-export type QueueKeyAction = 'next' | 'previous' | 'open';
-
-type KeyTarget = Pick<Element, 'tagName' | 'getAttribute' | 'closest'> & { isContentEditable?: boolean };
-
-/** Whether keys typed here are text: a field, an editor, or a widget that uses letters itself */
-export function isTypingTarget(target: EventTarget | null): boolean {
-  const el = target as KeyTarget | null;
-  if (!el || typeof el.tagName !== 'string') return false;
-  const tag = el.tagName.toUpperCase();
-  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return true;
-  if (el.isContentEditable) return true;
-  const editable = el.getAttribute('contenteditable');
-  if (editable !== null && editable !== 'false') return true;
-  return ['textbox', 'combobox', 'searchbox', 'spinbutton'].includes(el.getAttribute('role') ?? '');
-}
-
-/**
- * What a key press does in the queue: J / K move through the list and Enter opens the selected lead.
- * Nothing happens while the operator types in a field or works in a dialog, with a modifier held (so
- * Cmd + Enter stays the approve shortcut), or on a key another element already handled. Enter counts
- * only when nothing is focused, so it never takes over a focused button or link.
- */
-export function queueKeyAction(
-  event: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey' | 'defaultPrevented' | 'target'>,
-): QueueKeyAction | null {
-  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return null;
-  const target = event.target as KeyTarget | null;
-  if (isTypingTarget(event.target)) return null;
-  if (target && typeof target.closest === 'function' && target.closest('[role="dialog"]')) return null;
-
-  const key = event.key.length === 1 ? event.key.toLowerCase() : event.key;
-  if (key === 'j') return 'next';
-  if (key === 'k') return 'previous';
-  if (key === 'Enter') {
-    const tag = target && typeof target.tagName === 'string' ? target.tagName.toUpperCase() : 'BODY';
-    return tag === 'BODY' || tag === 'HTML' ? 'open' : null;
-  }
-  return null;
-}
-
 const AGE_UNITS = [
   { unit: 'minute', ms: 60_000, below: 60 },
   { unit: 'hour', ms: 3_600_000, below: 24 },
