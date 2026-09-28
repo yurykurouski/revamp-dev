@@ -408,6 +408,8 @@ export interface IMvpProject {
   requestedModel?: string;
   /** Layout this version was rendered with; absent on MVPs generated before REV-54 (Bento) */
   layout?: IMvpLayoutSelection;
+  /** When an operator's free-text change was last applied and re-published (REV-85) */
+  editedAt?: string | Date;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -590,6 +592,8 @@ export const QUEUE_NAMES = {
   /** Test sends of a draft to the operator's own address (REV-60) */
   EMAIL_TEST: 'email-test-queue',
   DISCOVERY: 'discovery-queue',
+  /** An operator's free-text change to a generated MVP, interpreted by the LLM (REV-85) */
+  MVP_EDIT: 'mvp-edit-queue',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -732,6 +736,29 @@ export interface IDeployJobData {
   mode?: 'deploy' | 'relayout';
 }
 
+/** What a free-text change altered on the MVP (REV-85) */
+export type MvpEditChange = 'content' | 'palette' | 'layout';
+
+/** An operator's free-text change to a generated MVP (REV-85) */
+export interface IMvpEditJobData {
+  mvpProjectId: string;
+  /** The operator's own words, e.g. "make the headline punchier" */
+  instruction: string;
+  /**
+   * Epoch ms after which the change is no longer applied: the API has stopped waiting and told the
+   * operator it timed out, so a late answer must not change the page behind their back.
+   */
+  deadline: number;
+}
+
+export interface IMvpEditJobResult {
+  /** false when the model found nothing it could change within the grounding rules */
+  applied: boolean;
+  /** The model's one-line account of what it changed, or why it changed nothing */
+  summary: string;
+  changes: MvpEditChange[];
+}
+
 export interface IEmailDispatchJobData {
   campaignId: string;
   leadId: string;
@@ -781,6 +808,21 @@ export interface IBentoServiceCard {
 export const MVP_LAYOUT_VARIANTS = ['bento', 'split', 'editorial', 'compact'] as const;
 
 export type MvpLayoutVariant = (typeof MVP_LAYOUT_VARIANTS)[number];
+
+/**
+ * Primary colors the operator can pick for an MVP besides the audit's brand colors (REV-16); a
+ * free-text change may only pick among these and the brand colors (REV-85).
+ */
+export const MVP_COLOR_PRESETS = [
+  { name: 'Indigo', hex: '#4F46E5' },
+  { name: 'Violet', hex: '#7C3AED' },
+  { name: 'Cyan', hex: '#0891B2' },
+  { name: 'Emerald', hex: '#059669' },
+  { name: 'Amber', hex: '#D97706' },
+  { name: 'Rose', hex: '#E11D48' },
+  { name: 'Blue', hex: '#2563EB' },
+  { name: 'Slate', hex: '#334155' },
+] as const;
 
 /** The reason code of a layout the operator picked in the dashboard instead of the automatic one (REV-84) */
 export const MVP_LAYOUT_MANUAL_REASON = 'rule:manual';
@@ -871,6 +913,9 @@ export const API_ERROR_CODES = [
   'MVP_NOT_FOUND',
   'MVP_LAYOUT_CHANGE_NOT_ALLOWED',
   'MVP_PALETTE_CHANGE_NOT_ALLOWED',
+  'MVP_EDIT_NOT_ALLOWED',
+  'MVP_EDIT_FAILED',
+  'MVP_EDIT_TIMEOUT',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',

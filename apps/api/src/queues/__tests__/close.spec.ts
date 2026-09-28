@@ -13,17 +13,24 @@ vi.mock('../email-test.queue.js', () => ({
   emailTestQueue: (queues.emailTest = queue('email-test')),
   closeEmailTestEvents,
 }));
+const closeMvpEditEvents = vi.hoisted(() => vi.fn());
+vi.mock('../mvp-edit.queue.js', () => ({
+  mvpEditQueue: (queues.mvpEdit = queue('mvp-edit')),
+  closeMvpEditEvents,
+}));
 
 const { closeQueues } = await import('../close.js');
 
 describe('closeQueues (REV-66)', () => {
-  it('closes every queue the API produces to and the email-test QueueEvents', async () => {
+  it('closes every queue the API produces to and the email-test and MVP-edit QueueEvents', async () => {
     closeEmailTestEvents.mockResolvedValue(undefined);
+    closeMvpEditEvents.mockResolvedValue(undefined);
     await closeQueues();
 
     for (const q of Object.values(queues)) expect(q.close).toHaveBeenCalledTimes(1);
-    expect(Object.keys(queues)).toHaveLength(6);
+    expect(Object.keys(queues)).toHaveLength(7);
     expect(closeEmailTestEvents).toHaveBeenCalledTimes(1);
+    expect(closeMvpEditEvents).toHaveBeenCalledTimes(1);
   });
 
   it('rejects when a queue fails to close', async () => {

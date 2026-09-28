@@ -150,8 +150,9 @@ export const FloatingToolsPanel: React.FC<FloatingToolsPanelProps> = ({ children
       style={{ left: position.x, top: position.y }}
       sx={{
         position: 'absolute',
-        // Above the mobile notch and the regeneration overlay
-        zIndex: 20,
+        // Above the mobile notch and the regeneration overlay (20), whichever comes first in the DOM, so a
+        // free-text change can be followed in the panel while the overlay covers the preview (REV-85)
+        zIndex: 21,
         width: 'max-content',
         maxWidth: `calc(100% - ${PANEL_MARGIN * 2}px)`,
         maxHeight: `calc(100% - ${PANEL_MARGIN * 2}px)`,

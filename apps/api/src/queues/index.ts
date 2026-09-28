@@ -6,4 +6,5 @@ export * from './deploy.queue.js';
 export * from './email.queue.js';
 export * from './discovery.queue.js';
 export * from './email-test.queue.js';
+export * from './mvp-edit.queue.js';
 export * from './close.js';

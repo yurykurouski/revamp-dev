@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { apiClient } from '../../api/client.js';
-import { canRegenerateMvp, generateMvpRequest, mvpRecordId, withPreviewVersion } from '../useLeads.js';
+import { canRegenerateMvp, generateMvpRequest, mvpPreviewVersion, mvpRecordId, withPreviewVersion } from '../useLeads.js';
 
 describe('MVP regeneration helpers (REV-31)', () => {
   afterEach(() => {
@@ -60,6 +60,27 @@ describe('MVP regeneration helpers (REV-31)', () => {
     expect(withPreviewVersion(url, 'not-a-date')).toBe(url);
     expect(withPreviewVersion(undefined, at)).toBe('');
     expect(withPreviewVersion('/relative/index.html', at)).toBe(`/relative/index.html?v=${Date.parse(at)}`);
+  });
+});
+
+describe('mvpPreviewVersion (REV-85)', () => {
+  const generated = '2026-09-27T10:00:00.000Z';
+  const edited = '2026-09-28T07:00:00.000Z';
+
+  it('is the generation time until a free-text change re-publishes the page', () => {
+    expect(mvpPreviewVersion({ mvpGeneratedAt: generated }, { generatedAt: generated })).toBe(generated);
+    expect(mvpPreviewVersion({ mvpGeneratedAt: generated }, { generatedAt: generated, editedAt: edited })).toBe(edited);
+  });
+
+  it('goes back to the generation time when a regeneration follows the change', () => {
+    const regenerated = '2026-09-28T09:00:00.000Z';
+    expect(mvpPreviewVersion({ mvpGeneratedAt: regenerated }, { generatedAt: generated, editedAt: edited })).toBe(regenerated);
+  });
+
+  it('uses whichever time it has', () => {
+    expect(mvpPreviewVersion({}, { generatedAt: generated })).toBe(generated);
+    expect(mvpPreviewVersion({}, { editedAt: edited })).toBe(edited);
+    expect(mvpPreviewVersion({}, null)).toBeUndefined();
   });
 });
 

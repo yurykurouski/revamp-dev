@@ -4,6 +4,7 @@ import { deployQueue } from './deploy.queue.js';
 import { emailQueue } from './email.queue.js';
 import { discoveryQueue } from './discovery.queue.js';
 import { emailTestQueue, closeEmailTestEvents } from './email-test.queue.js';
+import { mvpEditQueue, closeMvpEditEvents } from './mvp-edit.queue.js';
 
 /**
  * Closes every BullMQ queue the API produces to (REV-66). The queues share `redisConnection`,
@@ -18,5 +19,7 @@ export async function closeQueues(): Promise<void> {
     discoveryQueue.close(),
     emailTestQueue.close(),
     closeEmailTestEvents(),
+    mvpEditQueue.close(),
+    closeMvpEditEvents(),
   ]);
 }
