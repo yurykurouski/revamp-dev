@@ -320,6 +320,37 @@ describe('Prototype step layout picker (REV-84)', () => {
     expect(open.getAttribute('target')).toBe('_blank');
   });
 
+  describe('"What changed" summary under the preview (REV-94)', () => {
+    const summary = () => container.querySelector<HTMLElement>('section[aria-labelledby="mvp-changes-title"]');
+    const follows = (first: Element, second: Element) =>
+      Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+    it.each(['bpMobile', 'bpTablet', 'bpDesktop'] as const)('renders after the preview viewport at %s', (label) => {
+      render(mvpWith('bento'));
+      const breakpoint = Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find(
+        (el) => el.textContent === en.inspector[label],
+      )!;
+      act(() => breakpoint.click());
+      expect(breakpoint.getAttribute('aria-pressed')).toBe('true');
+
+      const viewport = container.querySelector('[data-testid="prototype-viewport"]')!;
+      const toolbar = container.querySelector('button[aria-pressed]')!;
+      expect(summary()).not.toBeNull();
+      expect(follows(toolbar, viewport)).toBe(true);
+      expect(follows(viewport, summary()!)).toBe(true);
+      expect(viewport.contains(summary()!)).toBe(false);
+      // Last block of the card, below the preview
+      expect(summary()!.parentElement!.lastElementChild).toBe(summary());
+      expect(summary()!.textContent).toContain(en.mvpChanges.title);
+    });
+
+    it('is absent before an MVP exists', () => {
+      render(null, { previewUrl: undefined });
+      expect(summary()).toBeNull();
+      expect(container.querySelector('[data-testid="prototype-viewport"]')).not.toBeNull();
+    });
+  });
+
   describe('palette saved on the MVP (REV-90)', () => {
     const palette = (primary: string) => ({ primary, secondary: '#b8c4fe', accent: primary });
     const colorInput = () => container.querySelector<HTMLInputElement>('#brand-color-picker-input')!;
