@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { MVP_COLOR_PRESETS } from '@revamp/shared-types';
 import { auditSummarySentence, renderEmailDraft, renderEmailTemplate, UNKNOWN_VALUE } from '../../utils/emailTemplate.js';
 
 export const TEMPLATE_VARIABLES = [
@@ -8,17 +9,6 @@ export const TEMPLATE_VARIABLES = [
   { tag: '{{score}}', label: 'Score' },
   { tag: '{{lcpSeconds}}', label: 'LCP speed' },
   { tag: '{{criticalFlaws}}', label: 'Issues' },
-];
-
-export const COLOR_PRESETS = [
-  { name: 'Indigo', hex: '#4F46E5' },
-  { name: 'Violet', hex: '#7C3AED' },
-  { name: 'Cyan', hex: '#0891B2' },
-  { name: 'Emerald', hex: '#059669' },
-  { name: 'Amber', hex: '#D97706' },
-  { name: 'Rose', hex: '#E11D48' },
-  { name: 'Blue', hex: '#2563EB' },
-  { name: 'Slate', hex: '#334155' },
 ];
 
 describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
@@ -81,7 +71,7 @@ describe('EmailDraftEditor & ColorPickerToolbar Logic (REV-16)', () => {
   });
 
   it('should provide valid hexadecimal color presets in ColorPickerToolbar', () => {
-    for (const preset of COLOR_PRESETS) {
+    for (const preset of MVP_COLOR_PRESETS) {
       expect(preset.hex).toMatch(/^#[0-9A-Fa-f]{6}$/);
       expect(preset.name.length).toBeGreaterThan(0);
     }

@@ -160,6 +160,26 @@ export const useUpdateMvpLayoutMutation = () => {
   });
 };
 
+export interface EditMvpVariables {
+  mvpId: string;
+  leadId: string;
+  instruction: string;
+}
+
+/**
+ * Applies the operator's free-text change to the MVP (REV-85). The saved MVP comes back with the answer,
+ * so the preview, palette and layout follow it at once.
+ */
+export const useEditMvpMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ mvpId, instruction }: EditMvpVariables) => apiClient.editMvp(mvpId, instruction),
+    onSuccess: (result, { leadId }) => {
+      if (result.applied) queryClient.setQueryData(['mvp', leadId], result.mvp);
+    },
+  });
+};
+
 export interface GenerateMvpVariables {
   auditId: string;
   leadId?: string;
@@ -217,6 +237,21 @@ export const useIsMvpGenerationPending = (leadId: string | null | undefined): bo
 /** Whether the dashboard offers "Regenerate MVP" for a lead (REV-31) */
 export const canRegenerateMvp = (status: LeadStatus | undefined): boolean =>
   mvpGenerationMode(status) === 'regenerate';
+
+/**
+ * The version of the published MVP page: its generation, or a later free-text change (REV-85) that
+ * re-published it at the same URL.
+ */
+export const mvpPreviewVersion = (
+  lead: Pick<ILeadItem, 'mvpGeneratedAt'>,
+  mvp: Pick<IMvpProjectDetail, 'generatedAt' | 'editedAt'> | null | undefined,
+): string | undefined => {
+  const generated = lead.mvpGeneratedAt || mvp?.generatedAt;
+  const edited = mvp?.editedAt;
+  if (!edited) return generated;
+  if (!generated) return edited;
+  return Date.parse(edited) > Date.parse(generated) ? edited : generated;
+};
 
 /**
  * Appends the MVP generation time as a `v` query parameter, so the preview iframe and the banner

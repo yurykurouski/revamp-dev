@@ -9,17 +9,7 @@ import PaletteIcon from '@mui/icons-material/Palette';
 import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { RADIUS } from '../theme/theme.js';
 import { useTranslation } from 'react-i18next';
-
-const COLOR_PRESETS = [
-  { name: 'Indigo', hex: '#4F46E5' },
-  { name: 'Violet', hex: '#7C3AED' },
-  { name: 'Cyan', hex: '#0891B2' },
-  { name: 'Emerald', hex: '#059669' },
-  { name: 'Amber', hex: '#D97706' },
-  { name: 'Rose', hex: '#E11D48' },
-  { name: 'Blue', hex: '#2563EB' },
-  { name: 'Slate', hex: '#334155' },
-] as const;
+import { MVP_COLOR_PRESETS } from '@revamp/shared-types';
 
 interface ColorPickerToolbarProps {
   currentPrimary: string;
@@ -67,7 +57,7 @@ export const ColorPickerToolbar: React.FC<ColorPickerToolbarProps> = ({
 
       {/* Preset Swatches */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
-        {COLOR_PRESETS.map((preset) => {
+        {MVP_COLOR_PRESETS.map((preset) => {
           const isSelected = currentPrimary.toLowerCase() === preset.hex.toLowerCase();
           return (
             <Tooltip key={preset.hex} title={t(`colorPicker.presets.${preset.name}`)}>

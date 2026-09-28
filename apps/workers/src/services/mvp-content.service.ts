@@ -446,8 +446,8 @@ export class MvpContentService {
     return `${languageDisplayName(tag)} (${tag})`;
   }
 
-  /** All source text a grounded metric may cite */
-  private buildGroundingCorpus(input: GenerateMvpContentInput): string {
+  /** All source text a grounded metric may cite; also what an MVP edit's facts are checked against (REV-85) */
+  public buildGroundingCorpus(input: GenerateMvpContentInput): string {
     const site = input.siteContent;
     return [
       site?.title,
@@ -540,41 +540,43 @@ export class MvpContentService {
     return MvpContentOutputSchema.parse(clipToSchemaLimits(parsed, MvpContentOutputSchema));
   }
 
-  /**
-   * Grounding context for the LLM: the original site's own content plus verified contacts.
-   */
+  /** The user prompt: the grounding context as JSON */
   private buildUserPrompt(input: GenerateMvpContentInput): string {
+    return JSON.stringify(this.buildGroundingContext(input), null, 2);
+  }
+
+  /**
+   * Grounding context for the LLM: the original site's own content plus verified contacts. Shared with
+   * the MVP edit agent (REV-85), so both see the same facts.
+   */
+  public buildGroundingContext(input: GenerateMvpContentInput) {
     const site = input.siteContent;
-    return JSON.stringify(
-      {
-        businessName: input.businessName,
-        outputLanguage: this.resolveOutputLanguage(input),
-        niche: input.niche || 'other',
-        city: input.city || 'Not specified',
-        originalUrl: input.originalUrl || '',
-        originalSite: site
-          ? {
-              language: site.language,
-              title: site.title,
-              metaDescription: site.metaDescription,
-              h1: site.h1,
-              headings: site.headings.slice(0, 12),
-              paragraphs: site.paragraphs.slice(0, 8).map((p) => clipText(p, 400)),
-              services: site.serviceItems.slice(0, 10),
-              navigation: site.navItems.slice(0, 12),
-              testimonialsCount: site.testimonials.length,
-              rating: site.rating,
-              foundingYear: site.foundingYear,
-            }
-          : undefined,
-        scrapedServices: input.extractedServices || [],
-        hasPhone: Boolean(input.contacts?.phone),
-        hasAddress: Boolean(input.contacts?.address),
-        critiqueQuickWins: input.critiqueQuickWins || [],
-      },
-      null,
-      2,
-    );
+    return {
+      businessName: input.businessName,
+      outputLanguage: this.resolveOutputLanguage(input),
+      niche: input.niche || 'other',
+      city: input.city || 'Not specified',
+      originalUrl: input.originalUrl || '',
+      originalSite: site
+        ? {
+            language: site.language,
+            title: site.title,
+            metaDescription: site.metaDescription,
+            h1: site.h1,
+            headings: site.headings.slice(0, 12),
+            paragraphs: site.paragraphs.slice(0, 8).map((p) => clipText(p, 400)),
+            services: site.serviceItems.slice(0, 10),
+            navigation: site.navItems.slice(0, 12),
+            testimonialsCount: site.testimonials.length,
+            rating: site.rating,
+            foundingYear: site.foundingYear,
+          }
+        : undefined,
+      scrapedServices: input.extractedServices || [],
+      hasPhone: Boolean(input.contacts?.phone),
+      hasAddress: Boolean(input.contacts?.address),
+      critiqueQuickWins: input.critiqueQuickWins || [],
+    };
   }
 }
 

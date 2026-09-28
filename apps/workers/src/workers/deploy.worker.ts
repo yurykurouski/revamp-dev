@@ -102,10 +102,10 @@ const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof save
 /**
  * Re-publishes an existing MVP in the layout (REV-84) and palette (REV-90) the operator saved: the
  * stored copy rendered by the deterministic template, with no LLM call, no completeness re-check and
- * no lead status change, so the page a lead is sent is the one the operator approved.
+ * no lead status change, so the page a lead is sent is the one the operator approved. Also run
+ * directly by a free-text change (REV-85), which waits for the new page before it reports back.
  */
-async function relayoutMvp(job: Job<IDeployJobData>) {
-  const { leadId } = job.data;
+export async function republishSavedMvp(leadId: string) {
   const lead = await Lead.findById(leadId).exec();
   if (!lead) {
     throw new Error(`Lead ${leadId} not found`);
@@ -160,7 +160,7 @@ export const createDeployWorker = (): Worker => {
   const worker = new Worker<IDeployJobData>(
     QUEUE_NAMES.DEPLOY,
     async (job: Job<IDeployJobData>) => {
-      if (job.data.mode === 'relayout') return relayoutMvp(job);
+      if (job.data.mode === 'relayout') return republishSavedMvp(job.data.leadId);
 
       const { leadId, auditId, forceRegenerate = false, generationSource } = job.data;
       console.log(

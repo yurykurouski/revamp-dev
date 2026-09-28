@@ -28,6 +28,7 @@ describe('@revamp/db shared by the API and the workers', () => {
       'email-queue',
       'email-test-queue',
       'discovery-queue',
+      'mvp-edit-queue',
     ]);
   });
 });

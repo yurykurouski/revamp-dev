@@ -8,7 +8,7 @@ import LaptopIcon from '@mui/icons-material/Laptop';
 import SecurityIcon from '@mui/icons-material/Security';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
-import { useIsMvpGenerationPending, withPreviewVersion } from '../../hooks/useLeads.js';
+import { mvpPreviewVersion, useIsMvpGenerationPending, withPreviewVersion } from '../../hooks/useLeads.js';
 import { MvpPreviewFrame } from '../MvpPreviewFrame.js';
 import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
@@ -48,9 +48,9 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tools = useMvpDesignTools({ lead, audit, mvp, iframeRef });
 
-  // Versioned by the generation time so the iframe reloads after a regeneration (REV-31), which
-  // overwrites the same preview URL
-  const previewUrl = withPreviewVersion(mvp?.fullPreviewUrl || lead.previewUrl || '', lead.mvpGeneratedAt || mvp?.generatedAt);
+  // Versioned by the generation or free-text change (REV-85) time so the iframe reloads after a
+  // regeneration (REV-31) or change, which overwrite the same preview URL
+  const previewUrl = withPreviewVersion(mvp?.fullPreviewUrl || lead.previewUrl || '', mvpPreviewVersion(lead, mvp));
   const isRegenerating = lead.status === 'GENERATING' && Boolean(previewUrl);
   // From the regenerate click until the lead is back from GENERATING (REV-53)
   const isPreviewBusy = isGenerationRequestPending || lead.status === 'GENERATING';
@@ -190,7 +190,12 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
           <MvpDesignTools tools={tools} locked={!previewUrl || isPreviewBusy} />
 
           {previewUrl ? (
-            <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} onLoad={tools.liveLayout.onFrameLoad} />
+            <MvpPreviewFrame
+              ref={iframeRef}
+              previewUrl={previewUrl}
+              busy={isPreviewBusy || tools.edit.isPending}
+              onLoad={tools.liveLayout.onFrameLoad}
+            />
           ) : (
             <Box
               sx={{

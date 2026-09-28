@@ -20,6 +20,7 @@ import {
   ILlmProvidersResponse,
   LlmProviderId,
   IMvpCompletenessSummary,
+  IMvpEditJobResult,
   MvpLayoutVariant,
   IReverseGeocodeResult,
   ILeadStats,
@@ -301,6 +302,19 @@ export const apiClient = {
   },
 
   /**
+   * Asks for a change to the MVP in the operator's own words (REV-85). Answers once the workers' LLM has
+   * applied it and the page is re-published, or has explained why nothing changed.
+   */
+  async editMvp(mvpId: string, instruction: string): Promise<IMvpEditResult> {
+    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ instruction }),
+    });
+    return readDataOrThrow<IMvpEditResult>(res);
+  },
+
+  /**
    * Fetches MVP project details by leadId, mvpId, or slug
    */
   async getMvp(idOrLeadId: string): Promise<IMvpProjectDetail | null> {
@@ -462,6 +476,11 @@ export type IMvpProjectDetail = Pick<Serialized<IMvpProject>, 'leadId' | 'fullPr
     /** Copy of `_id` the API's JSON transform adds */
     id?: string;
   };
+
+/** What `POST /mvp/:id/edit` returns (REV-85): the change the model made and the MVP as saved after it */
+export interface IMvpEditResult extends IMvpEditJobResult {
+  mvp: IMvpProjectDetail;
+}
 
 /**
  * An audit as the inspector shows it. Values the audit did not measure stay undefined, so the UI

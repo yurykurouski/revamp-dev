@@ -13,6 +13,7 @@ import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { addMvpRelayoutJob } from '../../queues/deploy.queue.js';
 import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { sendTestEmailJob } from '../../queues/email-test.queue.js';
+import { runMvpEditJob } from '../../queues/mvp-edit.queue.js';
 import { env } from '../../config/env.js';
 import { redisConnection } from '../../queues/connection.js';
 import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
@@ -38,6 +39,9 @@ vi.mock('../../queues/email.queue.js', () => ({
 }));
 vi.mock('../../queues/email-test.queue.js', () => ({
   sendTestEmailJob: vi.fn(),
+}));
+vi.mock('../../queues/mvp-edit.queue.js', () => ({
+  runMvpEditJob: vi.fn(),
 }));
 
 describe('API Routes Integration Tests (Supertest)', () => {
@@ -1512,6 +1516,147 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.mocked(addMvpRelayoutJob).mockRejectedValueOnce(new Error('Redis down'));
 
       const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+
+      expect(res.status).toBe(500);
+      expect(res.body.success).toBe(false);
+    });
+  });
+
+  describe('POST /api/v1/mvp/:id/edit (REV-85)', () => {
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const project = { _id: projectId, leadId, layout: { variant: 'bento', reasons: [] } };
+    const instruction = 'Make the headline punchier';
+    const mockProject = (...docs: unknown[]) => {
+      const spy = vi.spyOn(MvpProject, 'findById');
+      for (const doc of docs) spy.mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(doc) } as any);
+      return spy;
+    };
+    const mockLead = (status: string | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
+      } as any);
+
+    it('applies the change through the workers and returns the result with the saved MVP', async () => {
+      const saved = { ...project, layout: { variant: 'split', reasons: ['rule:manual'] }, editedAt: '2026-09-28T07:00:00.000Z' };
+      mockProject(project, saved);
+      mockLead('NEEDS_APPROVAL');
+      const result = { applied: true, summary: 'Punchier headline and a split layout', changes: ['content', 'layout'] };
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
+
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: `  ${instruction} ` });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data).toEqual({ ...result, mvp: saved });
+      expect(runMvpEditJob).toHaveBeenCalledWith({ mvpProjectId: projectId, instruction });
+      // A change is never a new generation, and the lead's status stays as it is
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('answers 200 with the model reason when nothing could be changed', async () => {
+      mockProject(project, project);
+      mockLead('NEEDS_APPROVAL');
+      const result = { applied: false, summary: 'The site lists no prices, so none were added.', changes: [] };
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
+
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Add prices' });
+
+      expect(res.status).toBe(200);
+      expect(res.body.message).toBe('Nothing was changed');
+      expect(res.body.data).toEqual({ ...result, mvp: project });
+    });
+
+    it('returns 502 MVP_EDIT_FAILED with the worker reason, e.g. no LLM configured', async () => {
+      mockProject(project);
+      mockLead('NEEDS_APPROVAL');
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'failed', reason: 'No LLM provider is configured' });
+
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
+
+      expect(res.status).toBe(502);
+      expect(res.body).toEqual({
+        success: false,
+        error: { code: 'MVP_EDIT_FAILED', message: 'The change was not applied: No LLM provider is configured' },
+      });
+    });
+
+    it('returns 504 MVP_EDIT_TIMEOUT when the workers do not answer in time', async () => {
+      mockProject(project);
+      mockLead('NEEDS_APPROVAL');
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'timeout' });
+
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
+
+      expect(res.status).toBe(504);
+      expect(res.body.error.code).toBe('MVP_EDIT_TIMEOUT');
+    });
+
+    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED', 'AUDITED'])(
+      'returns 409 MVP_EDIT_NOT_ALLOWED while the lead is %s',
+      async (status) => {
+        mockProject(project);
+        mockLead(status);
+
+        const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
+
+        expect(res.status).toBe(409);
+        expect(res.body).toEqual({
+          success: false,
+          error: {
+            code: 'MVP_EDIT_NOT_ALLOWED',
+            message: `The MVP cannot be changed while the lead is ${status}`,
+            details: { status },
+          },
+        });
+        expect(runMvpEditJob).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 400 INVALID_ID for an id that is not an ObjectId', async () => {
+      const findSpy = vi.spyOn(MvpProject, 'findById');
+      const res = await request(app).post('/api/v1/mvp/demo/edit').send({ instruction });
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('INVALID_ID');
+      expect(findSpy).not.toHaveBeenCalled();
+    });
+
+    it.each([{}, { instruction: 'ab' }, { instruction: 'a'.repeat(501) }, { instruction: 7 }])(
+      'returns 400 VALIDATION_ERROR for body %j',
+      async (body) => {
+        const findSpy = vi.spyOn(MvpProject, 'findById');
+        const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send(body);
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        expect(findSpy).not.toHaveBeenCalled();
+        expect(runMvpEditJob).not.toHaveBeenCalled();
+      },
+    );
+
+    it('returns 404 MVP_NOT_FOUND for an unknown MVP id', async () => {
+      mockProject(null);
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('MVP_NOT_FOUND');
+      expect(runMvpEditJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 404 LEAD_NOT_FOUND when the MVP has no lead', async () => {
+      mockProject(project);
+      mockLead(null);
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      expect(runMvpEditJob).not.toHaveBeenCalled();
+    });
+
+    it('returns 500 when the change cannot be queued', async () => {
+      mockProject(project);
+      mockLead('NEEDS_APPROVAL');
+      vi.mocked(runMvpEditJob).mockRejectedValueOnce(new Error('Redis down'));
+
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
 
       expect(res.status).toBe(500);
       expect(res.body.success).toBe(false);

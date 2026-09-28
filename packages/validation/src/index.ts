@@ -536,6 +536,36 @@ export const UpdateMvpLayoutSchema = z.object({
 
 export type UpdateMvpLayoutDto = z.infer<typeof UpdateMvpLayoutSchema>;
 
+/** Longest free-text change the operator can ask for (REV-85) */
+export const MVP_EDIT_INSTRUCTION_MAX = 500;
+
+/**
+ * Schema for POST /api/v1/mvp/:id/edit: the operator's own description of a change to the MVP (REV-85)
+ */
+export const EditMvpSchema = z.object({
+  instruction: z.string().trim().min(3).max(MVP_EDIT_INSTRUCTION_MAX),
+});
+
+export type EditMvpDto = z.infer<typeof EditMvpSchema>;
+
+/**
+ * 5. MVP Edit Agent Output Schema (REV-85): how the model applies an operator's free-text change. Every
+ * field but the summary is optional; null or absent leaves that part of the MVP as it is. The copy is the
+ * whole revised copy, so it is validated like freshly generated copy.
+ */
+export const MvpEditOutputSchema = z.object({
+  summary: z.string().trim().min(1).max(300),
+  content: MvpContentOutputSchema.nullable().optional(),
+  primaryColor: z
+    .string()
+    .regex(/^#[A-Fa-f0-9]{6}$/)
+    .nullable()
+    .optional(),
+  layout: MvpLayoutVariantSchema.nullable().optional(),
+});
+
+export type MvpEditOutput = z.infer<typeof MvpEditOutputSchema>;
+
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
   layout: MvpLayoutVariantSchema.optional(),

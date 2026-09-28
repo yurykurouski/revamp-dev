@@ -73,6 +73,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     requestedModel: { type: String },
     // REV-54: the layout this version was rendered with, and the audit facts behind the choice
     layout: { type: Schema.Types.Mixed },
+    // REV-85: when an operator's free-text change was last applied and re-published
+    editedAt: { type: Date },
   },
   {
     timestamps: true,

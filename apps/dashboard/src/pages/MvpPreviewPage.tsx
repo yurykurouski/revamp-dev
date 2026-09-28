@@ -6,7 +6,7 @@ import SecurityIcon from '@mui/icons-material/Security';
 import { useTranslation } from 'react-i18next';
 import { Link as RouterLink, useParams } from 'react-router-dom';
 import type { ILeadItem } from '../api/client.js';
-import { useAuditQuery, useIsMvpGenerationPending, useMvpQuery, withPreviewVersion } from '../hooks/useLeads.js';
+import { mvpPreviewVersion, useAuditQuery, useIsMvpGenerationPending, useMvpQuery, withPreviewVersion } from '../hooks/useLeads.js';
 import { useListedLead } from '../hooks/useListedLead.js';
 import { MvpPreviewFrame } from '../components/MvpPreviewFrame.js';
 import { MvpDesignTools, useMvpDesignTools } from '../components/leadReview/MvpDesignTools.js';
@@ -41,8 +41,8 @@ const LeadMvpPreview: React.FC<{ lead: ILeadItem }> = ({ lead }) => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const tools = useMvpDesignTools({ lead, audit, mvp, iframeRef });
 
-  // Versioned by the generation time, as in the Prototype step (REV-31)
-  const previewUrl = withPreviewVersion(mvp?.fullPreviewUrl || lead.previewUrl || '', lead.mvpGeneratedAt || mvp?.generatedAt);
+  // Versioned by the generation or free-text change time, as in the Prototype step (REV-31, REV-85)
+  const previewUrl = withPreviewVersion(mvp?.fullPreviewUrl || lead.previewUrl || '', mvpPreviewVersion(lead, mvp));
   const isPreviewBusy = isGenerationRequestPending || lead.status === 'GENERATING';
 
   if (!previewUrl && !isMvpLoading) {
@@ -109,7 +109,12 @@ const LeadMvpPreview: React.FC<{ lead: ILeadItem }> = ({ lead }) => {
         }}
       >
         {previewUrl ? (
-          <MvpPreviewFrame ref={iframeRef} previewUrl={previewUrl} busy={isPreviewBusy} onLoad={tools.liveLayout.onFrameLoad} />
+          <MvpPreviewFrame
+            ref={iframeRef}
+            previewUrl={previewUrl}
+            busy={isPreviewBusy || tools.edit.isPending}
+            onLoad={tools.liveLayout.onFrameLoad}
+          />
         ) : (
           <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CircularProgress />
