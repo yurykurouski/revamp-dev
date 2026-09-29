@@ -2,10 +2,11 @@ import React from 'react';
 import { Chip, Tooltip } from '@mui/material';
 import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
 import { useTranslation } from 'react-i18next';
-import { MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
+import { MVP_LAYOUT_UNREAD_REASON, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
 import { IMvpProjectDetail } from '../api/client.js';
 
 // `manual`: picked by the operator in the Prototype step instead of the automatic choice (REV-84)
+// `derived`: follows the original site's layout (REV-104)
 const LAYOUT_RULES = [
   'small_brochure',
   'visual_niche',
@@ -14,6 +15,7 @@ const LAYOUT_RULES = [
   'text_heavy',
   'default',
   'manual',
+  'derived',
 ] as const;
 type LayoutRule = (typeof LAYOUT_RULES)[number];
 
@@ -34,7 +36,9 @@ export const MvpLayoutChip: React.FC<{ mvp: IMvpProjectDetail | null | undefined
 
   const name = t(`mvpLayout.variants.${variant satisfies MvpLayoutVariant}`);
   const rule = layoutRuleOf(mvp.layout?.reasons);
-  const tooltip = rule ? t('mvpLayout.tooltip', { name, reason: t(`mvpLayout.rules.${rule}`) }) : name;
+  const chosen = rule ? t('mvpLayout.tooltip', { name, reason: t(`mvpLayout.rules.${rule}`) }) : name;
+  // The fallback is visible: the original layout could not be read, so the rules chose (REV-104)
+  const tooltip = mvp.layout?.reasons?.includes(MVP_LAYOUT_UNREAD_REASON) ? `${chosen}. ${t('mvpLayout.unread')}` : chosen;
 
   return (
     <Tooltip title={tooltip}>

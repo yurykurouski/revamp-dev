@@ -22,11 +22,32 @@ export function hasDesign(design: IMvpDesign | undefined | null): design is IMvp
     design.sectionOrder?.length ||
       design.hidden?.length ||
       (design.hero && Object.values(design.hero).some((value) => value !== undefined && (!Array.isArray(value) || value.length))) ||
+      (design.header && Object.values(design.header).some((value) => value !== undefined)) ||
       (design.theme && Object.values(design.theme).some((value) => value !== undefined)) ||
       (design.elements && Object.values(design.elements).some((style) => style && Object.keys(style).length)) ||
       design.blocks?.length ||
       design.customCss?.trim(),
   );
+}
+
+/**
+ * The design a page is rendered with: the one derived from the original site's layout (REV-104), with
+ * the operator's own design over it. The operator's lists, blocks and CSS replace the derived ones; the
+ * hero, header and theme merge field by field, and element styles per element.
+ */
+export function mergeDesigns(base: IMvpDesign | undefined | null, override: IMvpDesign | undefined | null): IMvpDesign | undefined {
+  if (!hasDesign(base)) return hasDesign(override) ? override : undefined;
+  if (!hasDesign(override)) return base;
+  const merged: IMvpDesign = { ...base };
+  // Mixed Mongo fields round-trip undefined as null: only values the operator set count
+  for (const [key, value] of Object.entries(override) as Array<[keyof IMvpDesign, unknown]>) {
+    if (value === undefined || value === null) continue;
+    const baseValue = base[key];
+    const nested = key === 'hero' || key === 'header' || key === 'theme' || key === 'elements';
+    (merged as Record<string, unknown>)[key] =
+      nested && baseValue && typeof baseValue === 'object' ? { ...baseValue, ...(value as object) } : value;
+  }
+  return merged;
 }
 
 export const isHidden = (design: IMvpDesign | undefined, name: string): boolean =>
@@ -229,15 +250,21 @@ function cornersCss(corners: keyof typeof CORNER_RADII): string {
   return `:root { --radius-xl: ${xl} !important; --radius-lg: ${lg} !important; --radius-md: ${md} !important; }`;
 }
 
-function heroStyleCss(style: NonNullable<NonNullable<IMvpDesign['theme']>['heroStyle']>): string {
-  const light = [
-    rule(['.hero-section .hero-headline', '.hero-section .quick-fact', '.hero-section .quick-fact a'], ['color: #ffffff']),
-    rule(['.hero-section .btn-secondary'], ['background: transparent', 'color: #ffffff', 'border-color: rgba(255, 255, 255, 0.4)', 'box-shadow: none']),
-    rule(['.hero-section .trust-signals-bar'], ['background: rgba(255, 255, 255, 0.08)', 'border-color: rgba(255, 255, 255, 0.16)', 'box-shadow: none']),
-    rule(['.hero-section .hero-bg-glow'], ['display: none']),
+/** Light text and see-through controls for a hero on a dark background, inside `scope` */
+function lightHeroRules(scope: string): string[] {
+  const at = (selectors: string[]) => selectors.map((selector) => `${scope} ${selector}`);
+  return [
+    rule(at(['.hero-headline', '.quick-fact', '.quick-fact a']), ['color: #ffffff']),
+    rule(at(['.btn-secondary']), ['background: transparent', 'color: #ffffff', 'border-color: rgba(255, 255, 255, 0.4)', 'box-shadow: none']),
+    rule(at(['.trust-signals-bar']), ['background: rgba(255, 255, 255, 0.08)', 'border-color: rgba(255, 255, 255, 0.16)', 'box-shadow: none']),
+    rule(at(['.hero-bg-glow']), ['display: none']),
     // The badge's text is the brand color, which can be as dark as the background
-    rule(['.hero-section .hero-badge'], ['background: rgba(255, 255, 255, 0.1)', 'color: #e2e8f0', 'border-color: rgba(255, 255, 255, 0.24)']),
+    rule(at(['.hero-badge']), ['background: rgba(255, 255, 255, 0.1)', 'color: #e2e8f0', 'border-color: rgba(255, 255, 255, 0.24)']),
   ];
+}
+
+function heroStyleCss(style: NonNullable<NonNullable<IMvpDesign['theme']>['heroStyle']>): string {
+  const light = lightHeroRules('.hero-section');
   switch (style) {
     case 'tinted':
       return rule(['.hero-section'], ['background: rgba(var(--brand-primary-rgb), 0.08)']);
@@ -306,7 +333,54 @@ function heroCss(hero: NonNullable<IMvpDesign['hero']>): string {
   if (hero.imageSide === 'left') {
     css.push(`@media (min-width: 900px) { .hero-split-image { order: -1 !important; } }`);
   }
+  if (hero.imageSide === 'behind') {
+    css.push(HERO_BACKDROP_CSS);
+    if (hero.align === 'center') css.push(rule(['.hero-split .hero-split-grid'], ['justify-content: center']));
+  }
   return css.filter(Boolean).join('\n');
+}
+
+/**
+ * The split layout's photo as a backdrop behind the copy (REV-104), under a dark wash that keeps the
+ * light text readable. Scoped to the split hero: the other layouts have no photo beside the copy.
+ */
+const HERO_BACKDROP_CSS = [
+  rule(['.hero-split'], ['position: relative', 'isolation: isolate', 'overflow: hidden', 'background: #0f172a']),
+  rule(['.hero-split .hero-split-grid'], ['grid-template-columns: minmax(0, 760px)', 'min-height: min(640px, 78vh)', 'align-content: center', 'padding-block: 3rem']),
+  rule(
+    ['.hero-split .hero-split-image'],
+    ['position: absolute', 'inset: 0', 'z-index: -2', 'width: 100%', 'height: 100%', 'max-height: none', 'aspect-ratio: auto', 'border-radius: 0', 'box-shadow: none', 'order: 0'],
+  ),
+  rule(['.hero-split::after'], ['content: ""', 'position: absolute', 'inset: 0', 'z-index: -1', 'background: linear-gradient(100deg, rgba(15, 23, 42, 0.9) 0%, rgba(15, 23, 42, 0.72) 55%, rgba(15, 23, 42, 0.45) 100%)']),
+  rule(['.hero-split .hero-subheadline', '.hero-split .trust-badge-label'], ['color: #cbd5e1']),
+  rule(['.hero-split .trust-badge-metric'], ['color: #ffffff']),
+  rule(['.hero-split .btn-primary'], ['box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35)']),
+  ...lightHeroRules('.hero-split'),
+].join('\n');
+
+// ---------------------------------------------------------------------------------------------
+// Header
+// ---------------------------------------------------------------------------------------------
+
+/** The header's section links (REV-104); the template renders them only when the design asks */
+const HEADER_LINKS_CSS = `
+    .header-links { display: none; }
+    @media (min-width: 900px) {
+      .header-links { display: flex; align-items: center; gap: 1.5rem; }
+      .header-link { color: var(--color-text-muted); font-weight: 600; font-size: 0.9375rem; text-decoration: none; white-space: nowrap; }
+      .header-link:hover { color: var(--brand-primary); }
+    }`;
+
+/** Logo in the middle, links on the left and the actions on the right, from tablet width up */
+const HEADER_CENTERED_CSS = `@media (min-width: 900px) {
+  ${rule(['.header-inner'], ['display: grid', 'grid-template-columns: 1fr auto 1fr', 'align-items: center'])}
+  ${rule(['.header-inner .brand-block'], ['grid-column: 2', 'grid-row: 1', 'justify-self: center'])}
+  ${rule(['.header-inner .header-links'], ['grid-column: 1', 'grid-row: 1', 'justify-self: start'])}
+  ${rule(['.header-inner .header-actions'], ['grid-column: 3', 'grid-row: 1', 'justify-self: end'])}
+}`;
+
+function headerCss(header: NonNullable<IMvpDesign['header']>): string {
+  return [header.links ? HEADER_LINKS_CSS : '', header.layout === 'centered' ? HEADER_CENTERED_CSS : ''].filter(Boolean).join('\n');
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -401,6 +475,7 @@ export function designCss(design: IMvpDesign | undefined | null): string {
   if (theme.corners) css.push(cornersCss(theme.corners));
   if (theme.heroStyle) css.push(heroStyleCss(theme.heroStyle));
   if (design.hero) css.push(heroCss(design.hero));
+  if (design.header) css.push(headerCss(design.header));
   for (const [element, style] of Object.entries(design.elements ?? {}) as Array<[MvpDesignElement, MvpDesignElementStyle | undefined]>) {
     if (!style || !ELEMENT_SELECTORS[element]) continue;
     const selectors = ELEMENT_SELECTORS[element].map((selector) => `body.revamp-designed ${selector}`);

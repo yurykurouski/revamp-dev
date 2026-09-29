@@ -129,6 +129,20 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(unknown.validateSync()).toBeDefined();
     });
 
+    it('keeps the original site layout and the reason it could not be read (REV-104)', () => {
+      const siteLayout = {
+        sections: [{ kind: 'services', heading: 'Usługi' }],
+        hero: { media: 'side', mediaSide: 'right', align: 'left', tone: 'light' },
+        nav: { itemCount: 5, centeredLogo: false, sticky: true, hasCta: true },
+        density: 'airy',
+      };
+      const read = new Audit({ leadId: new mongoose.Types.ObjectId(), siteLayout });
+      expect(read.toObject().siteLayout).toEqual(siteLayout);
+      const unread = new Audit({ leadId: new mongoose.Types.ObjectId(), siteLayoutError: 'No block starts on the first screen' });
+      expect(unread.toObject().siteLayoutError).toBe('No block starts on the first screen');
+      expect(unread.toObject().siteLayout).toBeUndefined();
+    });
+
     it('should fail validation if leadId is missing', () => {
       const audit = new Audit({});
       const err = audit.validateSync();

@@ -153,6 +153,36 @@ describe('mvp edit worker (REV-85)', () => {
       expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
     });
 
+    it("hands the agent the page's look: the operator's design over the derived one (REV-104)", async () => {
+      const derived = { sectionOrder: ['gallery', 'services'], hero: { imageSide: 'behind' }, theme: { density: 'airy' } };
+      vi.mocked(MvpProject.findById).mockReturnValue(
+        exec({ ...project, layout: { variant: 'split', reasons: ['rule:derived'], design: derived }, design }),
+      );
+      const service = serviceReturning({ summary: 'Nothing to do', changes: [] });
+
+      await processMvpEditJob(job(), service);
+
+      expect(service.interpret.mock.calls[0]![0].current.design).toEqual({
+        sectionOrder: ['gallery', 'services'],
+        hero: { imageSide: 'behind' },
+        theme: { density: 'airy', corners: 'sharp' },
+        hidden: ['gallery'],
+      });
+    });
+
+    it('keeps the derived look when the agent picks another layout (REV-104)', async () => {
+      const derived = { sectionOrder: ['gallery'] };
+      vi.mocked(MvpProject.findById).mockReturnValue(
+        exec({ ...project, layout: { variant: 'split', reasons: ['rule:derived', 'images:3'], design: derived } }),
+      );
+      const service = serviceReturning({ summary: 'Bento', layout: 'bento', changes: ['layout'] });
+
+      await processMvpEditJob(job(), service);
+
+      const [, update] = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]! as [string, any];
+      expect(update.$set.layout).toEqual({ variant: 'bento', reasons: ['rule:manual', 'images:3'], design: derived });
+    });
+
     it('unsets the design when the agent returns an empty one', async () => {
       vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...project, design }));
       const service = serviceReturning({ summary: 'Original look', design: {}, changes: ['design'] });

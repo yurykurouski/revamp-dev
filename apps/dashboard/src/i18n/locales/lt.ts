@@ -224,6 +224,7 @@ export const lt: Translation = {
   // REV-54: the layout the MVP was rendered with
   mvpLayout: {
     tooltip: 'Maketas: {{name}} — {{reason}}',
+    unread: 'Nepavyko nuskaityti originalios svetainės struktūros, todėl maketą parinko taisyklės.',
     variants: {
       bento: 'Bento',
       split: 'Padalytas',
@@ -238,6 +239,7 @@ export const lt: Translation = {
       text_heavy: 'daug teksto ir mažai nuotraukų',
       default: 'numatytasis maketas',
       manual: 'pasirinko operatorius',
+      derived: 'atkartoja originalios svetainės struktūrą',
     },
     descriptions: {
       bento: 'Paslaugų kortelių tinklelis',

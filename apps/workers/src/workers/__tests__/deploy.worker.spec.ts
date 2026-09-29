@@ -216,7 +216,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect.objectContaining({
         layout: {
           variant: 'compact',
-          reasons: ['rule:small_brochure', 'complexity:UNKNOWN', 'niche:dental', 'images:0', 'services:0'],
+          // No original layout on this audit: the rules chose, and the fallback is marked (REV-104)
+          reasons: ['rule:small_brochure', 'complexity:UNKNOWN', 'niche:dental', 'images:0', 'services:0', 'site_layout:unread'],
         },
       }),
       { upsert: true, new: true },
@@ -280,6 +281,82 @@ describe('DeployWorker (@revamp/workers)', () => {
       { _id: leadId, status: { $in: ['GENERATING'] } },
       expect.objectContaining({ $set: expect.objectContaining({ status: 'NEEDS_APPROVAL' }) }),
     );
+  });
+
+  describe('layout derived from the original site (REV-104)', () => {
+    const leadId = '64f8a1234567890123456789';
+    const siteLayout = {
+      sections: [{ kind: 'gallery' }, { kind: 'services' }, { kind: 'reviews' }],
+      hero: { media: 'side', mediaSide: 'left', align: 'left', tone: 'light' },
+      nav: { itemCount: 6, centeredLogo: true, sticky: true, hasCta: true },
+      density: 'airy',
+    };
+
+    const regenerate = async (existing: Record<string, unknown> | null) => {
+      createDeployWorker();
+      const lead = { _id: leadId, businessName: 'Pod Lipą', domain: 'podlipa.pl', niche: 'restaurant', toObject: () => lead };
+      const audit = {
+        _id: 'audit-1',
+        leadId,
+        siteLayout,
+        extractedContent: { images: ['https://podlipa.pl/1.jpg', 'https://podlipa.pl/2.jpg', 'https://podlipa.pl/3.jpg'], paragraphs: [] },
+        generatedContent: { hero: { headline: 'Kuchnia polska' }, services: [{}, {}, {}, {}, {}] },
+        toObject: () => audit,
+      };
+      vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+      vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
+      vi.mocked(MvpProject.findOne).mockReturnValue({ select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(existing) }) } as any);
+      vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<html>derived</html>');
+      vi.mocked(storageService.uploadHtml).mockResolvedValue({ url: 'http://localhost:9000/revamp-demos/v/pod/index.html', key: 'v/pod/index.html' });
+      vi.mocked(browserService.captureHtmlScreenshot).mockResolvedValue(Buffer.from('shot'));
+      vi.mocked(ImageService.createComparisonBanner).mockResolvedValue(Buffer.from('banner'));
+      vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue('http://localhost:9000/revamp-assets/banners/pod.webp');
+      vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }) } as any);
+      vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      await capturedProcessor!({ id: 'job-derived', data: { leadId, auditId: 'audit-1' } });
+      const saved = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
+      return { saved, rendered: vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]! };
+    };
+
+    const derivedDesign = {
+      sectionOrder: ['gallery', 'services', 'reviews'],
+      hero: { imageSide: 'left' },
+      theme: { density: 'airy' },
+      header: { layout: 'centered', links: true },
+    };
+
+    it('derives the layout from the audit, saves it with its design and renders it', async () => {
+      const { saved, rendered } = await regenerate(null);
+      expect(saved.layout.variant).toBe('split');
+      expect(saved.layout.reasons[0]).toBe('rule:derived');
+      expect(saved.layout.design).toEqual(derivedDesign);
+      expect(rendered[3]).toBe('split');
+      expect(rendered[5]).toEqual(derivedDesign);
+    });
+
+    it("renders the operator's design over the derived one on a regeneration", async () => {
+      const { rendered } = await regenerate({ previewSlug: 'pod-lipa-1', design: { theme: { corners: 'sharp' }, header: { links: false } } });
+      expect(rendered[5]).toEqual({
+        ...derivedDesign,
+        theme: { density: 'airy', corners: 'sharp' },
+        header: { layout: 'centered', links: false },
+      });
+    });
+
+    it('keeps a layout the operator picked, with the freshly derived look', async () => {
+      const { saved, rendered } = await regenerate({ previewSlug: 'pod-lipa-1', layout: { variant: 'editorial', reasons: ['rule:manual'] } });
+      expect(saved.layout.variant).toBe('editorial');
+      expect(saved.layout.reasons[0]).toBe('rule:manual');
+      expect(saved.layout.reasons).toContain('hero:side-left');
+      expect(saved.layout.design).toEqual(derivedDesign);
+      expect(rendered[3]).toBe('editorial');
+    });
+
+    it('replaces an automatic layout with the new derivation', async () => {
+      const { saved } = await regenerate({ previewSlug: 'pod-lipa-1', layout: { variant: 'compact', reasons: ['rule:small_brochure'] } });
+      expect(saved.layout.variant).toBe('split');
+    });
   });
 
   describe('MVP completeness check (REV-36)', () => {
@@ -588,6 +665,20 @@ describe('DeployWorker (@revamp/workers)', () => {
       await capturedProcessor!(job);
 
       expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![5]).toEqual(design);
+    });
+
+    it("renders the operator's design over the one derived from the original site (REV-104)", async () => {
+      setUp();
+      const derived = { ...project('split'), layout: { variant: 'split', reasons: ['rule:derived'], design: { sectionOrder: ['gallery'], hero: { imageSide: 'behind' } } } };
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...derived, design: { hero: { align: 'left' } } }) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...derived, design: { hero: { align: 'left' } } }) } as any);
+
+      await capturedProcessor!(job);
+
+      expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![5]).toEqual({
+        sectionOrder: ['gallery'],
+        hero: { imageSide: 'behind', align: 'left' },
+      });
     });
 
     it('publishes again when the custom design changed while it was publishing (REV-92)', async () => {

@@ -124,6 +124,9 @@ const AuditSchema = new Schema<IAuditDocument>(
     extractedContent: { type: Schema.Types.Mixed },
     // REV-38: deterministic complexity class, the DOM signals behind it, and reason codes
     siteComplexity: { type: Schema.Types.Mixed },
+    // REV-104: the original home page's layout (validated by SiteLayoutSchema), or why it could not be read
+    siteLayout: { type: Schema.Types.Mixed },
+    siteLayoutError: { type: String },
     // REV-33: how each capture context handled the cookie banner (e.g. dismissed:cmp:onetrust, not_found)
     cookieBannerHandled: {
       desktop: { type: String },

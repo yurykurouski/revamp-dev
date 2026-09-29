@@ -10,18 +10,25 @@ import {
   MVP_DESIGN_DENSITIES,
   MVP_DESIGN_ELEMENTS,
   MVP_DESIGN_FONTS,
+  MVP_DESIGN_HEADER_LAYOUTS,
+  MVP_DESIGN_HERO_IMAGE_SIDES,
   MVP_DESIGN_HERO_PARTS,
   MVP_DESIGN_HERO_STYLES,
   MVP_DESIGN_HIDEABLE,
   MVP_DESIGN_SECTIONS,
   MVP_DESIGN_TOKENS,
+  MVP_LAYOUT_MANUAL_REASON,
   MVP_LAYOUT_VARIANTS,
   MvpDesignElement,
+  MvpLayoutVariant,
   SITE_ASSESSMENT_FAILURES,
   SITE_ASSESSMENT_VERDICTS,
   SITE_BAD_SIGNS,
   SITE_COMPLEXITY_CLASSES,
   SITE_COMPLEXITY_SIGNS,
+  SITE_HERO_MEDIA,
+  SITE_HERO_TONES,
+  SITE_SECTION_KINDS,
   SITE_VERDICT_REASONS,
   findLlmProvider,
 } from '@revamp/shared-types';
@@ -173,6 +180,43 @@ export const SiteComplexitySchema = z.object({
 });
 
 export type SiteComplexityDto = z.infer<typeof SiteComplexitySchema>;
+
+// ==============================================================================
+// Original site layout (REV-104)
+// ==============================================================================
+
+/** Most sections a home page layout keeps; longer pages are cut, the order of the rest is enough */
+export const SITE_LAYOUT_MAX_SECTIONS = 20;
+
+/**
+ * The original home page's layout as the audit read it from the DOM: its sections in page order, the
+ * first screen's arrangement, the header and the white space. Every value comes from code, never a model.
+ */
+export const SiteLayoutSchema = z.object({
+  sections: z
+    .array(
+      z.object({
+        kind: z.enum(SITE_SECTION_KINDS),
+        heading: z.string().max(100).optional(),
+      }),
+    )
+    .max(SITE_LAYOUT_MAX_SECTIONS),
+  hero: z.object({
+    media: z.enum(SITE_HERO_MEDIA),
+    mediaSide: z.enum(['left', 'right']).optional(),
+    align: z.enum(['left', 'center']),
+    tone: z.enum(SITE_HERO_TONES),
+  }),
+  nav: z.object({
+    itemCount: z.number().int().min(0).max(100),
+    centeredLogo: z.boolean(),
+    sticky: z.boolean(),
+    hasCta: z.boolean(),
+  }),
+  density: z.enum(MVP_DESIGN_DENSITIES),
+});
+
+export type SiteLayoutDto = z.infer<typeof SiteLayoutSchema>;
 
 /** Query-string value: an empty parameter counts as missing */
 const optionalQueryParam = <T extends z.ZodTypeAny>(schema: T) =>
@@ -588,9 +632,28 @@ export const MvpLayoutVariantSchema = z.enum(MVP_LAYOUT_VARIANTS);
 export const MvpLayoutSelectionSchema = z.object({
   variant: MvpLayoutVariantSchema,
   reasons: z.array(z.string().min(1).max(60)).max(12),
+  /** The look derived from the original site's layout (REV-104); defined below, hence lazy */
+  design: z.lazy(() => MvpDesignSchema).optional(),
 });
 
 export type MvpLayoutSelection = z.infer<typeof MvpLayoutSelectionSchema>;
+
+/**
+ * The layout the operator picked instead of the automatic one (REV-84). The audit facts behind the
+ * previous choice and the look derived from the original site (REV-104) are kept; the rule becomes the
+ * operator's.
+ */
+export function manualMvpLayout(
+  previous: { reasons?: string[] | null; design?: unknown } | null | undefined,
+  variant: MvpLayoutVariant,
+): MvpLayoutSelection {
+  const facts = (previous?.reasons ?? []).filter((reason) => !reason.startsWith('rule:'));
+  return MvpLayoutSelectionSchema.parse({
+    variant,
+    reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
+    ...(previous?.design ? { design: previous.design } : {}),
+  });
+}
 
 /**
  * Schema for PATCH /api/v1/mvp/:id/layout: the layout the operator picked for the MVP (REV-84)
@@ -682,7 +745,13 @@ export const MvpDesignSchema = z
       .object({
         align: z.enum(['left', 'center']).optional(),
         order: uniqueItems(z.enum(MVP_DESIGN_HERO_PARTS), MVP_DESIGN_HERO_PARTS.length).optional(),
-        imageSide: z.enum(['left', 'right']).optional(),
+        imageSide: z.enum(MVP_DESIGN_HERO_IMAGE_SIDES).optional(),
+      })
+      .optional(),
+    header: z
+      .object({
+        layout: z.enum(MVP_DESIGN_HEADER_LAYOUTS).optional(),
+        links: z.boolean().optional(),
       })
       .optional(),
     theme: z

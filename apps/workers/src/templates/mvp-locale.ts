@@ -24,6 +24,8 @@ export interface MvpStrings {
   aboutTag: string;
   servicesTag: string;
   reviewsTag: string;
+  /** Header link to the photo gallery (REV-104) */
+  galleryTag: string;
   reviewsHeading: (business: string) => string;
   getInTouchTag: string;
   bookingDescription: (business: string) => string;
@@ -78,6 +80,7 @@ const en: MvpStrings = {
   aboutTag: 'About',
   servicesTag: 'Services',
   reviewsTag: 'Reviews',
+  galleryTag: 'Gallery',
   reviewsHeading: (b) => `What customers say about ${b}`,
   getInTouchTag: 'Get in touch',
   bookingDescription: (b) => `Leave your details and ${b} will get back to you.`,
@@ -148,6 +151,7 @@ const ru: MvpStrings = {
   aboutTag: 'О нас',
   servicesTag: 'Услуги',
   reviewsTag: 'Отзывы',
+  galleryTag: 'Галерея',
   reviewsHeading: (b) => `Что клиенты говорят о ${b}`,
   getInTouchTag: 'Связаться',
   bookingDescription: (b) => `Оставьте свои контакты, и ${b} свяжется с вами.`,
@@ -218,6 +222,7 @@ const be: MvpStrings = {
   aboutTag: 'Пра нас',
   servicesTag: 'Паслугі',
   reviewsTag: 'Водгукі',
+  galleryTag: 'Галерэя',
   reviewsHeading: (b) => `Што кліенты кажуць пра ${b}`,
   getInTouchTag: 'Звязацца',
   bookingDescription: (b) => `Пакіньце свае кантакты, і ${b} звяжацца з вамі.`,
@@ -288,6 +293,7 @@ const pl: MvpStrings = {
   aboutTag: 'O nas',
   servicesTag: 'Usługi',
   reviewsTag: 'Opinie',
+  galleryTag: 'Galeria',
   reviewsHeading: (b) => `Co klienci mówią o ${b}`,
   getInTouchTag: 'Kontakt',
   bookingDescription: (b) => `Zostaw swoje dane, a ${b} skontaktuje się z Tobą.`,
@@ -358,6 +364,7 @@ const lt: MvpStrings = {
   aboutTag: 'Apie mus',
   servicesTag: 'Paslaugos',
   reviewsTag: 'Atsiliepimai',
+  galleryTag: 'Galerija',
   reviewsHeading: (b) => `Ką klientai sako apie ${b}`,
   getInTouchTag: 'Susisiekite',
   bookingDescription: (b) => `Palikite savo kontaktus ir ${b} su jumis susisieks.`,

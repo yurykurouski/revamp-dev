@@ -3,7 +3,7 @@ import { Window } from 'happy-dom';
 import { IBentoTemplateData, IMvpDesign, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
 import { bentoTemplateService } from '../../services/template.service.js';
 import { LAYOUT_SECTION_ORDER, generateBentoHtml } from '../bento.template.js';
-import { designCss, elementDeclarations, hasDesign, renderDesignBlock, resolveSectionOrder } from '../design.js';
+import { designCss, elementDeclarations, hasDesign, mergeDesigns, renderDesignBlock, resolveSectionOrder } from '../design.js';
 
 const data: IBentoTemplateData = {
   businessName: 'Warsaw Dental Center',
@@ -229,5 +229,114 @@ describe('MVP design spec (REV-92)', () => {
         expect(page.document.querySelector('.trust-signals-bar')).toBeNull();
       },
     );
+  });
+});
+
+describe('design derived from the original layout (REV-104)', () => {
+  const derived: IMvpDesign = {
+    sectionOrder: ['gallery', 'services', 'about'],
+    hero: { imageSide: 'behind', align: 'center' },
+    theme: { density: 'compact', heroStyle: 'tinted' },
+    header: { layout: 'centered', links: true },
+  };
+
+  describe('hasDesign', () => {
+    it('sees a header choice, and not an empty one', () => {
+      expect(hasDesign({ header: { links: true } })).toBe(true);
+      expect(hasDesign({ header: {} })).toBe(false);
+    });
+  });
+
+  describe('mergeDesigns', () => {
+    it('uses whichever design exists when the other is empty', () => {
+      expect(mergeDesigns(undefined, undefined)).toBeUndefined();
+      expect(mergeDesigns(null, {})).toBeUndefined();
+      expect(mergeDesigns(derived, undefined)).toBe(derived);
+      expect(mergeDesigns(undefined, design)).toBe(design);
+    });
+
+    it("lays the operator's design over the derived one, field by field", () => {
+      const merged = mergeDesigns(derived, {
+        sectionOrder: ['reviews'],
+        hero: { align: 'left' },
+        theme: { font: 'serif', density: 'airy' },
+        header: { links: false },
+        elements: { 'hero.headline': { size: 'xl' } },
+      });
+      expect(merged).toEqual({
+        sectionOrder: ['reviews'],
+        hero: { imageSide: 'behind', align: 'left' },
+        theme: { density: 'airy', heroStyle: 'tinted', font: 'serif' },
+        header: { layout: 'centered', links: false },
+        elements: { 'hero.headline': { size: 'xl' } },
+      });
+    });
+
+    it('ignores fields the operator left null, as Mongo returns them', () => {
+      const merged = mergeDesigns(derived, { sectionOrder: null, hero: null, theme: { corners: 'sharp' } } as unknown as IMvpDesign);
+      expect(merged?.sectionOrder).toEqual(derived.sectionOrder);
+      expect(merged?.hero).toEqual(derived.hero);
+      expect(merged?.theme).toEqual({ density: 'compact', heroStyle: 'tinted', corners: 'sharp' });
+    });
+
+    it('does not change either design', () => {
+      const base = structuredClone(derived);
+      const override: IMvpDesign = { hero: { align: 'left' } };
+      mergeDesigns(base, override);
+      expect(base).toEqual(derived);
+      expect(override).toEqual({ hero: { align: 'left' } });
+    });
+  });
+
+  describe('designCss', () => {
+    it('puts the split photo behind the copy under a dark wash, with light text', () => {
+      const css = designCss({ hero: { imageSide: 'behind' } });
+      expect(css).toContain('.hero-split .hero-split-image { position: absolute !important; inset: 0 !important; z-index: -2 !important;');
+      expect(css).toContain('.hero-split::after { content: "" !important;');
+      expect(css).toContain('.hero-split .hero-headline, .hero-split .quick-fact, .hero-split .quick-fact a { color: #ffffff !important; }');
+      expect(css).not.toContain('justify-content: center');
+      expect(designCss({ hero: { imageSide: 'behind', align: 'center' } })).toContain('.hero-split .hero-split-grid { justify-content: center !important; }');
+    });
+
+    it('lays out a centred header and its section links', () => {
+      const css = designCss({ header: { layout: 'centered', links: true } });
+      expect(css).toContain('.header-links { display: none; }');
+      expect(css).toContain('grid-template-columns: 1fr auto 1fr !important');
+      expect(css).toContain('.header-inner .brand-block { grid-column: 2 !important;');
+      expect(designCss({ header: { links: true } })).not.toContain('1fr auto 1fr');
+      expect(designCss({ header: { layout: 'centered' } })).not.toContain('.header-links { display: none; }');
+    });
+  });
+
+  describe('rendered page', () => {
+    it('links the header to the shown sections in page order, ending with the booking form', async () => {
+      const window = await openPage('split', derived);
+      const links = Array.from(window.document.querySelectorAll('.site-header .header-links a')).map((a) => [
+        a.getAttribute('href'),
+        a.textContent,
+      ]);
+      expect(links).toEqual([
+        ['#gallery', 'Gallery'],
+        ['#services', 'Services'],
+        ['#about', 'About'],
+        ['#reviews', 'Reviews'],
+        ['#booking', 'Get in touch'],
+      ]);
+      expect(sections(window)).toEqual(['hero-section hero-split', 'gallery', 'services', 'about', 'reviews', 'booking']);
+    });
+
+    it('links only sections that are rendered, in the page language', async () => {
+      const html = bentoTemplateService.render({ ...data, language: 'pl', gallery: [], design: { header: { links: true }, hidden: ['reviews'] } });
+      const window = new Window();
+      windows.push(window);
+      window.document.write(html);
+      const labels = Array.from(window.document.querySelectorAll('.header-links a')).map((a) => a.textContent);
+      expect(labels).toEqual(['O nas', 'Usługi', 'Kontakt']);
+    });
+
+    it('has no header links unless the design asks', async () => {
+      const window = await openPage('bento', { header: { layout: 'centered' } });
+      expect(window.document.querySelector('.header-links')).toBeNull();
+    });
   });
 });

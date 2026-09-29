@@ -1426,6 +1426,22 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
+    it('keeps the look derived from the original site under the picked layout (REV-104)', async () => {
+      const design = { sectionOrder: ['gallery', 'services'], header: { links: true } };
+      mockProject({ ...project('split', ['rule:derived', 'hero:side-right']), layout: { variant: 'split', reasons: ['rule:derived', 'hero:side-right'], design } });
+      mockLead('NEEDS_APPROVAL');
+      const saveSpy = mockSave(project('bento', ['rule:manual']));
+
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'bento' });
+
+      expect(res.status).toBe(200);
+      expect(saveSpy).toHaveBeenCalledWith(
+        projectId,
+        { $set: { layout: { variant: 'bento', reasons: ['rule:manual', 'hero:side-right'], design } } },
+        { new: true },
+      );
+    });
+
     it('saves a layout on an MVP generated before layouts were recorded', async () => {
       mockProject({ ...project(), layout: undefined });
       mockLead('NEEDS_APPROVAL');

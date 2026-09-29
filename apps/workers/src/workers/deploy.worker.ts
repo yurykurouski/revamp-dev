@@ -1,6 +1,6 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit, IMvpDesign, MvpLayoutVariant } from '@revamp/shared-types';
-import { canChangeMvpLayout, leadStatusesInto } from '@revamp/validation';
+import { IDeployJobData, ILead, IAudit, IMvpDesign, MVP_LAYOUT_MANUAL_REASON, MvpLayoutVariant } from '@revamp/shared-types';
+import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { env } from '../config/env.js';
@@ -9,7 +9,8 @@ import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { MvpPaletteOverride, bentoTemplateService } from '../services/template.service.js';
-import { buildLayoutSignals, selectMvpLayout } from '../services/layout-selection.service.js';
+import { buildLayoutSignals, deriveMvpLayout } from '../services/layout-selection.service.js';
+import { mergeDesigns } from '../templates/design.js';
 import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
@@ -82,14 +83,14 @@ async function publishMvp(
 const MAX_RELAYOUT_PASSES = 3;
 
 type SavedMvpDesign = {
-  layout?: { variant?: MvpLayoutVariant } | null;
+  layout?: { variant?: MvpLayoutVariant; design?: IMvpDesign | null } | null;
   colorPalette?: MvpPaletteOverride | null;
   design?: IMvpDesign | null;
 };
 
 /**
  * The layout, palette and custom design (REV-92) the operator saved on the MVP (Bento for an MVP saved
- * without a layout)
+ * without a layout); the custom design applies over the one derived from the original site (REV-104)
  */
 const savedDesign = (project: SavedMvpDesign) => ({
   variant: (project.layout?.variant ?? 'bento') as MvpLayoutVariant,
@@ -98,7 +99,7 @@ const savedDesign = (project: SavedMvpDesign) => ({
     secondary: project.colorPalette?.secondary || undefined,
     accent: project.colorPalette?.accent || undefined,
   },
-  design: project.design ?? undefined,
+  design: mergeDesigns(project.layout?.design, project.design),
 });
 
 const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof savedDesign>) =>
@@ -191,18 +192,26 @@ export const createDeployWorker = (): Worker => {
 
       // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
       // the same objects in the demos bucket and the preview URL already shared stays valid.
-      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design').exec();
+      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout').exec();
       const transliterated = transliterate(lead.businessName || lead.domain || 'demo');
       const rawSlug = transliterated
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-|-$/g, '') || 'preview';
       const slug = existingProject?.previewSlug || `${rawSlug}-${leadId.toString().slice(-6)}`;
 
-      // 2. Pick the page layout from the audit data (REV-54), then render the landing page
+      // 2. Derive the page layout from the original site's layout (REV-104), falling back to the
+      // rules on the audit data (REV-54), then render the landing page
       const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>;
       const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
-      const layout = selectMvpLayout(buildLayoutSignals(leadData, auditData, audit.generatedContent));
+      const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, audit.generatedContent));
+      // A layout the operator picked survives a regeneration, over the freshly derived look (REV-84)
+      const previousLayout = existingProject?.layout;
+      const layout =
+        previousLayout?.reasons?.includes(MVP_LAYOUT_MANUAL_REASON) && previousLayout.variant
+          ? manualMvpLayout(derived, previousLayout.variant)
+          : derived;
       console.log(`[DeployWorker] Layout: ${layout.variant} (${layout.reasons.join(', ')})`);
+      if (auditData.siteLayoutError) console.log(`[DeployWorker] Original layout not read: ${auditData.siteLayoutError}`);
       // The operator's custom design survives a regeneration (REV-92); the palette comes from the new audit run
       const html = bentoTemplateService.renderFromAudit(
         leadData,
@@ -210,7 +219,7 @@ export const createDeployWorker = (): Worker => {
         audit.generatedContent,
         layout.variant,
         undefined,
-        existingProject?.design,
+        mergeDesigns(layout.design, existingProject?.design),
       );
 
       // 2b. Compare the MVP with the original site's key data (REV-36): judged by the LLM with its
