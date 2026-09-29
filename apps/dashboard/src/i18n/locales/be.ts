@@ -455,7 +455,7 @@ export const be: Translation = {
     measurement: {
       performance: 'Прадукцыйнасць (LCP, CLS)',
       accessibility: 'Даступнасць (axe)',
-      standards: 'Вэб-стандарты (viewport, title)',
+      standards: 'Вэб-стандарты (HTTPS, viewport, title, фавікон, Schema.org, OpenGraph)',
       design: 'Ацэнка дызайну (мадэль Vision)',
     },
     fullPage: 'Здымак усёй старонкі · пракруціце, каб убачыць сайт цалкам',

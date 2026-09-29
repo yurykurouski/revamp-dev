@@ -1,6 +1,11 @@
 import AxeBuilder from '@axe-core/playwright';
 import { Page } from 'playwright';
-import { IA11ySummary, IA11yViolation, IMeasurementError } from '@revamp/shared-types';
+import {
+  IA11ySummary,
+  IA11yViolation,
+  IAxeViolation,
+  IMeasurementError,
+} from '@revamp/shared-types';
 import { sanitizeAuditError } from '@revamp/validation';
 
 /**
@@ -10,16 +15,39 @@ import { sanitizeAuditError } from '@revamp/validation';
 export interface AxeAuditResult {
   a11yScore?: number;
   summary?: IA11ySummary;
-  rawViolations: unknown[];
+  /** Every violation the scan found, trimmed for storage (REV-102); absent when the scan failed */
+  violations?: IAxeViolation[];
   errors: IMeasurementError[];
 }
+
+/** Storage limits for the violations kept on the audit: a large page must not overflow the document */
+export const AXE_STORAGE_LIMITS = {
+  nodesPerViolation: 20,
+  targetChars: 300,
+  htmlChars: 300,
+  failureSummaryChars: 500,
+} as const;
+
+const AXE_IMPACTS = ['minor', 'moderate', 'serious', 'critical'] as const;
 
 export interface AxeViolationItem {
   id?: string;
   impact?: string | null;
   description?: string;
-  nodes?: Array<{ target?: unknown }>;
+  help?: string;
+  helpUrl?: string;
+  tags?: string[];
+  nodes?: Array<{ target?: unknown; html?: string; failureSummary?: string }>;
 }
+
+const truncate = (text: string, max: number): string =>
+  text.length > max ? `${text.slice(0, max - 1)}…` : text;
+
+/** An axe node target (a selector, or a path of selectors through iframes and shadow roots) as one string */
+const targetSelector = (target: unknown): string =>
+  Array.isArray(target)
+    ? target.map((part) => (Array.isArray(part) ? part.join(' ') : String(part))).join(' ')
+    : String(target || '');
 
 export class AxeService {
   /**
@@ -50,6 +78,39 @@ export class AxeService {
     }
 
     return Math.max(0, Math.min(100, Math.round(100 - deductions)));
+  }
+
+  /**
+   * The violations as axe reported them, for the audit (REV-102). Selectors, node HTML and failure
+   * summaries are truncated and at most `nodesPerViolation` nodes are kept per rule; `nodeCount` keeps
+   * the full count
+   */
+  static toStoredViolations(violations: AxeViolationItem[]): IAxeViolation[] {
+    return violations.map((v) => {
+      const nodes = v.nodes ?? [];
+      const impact = AXE_IMPACTS.find((level) => level === v.impact);
+      return {
+        id: v.id ?? 'unknown',
+        ...(impact ? { impact } : {}),
+        description: v.description ?? '',
+        help: v.help ?? '',
+        helpUrl: v.helpUrl ?? '',
+        tags: v.tags ?? [],
+        nodeCount: nodes.length,
+        nodes: nodes.slice(0, AXE_STORAGE_LIMITS.nodesPerViolation).map((node) => ({
+          target: truncate(targetSelector(node.target), AXE_STORAGE_LIMITS.targetChars),
+          html: truncate(node.html ?? '', AXE_STORAGE_LIMITS.htmlChars),
+          ...(node.failureSummary
+            ? {
+                failureSummary: truncate(
+                  node.failureSummary,
+                  AXE_STORAGE_LIMITS.failureSummaryChars,
+                ),
+              }
+            : {}),
+        })),
+      };
+    });
   }
 
   /**
@@ -101,14 +162,13 @@ export class AxeService {
           missingAltCount,
           criticalViolations: criticalViolations.slice(0, 15), // cap top 15 critical violations
         },
-        rawViolations: violations,
+        violations: AxeService.toStoredViolations(violations),
         errors: [],
       };
     } catch (error) {
       console.warn('[AxeService] Warning: Failed to complete Axe-core scan on page:', error);
       // The page closed early or blocked script injection: the scan is reported as not run
       return {
-        rawViolations: [],
         errors: [{ measurement: 'accessibility', message: sanitizeAuditError(error) }],
       };
     }

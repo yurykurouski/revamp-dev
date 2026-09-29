@@ -455,7 +455,7 @@ export const pl: Translation = {
     measurement: {
       performance: 'Wydajność (LCP, CLS)',
       accessibility: 'Dostępność (axe)',
-      standards: 'Standardy sieciowe (viewport, title)',
+      standards: 'Standardy sieciowe (HTTPS, viewport, title, favicon, Schema.org, OpenGraph)',
       design: 'Ocena projektu (model Vision)',
     },
     fullPage: 'Zrzut całej strony · przewiń, aby zobaczyć całość',

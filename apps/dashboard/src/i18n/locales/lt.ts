@@ -455,7 +455,7 @@ export const lt: Translation = {
     measurement: {
       performance: 'Našumas (LCP, CLS)',
       accessibility: 'Prieinamumas (axe)',
-      standards: 'Žiniatinklio standartai (viewport, title)',
+      standards: 'Žiniatinklio standartai (HTTPS, viewport, title, favicon, Schema.org, OpenGraph)',
       design: 'Dizaino vertinimas (Vision modelis)',
     },
     fullPage: 'Viso puslapio vaizdas · slinkite, kad pamatytumėte visą svetainę',

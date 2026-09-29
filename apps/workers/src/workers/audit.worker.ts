@@ -149,8 +149,10 @@ export const createAuditWorker = (): Worker => {
           a11yScore: a11yResult.a11yScore,
           lcp: vitalsResult.lcpSeconds,
           a11ySummary: a11yResult.summary,
+          axeViolations: a11yResult.violations,
+          standardsChecks: vitalsResult.standards,
         };
-        // `scores` and `lighthouseMetrics` are replaced whole; the fields below are unset when not measured
+        // `scores` and `webVitals` are replaced whole; the fields below are unset when not measured
         const unmeasured = Object.keys(measuredFields).filter((key) => measuredFields[key] === undefined);
 
         // 9. Update Audit document in MongoDB with full metrics, critique, brand tokens, and COMPLETED status
@@ -170,7 +172,7 @@ export const createAuditWorker = (): Worker => {
             },
             ...Object.fromEntries(Object.entries(measuredFields).filter(([, value]) => value !== undefined)),
             scores,
-            lighthouseMetrics: vitalsResult.lighthouseMetrics,
+            webVitals: vitalsResult.webVitals,
             measurementErrors,
             designCritique: critiqueResult.critique,
             aiFallbackUsed: critiqueResult.aiFallbackUsed,
@@ -230,7 +232,7 @@ export const createAuditWorker = (): Worker => {
             `   - Logo / Brand:   ${brandResult.tokens.logoUrl ? 'Extracted' : 'Monogram'}\n` +
             `   - a11yScore:      ${scores.accessibility ?? 'not measured'}/100 (${a11yResult.summary?.violationsCount ?? '?'} violations)\n` +
             `   - Performance:    ${scores.performance ?? 'not measured'}/100 (LCP: ${vitalsResult.lcpSeconds ?? '?'}s)\n` +
-            `   - Standards:      ${scores.standards ?? 'not measured'}/100 (SSL: ${vitalsResult.standards?.hasSsl ?? '?'})\n` +
+            `   - Standards:      ${scores.standards ?? 'not measured'}/100 (HTTPS: ${vitalsResult.standards?.https ?? '?'})\n` +
             `   - Complexity:     ${siteComplexity.class} (${siteComplexity.reasons.join(', ')})\n` +
             `   - Desktop URL:    ${desktopScreenshotUrl}\n` +
             `   - Mobile URL:     ${mobileScreenshotUrl}\n` +

@@ -1,5 +1,5 @@
 import { Page } from 'playwright';
-import { ILighthouseMetrics, IMeasurementError } from '@revamp/shared-types';
+import { IMeasurementError, IStandardsChecks, IWebVitals } from '@revamp/shared-types';
 import { sanitizeAuditError } from '@revamp/validation';
 
 /**
@@ -8,12 +8,8 @@ import { sanitizeAuditError } from '@revamp/validation';
  */
 export interface VitalsAuditResult {
   lcpSeconds?: number;
-  lighthouseMetrics: ILighthouseMetrics;
-  standards?: {
-    hasSsl: boolean;
-    hasViewport: boolean;
-    hasTitle: boolean;
-  };
+  webVitals: IWebVitals;
+  standards?: IStandardsChecks;
   performanceScore?: number;
   standardsScore?: number;
   errors: IMeasurementError[];
@@ -29,12 +25,29 @@ export interface RawLayoutShift {
   hadRecentInput: boolean;
 }
 
+/** The standards checks read from the DOM; the favicon may still be found at `/favicon.ico` */
+export type RawStandards = Pick<IStandardsChecks, 'viewport' | 'title' | 'structuredData' | 'openGraph'> & {
+  faviconLink: boolean;
+};
+
 interface RawVitals {
   lcpMs: number | null;
   shifts: RawLayoutShift[];
-  hasViewport: boolean;
-  hasTitle: boolean;
+  standards: RawStandards;
 }
+
+/** Points per standards check (spec 3.1.3.2); they add up to 100 */
+export const STANDARDS_POINTS: Record<keyof IStandardsChecks, number> = {
+  https: 30,
+  viewport: 30,
+  title: 10,
+  favicon: 10,
+  structuredData: 10,
+  openGraph: 10,
+};
+
+/** How long the `/favicon.ico` probe may take; a site that does not answer by then has no favicon */
+const FAVICON_PROBE_TIMEOUT_MS = 3000;
 
 /** Core Web Vitals session window: shifts less than 1 s apart, at most 5 s long */
 const CLS_SESSION_GAP_MS = 1000;
@@ -99,14 +112,33 @@ export class VitalsService {
   }
 
   /**
-   * Calculates standards score (0 - 100) based on SSL and mobile responsive meta
+   * Standards score (0 - 100): the points of every check the page passes (`STANDARDS_POINTS`)
    */
-  static calculateStandardsScore(hasSsl: boolean, hasViewport: boolean, hasTitle: boolean): number {
-    let score = 0;
-    if (hasSsl) score += 40;
-    if (hasViewport) score += 40;
-    if (hasTitle) score += 20;
-    return score;
+  static calculateStandardsScore(checks: IStandardsChecks): number {
+    return (Object.keys(STANDARDS_POINTS) as Array<keyof IStandardsChecks>).reduce(
+      (score, check) => score + (checks[check] ? STANDARDS_POINTS[check] : 0),
+      0,
+    );
+  }
+
+  /**
+   * Whether the site serves `/favicon.ico`, which browsers request when the page links no icon.
+   * A redirect is followed; an HTML page (a soft 404) or an error status is not a favicon
+   */
+  static async probeFaviconIco(page: Page, targetUrl: string): Promise<boolean> {
+    try {
+      const response = await page.request.get(new URL('/favicon.ico', targetUrl).toString(), {
+        timeout: FAVICON_PROBE_TIMEOUT_MS,
+        failOnStatusCode: false,
+      });
+      const contentType = response.headers()['content-type'] ?? '';
+      const found = response.ok() && !contentType.includes('text/html') && (await response.body()).length > 0;
+      await response.dispose();
+      return found;
+    } catch {
+      // No answer within the timeout or a refused connection: the browser would show no icon either
+      return false;
+    }
   }
 
   /**
@@ -151,26 +183,54 @@ export class VitalsService {
               lcpObserver.disconnect();
               clsObserver.disconnect();
 
-              const viewportMeta = document.querySelector('meta[name="viewport"]');
+              const hasContent = (selector: string, attribute: string) =>
+                Array.from(document.querySelectorAll(selector)).some(
+                  (el) => (el.getAttribute(attribute) ?? '').trim().length > 0,
+                );
+              // Any Schema.org JSON-LD object with a type, or microdata pointing at schema.org
+              const hasJsonLd = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).some(
+                (script) => {
+                  try {
+                    const typed = (node: unknown): boolean =>
+                      Array.isArray(node)
+                        ? node.some(typed)
+                        : !!node &&
+                          typeof node === 'object' &&
+                          (!!(node as Record<string, unknown>)['@type'] ||
+                            typed((node as Record<string, unknown>)['@graph']));
+                    return typed(JSON.parse(script.textContent || ''));
+                  } catch {
+                    return false;
+                  }
+                },
+              );
               resolve({
                 lcpMs,
                 shifts,
-                hasViewport: !!viewportMeta && !!viewportMeta.getAttribute('content'),
-                hasTitle: !!document.title && document.title.trim().length > 0,
+                standards: {
+                  viewport: hasContent('meta[name="viewport"]', 'content'),
+                  title: !!document.title && document.title.trim().length > 0,
+                  faviconLink: hasContent('link[rel~="icon" i], link[rel="apple-touch-icon" i]', 'href'),
+                  structuredData: hasJsonLd || !!document.querySelector('[itemtype*="schema.org" i]'),
+                  openGraph: hasContent('meta[property^="og:" i]', 'content'),
+                },
               });
             }, 50);
           }),
       );
 
+      const { faviconLink, ...domChecks } = evaluation.standards;
+      const standards: IStandardsChecks = {
+        https: hasSsl,
+        ...domChecks,
+        // Probed on the page's final origin, after any redirect
+        favicon: faviconLink || (await VitalsService.probeFaviconIco(page, page.url() || targetUrl)),
+      };
       const cls = VitalsService.calculateCls(evaluation.shifts);
       const result: VitalsAuditResult = {
-        lighthouseMetrics: { cls },
-        standards: {
-          hasSsl,
-          hasViewport: evaluation.hasViewport,
-          hasTitle: evaluation.hasTitle,
-        },
-        standardsScore: VitalsService.calculateStandardsScore(hasSsl, evaluation.hasViewport, evaluation.hasTitle),
+        webVitals: { cls },
+        standards,
+        standardsScore: VitalsService.calculateStandardsScore(standards),
         errors: [],
       };
 
@@ -183,7 +243,7 @@ export class VitalsService {
       const lcpMs = evaluation.lcpMs;
       const lcpSeconds = Math.round((lcpMs / 1000) * 100) / 100;
       result.lcpSeconds = lcpSeconds;
-      result.lighthouseMetrics = { lcp: Math.round(lcpMs), cls };
+      result.webVitals = { lcp: Math.round(lcpMs), cls };
       result.performanceScore = VitalsService.calculatePerformanceScore(lcpSeconds, cls);
       return result;
     } catch (err) {
@@ -191,7 +251,7 @@ export class VitalsService {
       // Neither performance nor the page's standards were read; both are reported as not measured
       const message = sanitizeAuditError(err);
       return {
-        lighthouseMetrics: {},
+        webVitals: {},
         errors: [
           { measurement: 'performance', message },
           { measurement: 'standards', message },

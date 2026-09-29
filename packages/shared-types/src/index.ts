@@ -161,12 +161,42 @@ export interface IMeasurementError {
 }
 
 /**
- * Web vitals read in the page (no Lighthouse run, REV-102). Values the audit did not measure are absent
- * (REV-100); Speed Index and INP are not stored because a headless page load cannot measure them (REV-105)
+ * Web vitals read in the page by a buffered PerformanceObserver; no Lighthouse runs (REV-102, stored as
+ * `lighthouseMetrics` before). Values the audit did not measure are absent (REV-100); Speed Index and
+ * INP are not stored because a headless page load cannot measure them (REV-105)
  */
-export interface ILighthouseMetrics {
+export interface IWebVitals {
   lcp?: number; // ms
   cls?: number;
+}
+
+/** The web standards checks behind `scores.standards` (spec 3.1.3.2, REV-102) */
+export interface IStandardsChecks {
+  https: boolean;
+  viewport: boolean;
+  title: boolean;
+  /** An icon link in the page, or a working `/favicon.ico` */
+  favicon: boolean;
+  /** Schema.org markup (JSON-LD or microdata) */
+  structuredData: boolean;
+  /** At least one OpenGraph `og:` meta tag */
+  openGraph: boolean;
+}
+
+/**
+ * One axe-core violation as the scan reported it (REV-102). Node HTML and failure summaries are
+ * truncated and nodes capped per rule, so a large page cannot overflow the audit document
+ */
+export interface IAxeViolation {
+  id: string;
+  impact?: 'minor' | 'moderate' | 'serious' | 'critical';
+  description: string;
+  help: string;
+  helpUrl: string;
+  tags: string[];
+  /** Every node the rule failed on, including the ones left out of `nodes` */
+  nodeCount: number;
+  nodes: Array<{ target: string; html: string; failureSummary?: string }>;
 }
 
 export interface IA11yViolation {
@@ -284,9 +314,13 @@ export interface IAudit {
   leadId: string;
   status: AuditStatus;
   scores: IAuditScores;
-  lighthouseMetrics: ILighthouseMetrics;
+  webVitals: IWebVitals;
+  /** Absent when the page's standards could not be read (see `measurementErrors`) */
+  standardsChecks?: IStandardsChecks;
   /** Absent when the accessibility scan failed (see `measurementErrors`) */
   a11ySummary?: IA11ySummary;
+  /** The scan's violations (REV-102); absent when the scan failed or on audits before REV-102 */
+  axeViolations?: IAxeViolation[];
   /** Measurements this audit could not take; their values are absent and the total is partial (REV-100) */
   measurementErrors?: IMeasurementError[];
   designCritique: IDesignCritique;

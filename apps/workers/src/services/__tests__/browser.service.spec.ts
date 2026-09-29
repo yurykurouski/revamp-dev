@@ -10,7 +10,7 @@ vi.mock('../axe.service.js', () => ({
     scanPage: vi.fn().mockResolvedValue({
       a11yScore: 85,
       summary: { violationsCount: 2, contrastIssuesCount: 1, missingAltCount: 1, criticalViolations: [] },
-      rawViolations: [],
+      violations: [],
       errors: [],
     }),
   },
@@ -20,8 +20,8 @@ vi.mock('../vitals.service.js', () => ({
   vitalsService: {
     collectVitals: vi.fn().mockResolvedValue({
       lcpSeconds: 1.8,
-      lighthouseMetrics: { lcp: 1800, cls: 0.02 },
-      standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+      webVitals: { lcp: 1800, cls: 0.02 },
+      standards: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
       performanceScore: 95,
       standardsScore: 100,
       errors: [],

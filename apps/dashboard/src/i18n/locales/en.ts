@@ -456,7 +456,7 @@ export const en = {
     measurement: {
       performance: 'Performance (LCP, CLS)',
       accessibility: 'Accessibility (axe)',
-      standards: 'Web standards (viewport, title)',
+      standards: 'Web standards (HTTPS, viewport, title, favicon, Schema.org, OpenGraph)',
       design: 'Design critique (Vision model)',
     },
     fullPage: 'Full-page capture · scroll to view the whole site',
