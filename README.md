@@ -93,7 +93,7 @@ The `minio-init` container creates the `revamp-assets` and `revamp-demos` bucket
 
 ### LLM providers
 
-All LLM settings live in `.env`. Nothing is faked when a provider is missing: without a Vision provider (an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, or the local Claude Code CLI) audits fail at the design critique, and without an MVP provider generation fails with an error the dashboard shows. Deterministic copy and critique are only used as a fallback after a configured LLM fails every retry (the result is marked `aiFallbackUsed`). The workers log a warning at startup for each missing provider.
+All LLM settings live in `.env`. Nothing is faked when a provider is missing: without a Vision provider (an `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`, or the local Claude Code CLI) audits fail at the design critique, and without an MVP provider generation fails with an error the dashboard shows. Deterministic copy and critique are only used as a fallback after a configured LLM fails every retry (the result is marked `aiFallbackUsed`). A templated design critique is not scored: the total leaves the design pillar out, and the Audit step says the critique is a template. The workers log a warning at startup for each missing provider.
 
 | Variable | Purpose |
 |---|---|
