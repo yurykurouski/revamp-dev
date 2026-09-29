@@ -13,7 +13,54 @@ export interface VitalsAuditResult {
   standardsScore: number;
 }
 
+/** A layout-shift entry as read in the page */
+export interface RawLayoutShift {
+  startTime: number;
+  value: number;
+  hadRecentInput: boolean;
+}
+
+interface RawVitals {
+  lcpMs: number | null;
+  shifts: RawLayoutShift[];
+  loadEventEndMs: number;
+  hasViewport: boolean;
+  hasTitle: boolean;
+}
+
+/** Core Web Vitals session window: shifts less than 1 s apart, at most 5 s long */
+const CLS_SESSION_GAP_MS = 1000;
+const CLS_SESSION_MAX_MS = 5000;
+
 export class VitalsService {
+  /**
+   * CLS as defined by Core Web Vitals: the largest session window of layout shifts that were
+   * not caused by recent user input, rounded to 3 decimals
+   */
+  static calculateCls(shifts: RawLayoutShift[]): number {
+    let max = 0;
+    let current = 0;
+    let windowStart = 0;
+    let previous = 0;
+
+    const sorted = shifts.filter((s) => !s.hadRecentInput).sort((a, b) => a.startTime - b.startTime);
+    for (const shift of sorted) {
+      const startsNewWindow =
+        current === 0 ||
+        shift.startTime - previous >= CLS_SESSION_GAP_MS ||
+        shift.startTime - windowStart >= CLS_SESSION_MAX_MS;
+      if (startsNewWindow) {
+        current = 0;
+        windowStart = shift.startTime;
+      }
+      current += shift.value;
+      previous = shift.startTime;
+      max = Math.max(max, current);
+    }
+
+    return Math.round(max * 1000) / 1000;
+  }
+
   /**
    * Calculates performance score (0 - 100) based on Core Web Vitals (LCP, CLS)
    */
@@ -61,70 +108,64 @@ export class VitalsService {
     const hasSsl = targetUrl.toLowerCase().startsWith('https://');
 
     try {
-      const evaluation = await page.evaluate(() => {
-        let lcpMs = 0;
-        let cls = 0;
+      const evaluation = await page.evaluate(
+        () =>
+          new Promise<RawVitals>((resolve) => {
+            // LCP and layout-shift entries are not in the performance timeline (getEntriesByType
+            // returns none); only a buffered PerformanceObserver receives them (REV-99)
+            let lcpMs: number | null = null;
+            const shifts: RawLayoutShift[] = [];
 
-        // 1. Buffered LCP Extraction
-        try {
-          const lcpEntries = performance.getEntriesByType('largest-contentful-paint');
-          if (lcpEntries.length > 0) {
-            lcpMs = lcpEntries[lcpEntries.length - 1]?.startTime || 0;
-          }
-        } catch {
-          // ignore
-        }
+            const readLcp = (entries: PerformanceEntryList) => {
+              const last = entries[entries.length - 1];
+              if (last) lcpMs = last.startTime;
+            };
+            const readShifts = (entries: PerformanceEntryList) => {
+              for (const entry of entries) {
+                const shift = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+                shifts.push({
+                  startTime: shift.startTime,
+                  value: typeof shift.value === 'number' ? shift.value : 0,
+                  hadRecentInput: !!shift.hadRecentInput,
+                });
+              }
+            };
 
-        // 2. Buffered CLS Extraction
-        try {
-          const shiftEntries = performance.getEntriesByType('layout-shift');
-          for (const entry of shiftEntries) {
-            const shift = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
-            if (!shift.hadRecentInput && typeof shift.value === 'number') {
-              cls += shift.value;
-            }
-          }
-        } catch {
-          // ignore
-        }
+            const lcpObserver = new PerformanceObserver((list) => readLcp(list.getEntries()));
+            const clsObserver = new PerformanceObserver((list) => readShifts(list.getEntries()));
+            lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+            clsObserver.observe({ type: 'layout-shift', buffered: true });
 
-        // 3. Navigation timings fallback for fast or minimal pages
-        const paintEntries = performance.getEntriesByType('paint');
-        const fcp = paintEntries.find((e) => e.name === 'first-contentful-paint')?.startTime || 0;
+            // Buffered entries are delivered on a later task; collect whatever is still queued
+            setTimeout(() => {
+              readLcp(lcpObserver.takeRecords());
+              readShifts(clsObserver.takeRecords());
+              lcpObserver.disconnect();
+              clsObserver.disconnect();
 
-        const navEntries = performance.getEntriesByType('navigation');
-        let navDuration = 0;
-        let responseEnd = 0;
-        if (navEntries.length > 0) {
-          const nav = navEntries[0] as PerformanceNavigationTiming;
-          navDuration = nav.loadEventEnd || nav.duration || 0;
-          responseEnd = nav.responseEnd || 0;
-        }
+              const navEntries = performance.getEntriesByType('navigation');
+              const nav = navEntries[0] as PerformanceNavigationTiming | undefined;
 
-        // If LCP was 0 (e.g. text only or very fast render), estimate from FCP or response timing
-        if (lcpMs === 0) {
-          lcpMs = fcp > 0 ? fcp : (responseEnd > 0 ? responseEnd : navDuration || 500);
-        }
-
-        // 4. Standards inspection
-        const viewportMeta = document.querySelector('meta[name="viewport"]');
-        const hasViewport = !!viewportMeta && !!viewportMeta.getAttribute('content');
-        const hasTitle = !!document.title && document.title.trim().length > 0;
-
-        return {
-          lcpMs,
-          cls: Math.round(cls * 1000) / 1000,
-          speedIndexMs: Math.round(navDuration || lcpMs * 1.1),
-          hasViewport,
-          hasTitle,
-        };
-      });
-
-      const lcpSeconds = Math.round((evaluation.lcpMs / 1000) * 100) / 100;
-      const performanceScore = VitalsService.calculatePerformanceScore(
-        lcpSeconds,
-        evaluation.cls,
+              const viewportMeta = document.querySelector('meta[name="viewport"]');
+              resolve({
+                lcpMs,
+                shifts,
+                loadEventEndMs: nav ? nav.loadEventEnd || nav.duration || 0 : 0,
+                hasViewport: !!viewportMeta && !!viewportMeta.getAttribute('content'),
+                hasTitle: !!document.title && document.title.trim().length > 0,
+              });
+            }, 50);
+          }),
       );
+
+      if (evaluation.lcpMs === null) {
+        throw new Error('The page reported no largest-contentful-paint entry');
+      }
+      const lcpMs = evaluation.lcpMs;
+      const cls = VitalsService.calculateCls(evaluation.shifts);
+
+      const lcpSeconds = Math.round((lcpMs / 1000) * 100) / 100;
+      const performanceScore = VitalsService.calculatePerformanceScore(lcpSeconds, cls);
       const standardsScore = VitalsService.calculateStandardsScore(
         hasSsl,
         evaluation.hasViewport,
@@ -134,9 +175,9 @@ export class VitalsService {
       return {
         lcpSeconds,
         lighthouseMetrics: {
-          lcp: Math.round(evaluation.lcpMs),
-          cls: evaluation.cls,
-          speedIndex: evaluation.speedIndexMs,
+          lcp: Math.round(lcpMs),
+          cls,
+          speedIndex: Math.round(evaluation.loadEventEndMs || lcpMs * 1.1),
         },
         standards: {
           hasSsl,
