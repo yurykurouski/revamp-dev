@@ -224,6 +224,7 @@ export const pl: Translation = {
   // REV-54: the layout the MVP was rendered with
   mvpLayout: {
     tooltip: 'Układ: {{name}} — {{reason}}',
+    unread: 'Nie udało się odczytać układu oryginalnej strony, więc układ wybrały reguły.',
     variants: {
       bento: 'Bento',
       split: 'Dzielony',
@@ -238,6 +239,7 @@ export const pl: Translation = {
       text_heavy: 'dużo tekstu i mało zdjęć',
       default: 'układ domyślny',
       manual: 'wybrany przez operatora',
+      derived: 'odwzorowuje układ oryginalnej strony',
     },
     descriptions: {
       bento: 'Siatka kart usług',

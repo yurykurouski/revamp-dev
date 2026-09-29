@@ -3,11 +3,10 @@ import {
   IMvpEditJobData,
   IMvpEditJobResult,
   MVP_COLOR_PRESETS,
-  MVP_LAYOUT_MANUAL_REASON,
   MVP_LAYOUT_VARIANTS,
   MvpLayoutVariant,
 } from '@revamp/shared-types';
-import { MvpContentOutput, MvpLayoutSelectionSchema, canChangeMvpLayout } from '@revamp/validation';
+import { MvpContentOutput, canChangeMvpLayout, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
@@ -15,7 +14,7 @@ import { MvpProject } from '../models/MvpProject.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpColorCandidate, MvpEditService, mvpEditService } from '../services/mvp-edit.service.js';
 import { republishSavedMvp } from './deploy.worker.js';
-import { hasDesign } from '../templates/design.js';
+import { hasDesign, mergeDesigns } from '../templates/design.js';
 
 /** #RGB or #RRGGBB as #RRGGBB; anything else (rgb(), names) is not offered to the model */
 function toSixDigitHex(color: string | undefined): string | undefined {
@@ -109,7 +108,8 @@ export async function processMvpEditJob(
       content: project.generatedContent as MvpContentOutput,
       primaryColor: project.colorPalette?.primary,
       layout,
-      design: project.design ?? undefined,
+      // The look the page has: the operator's design over the one derived from the original site (REV-104)
+      design: mergeDesigns(project.layout?.design, project.design),
     },
     colorCandidates: colorCandidates(project.colorPalette?.primary, audit.extractedBrandTokens),
   });
@@ -132,13 +132,7 @@ export async function processMvpEditJob(
     update['colorPalette.primary'] = plan.primaryColor;
     update['colorPalette.accent'] = plan.primaryColor;
   }
-  if (plan.layout) {
-    const facts = (project.layout?.reasons ?? []).filter((reason) => !reason.startsWith('rule:'));
-    update['layout'] = MvpLayoutSelectionSchema.parse({
-      variant: plan.layout,
-      reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
-    });
-  }
+  if (plan.layout) update['layout'] = manualMvpLayout(project.layout, plan.layout);
   // An empty design drops the custom design (REV-92)
   const dropDesign = plan.design !== undefined && !hasDesign(plan.design);
   if (plan.design && !dropDesign) update['design'] = JSON.parse(JSON.stringify(plan.design));

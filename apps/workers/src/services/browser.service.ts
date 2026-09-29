@@ -5,6 +5,7 @@ import { RawBrandExtractionData } from './brand-extractor.service.js';
 import { extractSiteContentInPage, RawSiteContent } from './site-content.extractor.js';
 import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.service.js';
 import { collectComplexitySignalsInPage, RawComplexitySignals } from './site-complexity.service.js';
+import { collectSiteLayoutInPage, RawSiteLayout } from './site-layout.service.js';
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -33,6 +34,8 @@ export interface FullAuditCrawlingResult extends ScreenshotResult {
   cookieConsent: { desktop: CookieConsentOutcome; mobile: CookieConsentOutcome };
   /** Raw DOM facts for the site complexity estimate; absent when collection failed (REV-38) */
   complexitySignals?: RawComplexitySignals;
+  /** Raw DOM facts of the home page's layout (REV-104); absent with the reason when collection failed */
+  siteLayout: { raw?: RawSiteLayout; error?: string };
 }
 
 /**
@@ -250,6 +253,22 @@ export class BrowserService {
   }
 
   /**
+   * Collects the DOM facts the original layout is read from (REV-104). Never throws: a failed
+   * collection returns its reason, and the MVP layout falls back to the rule-based choice.
+   */
+  async extractSiteLayout(page: Page): Promise<{ raw?: RawSiteLayout; error?: string }> {
+    try {
+      // Measured from the top of the page, as a visitor first sees it
+      await page.evaluate(() => window.scrollTo(0, 0));
+      const raw = await page.evaluate(collectSiteLayoutInPage);
+      return raw && typeof raw === 'object' && Array.isArray(raw.blocks) ? { raw } : { error: 'The page returned no layout facts' };
+    } catch (err) {
+      console.warn('[BrowserService] Site layout collection failed:', err);
+      return { error: `Layout collection failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) };
+    }
+  }
+
+  /**
    * Extracts raw brand colors, fonts, logo candidates, and contacts directly from page DOM
    */
   async extractRawBrandData(page: Page): Promise<RawBrandExtractionData> {
@@ -456,6 +475,7 @@ export class BrowserService {
     let desktopConsent: CookieConsentOutcome;
     let mobileConsent: CookieConsentOutcome;
     let complexitySignals: RawComplexitySignals | undefined;
+    let siteLayout: { raw?: RawSiteLayout; error?: string };
 
     // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
@@ -483,6 +503,7 @@ export class BrowserService {
       const content = await this.extractSiteContent(page);
       if (content) rawBrandData.content = content;
       complexitySignals = await this.extractComplexitySignals(page);
+      siteLayout = await this.extractSiteLayout(page);
     } finally {
       await desktopContext.close();
     }
@@ -534,6 +555,7 @@ export class BrowserService {
       rawBrandData,
       cookieConsent: { desktop: desktopConsent, mobile: mobileConsent },
       complexitySignals,
+      siteLayout,
     };
   }
 

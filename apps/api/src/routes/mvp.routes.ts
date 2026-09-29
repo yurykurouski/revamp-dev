@@ -2,10 +2,10 @@ import { Router, Request, Response, NextFunction } from 'express';
 import {
   EditMvpSchema,
   GenerateMvpSchema,
-  MvpLayoutSelectionSchema,
   UpdateMvpLayoutSchema,
   UpdateMvpTokensSchema,
   canChangeMvpLayout,
+  manualMvpLayout,
   mvpGenerationMode,
 } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
@@ -19,7 +19,7 @@ import { AppError } from '../middlewares/errorHandler.js';
 import { redisConnection } from '../queues/connection.js';
 import { getLlmProviders } from '../services/llm-providers.service.js';
 import { env } from '../config/env.js';
-import { MVP_LAYOUT_MANUAL_REASON, findLlmProvider } from '@revamp/shared-types';
+import { findLlmProvider } from '@revamp/shared-types';
 import mongoose from 'mongoose';
 
 const router = Router();
@@ -246,12 +246,8 @@ router.patch(
         return;
       }
 
-      // The audit facts behind the automatic choice are kept; the rule becomes the operator's
-      const facts = (project.layout?.reasons ?? []).filter((reason) => !reason.startsWith('rule:'));
-      const layout = MvpLayoutSelectionSchema.parse({
-        variant,
-        reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
-      });
+      // The audit facts and the derived look (REV-104) are kept; the rule becomes the operator's
+      const layout = manualMvpLayout(project.layout, variant);
       const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout } }, { new: true }).exec();
       if (!saved) {
         throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');

@@ -42,6 +42,19 @@ describe('MvpLayoutChip (REV-54)', () => {
     expect(html).toContain(en.mvpLayout.rules.manual);
   });
 
+  it('says when the layout follows the original site (REV-104)', () => {
+    const html = render(mvp({ variant: 'split', reasons: ['rule:derived', 'hero:side-right'] }));
+    expect(html).toContain(en.mvpLayout.rules.derived.replace("'", '&#x27;'));
+    expect(layoutRuleOf(['rule:derived'])).toBe('derived');
+  });
+
+  it('shows that the original layout could not be read and the rules chose instead (REV-104)', () => {
+    const html = render(mvp({ variant: 'bento', reasons: ['rule:default', 'site_layout:unread'] }));
+    expect(html).toContain(en.mvpLayout.rules.default);
+    expect(html).toContain(en.mvpLayout.unread.replace("'", '&#x27;'));
+    expect(render(mvp({ variant: 'bento', reasons: ['rule:default'] }))).not.toContain(en.mvpLayout.unread.replace("'", '&#x27;'));
+  });
+
   it('follows the interface language', () => {
     useLanguageStore.getState().setLanguage('pl');
     expect(render(mvp({ variant: 'compact', reasons: ['rule:small_brochure'] }))).toContain('Kompaktowy');
@@ -59,7 +72,8 @@ describe('MvpLayoutChip (REV-54)', () => {
     for (const locale of [en, ru, pl, lt, be]) {
       expect(Object.keys(locale.mvpLayout.variants)).toEqual(['bento', 'split', 'editorial', 'compact']);
       expect(Object.keys(locale.mvpLayout.descriptions)).toEqual(['bento', 'split', 'editorial', 'compact']);
-      expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(7);
+      expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(8);
+      expect(locale.mvpLayout.unread.length).toBeGreaterThan(0);
     }
   });
 });

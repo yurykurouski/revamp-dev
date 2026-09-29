@@ -697,6 +697,19 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const sectionOrder = Object.fromEntries(
     MVP_LAYOUT_VARIANTS.map((variant) => [variant, resolveSectionOrder(LAYOUT_SECTION_ORDER[variant], design)]),
   ) as Record<MvpLayoutVariant, string[]>;
+  // Header links to the sections the page shows, in page order, when the design asks (REV-104)
+  const sectionLinkLabel: Record<string, string> = {
+    about: t.aboutTag,
+    services: t.servicesTag,
+    gallery: t.galleryTag,
+    reviews: t.reviewsTag,
+  };
+  const headerLinksHtml = design?.header?.links
+    ? `<nav class="header-links">${sectionOrder[layout]
+        .filter((name) => sectionLinkLabel[name] && sectionHtml[name])
+        .map((name) => `<a class="header-link" href="#${name}">${escapeHtml(sectionLinkLabel[name])}</a>`)
+        .join('')}<a class="header-link" href="#booking">${escapeHtml(t.getInTouchTag)}</a></nav>`
+    : '';
   const mainHtml = [heroByLayout[layout], ...sectionOrder[layout].map((name) => sectionHtml[name]), bookingSectionHtml]
     .filter(Boolean)
     .join('\n');
@@ -1592,7 +1605,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
         ${logoHtml}
         <span class="brand-name">${businessName}</span>
       </a>
-
+${headerLinksHtml ? `      ${headerLinksHtml}\n` : ''}
       <div class="header-actions">
         ${
           phone

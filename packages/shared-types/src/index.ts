@@ -300,6 +300,61 @@ export interface ISiteComplexity {
   reasons: string[];
 }
 
+// The original home page's layout, read deterministically from the DOM during the audit (REV-104)
+
+/** Kinds of content section a home page is split into; `other` is a section no rule recognised */
+export const SITE_SECTION_KINDS = [
+  'services',
+  'pricing',
+  'gallery',
+  'about',
+  'team',
+  'reviews',
+  'faq',
+  'contact',
+  'map',
+  'other',
+] as const;
+export type SiteSectionKind = (typeof SITE_SECTION_KINDS)[number];
+
+/** How the first screen shows its photo: none, beside the headline, behind it, or as a slider */
+export const SITE_HERO_MEDIA = ['none', 'side', 'background', 'slider'] as const;
+export type SiteHeroMedia = (typeof SITE_HERO_MEDIA)[number];
+
+/** Background tone of a first screen, in the same names as the MVP's hero styles */
+export const SITE_HERO_TONES = ['light', 'tinted', 'dark', 'brand'] as const;
+export type SiteHeroTone = (typeof SITE_HERO_TONES)[number];
+
+export interface ISiteLayoutSection {
+  kind: SiteSectionKind;
+  /** The section's own heading, as a sample for the operator */
+  heading?: string;
+}
+
+export interface ISiteLayout {
+  /** Content sections below the first screen, in page order (header and footer excluded) */
+  sections: ISiteLayoutSection[];
+  hero: {
+    media: SiteHeroMedia;
+    /** Side of a `side` photo */
+    mediaSide?: 'left' | 'right';
+    align: 'left' | 'center';
+    tone: SiteHeroTone;
+  };
+  nav: {
+    /** Visible menu links in the header */
+    itemCount: number;
+    /** The logo sits in the middle of the header */
+    centeredLogo: boolean;
+    /** The header stays on screen while scrolling */
+    sticky: boolean;
+    /** The header has a filled call-to-action button */
+    hasCta: boolean;
+  };
+  /** How much white space the sections carry, from their median vertical padding */
+  density: 'compact' | 'comfortable' | 'airy';
+}
+
 export interface IScreenshotUrls {
   desktopOriginal: string;
   mobileOriginal: string;
@@ -335,6 +390,10 @@ export interface IAudit {
   cookieBannerHandled?: { desktop?: string; mobile?: string };
   /** How hard the site is to replace with a one-page MVP; absent on audits before REV-38 */
   siteComplexity?: ISiteComplexity;
+  /** The original home page's layout the MVP layout is derived from; absent when it could not be read (REV-104) */
+  siteLayout?: ISiteLayout;
+  /** Why the original layout could not be read; the MVP layout then falls back to the rule-based choice */
+  siteLayoutError?: string;
   generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;
@@ -1045,6 +1104,10 @@ export const MVP_DESIGN_CORNERS = ['sharp', 'soft', 'rounded', 'extra-round'] as
 export const MVP_DESIGN_HERO_STYLES = ['light', 'tinted', 'dark', 'brand'] as const;
 export const MVP_DESIGN_BLOCK_TYPES = ['highlight', 'features', 'cta'] as const;
 export const MVP_DESIGN_BLOCK_STYLES = ['plain', 'tinted', 'brand', 'dark'] as const;
+/** Where the split layout's photo sits: beside the copy, or behind it as a backdrop (REV-104) */
+export const MVP_DESIGN_HERO_IMAGE_SIDES = ['left', 'right', 'behind'] as const;
+/** Header arrangements: logo left and actions right, or the logo centred above them (REV-104) */
+export const MVP_DESIGN_HEADER_LAYOUTS = ['standard', 'centered'] as const;
 
 /** A block the spec adds; its text follows Strict Grounding like the rest of the copy */
 export interface IMvpDesignBlock {
@@ -1067,8 +1130,13 @@ export interface IMvpDesign {
     align?: 'left' | 'center';
     /** Order of the hero copy's parts */
     order?: MvpDesignHeroPart[];
-    /** Side of the photo in the split layout */
-    imageSide?: 'left' | 'right';
+    /** Side of the photo in the split layout, or `behind` the copy as a backdrop */
+    imageSide?: (typeof MVP_DESIGN_HERO_IMAGE_SIDES)[number];
+  };
+  /** The header's arrangement and whether it links to the page's sections (REV-104) */
+  header?: {
+    layout?: (typeof MVP_DESIGN_HEADER_LAYOUTS)[number];
+    links?: boolean;
   };
   theme?: {
     font?: (typeof MVP_DESIGN_FONTS)[number];
@@ -1093,7 +1161,17 @@ export interface IMvpLayoutSelection {
   variant: MvpLayoutVariant;
   /** Short machine-readable codes behind the choice (e.g. `complexity:ONE_PAGE_BROCHURE`, `images:5`) */
   reasons: string[];
+  /**
+   * The look derived from the original site's layout (REV-104): section order, hero, header and density.
+   * The operator's own design is applied over it field by field; absent when the layout was not derived.
+   */
+  design?: IMvpDesign;
 }
+
+/** The reason code of a layout derived from the original site's layout (REV-104) */
+export const MVP_LAYOUT_DERIVED_REASON = 'rule:derived';
+/** The reason code added when the original layout could not be read and the rules chose instead */
+export const MVP_LAYOUT_UNREAD_REASON = 'site_layout:unread';
 
 export interface IBentoTemplateData {
   businessName: string;

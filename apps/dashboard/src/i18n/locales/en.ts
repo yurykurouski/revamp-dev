@@ -225,6 +225,7 @@ export const en = {
   // REV-54: the layout the MVP was rendered with
   mvpLayout: {
     tooltip: 'Layout: {{name}} — {{reason}}',
+    unread: 'The original site\'s layout could not be read, so the rules chose this one.',
     variants: {
       bento: 'Bento',
       split: 'Split',
@@ -239,6 +240,7 @@ export const en = {
       text_heavy: 'lots of text and few photos',
       default: 'default layout',
       manual: 'chosen by the operator',
+      derived: 'follows the original site\'s layout',
     },
     descriptions: {
       bento: 'Card grid of services',

@@ -8,6 +8,8 @@ import {
   MVP_DESIGN_DENSITIES,
   MVP_DESIGN_ELEMENTS,
   MVP_DESIGN_FONTS,
+  MVP_DESIGN_HEADER_LAYOUTS,
+  MVP_DESIGN_HERO_IMAGE_SIDES,
   MVP_DESIGN_HERO_PARTS,
   MVP_DESIGN_HERO_STYLES,
   MVP_DESIGN_HIDEABLE,
@@ -88,7 +90,8 @@ const BLOCK_UI_ICONS = new Set(['arrow-right', 'external-link', 'chevron-down', 
 const DESIGN_VOCABULARY = `Design spec ("design"): a JSON object; every field is optional and anything left out keeps the template's own look.
 - sectionOrder: page order of content sections and custom blocks, from: ${list([...MVP_DESIGN_SECTIONS, ...MVP_DESIGN_BLOCK_IDS])}. Unlisted ones follow in the layout's order. The hero is always first and the booking form always last.
 - hidden: what to leave out, from: ${list(MVP_DESIGN_HIDEABLE)} ("trust" is the hero's trust bar). The hero, the booking form and the contacts can never be hidden.
-- hero: { align: left | center, order: the hero parts in display order, from ${list(MVP_DESIGN_HERO_PARTS)}, imageSide: left | right (split layout photo) }.
+- hero: { align: left | center, order: the hero parts in display order, from ${list(MVP_DESIGN_HERO_PARTS)}, imageSide: ${MVP_DESIGN_HERO_IMAGE_SIDES.join(' | ')} (split layout photo; behind puts it behind the copy as a darkened backdrop) }.
+- header: { layout: ${MVP_DESIGN_HEADER_LAYOUTS.join(' | ')} (centered puts the logo in the middle), links: true | false (links to the page's sections in the header) }.
 - theme: { font: ${MVP_DESIGN_FONTS.join(' | ')} (serif-display and mono-display change headings only), density: ${MVP_DESIGN_DENSITIES.join(' | ')}, corners: ${MVP_DESIGN_CORNERS.join(' | ')}, heroStyle: ${MVP_DESIGN_HERO_STYLES.join(' | ')} }.
 - elements: styles for named elements, keyed by ${list(MVP_DESIGN_ELEMENTS)}. Each style may set: ${Object.entries(MVP_DESIGN_TOKENS)
   .map(([token, values]) => `${token} (${values.join(' | ')})`)

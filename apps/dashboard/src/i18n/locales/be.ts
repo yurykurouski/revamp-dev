@@ -224,6 +224,7 @@ export const be: Translation = {
   // REV-54: the layout the MVP was rendered with
   mvpLayout: {
     tooltip: 'Макет: {{name}} — {{reason}}',
+    unread: 'Не ўдалося прачытаць структуру зыходнага сайта, таму макет абраны па правілах.',
     variants: {
       bento: 'Бэнта',
       split: 'Спліт',
@@ -238,6 +239,7 @@ export const be: Translation = {
       text_heavy: 'шмат тэксту і мала фота',
       default: 'макет па змаўчанні',
       manual: 'абраны аператарам',
+      derived: 'паўтарае структуру зыходнага сайта',
     },
     descriptions: {
       bento: 'Сетка картак паслуг',

@@ -12,6 +12,7 @@ import { designCritiqueService } from '../services/design-critique.service.js';
 import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
+import { readSiteLayout } from '../services/site-layout.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
@@ -62,10 +63,14 @@ export const createAuditWorker = (): Worker => {
           rawBrandData,
           cookieConsent,
           complexitySignals,
+          siteLayout: rawSiteLayout,
         } = await browserService.captureFullAudit(url);
 
         // Deterministic complexity estimate: one-page brochure sites are the easiest to replace (REV-38)
         const siteComplexity = classifySiteComplexity(complexitySignals);
+        // The original layout the MVP layout is derived from (REV-104), or why it could not be read
+        const siteLayout = rawSiteLayout.raw ? readSiteLayout(rawSiteLayout.raw) : { error: rawSiteLayout.error ?? 'No layout facts' };
+        if (siteLayout.error) console.warn(`[AuditWorker] Original layout not read for lead ${leadId}: ${siteLayout.error}`);
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
@@ -151,6 +156,9 @@ export const createAuditWorker = (): Worker => {
           a11ySummary: a11yResult.summary,
           axeViolations: a11yResult.violations,
           standardsChecks: vitalsResult.standards,
+          // Exactly one of the two is set, so a re-audit never keeps the previous run's layout (REV-104)
+          siteLayout: siteLayout.layout,
+          siteLayoutError: siteLayout.error,
         };
         // `scores` and `webVitals` are replaced whole; the fields below are unset when not measured
         const unmeasured = Object.keys(measuredFields).filter((key) => measuredFields[key] === undefined);

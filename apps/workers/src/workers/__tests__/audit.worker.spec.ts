@@ -87,6 +87,20 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('raw-desktop-png'),
+      siteLayout: {
+        raw: {
+          viewportWidth: 1440,
+          viewportHeight: 900,
+          pageHeight: 4000,
+          blocks: [
+            { top: 80, height: 700, hint: 'hero', heading: 'Test Dental', imageCount: 1, formCount: 0, mapEmbed: false, quoteCount: 0, priceCount: 0, textLength: 200, paddingY: 100 },
+            { top: 780, height: 600, hint: '', heading: 'Our services', imageCount: 0, formCount: 0, mapEmbed: false, quoteCount: 0, priceCount: 0, textLength: 600, paddingY: 100 },
+            { top: 1380, height: 500, hint: '', heading: 'Contact', imageCount: 0, formCount: 1, mapEmbed: true, quoteCount: 0, priceCount: 0, textLength: 200, paddingY: 100 },
+          ],
+          hero: { headingAlign: 'center', headingCenterX: 720, headingWidth: 500, headingColor: 'rgb(0, 0, 0)', background: 'rgb(255, 255, 255)', slider: false, backgroundMedia: false },
+          header: { navLinkCount: 4, logoCenterX: 100, sticky: false, hasCta: false },
+        },
+      },
       mobileBuffer: Buffer.from('raw-mobile-png'),
       desktopFullBuffer: Buffer.from('raw-desktop-full-png'),
       mobileFullBuffer: Buffer.from('raw-mobile-full-png'),
@@ -266,6 +280,17 @@ describe('AuditWorker (@revamp/workers)', () => {
         ],
         // Everything was measured, so no measurement errors (REV-100)
         measurementErrors: [],
+        // The original layout, read from the page and validated (REV-104); no stale error kept
+        siteLayout: {
+          sections: [
+            { kind: 'services', heading: 'Our services' },
+            { kind: 'contact', heading: 'Contact' },
+          ],
+          hero: { media: 'none', align: 'center', tone: 'light' },
+          nav: { itemCount: 4, centeredLogo: false, sticky: false, hasCta: false },
+          density: 'comfortable',
+        },
+        $unset: { siteLayoutError: '' },
         designCritique: expect.objectContaining({
           visualHierarchyRating: 70,
           mobileFriendlinessRating: 80,
@@ -346,6 +371,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
+      siteLayout: { error: 'Layout not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -400,7 +426,10 @@ describe('AuditWorker (@revamp/workers)', () => {
       a11ySummary: '',
       axeViolations: '',
       standardsChecks: '',
+      // The original layout was not read either: its reason is stored instead (REV-104)
+      siteLayout: '',
     });
+    expect(completed.siteLayoutError).toBe('Layout not collected in this test');
     expect(completed).not.toHaveProperty('axeViolations');
     expect(completed).not.toHaveProperty('standardsChecks');
     expect(completed).not.toHaveProperty('a11yScore');
@@ -435,6 +464,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
+        siteLayout: { error: 'Layout not collected in this test' },
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
@@ -535,6 +565,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
+      siteLayout: { error: 'Layout not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -605,6 +636,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
+      siteLayout: { error: 'Layout not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -673,6 +705,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
+      siteLayout: { error: 'Layout not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -895,6 +928,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
+        siteLayout: { error: 'Layout not collected in this test' },
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
