@@ -13,6 +13,7 @@ import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
 import { readSiteLayout } from '../services/site-layout.service.js';
+import { readSiteSections } from '../services/site-sections.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
@@ -64,6 +65,7 @@ export const createAuditWorker = (): Worker => {
           cookieConsent,
           complexitySignals,
           siteLayout: rawSiteLayout,
+          siteSections: rawSiteSections,
         } = await browserService.captureFullAudit(url);
 
         // Deterministic complexity estimate: one-page brochure sites are the easiest to replace (REV-38)
@@ -71,6 +73,11 @@ export const createAuditWorker = (): Worker => {
         // The original layout the MVP layout is derived from (REV-104), or why it could not be read
         const siteLayout = rawSiteLayout.raw ? readSiteLayout(rawSiteLayout.raw) : { error: rawSiteLayout.error ?? 'No layout facts' };
         if (siteLayout.error) console.warn(`[AuditWorker] Original layout not read for lead ${leadId}: ${siteLayout.error}`);
+        // The original page section by section (REV-109), or why it could not be read; never fails the audit
+        const siteSections = rawSiteSections.raw
+          ? readSiteSections(rawSiteSections.raw, rawSiteLayout.raw?.blocks ?? [])
+          : { error: rawSiteSections.error ?? 'No section facts' };
+        if (siteSections.error) console.warn(`[AuditWorker] Original sections not read for lead ${leadId}: ${siteSections.error}`);
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
@@ -159,6 +166,9 @@ export const createAuditWorker = (): Worker => {
           // Exactly one of the two is set, so a re-audit never keeps the previous run's layout (REV-104)
           siteLayout: siteLayout.layout,
           siteLayoutError: siteLayout.error,
+          // Exactly one of the two is set, so a re-audit never keeps the previous run's sections (REV-109)
+          siteSections: siteSections.sections,
+          siteSectionsError: siteSections.error,
         };
         // `scores` and `webVitals` are replaced whole; the fields below are unset when not measured
         const unmeasured = Object.keys(measuredFields).filter((key) => measuredFields[key] === undefined);
