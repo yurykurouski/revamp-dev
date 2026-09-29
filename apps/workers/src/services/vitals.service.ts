@@ -1,17 +1,26 @@
 import { Page } from 'playwright';
-import { ILighthouseMetrics } from '@revamp/shared-types';
+import { ILighthouseMetrics, IMeasurementError } from '@revamp/shared-types';
+import { sanitizeAuditError } from '@revamp/validation';
 
+/**
+ * What the vitals collection measured. A measurement that failed leaves its values out and is listed
+ * in `errors` instead; nothing is filled in with a stand-in value (REV-100)
+ */
 export interface VitalsAuditResult {
-  lcpSeconds: number;
+  lcpSeconds?: number;
   lighthouseMetrics: ILighthouseMetrics;
-  standards: {
+  standards?: {
     hasSsl: boolean;
     hasViewport: boolean;
     hasTitle: boolean;
   };
-  performanceScore: number;
-  standardsScore: number;
+  performanceScore?: number;
+  standardsScore?: number;
+  errors: IMeasurementError[];
 }
+
+/** Reason recorded when the page produced no LCP entry */
+export const NO_LCP_ENTRY = 'The page reported no largest-contentful-paint entry';
 
 /** A layout-shift entry as read in the page */
 export interface RawLayoutShift {
@@ -158,52 +167,44 @@ export class VitalsService {
           }),
       );
 
-      if (evaluation.lcpMs === null) {
-        throw new Error('The page reported no largest-contentful-paint entry');
-      }
-      const lcpMs = evaluation.lcpMs;
       const cls = VitalsService.calculateCls(evaluation.shifts);
-
-      const lcpSeconds = Math.round((lcpMs / 1000) * 100) / 100;
-      const performanceScore = VitalsService.calculatePerformanceScore(lcpSeconds, cls);
-      const standardsScore = VitalsService.calculateStandardsScore(
-        hasSsl,
-        evaluation.hasViewport,
-        evaluation.hasTitle,
-      );
-
-      return {
-        lcpSeconds,
-        lighthouseMetrics: {
-          lcp: Math.round(lcpMs),
-          cls,
-          speedIndex: Math.round(evaluation.loadEventEndMs || lcpMs * 1.1),
-        },
+      const result: VitalsAuditResult = {
+        lighthouseMetrics: { cls },
         standards: {
           hasSsl,
           hasViewport: evaluation.hasViewport,
           hasTitle: evaluation.hasTitle,
         },
-        performanceScore,
-        standardsScore,
+        standardsScore: VitalsService.calculateStandardsScore(hasSsl, evaluation.hasViewport, evaluation.hasTitle),
+        errors: [],
       };
+
+      // Without an LCP the performance score cannot be computed; no other timing stands in for it
+      if (evaluation.lcpMs === null) {
+        result.errors.push({ measurement: 'performance', message: NO_LCP_ENTRY });
+        return result;
+      }
+
+      const lcpMs = evaluation.lcpMs;
+      const lcpSeconds = Math.round((lcpMs / 1000) * 100) / 100;
+      result.lcpSeconds = lcpSeconds;
+      result.lighthouseMetrics = {
+        lcp: Math.round(lcpMs),
+        cls,
+        speedIndex: Math.round(evaluation.loadEventEndMs || lcpMs * 1.1),
+      };
+      result.performanceScore = VitalsService.calculatePerformanceScore(lcpSeconds, cls);
+      return result;
     } catch (err) {
       console.warn('[VitalsService] Error evaluating performance metrics:', err);
-      // Fallback in case evaluation encounters an error
+      // Neither performance nor the page's standards were read; both are reported as not measured
+      const message = sanitizeAuditError(err);
       return {
-        lcpSeconds: 2.5,
-        lighthouseMetrics: {
-          lcp: 2500,
-          cls: 0.05,
-          speedIndex: 2500,
-        },
-        standards: {
-          hasSsl,
-          hasViewport: true,
-          hasTitle: true,
-        },
-        performanceScore: 70,
-        standardsScore: hasSsl ? 80 : 40,
+        lighthouseMetrics: {},
+        errors: [
+          { measurement: 'performance', message },
+          { measurement: 'standards', message },
+        ],
       };
     }
   }

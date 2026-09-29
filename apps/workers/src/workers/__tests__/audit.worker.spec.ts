@@ -101,6 +101,7 @@ describe('AuditWorker (@revamp/workers)', () => {
           ],
         },
         rawViolations: [],
+        errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2.1,
@@ -108,6 +109,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         standards: { hasSsl: true, hasViewport: true, hasTitle: true },
         performanceScore: 90,
         standardsScore: 100,
+        errors: [],
       },
       rawBrandData: {
         colors: ['rgb(79, 70, 229)', 'rgb(255, 255, 255)'],
@@ -246,6 +248,8 @@ describe('AuditWorker (@revamp/workers)', () => {
           standards: 100,
         },
         lighthouseMetrics: { lcp: 2100, cls: 0.03, speedIndex: 1900 },
+        // Everything was measured, so no measurement errors (REV-100)
+        measurementErrors: [],
         designCritique: expect.objectContaining({
           visualHierarchyRating: 70,
           mobileFriendlinessRating: 80,
@@ -315,6 +319,89 @@ describe('AuditWorker (@revamp/workers)', () => {
     );
   });
 
+  it('saves failed measurements as errors, unsets their values and scores the rest (REV-100)', async () => {
+    createAuditWorker();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+    vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
+      exec: vi.fn().mockResolvedValue({ businessName: 'Broken Page', contactEmail: 'a@b.lt', tags: [] }),
+    } as any);
+    vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+    vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+      desktopBuffer: Buffer.from('d'),
+      mobileBuffer: Buffer.from('m'),
+      desktopFullBuffer: Buffer.from('df'),
+      mobileFullBuffer: Buffer.from('mf'),
+      a11yResult: {
+        rawViolations: [],
+        errors: [{ measurement: 'accessibility', message: 'Target page, context or browser has been closed' }],
+      },
+      vitalsResult: {
+        lighthouseMetrics: {},
+        errors: [
+          { measurement: 'performance', message: 'Execution context was destroyed' },
+          { measurement: 'standards', message: 'Execution context was destroyed' },
+        ],
+      },
+      rawBrandData: { colors: ['rgb(79, 70, 229)'], fontFamilies: [], socialLinks: [], services: [] },
+    } as any);
+    vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+    vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+    vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+    vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+      critique: {
+        visualHierarchyRating: 60,
+        mobileFriendlinessRating: 70,
+        primaryCtaFound: true,
+        datedDesignFactors: [],
+        criticalFlaws: [
+          { title: 'F1', impact: 'I1', recommendation: 'R1' },
+          { title: 'F2', impact: 'I2', recommendation: 'R2' },
+          { title: 'F3', impact: 'I3', recommendation: 'R3' },
+        ],
+        quickWins: ['W1', 'W2', 'W3'],
+      },
+      aiFallbackUsed: false,
+      modelUsed: 'test-model',
+      attempts: 1,
+    } as any);
+
+    const result = await capturedProcessor!({ id: 'job-partial', data: { leadId: 'lead-partial', url: 'https://broken.lt', niche: 'other' } });
+
+    // The design critique gets no stand-in metrics either
+    expect(designCritiqueService.analyzeDesign).toHaveBeenCalledWith(
+      expect.objectContaining({ a11yScore: undefined, lcpSeconds: undefined }),
+    );
+
+    const completed = vi
+      .mocked(Audit.findOneAndUpdate)
+      .mock.calls.map((call) => call[1] as Record<string, any>)
+      .find((update) => update.status === 'COMPLETED')!;
+    expect(completed.$unset).toEqual({ a11yScore: '', lcp: '', a11ySummary: '' });
+    expect(completed).not.toHaveProperty('a11yScore');
+    expect(completed).not.toHaveProperty('lcp');
+    expect(completed).not.toHaveProperty('a11ySummary');
+    expect(completed.lighthouseMetrics).toEqual({});
+    // Only the design pillar was measured: total = design = (60 + 70) / 2
+    expect(completed.scores).toEqual({ total: 65, design: 65 });
+    expect(completed.measurementErrors).toEqual([
+      { measurement: 'performance', message: 'Execution context was destroyed' },
+      { measurement: 'standards', message: 'Execution context was destroyed' },
+      { measurement: 'accessibility', message: 'Target page, context or browser has been closed' },
+    ]);
+
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-partial', status: 'AUDITING' },
+      expect.objectContaining({ status: 'AUDITED', totalScore: 65 }),
+    );
+    expect(result).toEqual(expect.objectContaining({ success: true, totalScore: 65, a11yScore: undefined, lcp: undefined }));
+    expect(warn).toHaveBeenCalledWith(
+      '[AuditWorker] accessibility not measured for lead lead-partial: Target page, context or browser has been closed',
+    );
+    warn.mockRestore();
+  });
+
   it('should replace a guessed email on discovered leads with the email found on the site (REV-26)', async () => {
     createAuditWorker();
 
@@ -336,6 +423,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         a11yScore: 80,
         summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
         rawViolations: [],
+        errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2,
@@ -343,6 +431,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         standards: { hasSsl: true, hasViewport: true, hasTitle: true },
         performanceScore: 90,
         standardsScore: 100,
+        errors: [],
       },
       rawBrandData: {
         colors: ['rgb(79, 70, 229)'],
@@ -404,6 +493,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         a11yScore: 80,
         summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
         rawViolations: [],
+        errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2,
@@ -411,6 +501,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         standards: { hasSsl: true, hasViewport: true, hasTitle: true },
         performanceScore: 90,
         standardsScore: 100,
+        errors: [],
       },
       rawBrandData: {
         colors: ['rgb(79, 70, 229)'],
@@ -470,6 +561,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         a11yScore: 80,
         summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
         rawViolations: [],
+        errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2,
@@ -477,6 +569,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         standards: { hasSsl: true, hasViewport: true, hasTitle: true },
         performanceScore: 90,
         standardsScore: 100,
+        errors: [],
       },
       rawBrandData: { colors: ['rgb(79, 70, 229)'], fontFamilies: ['Inter'], socialLinks: [], services: [] },
       complexitySignals: {
@@ -690,6 +783,7 @@ describe('AuditWorker (@revamp/workers)', () => {
           a11yScore: 80,
           summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
           rawViolations: [],
+          errors: [],
         },
         vitalsResult: {
           lcpSeconds: 2,
@@ -697,6 +791,7 @@ describe('AuditWorker (@revamp/workers)', () => {
           standards: { hasSsl: true, hasViewport: true, hasTitle: true },
           performanceScore: 90,
           standardsScore: 100,
+          errors: [],
         },
         rawBrandData: {
           colors: ['rgb(79, 70, 229)'],

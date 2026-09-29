@@ -133,18 +133,33 @@ export interface ILead {
 }
 
 // 3. Audit Domain Entity
+/**
+ * Pillar scores, 0 - 100. A pillar whose measurement failed is absent, never filled with a stand-in
+ * value, and `total` is weighted over the pillars that were measured (REV-100)
+ */
 export interface IAuditScores {
-  total: number;         // 0 - 100
-  design: number;        // 0 - 100
-  accessibility: number; // 0 - 100
-  performance: number;   // 0 - 100
-  standards: number;     // 0 - 100
+  total: number;
+  design: number;
+  accessibility?: number;
+  performance?: number;
+  standards?: number;
 }
 
+/** Deterministic audit measurements that can fail on their own without failing the audit (REV-100) */
+export const AUDIT_MEASUREMENTS = ['performance', 'accessibility', 'standards'] as const;
+export type AuditMeasurement = (typeof AUDIT_MEASUREMENTS)[number];
+
+/** A measurement the audit could not take, and why; its values are left out of the audit */
+export interface IMeasurementError {
+  measurement: AuditMeasurement;
+  message: string;
+}
+
+/** Values the audit did not measure are absent (REV-100) */
 export interface ILighthouseMetrics {
-  lcp: number;       // ms
+  lcp?: number;      // ms
   fidOrInp?: number; // ms
-  cls: number;
+  cls?: number;
   speedIndex?: number;
 }
 
@@ -264,7 +279,10 @@ export interface IAudit {
   status: AuditStatus;
   scores: IAuditScores;
   lighthouseMetrics: ILighthouseMetrics;
-  a11ySummary: IA11ySummary;
+  /** Absent when the accessibility scan failed (see `measurementErrors`) */
+  a11ySummary?: IA11ySummary;
+  /** Measurements this audit could not take; their values are absent and the total is partial (REV-100) */
+  measurementErrors?: IMeasurementError[];
   designCritique: IDesignCritique;
   extractedBrandTokens: IExtractedBrandTokens;
   screenshotUrls: IScreenshotUrls;

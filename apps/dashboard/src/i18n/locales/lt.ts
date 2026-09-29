@@ -440,6 +440,12 @@ export const lt: Translation = {
     a11yIssues: 'Prieinamumo problemos',
     violations: 'Pažeidimų: {{count}}',
     mobileFriendliness: 'Pritaikymas mobiliesiems',
+    measurementErrors: 'Neišmatuota. Bendras įvertinimas apima tik išmatuotas dalis:',
+    measurement: {
+      performance: 'Našumas (LCP, CLS)',
+      accessibility: 'Prieinamumas (axe)',
+      standards: 'Žiniatinklio standartai (viewport, title)',
+    },
     fullPage: 'Viso puslapio vaizdas · slinkite, kad pamatytumėte visą svetainę',
     firstScreen: 'Tik pirmasis ekranas',
     openFullSize: 'Atidaryti visu dydžiu',

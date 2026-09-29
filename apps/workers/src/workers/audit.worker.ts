@@ -131,10 +131,24 @@ export const createAuditWorker = (): Worker => {
           standardsScore: vitalsResult.standardsScore,
         });
 
+        // Measurements that failed on their own leave their values out and are listed instead (REV-100)
+        const measurementErrors = [...vitalsResult.errors, ...a11yResult.errors];
+        for (const failure of measurementErrors) {
+          console.warn(`[AuditWorker] ${failure.measurement} not measured for lead ${leadId}: ${failure.message}`);
+        }
+        const measuredFields: Record<string, unknown> = {
+          a11yScore: a11yResult.a11yScore,
+          lcp: vitalsResult.lcpSeconds,
+          a11ySummary: a11yResult.summary,
+        };
+        // `scores` and `lighthouseMetrics` are replaced whole; the fields below are unset when not measured
+        const unmeasured = Object.keys(measuredFields).filter((key) => measuredFields[key] === undefined);
+
         // 9. Update Audit document in MongoDB with full metrics, critique, brand tokens, and COMPLETED status
         const updatedAudit = await Audit.findOneAndUpdate(
           { leadId },
           {
+            ...(unmeasured.length > 0 ? { $unset: Object.fromEntries(unmeasured.map((key) => [key, ''])) } : {}),
             status: 'COMPLETED',
             completedAt: new Date(),
             desktopScreenshotUrl,
@@ -145,11 +159,10 @@ export const createAuditWorker = (): Worker => {
               desktopFull: desktopFullScreenshotUrl,
               mobileFull: mobileFullScreenshotUrl,
             },
-            a11yScore: a11yResult.a11yScore,
-            lcp: vitalsResult.lcpSeconds,
+            ...Object.fromEntries(Object.entries(measuredFields).filter(([, value]) => value !== undefined)),
             scores,
             lighthouseMetrics: vitalsResult.lighthouseMetrics,
-            a11ySummary: a11yResult.summary,
+            measurementErrors,
             designCritique: critiqueResult.critique,
             aiFallbackUsed: critiqueResult.aiFallbackUsed,
             extractedBrandTokens: brandResult.tokens,
@@ -206,9 +219,9 @@ export const createAuditWorker = (): Worker => {
             `   - Design:         ${scores.design}/100 (Fallback used: ${critiqueResult.aiFallbackUsed})\n` +
             `   - Primary Color:  ${brandResult.tokens.primaryColor} (Accent: ${brandResult.tokens.accentColor})\n` +
             `   - Logo / Brand:   ${brandResult.tokens.logoUrl ? 'Extracted' : 'Monogram'}\n` +
-            `   - a11yScore:      ${scores.accessibility}/100 (${a11yResult.summary.violationsCount} violations)\n` +
-            `   - Performance:    ${scores.performance}/100 (LCP: ${vitalsResult.lcpSeconds}s)\n` +
-            `   - Standards:      ${scores.standards}/100 (SSL: ${vitalsResult.standards.hasSsl})\n` +
+            `   - a11yScore:      ${scores.accessibility ?? 'not measured'}/100 (${a11yResult.summary?.violationsCount ?? '?'} violations)\n` +
+            `   - Performance:    ${scores.performance ?? 'not measured'}/100 (LCP: ${vitalsResult.lcpSeconds ?? '?'}s)\n` +
+            `   - Standards:      ${scores.standards ?? 'not measured'}/100 (SSL: ${vitalsResult.standards?.hasSsl ?? '?'})\n` +
             `   - Complexity:     ${siteComplexity.class} (${siteComplexity.reasons.join(', ')})\n` +
             `   - Desktop URL:    ${desktopScreenshotUrl}\n` +
             `   - Mobile URL:     ${mobileScreenshotUrl}\n` +
@@ -227,6 +240,7 @@ export const createAuditWorker = (): Worker => {
           mobileFullScreenshotUrl,
           totalScore: scores.total,
           scores,
+          measurementErrors,
           designCritique: critiqueResult.critique,
           aiFallbackUsed: critiqueResult.aiFallbackUsed,
           extractedBrandTokens: brandResult.tokens,

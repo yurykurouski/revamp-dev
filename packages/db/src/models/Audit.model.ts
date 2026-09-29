@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { IAudit, AuditStatus } from '@revamp/shared-types';
+import { IAudit, AuditStatus, AUDIT_MEASUREMENTS } from '@revamp/shared-types';
 
 export interface IAuditDocument
   extends Omit<IAudit, '_id' | 'leadId' | 'createdAt' | 'completedAt'>,
@@ -23,6 +23,14 @@ const A11yViolationSchema = new Schema(
       enum: ['minor', 'moderate', 'serious', 'critical'],
     },
     selector: { type: String, required: true },
+  },
+  { _id: false },
+);
+
+const MeasurementErrorSchema = new Schema(
+  {
+    measurement: { type: String, enum: AUDIT_MEASUREMENTS, required: true },
+    message: { type: String, required: true },
   },
   { _id: false },
 );
@@ -53,9 +61,10 @@ const AuditSchema = new Schema<IAuditDocument>(
     scores: {
       total: { type: Number, min: 0, max: 100, default: 0 },
       design: { type: Number, min: 0, max: 100, default: 0 },
-      accessibility: { type: Number, min: 0, max: 100, default: 0 },
-      performance: { type: Number, min: 0, max: 100, default: 0 },
-      standards: { type: Number, min: 0, max: 100, default: 0 },
+      // No default: a pillar that was not measured stays absent (REV-100)
+      accessibility: { type: Number, min: 0, max: 100 },
+      performance: { type: Number, min: 0, max: 100 },
+      standards: { type: Number, min: 0, max: 100 },
     },
     lighthouseMetrics: {
       lcp: { type: Number },
@@ -63,12 +72,14 @@ const AuditSchema = new Schema<IAuditDocument>(
       cls: { type: Number },
       speedIndex: { type: Number },
     },
+    // No count defaults: an audit whose scan did not run has no violation counts (REV-100)
     a11ySummary: {
-      violationsCount: { type: Number, default: 0 },
-      contrastIssuesCount: { type: Number, default: 0 },
-      missingAltCount: { type: Number, default: 0 },
+      violationsCount: { type: Number },
+      contrastIssuesCount: { type: Number },
+      missingAltCount: { type: Number },
       criticalViolations: { type: [A11yViolationSchema], default: [] },
     },
+    measurementErrors: { type: [MeasurementErrorSchema], default: undefined },
     designCritique: {
       visualHierarchyRating: { type: Number, default: 0 },
       mobileFriendlinessRating: { type: Number, default: 0 },

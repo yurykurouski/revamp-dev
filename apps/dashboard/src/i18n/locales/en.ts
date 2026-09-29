@@ -441,6 +441,12 @@ export const en = {
     a11yIssues: 'a11y issues',
     violations: '{{count}} violations',
     mobileFriendliness: 'Mobile-friendliness',
+    measurementErrors: 'Not measured. The total score counts only the measured parts:',
+    measurement: {
+      performance: 'Performance (LCP, CLS)',
+      accessibility: 'Accessibility (axe)',
+      standards: 'Web standards (viewport, title)',
+    },
     fullPage: 'Full-page capture · scroll to view the whole site',
     firstScreen: 'First screen only',
     openFullSize: 'Open full size',

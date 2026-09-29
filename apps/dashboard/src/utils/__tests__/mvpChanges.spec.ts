@@ -13,6 +13,7 @@ const audit = (overrides: Partial<IAuditDetail> = {}): IAuditDetail => ({
   criticalFlaws: [],
   quickWins: [],
   colorPalette: {},
+  measurementErrors: [],
   ...overrides,
 });
 

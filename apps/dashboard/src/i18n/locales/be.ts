@@ -440,6 +440,12 @@ export const be: Translation = {
     a11yIssues: 'Праблемы даступнасці',
     violations: 'Парушэнняў: {{count}}',
     mobileFriendliness: 'Мабільная адаптацыя',
+    measurementErrors: 'Не вымерана. Выніковая ацэнка ўлічвае толькі вымераныя часткі:',
+    measurement: {
+      performance: 'Прадукцыйнасць (LCP, CLS)',
+      accessibility: 'Даступнасць (axe)',
+      standards: 'Вэб-стандарты (viewport, title)',
+    },
     fullPage: 'Здымак усёй старонкі · пракруціце, каб убачыць сайт цалкам',
     firstScreen: 'Толькі першы экран',
     openFullSize: 'Адкрыць у поўным памеры',

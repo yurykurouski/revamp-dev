@@ -22,6 +22,7 @@ const audit: IAuditDetail = {
   criticalFlaws: [],
   quickWins: ['Add a sticky call button'],
   colorPalette: { primary: '#aa0000' },
+  measurementErrors: [],
   originalServiceCount: 2,
 };
 

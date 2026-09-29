@@ -440,6 +440,12 @@ export const pl: Translation = {
     a11yIssues: 'Problemy z dostępnością',
     violations: 'Naruszenia: {{count}}',
     mobileFriendliness: 'Dostosowanie do urządzeń mobilnych',
+    measurementErrors: 'Nie zmierzono. Ocena łączna uwzględnia tylko zmierzone części:',
+    measurement: {
+      performance: 'Wydajność (LCP, CLS)',
+      accessibility: 'Dostępność (axe)',
+      standards: 'Standardy sieciowe (viewport, title)',
+    },
     fullPage: 'Zrzut całej strony · przewiń, aby zobaczyć całość',
     firstScreen: 'Tylko pierwszy ekran',
     openFullSize: 'Otwórz w pełnym rozmiarze',
