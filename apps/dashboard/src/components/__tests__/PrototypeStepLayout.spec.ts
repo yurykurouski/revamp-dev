@@ -33,6 +33,7 @@ const audit: IAuditDetail = {
   criticalFlaws: [],
   quickWins: ['Pin a call bar to the bottom of the mobile screen'],
   colorPalette: { primary: '#123456' },
+  measurementErrors: [],
 };
 
 const mvp: IMvpProjectDetail = {

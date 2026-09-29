@@ -41,6 +41,7 @@ const audit: IAuditDetail = {
   criticalFlaws: [{ title: 'No call to action above the fold', impact: 'Visitors leave', recommendation: 'Add a booking button' }],
   quickWins: ['Compress the hero image'],
   colorPalette: { primary: '#123456' },
+  measurementErrors: [],
 };
 
 describe('review steps (REV-77)', () => {

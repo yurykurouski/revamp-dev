@@ -11,6 +11,7 @@ vi.mock('../axe.service.js', () => ({
       a11yScore: 85,
       summary: { violationsCount: 2, contrastIssuesCount: 1, missingAltCount: 1, criticalViolations: [] },
       rawViolations: [],
+      errors: [],
     }),
   },
 }));
@@ -23,6 +24,7 @@ vi.mock('../vitals.service.js', () => ({
       standards: { hasSsl: true, hasViewport: true, hasTitle: true },
       performanceScore: 95,
       standardsScore: 100,
+      errors: [],
     }),
   },
 }));

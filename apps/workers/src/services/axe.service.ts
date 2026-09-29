@@ -1,11 +1,17 @@
 import AxeBuilder from '@axe-core/playwright';
 import { Page } from 'playwright';
-import { IA11ySummary, IA11yViolation } from '@revamp/shared-types';
+import { IA11ySummary, IA11yViolation, IMeasurementError } from '@revamp/shared-types';
+import { sanitizeAuditError } from '@revamp/validation';
 
+/**
+ * The accessibility scan's result. A scan that failed has no score or summary and lists the reason in
+ * `errors`; it is never reported as a clean page or a stand-in score (REV-100)
+ */
 export interface AxeAuditResult {
-  a11yScore: number;
-  summary: IA11ySummary;
+  a11yScore?: number;
+  summary?: IA11ySummary;
   rawViolations: unknown[];
+  errors: IMeasurementError[];
 }
 
 export interface AxeViolationItem {
@@ -96,19 +102,14 @@ export class AxeService {
           criticalViolations: criticalViolations.slice(0, 15), // cap top 15 critical violations
         },
         rawViolations: violations,
+        errors: [],
       };
     } catch (error) {
       console.warn('[AxeService] Warning: Failed to complete Axe-core scan on page:', error);
-      // Fallback in case the page closed prematurely or blocked script injection
+      // The page closed early or blocked script injection: the scan is reported as not run
       return {
-        a11yScore: 50,
-        summary: {
-          violationsCount: 0,
-          contrastIssuesCount: 0,
-          missingAltCount: 0,
-          criticalViolations: [],
-        },
         rawViolations: [],
+        errors: [{ measurement: 'accessibility', message: sanitizeAuditError(error) }],
       };
     }
   }

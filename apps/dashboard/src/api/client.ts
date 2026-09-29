@@ -11,6 +11,7 @@ import {
   ApiErrorCode,
   IApiError,
   IAudit,
+  IMeasurementError,
   ICriticalFlaw,
   ILead,
   IMvpProject,
@@ -514,6 +515,8 @@ export interface IAuditDetail {
   };
   /** Services the crawler found on the original site; undefined when it did not extract them (REV-81) */
   originalServiceCount?: number;
+  /** Measurements the audit could not take; their values are undefined and the total is partial (REV-100) */
+  measurementErrors: Serialized<IMeasurementError>[];
 }
 
 /**
@@ -544,4 +547,5 @@ export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail =
     accent: a.extractedBrandTokens?.accentColor || undefined,
   },
   originalServiceCount: a.extractedServices?.length ?? a.extractedContent?.serviceItems?.length ?? undefined,
+  measurementErrors: a.measurementErrors ?? [],
 });

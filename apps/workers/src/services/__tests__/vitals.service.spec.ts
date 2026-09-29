@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterAll, beforeEach, afterEach } from 'vitest';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
-import { VitalsService, RawLayoutShift } from '../vitals.service.js';
+import { VitalsService, RawLayoutShift, NO_LCP_ENTRY } from '../vitals.service.js';
 import { EVALUATE_NAME_SHIM } from '../browser.service.js';
 
 let browser: Browser | null = null;
@@ -59,29 +59,48 @@ describe('VitalsService', () => {
     expect(result.standards.hasViewport).toBe(true);
     expect(result.performanceScore).toBeGreaterThanOrEqual(80);
     expect(result.standardsScore).toBe(100);
+    expect(result.errors).toEqual([]);
   });
 
-  it('falls back when the page reports no LCP entry instead of substituting FCP or response timing', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('reports performance as not measured when the page has no LCP entry, keeping CLS and standards', async () => {
     const service = new VitalsService();
     const mockPage: any = {
       evaluate: vi.fn().mockResolvedValue({
         lcpMs: null,
-        shifts: [],
+        shifts: [shift(100, 0.02)],
         loadEventEndMs: 300,
         hasViewport: true,
-        hasTitle: true,
+        hasTitle: false,
       }),
     };
 
     const result = await service.collectVitals(mockPage, 'https://example-secure.com');
 
-    // The measured 300 ms load is not reported as the LCP
-    expect(result.lighthouseMetrics.lcp).not.toBe(300);
-    expect(warn).toHaveBeenCalledWith(
-      '[VitalsService] Error evaluating performance metrics:',
-      expect.objectContaining({ message: expect.stringContaining('largest-contentful-paint') }),
-    );
+    // No other timing (here the 300 ms load) stands in for the missing LCP
+    expect(result.lcpSeconds).toBeUndefined();
+    expect(result.performanceScore).toBeUndefined();
+    expect(result.lighthouseMetrics).toEqual({ cls: 0.02 });
+    expect(result.standards).toEqual({ hasSsl: true, hasViewport: true, hasTitle: false });
+    expect(result.standardsScore).toBe(80);
+    expect(result.errors).toEqual([{ measurement: 'performance', message: NO_LCP_ENTRY }]);
+  });
+
+  it('reports performance and standards as not measured when the page cannot be read, with no stand-in values', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const service = new VitalsService();
+    const mockPage: any = {
+      evaluate: vi.fn().mockRejectedValue(new Error('page.evaluate: Execution context was destroyed\n    at stack line')),
+    };
+
+    const result = await service.collectVitals(mockPage, 'https://example-secure.com');
+
+    expect(result).toEqual({
+      lighthouseMetrics: {},
+      errors: [
+        { measurement: 'performance', message: 'page.evaluate: Execution context was destroyed' },
+        { measurement: 'standards', message: 'page.evaluate: Execution context was destroyed' },
+      ],
+    });
     warn.mockRestore();
   });
 });
@@ -153,7 +172,9 @@ describe.skipIf(!browser)('VitalsService (real Chromium)', () => {
 
     expect(result.lighthouseMetrics.lcp).toBeGreaterThan(0);
     expect(result.lighthouseMetrics.cls).toBeGreaterThan(0);
+    expect(result.performanceScore).toBeGreaterThan(0);
     expect(result.standards).toEqual({ hasSsl: true, hasViewport: true, hasTitle: true });
+    expect(result.errors).toEqual([]);
   });
 
   it('reports CLS 0 for a page that does not shift', async () => {

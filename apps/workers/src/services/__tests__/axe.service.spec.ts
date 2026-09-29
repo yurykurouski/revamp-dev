@@ -1,4 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
+import AxeBuilder from '@axe-core/playwright';
 import { AxeService } from '../axe.service.js';
 
 vi.mock('@axe-core/playwright', () => {
@@ -69,5 +70,26 @@ describe('AxeService', () => {
     expect(result.summary.missingAltCount).toBe(1);
     expect(result.summary.criticalViolations.length).toBeGreaterThan(0);
     expect(result.a11yScore).toBeLessThan(100);
+    expect(result.errors).toEqual([]);
+  });
+
+  it('reports the scan as not measured when axe fails, never as a clean page or a stand-in score', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.mocked(AxeBuilder).mockImplementationOnce(function () {
+      return {
+        withTags: vi.fn().mockReturnThis(),
+        analyze: vi.fn().mockRejectedValue(new Error('Target page, context or browser has been closed')),
+      } as any;
+    });
+
+    const result = await new AxeService().scanPage({} as any);
+
+    expect(result).toEqual({
+      rawViolations: [],
+      errors: [{ measurement: 'accessibility', message: 'Target page, context or browser has been closed' }],
+    });
+    expect(result.a11yScore).toBeUndefined();
+    expect(result.summary).toBeUndefined();
+    warn.mockRestore();
   });
 });

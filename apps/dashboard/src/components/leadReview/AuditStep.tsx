@@ -56,7 +56,8 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color }) => (
 
 /**
  * Step 1 of a lead review (REV-77): the original site's full-page screenshot next to (or, below `xl`, above) the audit — the
- * measured metrics (a value the audit did not measure shows as missing, REV-45), the MVP data check,
+ * measured metrics (a value the audit did not measure shows as missing, REV-45, and a failed measurement
+ * is listed with its reason, REV-100), the MVP data check,
  * the critical flaws and the quick wins.
  */
 export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, error }) => {
@@ -198,6 +199,22 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
             color="info.main"
           />
         </Box>
+
+        {/* Measurements that failed are named with their reason instead of shown as a number (REV-100) */}
+        {audit && audit.measurementErrors.length > 0 && (
+          <Alert severity="warning" data-testid="measurement-errors">
+            <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
+              {t('inspector.measurementErrors')}
+            </Typography>
+            <Box component="ul" sx={{ m: 0, pl: 2 }}>
+              {audit.measurementErrors.map((failure) => (
+                <Typography component="li" variant="caption" key={failure.measurement} sx={{ display: 'list-item' }}>
+                  <strong>{t(`inspector.measurement.${failure.measurement}`)}</strong>: {failure.message}
+                </Typography>
+              ))}
+            </Box>
+          </Alert>
+        )}
 
         {/* The MVP checked against the original site's key business data (REV-36) */}
         <CompletenessChecklist report={mvp?.completenessReport} />

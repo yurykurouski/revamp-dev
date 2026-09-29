@@ -84,6 +84,41 @@ describe('ScoringService', () => {
     });
   });
 
+  describe('calculateCompositeScore with unmeasured pillars (REV-100)', () => {
+    it('leaves an unmeasured pillar out and rescales the remaining weights', () => {
+      // Accessibility not measured: (0.35*80 + 0.25*90 + 0.20*100) / 0.80 = 70.5 / 0.8 = 88.125 -> 88
+      const scores = ScoringService.calculateCompositeScore({
+        designScore: 80,
+        performanceScore: 90,
+        standardsScore: 100,
+      });
+
+      expect(scores).toEqual({ total: 88, design: 80, performance: 90, standards: 100 });
+      expect('accessibility' in scores).toBe(false);
+    });
+
+    it('does not count an unmeasured pillar as 0', () => {
+      const withZero = ScoringService.calculateCompositeScore({
+        designScore: 60,
+        performanceScore: 0,
+        accessibilityScore: 60,
+        standardsScore: 60,
+      });
+      const unmeasured = ScoringService.calculateCompositeScore({
+        designScore: 60,
+        accessibilityScore: 60,
+        standardsScore: 60,
+      });
+
+      expect(withZero.total).toBe(45);
+      expect(unmeasured.total).toBe(60);
+    });
+
+    it('scores on design alone when every deterministic measurement failed', () => {
+      expect(ScoringService.calculateCompositeScore({ designScore: 42 })).toEqual({ total: 42, design: 42 });
+    });
+  });
+
   describe('getSiteHealthRating', () => {
     it('should categorize score < 50 as CRITICAL', () => {
       expect(ScoringService.getSiteHealthRating(0)).toBe('CRITICAL');

@@ -8,7 +8,7 @@ import { ThemeProvider } from '@mui/material';
 import '../../i18n/index.js';
 import type { IAuditDetail } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
-import { AUDIT_FINDINGS_WIDTH, AUDIT_ROW_BREAKPOINT, AuditStep } from '../leadReview/AuditStep.js';
+import { AUDIT_FINDINGS_WIDTH, AUDIT_ROW_BREAKPOINT, AuditStep, NOT_MEASURED } from '../leadReview/AuditStep.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -21,6 +21,7 @@ const audit: IAuditDetail = {
   criticalFlaws: [{ title: 'No call to action above the fold', impact: 'Visitors leave', recommendation: 'Add a booking button' }],
   quickWins: ['Compress the hero image'],
   colorPalette: { primary: '#123456' },
+  measurementErrors: [],
 };
 
 const theme = getTheme('dark', 'en');
@@ -84,5 +85,59 @@ describe('AuditStep layout (REV-83)', () => {
     mount();
     expect(container.textContent).toContain('No call to action above the fold');
     expect(container.textContent).toContain('Compress the hero image');
+  });
+});
+
+describe('AuditStep measurement errors (REV-100)', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    document.body.innerHTML = '';
+  });
+
+  const render = (value: IAuditDetail) =>
+    act(() => {
+      root.render(
+        React.createElement(ThemeProvider, { theme }, React.createElement(AuditStep, { audit: value, mvp: null, isLoading: false })),
+      );
+    });
+
+  it('names each failed measurement with its reason and shows its metric as not measured', () => {
+    render({
+      ...audit,
+      lcpSeconds: undefined,
+      a11yViolationsCount: undefined,
+      measurementErrors: [
+        { measurement: 'performance', message: 'The page reported no largest-contentful-paint entry' },
+        { measurement: 'accessibility', message: 'Target page, context or browser has been closed' },
+      ],
+    });
+
+    const alert = container.querySelector('[data-testid="measurement-errors"]')!;
+    expect(alert.textContent).toContain('The total score counts only the measured parts');
+    const items = [...alert.querySelectorAll('li')].map((li) => li.textContent);
+    expect(items).toEqual([
+      'Performance (LCP, CLS): The page reported no largest-contentful-paint entry',
+      'Accessibility (axe): Target page, context or browser has been closed',
+    ]);
+    // The metric tiles show the not-measured mark, never a number
+    expect(container.textContent).not.toContain('violations');
+    expect(container.textContent).toContain(NOT_MEASURED);
+  });
+
+  it('shows no warning when every measurement was taken', () => {
+    render(audit);
+
+    expect(container.querySelector('[data-testid="measurement-errors"]')).toBeNull();
+    expect(container.textContent).toContain('4.8s');
   });
 });

@@ -36,6 +36,7 @@ const audit: IAuditDetail = {
   criticalFlaws: [],
   quickWins: [],
   colorPalette: { primary: '#123456' },
+  measurementErrors: [],
 };
 
 const mvp: IMvpProjectDetail = {

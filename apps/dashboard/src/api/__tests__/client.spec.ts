@@ -286,7 +286,26 @@ describe('Dashboard apiClient', () => {
         criticalFlaws: [],
         quickWins: [],
         colorPalette: { primary: undefined, secondary: undefined, accent: undefined },
+        measurementErrors: [],
       });
+    });
+
+    it('passes on the measurements the audit could not take (REV-100)', () => {
+      const audit = mapServerAudit(
+        {
+          leadId: 'lead-1',
+          lighthouseMetrics: { cls: 0.02 },
+          scores: { total: 70, design: 60, standards: 100 },
+          measurementErrors: [{ measurement: 'performance', message: 'The page reported no largest-contentful-paint entry' }],
+        },
+        'audit-1',
+      );
+
+      expect(audit.lcpSeconds).toBeUndefined();
+      expect(audit.a11yScore).toBeUndefined();
+      expect(audit.measurementErrors).toEqual([
+        { measurement: 'performance', message: 'The page reported no largest-contentful-paint entry' },
+      ]);
     });
 
     it("maps the original site's service count (REV-81)", () => {

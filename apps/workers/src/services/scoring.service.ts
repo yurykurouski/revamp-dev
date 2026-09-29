@@ -3,12 +3,15 @@ import { DesignCritiqueOutput } from '@revamp/validation';
 
 export type SiteHealthRating = 'CRITICAL' | 'NEEDS_MODERNIZATION' | 'MODERN';
 
+/** Pillar scores; a pillar that was not measured is left undefined (REV-100) */
 export interface ScoreInputs {
   designScore: number;
-  performanceScore: number;
-  accessibilityScore: number;
-  standardsScore: number;
+  performanceScore?: number;
+  accessibilityScore?: number;
+  standardsScore?: number;
 }
+
+const clampScore = (value: number): number => Math.round(Math.min(100, Math.max(0, value)));
 
 export class ScoringService {
   /**
@@ -34,29 +37,32 @@ export class ScoringService {
   }
 
   /**
-   * Computes the composite score across all 4 pillars
+   * Computes the composite score across the pillars that were measured. A missing pillar is left out
+   * and the remaining weights are scaled up to sum to 1, so an unmeasured pillar neither counts as 0
+   * nor as a made-up value (REV-100)
    */
   static calculateCompositeScore(inputs: ScoreInputs): IAuditScores {
-    const design = Math.round(Math.min(100, Math.max(0, inputs.designScore)));
-    const performance = Math.round(Math.min(100, Math.max(0, inputs.performanceScore)));
-    const accessibility = Math.round(Math.min(100, Math.max(0, inputs.accessibilityScore)));
-    const standards = Math.round(Math.min(100, Math.max(0, inputs.standardsScore)));
+    const scores: IAuditScores = { total: 0, design: clampScore(inputs.designScore) };
+    if (inputs.performanceScore !== undefined) scores.performance = clampScore(inputs.performanceScore);
+    if (inputs.accessibilityScore !== undefined) scores.accessibility = clampScore(inputs.accessibilityScore);
+    if (inputs.standardsScore !== undefined) scores.standards = clampScore(inputs.standardsScore);
 
-    const rawTotal =
-      this.WEIGHTS.DESIGN * design +
-      this.WEIGHTS.PERFORMANCE * performance +
-      this.WEIGHTS.ACCESSIBILITY * accessibility +
-      this.WEIGHTS.STANDARDS * standards;
+    const weighted: Array<[number | undefined, number]> = [
+      [scores.design, this.WEIGHTS.DESIGN],
+      [scores.performance, this.WEIGHTS.PERFORMANCE],
+      [scores.accessibility, this.WEIGHTS.ACCESSIBILITY],
+      [scores.standards, this.WEIGHTS.STANDARDS],
+    ];
+    let sum = 0;
+    let weights = 0;
+    for (const [score, weight] of weighted) {
+      if (score === undefined) continue;
+      sum += weight * score;
+      weights += weight;
+    }
 
-    const total = Math.round(Math.min(100, Math.max(0, rawTotal)));
-
-    return {
-      total,
-      design,
-      performance,
-      accessibility,
-      standards,
-    };
+    scores.total = clampScore(sum / weights);
+    return scores;
   }
 
   /**
