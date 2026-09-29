@@ -279,4 +279,64 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.items).toEqual([]);
     expect(s.intro.text).toHaveLength(3);
   });
+
+  it('reads text beside an image at 60/40, with the side and split', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="display:flex;align-items:center;padding:60px 0">
+        <div style="width:60%;padding:0 40px;box-sizing:border-box"><h2>O gabinecie</h2>
+          <p>Gabinet działa od 1998 roku w centrum Krakowa, tuż przy Rynku Głównym.</p>
+          <p>Leczymy dzieci i dorosłych, z pełną diagnostyką i pracownią protetyczną na miejscu.</p></div>
+        <div style="width:40%"><img src="https://img.test/room.jpg" alt="Gabinet" width="576" height="400" style="display:block;width:100%;height:auto"></div>
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'O gabinecie')!;
+    expect(s.arrangement).toBe('media-beside-text');
+    expect(s.mediaSide).toBe('right');
+    expect(s.style.split).toBeCloseTo(0.42, 1);
+    expect(s.images[0]!.src).toBe('https://img.test/room.jpg');
+    expectCovered(result);
+  });
+
+  it('reads identical Elementor columns with text and a photo as media beside text, not two cards', async () => {
+    const column = (inner: string) => `<div class="elementor-column" style="width:50%"><div class="elementor-widget-wrap"><div class="elementor-widget">${inner}</div></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="display:flex;align-items:center">
+        ${column('<h2>Nasza historia</h2><p>Od ponad dwudziestu lat dbamy o uśmiechy mieszkańców Krakowa i okolic.</p>')}
+        ${column('<img src="https://img.test/team.jpg" alt="" width="640" height="420" style="display:block;width:100%;height:auto">')}
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasza historia')!;
+    expect(s.items).toEqual([]);
+    expect(s.arrangement).toBe('media-beside-text');
+    expect(s.mediaSide).toBe('right');
+  });
+
+  it('reads a map embed and a form', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section id="kontakt" style="display:grid;grid-template-columns:2fr 3fr;min-height:500px;padding:0">
+        <div style="padding:40px"><h2>Kontakt</h2><form action="/wyslij"><input name="email" placeholder="E-mail"><textarea name="m"></textarea><button>Wyślij</button></form></div>
+        <iframe src="https://www.google.com/maps/embed?pb=xyz" style="border:0;width:100%;height:500px"></iframe>
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Kontakt')!;
+    expect(s.kind).toBe('contact');
+    expect(s.embeds).toEqual([{ kind: 'form', src: 'https://falco.test/wyslij' }, { kind: 'map', src: 'https://www.google.com/maps/embed?pb=xyz' }]);
+    expect(s.arrangement).toBe('embed');
+  });
+
+  it('reads a photo banner with its call to action, and the site typography', async () => {
+    const result = await sectionsOf(pageOf(`${HEADER}
+      <section style="background:url(https://img.test/bg.jpg) center/cover;min-height:600px;color:#fff;text-align:center">
+        <h1 style="color:#fff">Piękny uśmiech zaczyna się tutaj</h1><p>Konsultacja online w dwie minuty.</p>
+        <a class="btn" href="/rezerwacja" style="display:inline-block;background:#e91e63;padding:12px 24px;color:#fff;border-radius:4px;text-transform:uppercase">Umów wizytę</a>
+      </section>
+      <section><h2>Nasze usługi</h2><p>Leczenie zachowawcze, protetyka i implanty, wszystko w jednym miejscu.</p></section>`));
+    const hero = result.sections.find((x) => x.role === 'hero')!;
+    expect(hero.arrangement).toBe('banner');
+    expect(hero.style).toMatchObject({ backgroundImage: 'https://img.test/bg.jpg', textColor: '#ffffff', align: 'center' });
+    expect(hero.intro.links).toEqual([{ label: 'Umów wizytę', href: 'https://falco.test/rezerwacja', kind: 'cta' }]);
+    expect(result.typography).toEqual({
+      heading: { family: 'Georgia', size: 32, weight: 700, uppercase: false, color: '#111111' },
+      body: { family: 'Arial', size: 16, weight: 400, lineHeight: 1.5, color: '#333333' },
+      button: { radius: 0, filled: true, uppercase: false, background: '#00aa77', color: '#ffffff' },
+    });
+    expectCovered(result);
+  });
 });
