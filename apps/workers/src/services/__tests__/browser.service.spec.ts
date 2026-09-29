@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { BrowserService, FULL_PAGE_MAX_HEIGHT, REVEAL_ANIMATIONS_CSS, EVALUATE_NAME_SHIM } from '../browser.service.js';
-import { chromium } from 'playwright';
+import { BrowserService, FULL_PAGE_MAX_HEIGHT, REVEAL_ANIMATIONS_CSS, EVALUATE_NAME_SHIM, SITE_SECTIONS_TIMEOUT_MS } from '../browser.service.js';
+import { chromium, type Page } from 'playwright';
 import { cookieConsentService } from '../cookie-consent.service.js';
 import { vitalsService } from '../vitals.service.js';
 import { axeService } from '../axe.service.js';
@@ -174,6 +174,7 @@ describe('BrowserService', () => {
     expect(result.a11yResult.a11yScore).toBe(85);
     expect(result.vitalsResult.lcpSeconds).toBe(1.8);
     expect(mockContext.close).toHaveBeenCalledTimes(2);
+    expect(result.siteSections).toBeDefined();
   });
 
   it('should capture above-the-fold and full-page screenshots for desktop and mobile (REV-21)', async () => {
@@ -311,5 +312,32 @@ describe('BrowserService', () => {
     await service.close();
 
     expect(mockBrowser.close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('extractSiteSections (REV-109)', () => {
+  const pageWith = (evaluate: (...args: unknown[]) => Promise<unknown>) => ({ evaluate: vi.fn(evaluate) }) as unknown as Page;
+
+  it('returns the raw section facts', async () => {
+    const raw = { viewportWidth: 1440, viewportHeight: 900, blocks: [], typography: {}, pageChars: 0, uncaptured: [] };
+    await expect(new BrowserService().extractSiteSections(pageWith(async () => raw))).resolves.toEqual({ raw });
+  });
+
+  it('returns an error, never throws, when evaluation fails or returns nothing', async () => {
+    const failed = await new BrowserService().extractSiteSections(pageWith(async () => { throw new Error('Execution context was destroyed'); }));
+    expect(failed.error).toMatch(/Section collection failed: Execution context was destroyed/);
+    const empty = await new BrowserService().extractSiteSections(pageWith(async () => null));
+    expect(empty.error).toMatch(/no section facts/);
+  });
+
+  it('gives up after the time limit (Review Focus 4)', async () => {
+    vi.useFakeTimers();
+    try {
+      const pending = new BrowserService().extractSiteSections(pageWith(() => new Promise(() => {})));
+      await vi.advanceTimersByTimeAsync(SITE_SECTIONS_TIMEOUT_MS);
+      await expect(pending).resolves.toEqual({ error: expect.stringMatching(/timed out after 15 s/) });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
