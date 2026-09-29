@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeAll, afterAll } from 'vitest';
 import { QueryClient, QueryObserver, environmentManager } from '@tanstack/react-query';
-import { IDiscoveryCandidate, IDiscoveryJobStatus } from '@revamp/shared-types';
+import { DISCOVERY_MAX_EXCLUDED_DOMAINS, IDiscoveryCandidate, IDiscoveryJobStatus } from '@revamp/shared-types';
 import { apiClient } from '../../api/client.js';
 import {
   DISCOVERY_POLL_INTERVAL_MS,
@@ -23,6 +23,8 @@ import {
   DEFAULT_DISCOVERY_FORM,
   discoveryFormFromParams,
   discoveryStep,
+  checkedDomains,
+  searchAgainInput,
 } from '../useDiscovery.js';
 
 describe('discovery hook helpers (REV-27)', () => {
@@ -381,6 +383,75 @@ describe('discovery drawer steps (REV-78)', () => {
       limit: '35',
     });
     expect(discoveryFormFromParams({ provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 20 }).keyword).toBe('');
+  });
+
+  describe('search again, skipping checked businesses (REV-107)', () => {
+    const params = { provider: 'google' as const, niche: 'auto' as const, location: 'Kaunas', keyword: 'tyres', limit: 5 };
+    const zeroCounts = { new: 0, existing_lead: 0, duplicate: 0, no_website: 0, invalid: 0 };
+    const c = (domain: string, status: IDiscoveryCandidate['status'], assessed = false): IDiscoveryCandidate => ({
+      provider: 'google',
+      externalId: `id-${domain}`,
+      name: domain,
+      status,
+      domain,
+      ...(assessed ? { assessment: { outcome: 'failed', failure: 'timeout', assessedAt: '2026-09-29T10:00:00.000Z' } } : {}),
+    });
+
+    it('checkedDomains should take offered businesses, imported ones included, but not skipped listings', () => {
+      expect(
+        checkedDomains([
+          c('new.lt', 'new'),
+          c('imported.lt', 'existing_lead', true),
+          c('old-lead.lt', 'existing_lead'),
+          c('dup.lt', 'duplicate'),
+          { ...c('x', 'no_website'), domain: undefined },
+        ]),
+      ).toEqual(['new.lt', 'imported.lt']);
+    });
+
+    it('searchAgainInput should repeat the search and carry the earlier exclusions forward', () => {
+      const input = searchAgainInput({
+        params: { ...params, excludeDomains: ['old.lt', 'new.lt'] },
+        result: { found: 2, candidates: [c('new.lt', 'new'), c('next.lt', 'new')], exhausted: false },
+      });
+      expect(input).toEqual({ ...params, excludeDomains: ['old.lt', 'new.lt', 'next.lt'] });
+      expect(validateDiscoveryForm(input!).success).toBe(true);
+    });
+
+    it('searchAgainInput should be null when there is nothing to skip or nothing more to find', () => {
+      const candidates = [c('new.lt', 'new')];
+      expect(searchAgainInput({ params, result: null })).toBeNull();
+      // The provider ran out before the limit was filled, so nothing was left over
+      expect(searchAgainInput({ params, result: { found: 1, candidates, exhausted: true } })).toBeNull();
+      expect(
+        searchAgainInput({ params, result: { found: 1, candidates, exhausted: true, counts: { ...zeroCounts, new: 1 } } }),
+      ).toBeNull();
+      expect(searchAgainInput({ params, result: { found: 1, candidates: [c('lead.lt', 'existing_lead')] } })).toBeNull();
+      expect(searchAgainInput({ params, result: { created: 3 } as never })).toBeNull();
+      // Jobs from before REV-35 carry no exhausted flag
+      expect(searchAgainInput({ params, result: { found: 1, candidates } })?.excludeDomains).toEqual(['new.lt']);
+    });
+
+    it('searchAgainInput should be offered when the provider ran out but the limit was filled', () => {
+      // OSM returns a whole area at once, so a filled search may have left businesses out
+      const candidates = [c('a.lt', 'new'), c('b.lt', 'new')];
+      const input = searchAgainInput({
+        params: { ...params, limit: 2 },
+        result: { found: 3, candidates, exhausted: true, counts: { ...zeroCounts, new: 2 } },
+      });
+      expect(input?.excludeDomains).toEqual(['a.lt', 'b.lt']);
+    });
+
+    it('searchAgainInput should keep the newest domains when the chain passes the cap', () => {
+      const earlier = Array.from({ length: DISCOVERY_MAX_EXCLUDED_DOMAINS }, (_, i) => `site-${i}.lt`);
+      const input = searchAgainInput({
+        params: { ...params, excludeDomains: earlier },
+        result: { found: 1, candidates: [c('latest.lt', 'new')], exhausted: false },
+      })!;
+      expect(input.excludeDomains).toHaveLength(DISCOVERY_MAX_EXCLUDED_DOMAINS);
+      expect(input.excludeDomains![0]).toBe('site-1.lt');
+      expect(input.excludeDomains!.at(-1)).toBe('latest.lt');
+    });
   });
 
   it('the default form should pass validation once a location is typed', () => {

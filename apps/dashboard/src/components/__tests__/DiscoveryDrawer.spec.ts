@@ -314,6 +314,58 @@ describe('DiscoveryDrawer (REV-78)', () => {
     expect(currentStep()).toBe(en.discovery.steps.import);
   });
 
+  describe('search again, skipping checked businesses (REV-107)', () => {
+    const searchAgainButton = () => button(en.discovery.searchAgain);
+
+    it('starts the same search without the offered businesses and moves to its Review step', async () => {
+      await mountWithJob(completed([candidate('a', 'new'), candidate('b', 'new'), candidate('c', 'existing_lead')]));
+      const start = vi.spyOn(apiClient, 'startDiscovery').mockResolvedValue({ jobId: 'disc-2' } as never);
+
+      await click(searchAgainButton());
+
+      expect(start).toHaveBeenCalledWith({ ...params, excludeDomains: ['a.example', 'b.example'] });
+      expect(useDiscoveryStore.getState().activeJobId).toBe('disc-2');
+      expect(currentStep()).toBe(en.discovery.steps.review);
+    });
+
+    it('is offered on the Import step too', async () => {
+      await mountWithJob(completed([candidate('a', 'new')]));
+      act(() => useDiscoveryStore.getState().setImportResult('disc-1', { imported: 0, results: [] }));
+      await flush();
+      expect(currentStep()).toBe(en.discovery.steps.import);
+      expect(searchAgainButton()).toBeDefined();
+    });
+
+    it('shows why the search could not start and stays on the step', async () => {
+      await mountWithJob(completed([candidate('a', 'new')]));
+      vi.spyOn(apiClient, 'startDiscovery').mockRejectedValue(new Error('Queue unavailable'));
+
+      await click(searchAgainButton());
+
+      expect(page()).toContain('Queue unavailable');
+      expect(useDiscoveryStore.getState().activeJobId).toBe('disc-1');
+    });
+
+    it('is not offered when the provider ran out before the limit was filled', async () => {
+      const exhausted = completed([candidate('a', 'new')]);
+      await mountWithJob({ ...exhausted, result: { ...exhausted.result!, exhausted: true } });
+      expect(searchAgainButton()).toBeUndefined();
+    });
+
+    it('is not offered when every business was already a lead', async () => {
+      await mountWithJob(completed([candidate('a', 'existing_lead')]));
+      expect(searchAgainButton()).toBeUndefined();
+    });
+
+    it('says how many businesses it skipped as already checked', async () => {
+      const status = completed([candidate('d', 'new')]);
+      await mountWithJob({ ...status, result: { ...status.result!, skippedChecked: 4 } });
+      expect(document.body.querySelector('[data-testid="skipped-checked"]')?.textContent).toBe(
+        en.discovery.skippedChecked.replace('{{count}}', '4'),
+      );
+    });
+  });
+
   it('tells the operator when a search found nothing new', async () => {
     await mountWithJob(completed([candidate('a', 'existing_lead')]));
     expect(page()).toContain(en.discovery.nothingNewHint);

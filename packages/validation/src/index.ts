@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  DISCOVERY_MAX_EXCLUDED_DOMAINS,
   DiscoveryCandidateStatus,
   LLM_PROVIDER_IDS,
   MVP_DESIGN_BLOCK_IDS,
@@ -223,6 +224,12 @@ export const StartDiscoverySchema = z
     location: z.string().trim().min(2).max(100),
     keyword: z.string().trim().min(2).max(100).optional(),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    // Businesses earlier searches already checked (REV-107), as the domains discovery normalised
+    excludeDomains: z
+      .array(z.string().trim().toLowerCase().min(3).max(253).regex(/^[a-z0-9.-]+\.[a-z0-9-]+$/, 'Invalid domain'))
+      .max(DISCOVERY_MAX_EXCLUDED_DOMAINS)
+      .transform((domains) => [...new Set(domains)])
+      .optional(),
   })
   .refine((data) => data.niche !== 'other' || Boolean(data.keyword), {
     message: 'A keyword is required when niche is "other"',

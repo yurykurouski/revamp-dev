@@ -36,7 +36,28 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
       });
     });
 
+    it('should pass normalised, deduplicated domains to skip (REV-107)', async () => {
+      vi.mocked(DiscoveryService.startDiscovery).mockResolvedValue({
+        jobId: 'disc-2',
+        params: { provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 20, excludeDomains: ['a.lt', 'b.lt'] },
+      });
+
+      const res = await request(app)
+        .post('/api/v1/discovery')
+        .send({ niche: 'dental', location: 'Vilnius', excludeDomains: [' A.lt', 'b.lt', 'a.lt'] });
+
+      expect(res.status).toBe(202);
+      expect(DiscoveryService.startDiscovery).toHaveBeenCalledWith(
+        expect.objectContaining({ excludeDomains: ['a.lt', 'b.lt'] }),
+      );
+    });
+
     it.each([
+      [{ niche: 'dental', location: 'Vilnius', excludeDomains: ['not a domain'] }, 'malformed domain to skip'],
+      [
+        { niche: 'dental', location: 'Vilnius', excludeDomains: Array.from({ length: 1001 }, (_, i) => `s${i}.lt`) },
+        'too many domains to skip',
+      ],
       [{ niche: 'dental' }, 'missing location'],
       [{ niche: 'dental', location: 'Vilnius', limit: 500 }, 'limit above 100'],
       [{ niche: 'dental', location: 'Vilnius', provider: 'yandex' }, 'unknown provider'],

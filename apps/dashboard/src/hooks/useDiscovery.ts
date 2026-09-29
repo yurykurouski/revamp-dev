@@ -1,5 +1,6 @@
 import { queryOptions, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
+  DISCOVERY_MAX_EXCLUDED_DOMAINS,
   DiscoveryCandidateStatus,
   DiscoveryJobState,
   DiscoveryProvider,
@@ -88,6 +89,30 @@ export function discoveryFormFromParams(params: IDiscoveryJobStatus['params']): 
     keyword: params.keyword ?? '',
     limit: String(params.limit),
   };
+}
+
+/** Domains of the businesses a search offered and checked, whether or not they were imported (REV-107) */
+export function checkedDomains(candidates: IDiscoveryCandidate[]): string[] {
+  return candidates.flatMap((c) => (c.domain && (c.status === 'new' || c.assessment) ? [c.domain] : []));
+}
+
+/**
+ * The same search again, leaving out every business it and the searches it continued already
+ * checked (REV-107), so the next search finds new ones. Null when it checked nothing, or when the
+ * provider ran out before the search filled its limit: then nothing was left over to find. A search
+ * that filled its limit may have left businesses out even when the provider ran out, since OSM
+ * returns a whole area in one request.
+ */
+export function searchAgainInput(status: Pick<IDiscoveryJobStatus, 'params' | 'result'>): StartDiscoveryInput | null {
+  const { params, result } = status;
+  if (!result || !Array.isArray(result.candidates)) return null;
+  const checked = checkedDomains(result.candidates);
+  if (checked.length === 0) return null;
+  if (result.exhausted && (result.counts?.new ?? checked.length) < params.limit) return null;
+  // The oldest drop out first when the chain grows past the cap
+  const excludeDomains = [...new Set([...(params.excludeDomains ?? []), ...checked])].slice(-DISCOVERY_MAX_EXCLUDED_DOMAINS);
+  const { provider, niche, location, keyword, limit } = params;
+  return { provider, niche, location, keyword, limit, excludeDomains };
 }
 
 /** What the header button shows about the background search (REV-40) */

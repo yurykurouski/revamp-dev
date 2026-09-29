@@ -64,6 +64,7 @@ export class DiscoveryService {
       location: dto.location,
       keyword: dto.keyword,
       limit: dto.limit,
+      ...(dto.excludeDomains?.length ? { excludeDomains: dto.excludeDomains } : {}),
     });
     return { jobId: job.id as string, params: job.data };
   }
