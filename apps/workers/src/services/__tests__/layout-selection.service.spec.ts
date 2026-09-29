@@ -283,4 +283,13 @@ describe('deriveMvpLayout (REV-104)', () => {
     const layout = deriveMvpLayout(site({ sections }), signals());
     expect(layout.reasons.every((reason) => reason.length <= 60)).toBe(true);
   });
+
+  it('treats a features section like other: no MVP section, no order entry (REV-109)', () => {
+    const base = site();
+    const withFeatures = deriveMvpLayout(site({ sections: [...base.sections, { kind: 'features', heading: 'Co nas wyróżnia' }] }), signals());
+    const withOther = deriveMvpLayout(site({ sections: [...base.sections, { kind: 'other', heading: 'Co nas wyróżnia' }] }), signals());
+    expect(withFeatures.design).toEqual(withOther.design);
+    expect(withFeatures.variant).toBe(withOther.variant);
+    expect(withFeatures.reasons.find((r) => r.startsWith('order:'))).not.toContain('features');
+  });
 });
