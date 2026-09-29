@@ -130,6 +130,7 @@ export const lt: Translation = {
     beauty: 'Grožio salonas',
     restaurant: 'Restoranas',
     fitness: 'Sportas',
+    real_estate: 'NT agentūros',
     other: 'Verslas',
   },
   nichesPlural: {
@@ -140,6 +141,7 @@ export const lt: Translation = {
     beauty: 'Grožio salonai',
     restaurant: 'Restoranai',
     fitness: 'Sportas',
+    real_estate: 'NT agentūros',
     other: 'Kitas verslas',
   },
   nichesDetailed: {
@@ -149,6 +151,7 @@ export const lt: Translation = {
     beauty: 'Grožio salonai ir SPA',
     restaurant: 'Restoranai ir maitinimas',
     fitness: 'Sporto klubai',
+    real_estate: 'Nekilnojamojo turto agentūros',
     other: 'Kitas vietos verslas',
   },
   statuses: {

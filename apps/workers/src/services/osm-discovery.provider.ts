@@ -14,6 +14,7 @@ export const OSM_NICHE_FILTERS: Record<NicheType, string[]> = {
   medical: ['["amenity"~"^(clinic|doctors)$"]', '["healthcare"~"^(clinic|doctor|physiotherapist)$"]'],
   restaurant: ['["amenity"~"^(restaurant|cafe|fast_food|bar)$"]'],
   fitness: ['["leisure"~"^(fitness_centre|sports_centre)$"]'],
+  real_estate: ['["office"="estate_agent"]', '["shop"="estate_agent"]'],
   // Keyword-only search over anything that looks like a business; one indexed key per statement,
   // since a regex over keys cannot use the Overpass index and times out on city-sized areas
   other: ['["shop"]', '["amenity"]', '["office"]', '["craft"]', '["healthcare"]', '["leisure"]'],

@@ -66,6 +66,17 @@ describe('MVP template locale (REV-25)', () => {
     }
   });
 
+  it('labels the same niches in every language, including real_estate (REV-106)', () => {
+    const englishNiches = Object.keys(getMvpStrings('en').nicheLabels).sort();
+    expect(englishNiches).toContain('real_estate');
+    for (const lang of MVP_UI_LANGUAGES) {
+      const strings = getMvpStrings(lang);
+      expect(Object.keys(strings.nicheLabels).sort()).toEqual(englishNiches);
+      expect(strings.nicheLabels.real_estate.trim()).not.toBe('');
+      expect(strings.nicheCta.real_estate.trim()).not.toBe('');
+    }
+  });
+
   it('names languages in English for the LLM instruction', () => {
     expect(languageDisplayName('pl')).toBe('Polish');
     expect(languageDisplayName('be')).toBe('Belarusian');

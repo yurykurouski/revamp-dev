@@ -37,6 +37,7 @@ const LeadSchema = new Schema<ILeadDocument>(
         'medical',
         'restaurant',
         'fitness',
+        'real_estate',
         'other',
       ] as NicheType[],
       default: 'other',

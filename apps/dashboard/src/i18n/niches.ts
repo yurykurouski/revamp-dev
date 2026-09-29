@@ -11,6 +11,7 @@ export const NICHE_EMOJI: Record<DashboardNiche, string> = {
   beauty: '💇',
   restaurant: '🍽️',
   fitness: '🏋️',
+  real_estate: '🏠',
   other: '📦',
 };
 

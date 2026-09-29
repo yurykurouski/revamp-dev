@@ -26,6 +26,7 @@ export type NicheType =
   | 'medical'
   | 'restaurant'
   | 'fitness'
+  | 'real_estate'
   | 'other';
 
 /**

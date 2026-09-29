@@ -168,6 +168,19 @@ describe('OsmDiscoveryProvider', () => {
     });
   });
 
+  it('should search estate agent offices and shops for the real_estate niche (REV-106)', async () => {
+    const fetchFn = vi
+      .fn()
+      .mockResolvedValueOnce(jsonResponse([{ osm_type: 'relation', osm_id: 1 }]))
+      .mockResolvedValueOnce(jsonResponse({}));
+    const provider = new OsmDiscoveryProvider({ ...config, fetchFn });
+    await provider.search({ niche: 'real_estate', location: 'Vilnius', maxResults: 10 });
+
+    const query = new URLSearchParams(fetchFn.mock.calls[1][1].body).get('data')!;
+    expect(query).toContain('nwr["office"="estate_agent"](area.a)');
+    expect(query).toContain('nwr["shop"="estate_agent"](area.a)');
+  });
+
   describe('paging (REV-35)', () => {
     const element = (id: number) => ({ type: 'node', id, tags: { name: `Place ${id}`, website: `https://p${id}.lt` } });
 

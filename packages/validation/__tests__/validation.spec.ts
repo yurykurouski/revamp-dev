@@ -758,6 +758,14 @@ describe('Validation Schemas (@revamp/validation)', () => {
       }
     });
 
+    it('should accept the real_estate niche for discovery and new leads (REV-106)', () => {
+      expect(StartDiscoverySchema.safeParse({ niche: 'real_estate', location: 'Vilnius' }).success).toBe(true);
+      expect(
+        CreateLeadSchema.safeParse({ businessName: 'Home Realty', originalUrl: 'https://home.lt', niche: 'real_estate' })
+          .success,
+      ).toBe(true);
+    });
+
     it('should coerce a numeric string limit and trim location', () => {
       const result = StartDiscoverySchema.parse({
         provider: 'google',

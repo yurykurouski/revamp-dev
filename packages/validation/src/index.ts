@@ -120,6 +120,7 @@ export const NicheEnumSchema = z.enum([
   'medical',
   'restaurant',
   'fitness',
+  'real_estate',
   'other',
 ]);
 

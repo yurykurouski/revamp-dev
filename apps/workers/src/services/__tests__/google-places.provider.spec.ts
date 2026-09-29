@@ -84,6 +84,14 @@ describe('GooglePlacesProvider', () => {
     expect(JSON.parse(fetchFn.mock.calls[1][1].body).textQuery).toBe('bakery in Riga');
   });
 
+  it('should search real estate agencies for the real_estate niche (REV-106)', async () => {
+    const fetchFn = vi.fn().mockResolvedValue(jsonResponse({ places: [] }));
+    const provider = new GooglePlacesProvider({ apiKey: 'k', fetchFn });
+
+    await provider.search({ niche: 'real_estate', location: 'Vilnius', maxResults: 5 });
+    expect(JSON.parse(fetchFn.mock.calls[0][1].body).textQuery).toBe('real estate agency in Vilnius');
+  });
+
   it('should fetch one page per call, passing the cursor as pageToken and returning the next token', async () => {
     const page = (prefix: string, token?: string) =>
       jsonResponse({
