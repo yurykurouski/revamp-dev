@@ -441,6 +441,11 @@ export const en = {
     a11yIssues: 'a11y issues',
     violations: '{{count}} violations',
     mobileFriendliness: 'Mobile-friendliness',
+    metricHint: {
+      lcp: 'Time until the largest element of the first screen renders on a phone (375px). Good: up to 2.5s.',
+      a11y: 'WCAG 2.1 A/AA rules the page breaks, found by axe-core on the phone layout. Counts rules, not elements; 0 is best.',
+      mobile: 'The Vision model\'s rating of the phone layout from screenshots: readability and a visible call to action. Higher is better.',
+    },
     measurementErrors: 'Not measured. The total score counts only the measured parts:',
     measurement: {
       performance: 'Performance (LCP, CLS)',

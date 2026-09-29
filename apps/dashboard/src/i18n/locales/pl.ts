@@ -440,6 +440,11 @@ export const pl: Translation = {
     a11yIssues: 'Problemy z dostępnością',
     violations: 'Naruszenia: {{count}}',
     mobileFriendliness: 'Dostosowanie do urządzeń mobilnych',
+    metricHint: {
+      lcp: 'Czas, po którym na telefonie (375px) wyświetla się największy element pierwszego ekranu. Dobrze: do 2,5 s.',
+      a11y: 'Reguły WCAG 2.1 A/AA łamane przez stronę, wykryte przez axe-core w wersji mobilnej. Liczone są reguły, nie elementy; najlepiej 0.',
+      mobile: 'Ocena wersji mobilnej ze zrzutów ekranu wystawiona przez model Vision: czytelność i widoczne wezwanie do działania. Im wyżej, tym lepiej.',
+    },
     measurementErrors: 'Nie zmierzono. Ocena łączna uwzględnia tylko zmierzone części:',
     measurement: {
       performance: 'Wydajność (LCP, CLS)',

@@ -38,10 +38,12 @@ interface MetricProps {
   label: string;
   value: string;
   color: string;
+  /** What the metric measures and which values are good (REV-103) */
+  hint: string;
 }
 
-const Metric: React.FC<MetricProps> = ({ icon, label, value, color }) => (
-  <Card sx={{ p: 1.5, display: 'flex', alignItems: 'center', gap: 1.2 }}>
+const Metric: React.FC<MetricProps> = ({ icon, label, value, color, hint }) => (
+  <Card sx={{ p: 1.5, display: 'flex', alignItems: 'flex-start', gap: 1.2 }}>
     {icon}
     <Box sx={{ minWidth: 0 }}>
       <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -50,13 +52,16 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color }) => (
       <Typography variant="body2" sx={{ fontWeight: 600, color }}>
         {value}
       </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, lineHeight: 1.35 }} data-testid="metric-hint">
+        {hint}
+      </Typography>
     </Box>
   </Card>
 );
 
 /**
  * Step 1 of a lead review (REV-77): the original site's full-page screenshot next to (or, below `xl`, above) the audit — the
- * measured metrics (a value the audit did not measure shows as missing, REV-45, and a failed measurement
+ * measured metrics, each explained in a line (REV-103; a value the audit did not measure shows as missing, REV-45, and a failed measurement
  * is listed with its reason, REV-100), the MVP data check,
  * the critical flaws and the quick wins, marked as a template when the Vision model gave no critique (REV-101).
  */
@@ -175,16 +180,18 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
           </Alert>
         )}
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: 1.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 1.5 }}>
           <Metric
             icon={<SpeedIcon sx={{ color: 'error.main', fontSize: 20 }} />}
             label={t('inspector.lcp')}
+            hint={t('inspector.metricHint.lcp')}
             value={audit?.lcpSeconds != null ? t('inspector.seconds', { value: audit.lcpSeconds.toFixed(1) }) : NOT_MEASURED}
             color="error.main"
           />
           <Metric
             icon={<AccessibilityNewIcon sx={{ color: 'warning.main', fontSize: 20 }} />}
             label={t('inspector.a11yIssues')}
+            hint={t('inspector.metricHint.a11y')}
             value={
               audit?.a11yViolationsCount != null
                 ? t('inspector.violations', { count: audit.a11yViolationsCount })
@@ -195,6 +202,7 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
           <Metric
             icon={<SmartphoneIcon sx={{ color: 'info.main', fontSize: 20 }} />}
             label={t('inspector.mobileFriendliness')}
+            hint={t('inspector.metricHint.mobile')}
             value={audit?.mobileFriendlinessRating != null ? `${audit.mobileFriendlinessRating}/100` : NOT_MEASURED}
             color="info.main"
           />

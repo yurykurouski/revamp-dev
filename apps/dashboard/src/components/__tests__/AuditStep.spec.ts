@@ -161,3 +161,46 @@ describe('AuditStep measurement errors (REV-100)', () => {
     expect(container.textContent).toContain('4.8s');
   });
 });
+
+describe('AuditStep metric explanations (REV-103)', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    document.body.innerHTML = '';
+  });
+
+  const render = (value: IAuditDetail) =>
+    act(() => {
+      root.render(
+        React.createElement(ThemeProvider, { theme }, React.createElement(AuditStep, { audit: value, mvp: null, isLoading: false })),
+      );
+    });
+
+  const hints = () => [...container.querySelectorAll('[data-testid="metric-hint"]')].map((el) => el.textContent);
+
+  it('explains how each metric is measured and which values are good', () => {
+    render(audit);
+
+    expect(hints()).toEqual([
+      'Time until the largest element of the first screen renders on a phone (375px). Good: up to 2.5s.',
+      'WCAG 2.1 A/AA rules the page breaks, found by axe-core on the phone layout. Counts rules, not elements; 0 is best.',
+      "The Vision model's rating of the phone layout from screenshots: readability and a visible call to action. Higher is better.",
+    ]);
+  });
+
+  it('keeps the explanations when a metric was not measured', () => {
+    render({ ...audit, lcpSeconds: undefined, a11yViolationsCount: undefined, mobileFriendlinessRating: undefined });
+
+    expect(hints()).toHaveLength(3);
+    expect(container.textContent).toContain(NOT_MEASURED);
+  });
+});
