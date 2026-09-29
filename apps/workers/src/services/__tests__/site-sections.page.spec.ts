@@ -118,4 +118,17 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     ]);
     expectCovered(result);
   });
+
+  it('reads a header nested in the first block once, in the header section', async () => {
+    const result = await sectionsOf(pageOf(`<div class="hero-wrap" style="min-height:700px;background:#123;color:#fff">
+        <header style="height:90px;display:flex;gap:16px;padding:0 40px"><a href="/">Start</a><a href="/oferta">Oferta</a><a href="/kontakt">Kontakt</a></header>
+        <h1 style="margin:120px 40px 0">Gabinet Falco-Dent</h1><p style="margin:0 40px">Stomatologia dla całej rodziny w Krakowie.</p></div>
+      <section><h2>Nasze usługi</h2><p>Leczenie zachowawcze i protetyka.</p></section>`));
+    const header = result.sections.find((s) => s.role === 'header')!;
+    const hero = result.sections.find((s) => s.role === 'hero')!;
+    expect(header.intro.links.map((l) => l.label)).toEqual(['Start', 'Oferta', 'Kontakt']);
+    expect(JSON.stringify(hero)).not.toContain('Oferta');
+    expect(hero.intro.heading).toBe('Gabinet Falco-Dent');
+    expectCovered(result);
+  });
 });
