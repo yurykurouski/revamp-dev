@@ -153,6 +153,20 @@ describe('DesignCritiqueService', () => {
       expect(result.aiFallbackUsed).toBe(true);
       expect(result.modelUsed).toBe('anthropic-fallback');
       expect(result.critique.criticalFlaws).toHaveLength(3);
+      // The reason reaches the audit's measurement errors (REV-101)
+      expect(result.fallbackReason).toBe(
+        'The Vision model (anthropic) gave no valid critique in 3 attempts ' +
+          '(last error: Anthropic API error (529): overloaded). The critique shown is a template and is not scored',
+      );
+    });
+
+    it('cuts a long model error in the fallback reason (REV-101)', async () => {
+      const fetcher = vi.fn().mockResolvedValue({ ok: false, status: 400, text: async () => 'x'.repeat(5000) });
+      const service = new DesignCritiqueService({ provider: 'anthropic', anthropicApiKey: 'k', customFetcher: fetcher });
+
+      const result = await service.analyzeDesign(baseInput);
+
+      expect(result.fallbackReason!.length).toBeLessThan(400);
     });
 
     it('should parse valid response from Anthropic with aiFallbackUsed: false', async () => {

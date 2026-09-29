@@ -402,6 +402,101 @@ describe('AuditWorker (@revamp/workers)', () => {
     warn.mockRestore();
   });
 
+  describe('templated design critique (REV-101)', () => {
+    const mockCapture = (measured: boolean) => {
+      vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ businessName: 'Fallback Clinic', contactEmail: 'a@b.lt', tags: [] }),
+      } as any);
+      vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+      vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+        desktopBuffer: Buffer.from('d'),
+        mobileBuffer: Buffer.from('m'),
+        desktopFullBuffer: Buffer.from('df'),
+        mobileFullBuffer: Buffer.from('mf'),
+        a11yResult: measured
+          ? { a11yScore: 60, summary: { violationsCount: 4, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] }, rawViolations: [], errors: [] }
+          : { rawViolations: [], errors: [{ measurement: 'accessibility', message: 'axe failed' }] },
+        vitalsResult: measured
+          ? { lcpSeconds: 3.2, lighthouseMetrics: { lcp: 3200 }, performanceScore: 40, standardsScore: 100, errors: [] }
+          : {
+              lighthouseMetrics: {},
+              errors: [
+                { measurement: 'performance', message: 'vitals failed' },
+                { measurement: 'standards', message: 'vitals failed' },
+              ],
+            },
+        rawBrandData: { colors: ['rgb(79, 70, 229)'], fontFamilies: [], socialLinks: [], services: [] },
+      } as any);
+      vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+      vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+      vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+      vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+        critique: {
+          visualHierarchyRating: 85,
+          mobileFriendlinessRating: 85,
+          primaryCtaFound: true,
+          datedDesignFactors: [],
+          criticalFlaws: [
+            { title: 'F1', impact: 'I1', recommendation: 'R1' },
+            { title: 'F2', impact: 'I2', recommendation: 'R2' },
+            { title: 'F3', impact: 'I3', recommendation: 'R3' },
+          ],
+          quickWins: ['W1', 'W2', 'W3'],
+        },
+        aiFallbackUsed: true,
+        fallbackReason: 'The Vision model (anthropic) gave no valid critique in 3 attempts (last error: overloaded). The critique shown is a template and is not scored',
+        modelUsed: 'anthropic-fallback',
+        attempts: 3,
+      } as any);
+    };
+
+    it('leaves the fallback ratings out of the score and lists the design as not measured', async () => {
+      createAuditWorker();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      mockCapture(true);
+
+      const result = await capturedProcessor!({ id: 'job-fb', data: { leadId: 'lead-fb', url: 'https://fb.lt', niche: 'dental' } });
+
+      const completed = vi
+        .mocked(Audit.findOneAndUpdate)
+        .mock.calls.map((call) => call[1] as Record<string, any>)
+        .find((update) => update.status === 'COMPLETED')!;
+      // (0.25*40 + 0.20*60 + 0.20*100) / 0.65 = 42 / 0.65 = 64.6 -> 65; the template's 85 is not counted
+      expect(completed.scores).toEqual({ total: 65, performance: 40, accessibility: 60, standards: 100 });
+      expect(completed.measurementErrors).toEqual([
+        { measurement: 'design', message: expect.stringContaining('gave no valid critique in 3 attempts') },
+      ]);
+      // The template is still saved so the operator can read it, marked by the design measurement error
+      expect(completed.designCritique.criticalFlaws).toHaveLength(3);
+      expect(completed.aiFallbackUsed).toBe(true);
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'lead-fb', status: 'AUDITING' },
+        expect.objectContaining({ status: 'AUDITED', totalScore: 65 }),
+      );
+      expect(result).toEqual(expect.objectContaining({ totalScore: 65 }));
+    });
+
+    it('fails the audit when nothing was measured and the critique is a template', async () => {
+      createAuditWorker();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      mockCapture(false);
+
+      await expect(
+        capturedProcessor!({ id: 'job-none', data: { leadId: 'lead-none', url: 'https://none.lt', niche: 'other' } }),
+      ).rejects.toThrow('No part of the audit could be measured');
+
+      const updates = vi.mocked(Audit.findOneAndUpdate).mock.calls.map((call) => call[1] as Record<string, any>);
+      expect(updates.some((update) => update.status === 'COMPLETED')).toBe(false);
+      expect(updates).toContainEqual(expect.objectContaining({ status: 'FAILED' }));
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({ status: 'AUDITED' }),
+      );
+    });
+  });
+
   it('should replace a guessed email on discovered leads with the email found on the site (REV-26)', async () => {
     createAuditWorker();
 

@@ -42,6 +42,7 @@ const audit: IAuditDetail = {
   quickWins: ['Compress the hero image'],
   colorPalette: { primary: '#123456' },
   measurementErrors: [],
+  designCritiqueFallback: false,
 };
 
 describe('review steps (REV-77)', () => {

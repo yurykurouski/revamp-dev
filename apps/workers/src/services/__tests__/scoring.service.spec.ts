@@ -119,6 +119,24 @@ describe('ScoringService', () => {
     });
   });
 
+  describe('calculateCompositeScore without a design score (REV-101)', () => {
+    it('leaves the design pillar out when the critique is a template', () => {
+      // (0.25*40 + 0.20*60 + 0.20*100) / 0.65 = 64.6 -> 65
+      const scores = ScoringService.calculateCompositeScore({
+        performanceScore: 40,
+        accessibilityScore: 60,
+        standardsScore: 100,
+      });
+
+      expect(scores).toEqual({ total: 65, performance: 40, accessibility: 60, standards: 100 });
+      expect('design' in scores).toBe(false);
+    });
+
+    it('throws when no pillar was measured instead of inventing a total', () => {
+      expect(() => ScoringService.calculateCompositeScore({})).toThrow('No part of the audit could be measured');
+    });
+  });
+
   describe('getSiteHealthRating', () => {
     it('should categorize score < 50 as CRITICAL', () => {
       expect(ScoringService.getSiteHealthRating(0)).toBe('CRITICAL');

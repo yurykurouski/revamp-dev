@@ -1,5 +1,5 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
-import { IAuditJobData } from '@revamp/shared-types';
+import { IAuditJobData, IMeasurementError } from '@revamp/shared-types';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Audit } from '../models/Audit.model.js';
@@ -123,7 +123,10 @@ export const createAuditWorker = (): Worker => {
         }
 
         // 8. Calculate Composite Scores (Formula: 0.35 Design + 0.25 Perf + 0.20 A11y + 0.20 Standards)
-        const designScore = ScoringService.calculateDesignScore(critiqueResult.critique);
+        // A templated fallback critique is not a measurement, so its ratings are not scored (REV-101)
+        const designScore = critiqueResult.aiFallbackUsed
+          ? undefined
+          : ScoringService.calculateDesignScore(critiqueResult.critique);
         const scores = ScoringService.calculateCompositeScore({
           designScore,
           performanceScore: vitalsResult.performanceScore,
@@ -132,7 +135,13 @@ export const createAuditWorker = (): Worker => {
         });
 
         // Measurements that failed on their own leave their values out and are listed instead (REV-100)
-        const measurementErrors = [...vitalsResult.errors, ...a11yResult.errors];
+        const measurementErrors: IMeasurementError[] = [...vitalsResult.errors, ...a11yResult.errors];
+        if (critiqueResult.aiFallbackUsed) {
+          measurementErrors.push({
+            measurement: 'design',
+            message: critiqueResult.fallbackReason ?? 'The Vision model gave no critique; the critique shown is a template',
+          });
+        }
         for (const failure of measurementErrors) {
           console.warn(`[AuditWorker] ${failure.measurement} not measured for lead ${leadId}: ${failure.message}`);
         }
@@ -216,7 +225,7 @@ export const createAuditWorker = (): Worker => {
         console.log(
           `[AuditWorker] Successfully completed audit for lead ${leadId}:\n` +
             `   - Total Score:    ${scores.total}/100\n` +
-            `   - Design:         ${scores.design}/100 (Fallback used: ${critiqueResult.aiFallbackUsed})\n` +
+            `   - Design:         ${scores.design ?? 'not scored (template critique)'}/100\n` +
             `   - Primary Color:  ${brandResult.tokens.primaryColor} (Accent: ${brandResult.tokens.accentColor})\n` +
             `   - Logo / Brand:   ${brandResult.tokens.logoUrl ? 'Extracted' : 'Monogram'}\n` +
             `   - a11yScore:      ${scores.accessibility ?? 'not measured'}/100 (${a11yResult.summary?.violationsCount ?? '?'} violations)\n` +

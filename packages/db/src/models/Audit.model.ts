@@ -60,8 +60,8 @@ const AuditSchema = new Schema<IAuditDocument>(
     },
     scores: {
       total: { type: Number, min: 0, max: 100, default: 0 },
-      design: { type: Number, min: 0, max: 100, default: 0 },
-      // No default: a pillar that was not measured stays absent (REV-100)
+      // No default: a pillar that was not measured stays absent (REV-100); a fallback critique is not scored (REV-101)
+      design: { type: Number, min: 0, max: 100 },
       accessibility: { type: Number, min: 0, max: 100 },
       performance: { type: Number, min: 0, max: 100 },
       standards: { type: Number, min: 0, max: 100 },

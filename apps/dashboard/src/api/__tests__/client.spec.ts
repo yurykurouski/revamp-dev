@@ -287,6 +287,7 @@ describe('Dashboard apiClient', () => {
         quickWins: [],
         colorPalette: { primary: undefined, secondary: undefined, accent: undefined },
         measurementErrors: [],
+        designCritiqueFallback: false,
       });
     });
 
@@ -306,6 +307,36 @@ describe('Dashboard apiClient', () => {
       expect(audit.measurementErrors).toEqual([
         { measurement: 'performance', message: 'The page reported no largest-contentful-paint entry' },
       ]);
+    });
+
+    it('drops the ratings of a templated design critique and flags it (REV-101)', () => {
+      const designCritique = {
+        visualHierarchyRating: 85,
+        mobileFriendlinessRating: 85,
+        primaryCtaFound: true,
+        datedDesignFactors: [],
+        criticalFlaws: [{ title: 'F1', impact: 'I1', recommendation: 'R1' }],
+        quickWins: ['W1'],
+      };
+      const fallback = mapServerAudit(
+        {
+          leadId: 'lead-1',
+          designCritique,
+          scores: { total: 65, performance: 40, accessibility: 60, standards: 100 },
+          measurementErrors: [{ measurement: 'design', message: 'The Vision model gave no valid critique' }],
+        },
+        'audit-1',
+      );
+
+      expect(fallback.designCritiqueFallback).toBe(true);
+      expect(fallback.visualHierarchyRating).toBeUndefined();
+      expect(fallback.mobileFriendlinessRating).toBeUndefined();
+      expect(fallback.criticalFlaws).toEqual(designCritique.criticalFlaws);
+      expect(fallback.quickWins).toEqual(['W1']);
+
+      const measured = mapServerAudit({ leadId: 'lead-1', designCritique, measurementErrors: [] }, 'audit-1');
+      expect(measured.designCritiqueFallback).toBe(false);
+      expect(measured.mobileFriendlinessRating).toBe(85);
     });
 
     it("maps the original site's service count (REV-81)", () => {

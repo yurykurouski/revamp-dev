@@ -34,6 +34,7 @@ const audit: IAuditDetail = {
   quickWins: ['Pin a call bar to the bottom of the mobile screen'],
   colorPalette: { primary: '#123456' },
   measurementErrors: [],
+  designCritiqueFallback: false,
 };
 
 const mvp: IMvpProjectDetail = {

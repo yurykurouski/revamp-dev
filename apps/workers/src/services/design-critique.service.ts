@@ -22,10 +22,15 @@ export interface TokenUsage {
 export interface DesignCritiqueResult {
   critique: DesignCritiqueOutput;
   aiFallbackUsed: boolean;
+  /** Why the Vision model gave no critique; set only with the templated fallback (REV-101) */
+  fallbackReason?: string;
   modelUsed?: string;
   attempts: number;
   tokenUsage?: TokenUsage;
 }
+
+/** Longest model error quoted in a fallback reason; API error bodies can be whole JSON documents */
+const FALLBACK_REASON_ERROR_LENGTH = 200;
 
 export type VisionProvider = 'anthropic' | 'openai' | 'claude-cli';
 
@@ -212,9 +217,13 @@ export class DesignCritiqueService {
     );
 
     const fallbackCritique = this.generateDeterministicFallback(input);
+    const lastMessage = (lastError?.message ?? 'unknown error').slice(0, FALLBACK_REASON_ERROR_LENGTH);
     return {
       critique: fallbackCritique,
       aiFallbackUsed: true,
+      fallbackReason:
+        `The Vision model (${this.provider}) gave no valid critique in ${attemptsCount} attempts ` +
+        `(last error: ${lastMessage}). The critique shown is a template and is not scored`,
       modelUsed: `${this.provider}-fallback`,
       attempts: attemptsCount,
       // No token usage is reported for the fallback, so no token_usage event is logged (REV-51)

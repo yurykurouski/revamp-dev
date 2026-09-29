@@ -3,9 +3,12 @@ import { DesignCritiqueOutput } from '@revamp/validation';
 
 export type SiteHealthRating = 'CRITICAL' | 'NEEDS_MODERNIZATION' | 'MODERN';
 
-/** Pillar scores; a pillar that was not measured is left undefined (REV-100) */
+/**
+ * Pillar scores; a pillar that was not measured is left undefined (REV-100), and so is the design score
+ * of a templated fallback critique (REV-101)
+ */
 export interface ScoreInputs {
-  designScore: number;
+  designScore?: number;
   performanceScore?: number;
   accessibilityScore?: number;
   standardsScore?: number;
@@ -39,10 +42,11 @@ export class ScoringService {
   /**
    * Computes the composite score across the pillars that were measured. A missing pillar is left out
    * and the remaining weights are scaled up to sum to 1, so an unmeasured pillar neither counts as 0
-   * nor as a made-up value (REV-100)
+   * nor as a made-up value (REV-100). Throws when no pillar was measured: there is no score to give.
    */
   static calculateCompositeScore(inputs: ScoreInputs): IAuditScores {
-    const scores: IAuditScores = { total: 0, design: clampScore(inputs.designScore) };
+    const scores: IAuditScores = { total: 0 };
+    if (inputs.designScore !== undefined) scores.design = clampScore(inputs.designScore);
     if (inputs.performanceScore !== undefined) scores.performance = clampScore(inputs.performanceScore);
     if (inputs.accessibilityScore !== undefined) scores.accessibility = clampScore(inputs.accessibilityScore);
     if (inputs.standardsScore !== undefined) scores.standards = clampScore(inputs.standardsScore);
@@ -60,6 +64,7 @@ export class ScoringService {
       sum += weight * score;
       weights += weight;
     }
+    if (weights === 0) throw new Error('No part of the audit could be measured, so the site has no score');
 
     scores.total = clampScore(sum / weights);
     return scores;
