@@ -66,9 +66,25 @@ const AuditSchema = new Schema<IAuditDocument>(
       performance: { type: Number, min: 0, max: 100 },
       standards: { type: Number, min: 0, max: 100 },
     },
-    lighthouseMetrics: {
+    // Measured in the page, not by Lighthouse; `lighthouseMetrics` before REV-102 (migrate:audit-vitals)
+    webVitals: {
       lcp: { type: Number },
       cls: { type: Number },
+    },
+    // No defaults: an audit that could not read the page's standards has no checks (REV-100)
+    standardsChecks: {
+      type: new Schema(
+        {
+          https: { type: Boolean, required: true },
+          viewport: { type: Boolean, required: true },
+          title: { type: Boolean, required: true },
+          favicon: { type: Boolean, required: true },
+          structuredData: { type: Boolean, required: true },
+          openGraph: { type: Boolean, required: true },
+        },
+        { _id: false },
+      ),
+      default: undefined,
     },
     // No count defaults: an audit whose scan did not run has no violation counts (REV-100)
     a11ySummary: {
@@ -78,6 +94,8 @@ const AuditSchema = new Schema<IAuditDocument>(
       criticalViolations: { type: [A11yViolationSchema], default: [] },
     },
     measurementErrors: { type: [MeasurementErrorSchema], default: undefined },
+    // REV-102: axe-core violations, trimmed by the worker (truncated HTML, capped nodes per rule)
+    axeViolations: { type: Schema.Types.Mixed },
     designCritique: {
       visualHierarchyRating: { type: Number, default: 0 },
       mobileFriendlinessRating: { type: Number, default: 0 },

@@ -70,6 +70,49 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(audit.scores.design).toBeUndefined();
       expect(audit.scores.performance).toBeUndefined();
       expect(audit.extractedBrandTokens.primaryColor).toBe('#000000');
+      // Unread standards and an unrun scan stay absent (REV-102)
+      expect(audit.standardsChecks).toBeUndefined();
+      expect(audit.axeViolations).toBeUndefined();
+    });
+
+    it('stores web vitals under webVitals, not lighthouseMetrics (REV-102)', () => {
+      const audit = new Audit({
+        leadId: new mongoose.Types.ObjectId(),
+        webVitals: { lcp: 1800, cls: 0.02 },
+        lighthouseMetrics: { lcp: 9999 },
+      } as Record<string, unknown>);
+
+      expect(audit.webVitals).toEqual({ lcp: 1800, cls: 0.02 });
+      expect(audit.toObject()).not.toHaveProperty('lighthouseMetrics');
+    });
+
+    it('requires every standards check once the checks are stored (REV-102)', () => {
+      const checks = { https: true, viewport: true, title: true, favicon: false, structuredData: false, openGraph: true };
+      const audit = new Audit({ leadId: new mongoose.Types.ObjectId(), standardsChecks: checks });
+      const partial = new Audit({ leadId: new mongoose.Types.ObjectId(), standardsChecks: { https: true } });
+
+      expect(audit.validateSync()).toBeUndefined();
+      expect(audit.toObject().standardsChecks).toEqual(checks);
+      expect(partial.validateSync()?.errors['standardsChecks.favicon']).toBeDefined();
+    });
+
+    it('keeps the axe violations as given (REV-102)', () => {
+      const axeViolations = [
+        {
+          id: 'image-alt',
+          impact: 'critical',
+          description: 'Images must have alternate text',
+          help: 'Images must have alternate text',
+          helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/image-alt',
+          tags: ['wcag2a'],
+          nodeCount: 1,
+          nodes: [{ target: 'img.hero', html: '<img class="hero">' }],
+        },
+      ];
+      const audit = new Audit({ leadId: new mongoose.Types.ObjectId(), axeViolations });
+
+      expect(audit.validateSync()).toBeUndefined();
+      expect(audit.axeViolations).toEqual(axeViolations);
     });
 
     it("accepts a 'design' measurement error for a templated critique (REV-101)", () => {

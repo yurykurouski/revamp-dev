@@ -235,7 +235,7 @@ describe('Dashboard apiClient', () => {
               _id: 'audit-1',
               leadId: 'lead-1',
               screenshotUrls: { desktopOriginal: 'http://minio/d.webp', mobileOriginal: 'http://minio/m.webp' },
-              lighthouseMetrics: { lcp: 3400 },
+              webVitals: { lcp: 3400 },
               scores: { accessibility: 68 },
               a11ySummary: { violationsCount: 14 },
               designCritique: {
@@ -295,7 +295,7 @@ describe('Dashboard apiClient', () => {
       const audit = mapServerAudit(
         {
           leadId: 'lead-1',
-          lighthouseMetrics: { cls: 0.02 },
+          webVitals: { cls: 0.02 },
           scores: { total: 70, design: 60, standards: 100 },
           measurementErrors: [{ measurement: 'performance', message: 'The page reported no largest-contentful-paint entry' }],
         },
@@ -363,7 +363,7 @@ describe('Dashboard apiClient', () => {
       const audit = mapServerAudit(
         {
           leadId: 'l',
-          lighthouseMetrics: { lcp: 0, cls: 0 },
+          webVitals: { lcp: 0, cls: 0 },
           scores: { total: 0, design: 0, accessibility: 0, performance: 0, standards: 0 },
           a11ySummary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
         },

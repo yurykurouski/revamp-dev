@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import AxeBuilder from '@axe-core/playwright';
-import { AxeService } from '../axe.service.js';
+import { AxeService, AXE_STORAGE_LIMITS } from '../axe.service.js';
 
 vi.mock('@axe-core/playwright', () => {
   return {
@@ -71,6 +71,76 @@ describe('AxeService', () => {
     expect(result.summary.criticalViolations.length).toBeGreaterThan(0);
     expect(result.a11yScore).toBeLessThan(100);
     expect(result.errors).toEqual([]);
+    // Every violation is kept for the audit, not only the critical ones (REV-102)
+    expect(result.violations?.map((v) => [v.id, v.impact, v.nodeCount])).toEqual([
+      ['color-contrast', 'serious', 2],
+      ['image-alt', 'critical', 1],
+      ['heading-order', 'moderate', 1],
+    ]);
+    expect(result.violations?.[0].nodes.map((n) => n.target)).toEqual(['#header > p', '#footer > span']);
+  });
+
+  it('keeps each violation for storage with its rule, help and nodes (REV-102)', () => {
+    const [stored] = AxeService.toStoredViolations([
+      {
+        id: 'label',
+        impact: 'critical',
+        description: 'Form elements must have labels',
+        help: 'Form elements must have labels',
+        helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/label',
+        tags: ['wcag2a', 'wcag412'],
+        nodes: [
+          {
+            target: [['iframe#booking', 'input#name']],
+            html: '<input id="name">',
+            failureSummary: 'Fix any of the following: Form element does not have an implicit label',
+          },
+        ],
+      },
+    ]);
+
+    expect(stored).toEqual({
+      id: 'label',
+      impact: 'critical',
+      description: 'Form elements must have labels',
+      help: 'Form elements must have labels',
+      helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/label',
+      tags: ['wcag2a', 'wcag412'],
+      nodeCount: 1,
+      nodes: [
+        {
+          target: 'iframe#booking input#name',
+          html: '<input id="name">',
+          failureSummary: 'Fix any of the following: Form element does not have an implicit label',
+        },
+      ],
+    });
+  });
+
+  it('caps nodes per rule and truncates long selectors, HTML and summaries, keeping the full node count', () => {
+    const nodes = Array.from({ length: AXE_STORAGE_LIMITS.nodesPerViolation + 5 }, (_, i) => ({
+      target: [`li:nth-child(${i + 1}) ${'> div '.repeat(AXE_STORAGE_LIMITS.targetChars)}`],
+      html: 'x'.repeat(AXE_STORAGE_LIMITS.htmlChars * 3),
+      failureSummary: 'y'.repeat(AXE_STORAGE_LIMITS.failureSummaryChars * 2),
+    }));
+
+    const [stored] = AxeService.toStoredViolations([{ id: 'list', impact: 'serious', nodes }]);
+
+    expect(stored.nodeCount).toBe(AXE_STORAGE_LIMITS.nodesPerViolation + 5);
+    expect(stored.nodes).toHaveLength(AXE_STORAGE_LIMITS.nodesPerViolation);
+    expect(stored.nodes[0].html).toHaveLength(AXE_STORAGE_LIMITS.htmlChars);
+    expect(stored.nodes[0].target).toHaveLength(AXE_STORAGE_LIMITS.targetChars);
+    expect(stored.nodes[0].target.startsWith('li:nth-child(1)')).toBe(true);
+    expect(stored.nodes[0].html.endsWith('…')).toBe(true);
+    expect(stored.nodes[0].failureSummary).toHaveLength(AXE_STORAGE_LIMITS.failureSummaryChars);
+  });
+
+  it('leaves out an unknown impact rather than guessing one', () => {
+    const [stored] = AxeService.toStoredViolations([{ id: 'region', impact: null, nodes: [{ target: ['div'] }] }]);
+
+    expect(stored).not.toHaveProperty('impact');
+    expect(stored.nodes).toEqual([{ target: 'div', html: '' }]);
+    expect(stored.tags).toEqual([]);
   });
 
   it('reports the scan as not measured when axe fails, never as a clean page or a stand-in score', async () => {
@@ -85,7 +155,6 @@ describe('AxeService', () => {
     const result = await new AxeService().scanPage({} as any);
 
     expect(result).toEqual({
-      rawViolations: [],
       errors: [{ measurement: 'accessibility', message: 'Target page, context or browser has been closed' }],
     });
     expect(result.a11yScore).toBeUndefined();

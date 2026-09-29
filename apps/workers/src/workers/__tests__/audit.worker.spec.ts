@@ -100,13 +100,24 @@ describe('AuditWorker (@revamp/workers)', () => {
             { id: 'image-alt', description: 'Missing alt', impact: 'critical', selector: 'img' },
           ],
         },
-        rawViolations: [],
+        violations: [
+          {
+            id: 'image-alt',
+            impact: 'critical',
+            description: 'Missing alt',
+            help: 'Images must have alternate text',
+            helpUrl: 'https://dequeuniversity.com/rules/axe/4.10/image-alt',
+            tags: ['wcag2a'],
+            nodeCount: 1,
+            nodes: [{ target: 'img', html: '<img src="a.png">' }],
+          },
+        ],
         errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2.1,
-        lighthouseMetrics: { lcp: 2100, cls: 0.03 },
-        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        webVitals: { lcp: 2100, cls: 0.03 },
+        standards: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
         performanceScore: 90,
         standardsScore: 100,
         errors: [],
@@ -247,7 +258,12 @@ describe('AuditWorker (@revamp/workers)', () => {
           accessibility: 82,
           standards: 100,
         },
-        lighthouseMetrics: { lcp: 2100, cls: 0.03 },
+        webVitals: { lcp: 2100, cls: 0.03 },
+        // Each standards check and every axe violation are stored with the audit (REV-102)
+        standardsChecks: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
+        axeViolations: [
+          expect.objectContaining({ id: 'image-alt', impact: 'critical', nodeCount: 1 }),
+        ],
         // Everything was measured, so no measurement errors (REV-100)
         measurementErrors: [],
         designCritique: expect.objectContaining({
@@ -334,11 +350,10 @@ describe('AuditWorker (@revamp/workers)', () => {
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
       a11yResult: {
-        rawViolations: [],
         errors: [{ measurement: 'accessibility', message: 'Target page, context or browser has been closed' }],
       },
       vitalsResult: {
-        lighthouseMetrics: {},
+        webVitals: {},
         errors: [
           { measurement: 'performance', message: 'Execution context was destroyed' },
           { measurement: 'standards', message: 'Execution context was destroyed' },
@@ -378,11 +393,20 @@ describe('AuditWorker (@revamp/workers)', () => {
       .mocked(Audit.findOneAndUpdate)
       .mock.calls.map((call) => call[1] as Record<string, any>)
       .find((update) => update.status === 'COMPLETED')!;
-    expect(completed.$unset).toEqual({ a11yScore: '', lcp: '', a11ySummary: '' });
+    // Nothing from the failed scan or the unread standards is stored, and older values are cleared (REV-102)
+    expect(completed.$unset).toEqual({
+      a11yScore: '',
+      lcp: '',
+      a11ySummary: '',
+      axeViolations: '',
+      standardsChecks: '',
+    });
+    expect(completed).not.toHaveProperty('axeViolations');
+    expect(completed).not.toHaveProperty('standardsChecks');
     expect(completed).not.toHaveProperty('a11yScore');
     expect(completed).not.toHaveProperty('lcp');
     expect(completed).not.toHaveProperty('a11ySummary');
-    expect(completed.lighthouseMetrics).toEqual({});
+    expect(completed.webVitals).toEqual({});
     // Only the design pillar was measured: total = design = (60 + 70) / 2
     expect(completed.scores).toEqual({ total: 65, design: 65 });
     expect(completed.measurementErrors).toEqual([
@@ -415,12 +439,12 @@ describe('AuditWorker (@revamp/workers)', () => {
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
         a11yResult: measured
-          ? { a11yScore: 60, summary: { violationsCount: 4, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] }, rawViolations: [], errors: [] }
-          : { rawViolations: [], errors: [{ measurement: 'accessibility', message: 'axe failed' }] },
+          ? { a11yScore: 60, summary: { violationsCount: 4, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] }, violations: [], errors: [] }
+          : { errors: [{ measurement: 'accessibility', message: 'axe failed' }] },
         vitalsResult: measured
-          ? { lcpSeconds: 3.2, lighthouseMetrics: { lcp: 3200 }, performanceScore: 40, standardsScore: 100, errors: [] }
+          ? { lcpSeconds: 3.2, webVitals: { lcp: 3200 }, performanceScore: 40, standardsScore: 100, errors: [] }
           : {
-              lighthouseMetrics: {},
+              webVitals: {},
               errors: [
                 { measurement: 'performance', message: 'vitals failed' },
                 { measurement: 'standards', message: 'vitals failed' },
@@ -517,13 +541,13 @@ describe('AuditWorker (@revamp/workers)', () => {
       a11yResult: {
         a11yScore: 80,
         summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
-        rawViolations: [],
+        violations: [],
         errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2,
-        lighthouseMetrics: { lcp: 2000, cls: 0.01 },
-        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        webVitals: { lcp: 2000, cls: 0.01 },
+        standards: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
         performanceScore: 90,
         standardsScore: 100,
         errors: [],
@@ -587,13 +611,13 @@ describe('AuditWorker (@revamp/workers)', () => {
       a11yResult: {
         a11yScore: 80,
         summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
-        rawViolations: [],
+        violations: [],
         errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2,
-        lighthouseMetrics: { lcp: 2000, cls: 0.01 },
-        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        webVitals: { lcp: 2000, cls: 0.01 },
+        standards: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
         performanceScore: 90,
         standardsScore: 100,
         errors: [],
@@ -655,13 +679,13 @@ describe('AuditWorker (@revamp/workers)', () => {
       a11yResult: {
         a11yScore: 80,
         summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
-        rawViolations: [],
+        violations: [],
         errors: [],
       },
       vitalsResult: {
         lcpSeconds: 2,
-        lighthouseMetrics: { lcp: 2000, cls: 0.01 },
-        standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+        webVitals: { lcp: 2000, cls: 0.01 },
+        standards: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
         performanceScore: 90,
         standardsScore: 100,
         errors: [],
@@ -877,13 +901,13 @@ describe('AuditWorker (@revamp/workers)', () => {
         a11yResult: {
           a11yScore: 80,
           summary: { violationsCount: 0, contrastIssuesCount: 0, missingAltCount: 0, criticalViolations: [] },
-          rawViolations: [],
+          violations: [],
           errors: [],
         },
         vitalsResult: {
           lcpSeconds: 2,
-          lighthouseMetrics: { lcp: 2000, cls: 0.01 },
-          standards: { hasSsl: true, hasViewport: true, hasTitle: true },
+          webVitals: { lcp: 2000, cls: 0.01 },
+          standards: { https: true, viewport: true, title: true, favicon: true, structuredData: true, openGraph: true },
           performanceScore: 90,
           standardsScore: 100,
           errors: [],

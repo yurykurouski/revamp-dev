@@ -85,7 +85,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         desktopOriginal: 'http://localhost:9000/revamp-assets/screenshots/lead/desktop.webp',
         mobileOriginal: 'http://localhost:9000/revamp-assets/screenshots/lead/mobile.webp',
       },
-      lighthouseMetrics: { lcp: 3500 },
+      webVitals: { lcp: 3500 },
       a11ySummary: { violationsCount: 12 },
       generatedContent: {
         hero: {

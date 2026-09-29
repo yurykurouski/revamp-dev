@@ -539,8 +539,8 @@ export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail =
     mobileScreenshotUrl: a.screenshotUrls?.mobileOriginal || undefined,
     desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
     mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
-    // lighthouseMetrics.lcp is in milliseconds
-    lcpSeconds: a.lighthouseMetrics?.lcp != null ? a.lighthouseMetrics.lcp / 1000 : undefined,
+    // webVitals.lcp is in milliseconds
+    lcpSeconds: a.webVitals?.lcp != null ? a.webVitals.lcp / 1000 : undefined,
     a11yScore: a.scores?.accessibility ?? undefined,
     a11yViolationsCount: a.a11ySummary?.violationsCount ?? undefined,
     visualHierarchyRating: designCritiqueFallback ? undefined : (a.designCritique?.visualHierarchyRating ?? undefined),

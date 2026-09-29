@@ -67,7 +67,7 @@ async function publishMvp(
     originalMobileBuffer,
     newMvpMobileBuffer,
     businessName: lead.businessName,
-    oldLcpSeconds: audit.lighthouseMetrics?.lcp ? audit.lighthouseMetrics.lcp / 1000 : undefined,
+    oldLcpSeconds: audit.webVitals?.lcp ? audit.webVitals.lcp / 1000 : undefined,
     oldA11yViolationsCount: audit.a11ySummary?.violationsCount,
     newScore: 95,
   });

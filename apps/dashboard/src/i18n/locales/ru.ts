@@ -455,7 +455,7 @@ export const ru: Translation = {
     measurement: {
       performance: 'Производительность (LCP, CLS)',
       accessibility: 'Доступность (axe)',
-      standards: 'Веб-стандарты (viewport, title)',
+      standards: 'Веб-стандарты (HTTPS, viewport, title, фавикон, Schema.org, OpenGraph)',
       design: 'Оценка дизайна (модель Vision)',
     },
     fullPage: 'Снимок всей страницы · прокрутите, чтобы увидеть сайт целиком',
