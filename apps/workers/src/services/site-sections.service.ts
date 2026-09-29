@@ -21,7 +21,7 @@ import { classifyBlock, WHY_US_WORDS, type RawLayoutBlock } from './site-layout.
 import type { RawItemGroup, RawSiteBlock, RawSiteImage, RawSiteItem, RawSiteLink, RawSiteSections, RawTextRun, RawTypography } from './site-sections.page.js';
 
 export const cleanText = (value: string | undefined): string =>
-  (value ?? '').replace(/­/g, '').replace(/\s+/g, ' ').trim();
+  (value ?? '').replace(/[\u00ad\u200b\u200c\u200d\ufeff]/g, '').replace(/\s+/g, ' ').trim();
 
 /** A computed color as hex; see-through colors (alpha below 0.5) count as unset */
 export function toHex(color: string | undefined): string | undefined {
@@ -179,6 +179,9 @@ const texts = (lines: string[], flag: Cut): string[] =>
 
 const STORABLE_HREF = /^(https?:|tel:|mailto:|sms:)/i;
 
+/** Kept links whose label came from aria-label or title: stored, but not page text for the coverage */
+const attributeLabels = new WeakSet<ISiteLink>();
+
 const toLinks = (links: RawSiteLink[], flag: Cut): ISiteLink[] => {
   const seen = new Set<string>();
   const kept: ISiteLink[] = [];
@@ -188,7 +191,9 @@ const toLinks = (links: RawSiteLink[], flag: Cut): ISiteLink[] => {
     const key = `${label}\n${href}`;
     if (!label || !STORABLE_HREF.test(href) || href.length > L.urlChars || seen.has(key)) continue;
     seen.add(key);
-    kept.push({ label, href, kind: linkKind(link) });
+    const stored = { label, href, kind: linkKind(link) };
+    if (link.labelFromAttribute) attributeLabels.add(stored);
+    kept.push(stored);
   }
   return cutList(kept, L.links, flag);
 };
@@ -222,22 +227,38 @@ const toItem = (item: RawSiteItem, flag: Cut): ISiteSectionItem => {
 
 const alignOf = (textAlign: string): 'left' | 'center' => (/center/.test(textAlign) ? 'center' : 'left');
 
-/** Characters of text a section holds; a price inside its item's text is not counted twice */
+/**
+ * Characters of text a section holds. A price inside its item's text, and a link whose label the text
+ * already holds (a link inside a paragraph, a card wrapped in a link), are not counted twice.
+ */
 function sectionChars(section: ISiteSection): number {
   const sum = (list: string[]) => list.reduce((total, s) => total + s.length, 0);
-  const labels = (links: ISiteLink[]) => sum(links.map((link) => link.label));
-  const itemChars = (i: ISiteSectionItem) =>
-    (i.title?.length ?? 0) +
-    (i.subtitle?.length ?? 0) +
-    sum(i.text) +
-    (i.price && !i.text.some((line) => line.includes(i.price!)) ? i.price.length : 0) +
-    labels(i.links);
+  const labels = (links: ISiteLink[], text: string) =>
+    sum(links.filter((link) => !attributeLabels.has(link) && !text.includes(link.label)).map((link) => link.label));
+  const itemChars = (i: ISiteSectionItem) => {
+    const text = [i.title, i.subtitle, ...i.text].filter(Boolean).join(' ');
+    return (
+      (i.title?.length ?? 0) +
+      (i.subtitle?.length ?? 0) +
+      sum(i.text) +
+      (i.price && !i.text.some((line) => line.includes(i.price!)) ? i.price.length : 0) +
+      labels(i.links, text)
+    );
+  };
   const itemsChars = (items: ISiteSectionItem[]) => items.reduce((total, i) => total + itemChars(i), 0);
+  const introText = [
+    section.intro.eyebrow,
+    section.intro.heading,
+    ...section.intro.text,
+    ...section.extra.flatMap((e) => (e.type === 'text' ? e.text : [])),
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
     (section.intro.eyebrow?.length ?? 0) +
     (section.intro.heading?.length ?? 0) +
     sum(section.intro.text) +
-    labels(section.intro.links) +
+    labels(section.intro.links, introText) +
     itemsChars(section.items) +
     section.extra.reduce((total, e) => total + (e.type === 'text' ? sum(e.text) : itemsChars(e.items)), 0)
   );
@@ -297,6 +318,7 @@ function toSection(
   raw: RawSiteSections,
   layoutBlocks: RawLayoutBlock[],
   attached: Attached,
+  bandHeading?: string,
 ): { section: ISiteSection; noise: string[] } {
   const flag: Cut = { truncated: false };
   const noise: string[] = [];
@@ -332,7 +354,12 @@ function toSection(
   let kind: SiteSectionKind;
   if (block.role === 'header') kind = 'other';
   else if (block.role === 'footer') kind = introLinks.some((l) => l.kind !== 'link' && l.kind !== 'cta') ? 'contact' : 'other';
-  else kind = kindFromItems(block) ?? (layoutBlock ? classifyBlock(layoutBlock) : 'other');
+  else {
+    // A block without a heading of its own, right after a heading band, is named by that band's heading
+    const heading = cleanText(block.intro.heading) ? undefined : bandHeading;
+    const named = heading ? { ...block, intro: { ...block.intro, heading } } : block;
+    kind = kindFromItems(named) ?? (layoutBlock ? classifyBlock(heading ? { ...layoutBlock, heading } : layoutBlock) : 'other');
+  }
 
   const arrangement = arrangementOf(block);
   const items = block.group ? cutList(block.group.items.map((i) => toItem(i, flag)), L.items, flag) : [];
@@ -340,7 +367,8 @@ function toSection(
   const itemStyle = block.itemStyle
     ? {
         background: toHex(block.itemStyle.background),
-        radius: Math.max(0, Math.round(block.itemStyle.radius)),
+        // A pill (9999px) is stored at the schema's limit
+        radius: Math.min(1000, Math.max(0, Math.round(block.itemStyle.radius))),
         border: block.itemStyle.borderWidth >= 1,
         shadow: Boolean(block.itemStyle.boxShadow) && block.itemStyle.boxShadow !== 'none',
         imageShape: firstImage ? imageShape(firstImage.box.width, firstImage.box.height, firstImage.radius) : undefined,
@@ -372,7 +400,7 @@ function toSection(
       backgroundImage: storableUrl(block.backgroundImage),
       textColor: toHex(block.style.color),
       align: alignOf(block.style.textAlign),
-      paddingY: Math.max(0, Math.round((block.style.paddingTop + block.style.paddingBottom) / 2)),
+      paddingY: Math.min(2000, Math.max(0, Math.round((block.style.paddingTop + block.style.paddingBottom) / 2))),
       fullBleed: block.contentBox ? block.contentBox.width >= raw.viewportWidth * 0.9 : undefined,
       split: arrangement.split,
     },
@@ -416,8 +444,19 @@ export function readSiteSections(raw: RawSiteSections | undefined, layoutBlocks:
   let captured = 0;
   let total = 0;
 
+  /** A kept section that is only a heading (a title band), whose heading names the block after it */
+  const bandHeadingOf = (section: ISiteSection | undefined, index: number): string | undefined =>
+    section &&
+    section.role !== 'header' &&
+    section.index === index - 1 &&
+    section.items.length === 0 &&
+    section.extra.length === 0 &&
+    section.intro.text.join(' ').length <= 80
+      ? section.intro.heading
+      : undefined;
+
   ordered.forEach((block, index) => {
-    const { section, noise } = toSection(block, index, raw, layoutBlocks, attached);
+    const { section, noise } = toSection(block, index, raw, layoutBlocks, attached, bandHeadingOf(sections[sections.length - 1], index));
     const heading = section.intro.heading;
     const skip = (reason: ISiteSections['skipped'][number]['reason'], sample: string, chars: number) => {
       if (skipped.length < L.skipped) skipped.push({ index, reason, ...(heading ? { heading } : {}), sample: sample.slice(0, L.sampleChars) });

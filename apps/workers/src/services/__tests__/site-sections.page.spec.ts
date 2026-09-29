@@ -339,4 +339,64 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     });
     expectCovered(result);
   });
+
+  it('does not take a has_eae_slider flag class for a slider (Falco-Dent)', async () => {
+    const card = (name: string) => `<div class="elementor-column has_eae_slider" style="flex:1"><div class="elementor-widget-wrap">
+      <h3>${name}</h3><p>Pełna diagnostyka i plan leczenia: ${name.toLowerCase()} w naszym gabinecie.</p></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section class="has_eae_slider elementor-section"><h2>Nasze usługi</h2>
+        <div class="elementor-container" style="display:flex;gap:24px">${['Implanty', 'Ortodoncja', 'Wybielanie'].map(card).join('')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasze usługi')!;
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.items.map((i) => i.title)).toEqual(['Implanty', 'Ortodoncja', 'Wybielanie']);
+  });
+
+  it('reads cards laid out in rows as one grid, not as a list of rows (Falco-Dent)', async () => {
+    const person = (name: string, i: number) => `<div class="elementor-column" style="flex:1"><div class="elementor-widget-wrap">
+      <img src="https://img.test/p${i}.jpg" alt="" width="200" height="200" style="display:block">
+      <h2 style="font-size:20px">${name}</h2><div>Stomatologia zachowawcza i endodoncja, protetyka.</div></div></div>`;
+    const row = (names: string[], from: number) => `<section class="elementor-inner-section"><div class="elementor-container" style="display:flex;gap:24px">
+      ${names.map((n, i) => person(n, from + i)).join('')}</div></section>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasi specjaliści</h2>
+        ${row(['Anna Nowak', 'Jan Kowalski', 'Ewa Wiśniewska'], 0)}${row(['Piotr Zieliński', 'Maria Lewandowska', 'Karolina Wójcik'], 3)}</section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasi specjaliści')!;
+    expect(s.items.map((i) => i.title)).toEqual(['Anna Nowak', 'Jan Kowalski', 'Ewa Wiśniewska', 'Piotr Zieliński', 'Maria Lewandowska', 'Karolina Wójcik']);
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.columns).toBe(3);
+    expectCovered(result);
+  });
+
+  it('reads photos wrapped in links as a gallery (Falco-Dent)', async () => {
+    const photo = (i: number) => `<a class="grid-item" href="https://img.test/big${i}.jpg" style="display:block;width:300px"><img src="https://img.test/g${i}.jpg" alt="" width="300" height="300" style="display:block"></a>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasz gabinet</h2><div style="display:flex;flex-wrap:wrap;width:1200px">${[0, 1, 2, 3, 4, 5, 6, 7].map(photo).join('')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasz gabinet')!;
+    expect(s.arrangement).toBe('gallery');
+    expect(s.items.map((i) => i.image?.src)).toEqual([0, 1, 2, 3, 4, 5, 6, 7].map((i) => `https://img.test/g${i}.jpg`));
+  });
+
+  it('reads only the shown menu of a header, not its closed dropdowns and mobile menu (Falco-Dent)', async () => {
+    const sub = Array.from({ length: 50 }, (_, i) => `<li><a href="/oferta/${i}">Usługa numer ${i} w ofercie gabinetu</a></li>`).join('');
+    const result = await sectionsOf(pageOf(`<header style="height:90px;display:flex;gap:16px;padding:0 40px">
+        <nav><ul style="display:flex;gap:16px;list-style:none"><li><a href="/">Start</a></li>
+          <li><a href="/oferta">Oferta</a><ul class="sub-menu" style="display:none">${sub}</ul></li><li><a href="/kontakt">Kontakt</a></li></ul></nav>
+        <div class="mobile-menu" style="display:none"><a href="/">Start</a><a href="/oferta">Oferta</a><a href="/kontakt">Kontakt</a></div></header>
+      ${HERO}<section><h2>Nasze usługi</h2><p>Leczenie zachowawcze i protetyka.</p></section>`));
+    const header = result.sections.find((s) => s.role === 'header')!;
+    expect(header.intro.links.map((l) => l.label)).toEqual(['Start', 'Oferta', 'Kontakt']);
+    expect(header.truncated).toBeUndefined();
+    expectCovered(result);
+  });
+
+  it('titles an item by its most prominent heading, not a smaller one before it (Elefant)', async () => {
+    const person = (name: string, i: number) => `<div style="width:250px"><img src="https://img.test/d${i}.jpg" alt="${name}" width="200" height="200" style="display:block">
+      <div><h4>Lek. dent.</h4><a href="/zespol/${i}"><h2 style="font-size:20px">${name}</h2></a><h4>Warszawski Uniwersytet Medyczny</h4></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasz zespół</h2><div style="display:flex;gap:24px">${['Joanna Gradoń', 'Anna Nowak', 'Ewa Wiśniewska'].map(person).join('')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasz zespół')!;
+    expect(s.items.map((i) => i.title)).toEqual(['Joanna Gradoń', 'Anna Nowak', 'Ewa Wiśniewska']);
+    expect(s.items[0]).toMatchObject({ subtitle: 'Warszawski Uniwersytet Medyczny', text: ['Lek. dent.'] });
+    expectCovered(result);
+  });
 });

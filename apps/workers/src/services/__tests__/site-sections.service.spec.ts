@@ -48,6 +48,8 @@ describe('cleanText and toHex (REV-109)', () => {
   it('collapses whitespace and strips soft hyphens', () => {
     expect(cleanText('  Sto­matologia \n  estetyczna ')).toBe('Stomatologia estetyczna');
     expect(cleanText(undefined)).toBe('');
+    // Zero-width spaces and BOMs builders leave in names (Elefant)
+    expect(cleanText('Joanna Gradoń' + String.fromCharCode(0x200b) + ' ' + String.fromCharCode(0xfeff))).toBe('Joanna Gradoń');
   });
 
   it('converts computed colors to hex and treats see-through ones as unset', () => {
@@ -243,11 +245,37 @@ describe('readSiteSections (REV-109)', () => {
     expect(section.itemStyle).toEqual({ radius: 0, border: false, shadow: false, imageShape: 'round', align: 'center' });
   });
 
+  it('names a headless block by the heading band right before it (Falco-Dent)', () => {
+    const band = rawBlock({ block: 1, box: box(900, 0, 1440, 200), intro: { heading: 'Co nas wyróżnia', headingLevel: 2, text: [], links: [] } });
+    const photo = (i: number) => ({ src: `https://a.pl/w${i}.jpg`, alt: '', box: box(1150, i * 300, 240, 170), radius: 0 });
+    const cards = Array.from({ length: 4 }, (_, i) => item({ title: undefined, text: [`Zaleta numer ${i}`], image: photo(i), box: box(1150, i * 300, 250, 270) }));
+    const grid = rawBlock({ block: 2, box: box(1100, 0, 1440, 600), intro: { text: [], links: [] }, group: { items: cards } });
+    const layout = [LAYOUT[0]!, layoutBlock({ heading: 'Co nas wyróżnia' }), layoutBlock({ heading: '', imageCount: 4, textLength: 60 })];
+    const kinds = readSiteSections(raw({ blocks: [HERO, band, grid] }), layout).sections!.sections.map((s) => s.kind);
+    expect(kinds).toEqual(['other', 'features', 'features']);
+    // A block with its own heading keeps it
+    const titled = { ...grid, intro: { heading: 'Galeria', text: [], links: [] } };
+    expect(readSiteSections(raw({ blocks: [HERO, band, titled] }), [...layout.slice(0, 2), layoutBlock({ heading: 'Galeria', imageCount: 4 })]).sections!.sections[2]!.kind).toBe('gallery');
+    // A section with text of its own is not a band
+    const about = { ...band, intro: { ...band.intro, text: ['Od 1998 roku leczymy w centrum miasta, z pełną diagnostyką na miejscu i pracownią protetyczną.'] } };
+    expect(readSiteSections(raw({ blocks: [HERO, about, grid] }), layout).sections!.sections[2]!.kind).toBe('gallery');
+  });
+
   it('normalizes the style: hex colors, px padding per side, alignment, full bleed', () => {
     const block = rawBlock({ style: { background: 'rgb(245, 247, 250)', color: 'rgb(17, 17, 17)', textAlign: 'center', paddingTop: 61.4, paddingBottom: 80.2 }, contentBox: box(960, 0, 1440, 480) });
     expect(readSiteSections(raw({ blocks: [HERO, block] }), LAYOUT).sections!.sections[1]!.style).toEqual({
       background: '#f5f7fa', textColor: '#111111', align: 'center', paddingY: 71, fullBleed: true,
     });
+  });
+
+  it('stores a pill radius at the schema limit instead of failing the whole reading', () => {
+    const pills = [item(), item({ box: box(1100, 540, 320, 300) })];
+    const block = rawBlock({ group: { items: pills }, itemStyle: { background: '', radius: 9999, borderWidth: 0, boxShadow: 'none', textAlign: 'left' } });
+    const { sections, error } = readSiteSections(raw({ blocks: [HERO, block] }), LAYOUT);
+    expect(error).toBeUndefined();
+    expect(sections!.sections[1]!.itemStyle!.radius).toBe(1000);
+    const tall = rawBlock({ style: { background: '', color: '', textAlign: 'left', paddingTop: 5000, paddingBottom: 5000 } });
+    expect(readSiteSections(raw({ blocks: [HERO, tall] }), LAYOUT).sections!.sections[1]!.style.paddingY).toBe(2000);
   });
 
   it('moves a price out of the text and keeps it as written', () => {
@@ -302,6 +330,27 @@ describe('readSiteSections (REV-109)', () => {
     const { sections } = readSiteSections(raw({ blocks: [HERO, rawBlock(), rawBlock({ block: 2 })], pageChars: 100 }), [...LAYOUT, layoutBlock()]);
     expect(sections!.coverage).toEqual({ pageChars: 100, capturedChars: 84, ratio: 0.84, uncaptured: [] });
     expect(readSiteSections(raw({ pageChars: 10 }), LAYOUT).sections!.coverage.ratio).toBe(1);
+  });
+
+  it('does not count a link twice when its label is already in the text', () => {
+    // A card wrapped in a link, and a link inside a paragraph: the label repeats text the section holds
+    const card = item({ title: 'Implanty', text: ['Stałe uzupełnienie braków.'], links: [{ label: 'Implanty Stałe uzupełnienie braków.', href: 'https://a.pl/implanty', button: false }] });
+    const block = rawBlock({
+      intro: { heading: 'Usługi', text: ['Zadzwoń: 123 456 789 lub przyjdź.'], links: [{ label: '123 456 789', href: 'tel:123456789', button: false }, { label: 'Umów wizytę', href: 'https://a.pl/k', button: true }] },
+      group: { items: [card, { ...card, title: 'Protetyka', links: [] }] },
+    });
+    const { sections } = readSiteSections(raw({ blocks: [HERO, block], pageChars: 1000 }), LAYOUT);
+    // Hero 20; section: "Usługi"(6) + intro text (33) + "Umów wizytę"(11) + items (8+26, 9+26)
+    expect(sections!.coverage.capturedChars).toBe(20 + 6 + 33 + 11 + 34 + 35);
+  });
+
+  it('keeps a label read from aria-label or title but does not count it as page text', () => {
+    const logos = [0, 1].map((i) => item({ title: undefined, text: [], image: { src: `https://a.pl/l${i}.png`, alt: '', box: box(1100, i * 300, 200, 100), radius: 0 }, links: [{ label: `Partner ${i}`, href: `https://p${i}.pl/`, button: false, labelFromAttribute: true }] }));
+    const block = rawBlock({ intro: { heading: 'Partnerzy', text: [], links: [] }, group: { items: logos } });
+    const { sections } = readSiteSections(raw({ blocks: [HERO, block], pageChars: 1000 }), LAYOUT);
+    expect(sections!.sections[1]!.items[0]!.links).toEqual([{ label: 'Partner 0', href: 'https://p0.pl/', kind: 'link' }]);
+    // Hero 20 + "Partnerzy" 9; the logos' labels are not on the page
+    expect(sections!.coverage.capturedChars).toBe(29);
   });
 
   it('cuts at the caps, sets truncated, and sends sections past the limit to skipped', () => {

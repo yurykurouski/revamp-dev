@@ -20,6 +20,8 @@ export interface RawSiteLink {
   href: string;
   /** Styled as a button: padding plus an opaque background or a border */
   button: boolean;
+  /** The link has no text; its label comes from aria-label or title and is not page text */
+  labelFromAttribute?: boolean;
 }
 
 export interface RawSiteImage {
@@ -113,8 +115,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const MAP_SRC = /google\.[a-z.]+\/maps|maps\.google|openstreetmap|mapy\.|yandex\.[a-z]+\/(map-widget|maps)/i;
   const VIDEO_SRC = /youtube\.com|youtu\.be|youtube-nocookie|vimeo\.com|wistia/i;
   const MAX_SCAN = 1500;
-  const SLIDER =
-    '.swiper, .swiper-container, .slick-slider, .owl-carousel, .carousel, .splide, .flickity-enabled, .glide, rs-module, .rev_slider, [class*="slider" i], [class*="slideshow" i]';
+  // Slider libraries by their container; other slider classes are matched per token, see `inSlider`
+  const SLIDER = '.swiper, .swiper-container, .slick-slider, .owl-carousel, .carousel, .splide, .flickity-enabled, .glide, rs-module, .rev_slider';
   const PRICE = /(?:(?:od|from|от|ад|nuo|ab)\s+)?\d[\d\s.,]*\s?(?:zł|pln|€|eur|\$|usd|₽|руб|byn|br\b|£|gbp|kč|czk)/i;
 
   const clean = (value: string | null | undefined): string => (value || '').replace(/­/g, '').replace(/\s+/g, ' ').trim();
@@ -210,8 +212,10 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   };
   const linkOf = (el: Element): RawSiteLink | undefined => {
     const href = absolute(el.getAttribute('href'));
-    const label = clean(el.textContent) || clean(el.getAttribute('aria-label')) || clean(el.getAttribute('title'));
-    return href && label ? { label, href, button: isButton(el) } : undefined;
+    const text = clean(el.textContent);
+    const label = text || clean(el.getAttribute('aria-label')) || clean(el.getAttribute('title'));
+    if (!href || !label) return undefined;
+    return { label, href, button: isButton(el), ...(text ? {} : { labelFromAttribute: true }) };
   };
   /**
    * A block whose own text (not its nested blocks') is all inside links: a menu, a button row, a call
@@ -309,14 +313,26 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const profile = (el: Element) => `${hasImage(el) ? 'i' : ''}${clean(el.textContent) ? 't' : ''}`;
   // An item holds more than one line of text, an image, a price, or is a list entry
   const composite = (el: Element) => ITEM_TAGS.has(el.tagName) || hasImage(el) || runsOf(el, []).length >= 2 || PRICE.test(clean(el.textContent));
-  const markupOf = (parent: Element, members: Element[]): RawGroupMarkup | undefined => {
+  // A class token naming a slider; flags such as Elementor's `has_eae_slider` on every section do not
+  const SLIDER_TOKEN = /slider|slideshow/i;
+  const FLAG_TOKEN = /^(has|no|is|with|enable|disable)[-_]/i;
+  /** The group sits in a slider inside the section; what wraps the section does not count */
+  const inSlider = (el: Element, root: Element): boolean => {
+    for (let node: Element | null = el; node; node = node.parentElement) {
+      if (node.matches(SLIDER)) return true;
+      if (classOf(node).split(/\s+/).some((token) => SLIDER_TOKEN.test(token) && !FLAG_TOKEN.test(token))) return true;
+      if (node === root) return false;
+    }
+    return false;
+  };
+  const markupOf = (parent: Element, members: Element[], root: Element): RawGroupMarkup | undefined => {
     if (
       members.every((m) => m.matches('details') || m.querySelector('details, [aria-expanded]') !== null) ||
       /accordion|toggle|faq/i.test(`${classOf(parent)} ${classOf(members[0]!)}`)
     ) {
       return 'accordion';
     }
-    if (parent.closest(SLIDER)) return 'slider';
+    if (inSlider(parent, root)) return 'slider';
     if (members.every((m) => /schema\.org\/Person/i.test(m.getAttribute('itemtype') || ''))) return 'person';
     if (members.every((m) => /schema\.org\/Review/i.test(m.getAttribute('itemtype') || ''))) return 'review';
     return undefined;
@@ -345,7 +361,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       if (parent.children.length < 2 || excluded(parent) || TEXT_TAGS.has(parent.tagName) || parent.matches('[role="tablist"]')) continue;
       const bySignature = new Map<string, Element[]>();
       for (const child of Array.from(parent.children)) {
-        if (excluded(child) || TEXT_TAGS.has(child.tagName) || taken(child)) continue;
+        // A link is text, unless it wraps a photo or a card: a gallery of linked images
+        if (excluded(child) || (TEXT_TAGS.has(child.tagName) && !(child.tagName === 'A' && hasImage(child))) || taken(child)) continue;
         if (!clean(child.textContent) && !hasImage(child)) continue;
         const key = signature(child);
         const list = bySignature.get(key);
@@ -358,14 +375,30 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         const counts = new Map<string, number>();
         for (const m of members) counts.set(profile(m), (counts.get(profile(m)) ?? 0) + 1);
         if (Math.max(...Array.from(counts.values())) < members.length * 0.75) continue;
-        const markup = markupOf(parent, members);
+        const markup = markupOf(parent, members, root);
         if (!markup && members.filter(composite).length < members.length * 0.75) continue;
         const weight = members.reduce((sum, m) => sum + clean(m.textContent).length + (hasImage(m) ? 50 : 0), 0);
         found.push({ members, covers: members, ...(markup ? { markup } : {}), weight });
       }
     }
 
-    const ranked = found.sort((a, b) => b.weight - a.weight);
+    // Cards laid out in rows (Elementor inner sections, Bootstrap rows): a group whose every member is a
+    // row holding a group of the same cards is those cards, in page order
+    const rowsFlattened = found.map((group): Found => {
+      if (group.markup) return group;
+      const inner = group.members.map((row) =>
+        found
+          .filter((other) => other !== group && other.members.every((member) => member !== row && row.contains(member)))
+          .sort((a, b) => b.weight - a.weight)[0],
+      );
+      if (inner.some((g) => g === undefined)) return group;
+      const cards = inner as Found[];
+      const cardSignature = signature(cards[0]!.members[0]!);
+      if (!cards.every((g) => g.members.every((member) => signature(member) === cardSignature))) return group;
+      if (cards.reduce((sum, g) => sum + g.weight, 0) < group.weight * 0.75) return group;
+      return { members: cards.flatMap((g) => g.members), covers: group.covers, weight: group.weight };
+    });
+    const ranked = rowsFlattened.sort((a, b) => b.weight - a.weight);
     const top = ranked[0];
     if (!top) return [];
     // Markup wins when its group holds at least half of the biggest group's content
@@ -394,11 +427,20 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     return stars.length >= 1 && stars.length <= 5 ? stars.length : undefined;
   };
 
+  /** The item's most prominent heading (h2 over h4), the first of its level; a smaller label before it is not the title */
+  const headingOf = (member: Element): Element | null => {
+    for (const level of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
+      const found = Array.from(member.querySelectorAll(level)).find((h) => clean(h.textContent));
+      if (found) return found;
+    }
+    return null;
+  };
   const readItem = (member: Element, titleOverride?: string): RawSiteItem => {
     const titleEl =
       titleOverride !== undefined
         ? null
-        : (member.querySelector(TITLE) ??
+        : (headingOf(member) ??
+          member.querySelector(TITLE) ??
           Array.from(member.querySelectorAll(TITLE_FALLBACK)).find((el) => {
             const text = clean(el.textContent);
             return text.length > 0 && text.length <= 80;
@@ -480,7 +522,26 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     };
   };
 
-  const readBlock = (root: Element, role: RawSiteBlock['role'], index: number | undefined, skip: Element[]): RawSiteBlock => {
+  const closedStyle = (el: Element): boolean => {
+    const style = window.getComputedStyle(el);
+    return style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0;
+  };
+  /** Closed parts of a header or footer (dropdowns, a mobile menu): not shown, so not read and not page text */
+  const closedParts = (root: Element): Element[] => {
+    const closed: Element[] = [];
+    for (const el of Array.from(root.querySelectorAll('*')).slice(0, MAX_SCAN)) {
+      if (!closed.some((c) => c.contains(el)) && closedStyle(el)) closed.push(el);
+    }
+    return closed;
+  };
+  const inClosedPart = (el: Element, root: Element): boolean => {
+    for (let node: Element | null = el; node && node !== root; node = node.parentElement) if (closedStyle(node)) return true;
+    return false;
+  };
+
+  const readBlock = (root: Element, role: RawSiteBlock['role'], index: number | undefined, outside: Element[]): RawSiteBlock => {
+    // Hidden text inside a section is content (collapsed answers, tabs); in the header and footer it is a closed menu
+    const skip = role === 'content' ? outside : [...outside, ...closedParts(root)];
     const groups = role === 'content' ? pickGroups(root, skip) : [];
     const [main, second] = groups;
     const hidden = [...skip, ...groups.flatMap((g) => g.covers)];
@@ -616,7 +677,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const uncaptured: RawTextRun[] = [];
   for (const run of runsOf(document.body, [])) {
     // Hidden text counts inside a section (collapsed answers, tabs, slides), not elsewhere
-    if (roots.some((root) => root.contains(run.el))) {
+    const root = roots.find((r) => r.contains(run.el));
+    if (root && chrome.includes(root) && inClosedPart(run.el, root)) continue;
+    if (root) {
       pageChars += run.text.length;
       continue;
     }
