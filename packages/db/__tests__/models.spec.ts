@@ -23,6 +23,12 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(lead.tags).toEqual([]);
     });
 
+    it('should accept the real_estate niche and reject unknown niches (REV-106)', () => {
+      const base = { businessName: 'Home Realty', originalUrl: 'https://home.example.com', domain: 'home.example.com' };
+      expect(new Lead({ ...base, niche: 'real_estate' }).validateSync()).toBeUndefined();
+      expect(new Lead({ ...base, niche: 'space_exploration' }).validateSync()?.errors['niche']).toBeDefined();
+    });
+
     it('should fail validation when required fields are missing', () => {
       const lead = new Lead({});
       const err = lead.validateSync();

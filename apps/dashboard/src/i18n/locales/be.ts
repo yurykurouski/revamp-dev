@@ -130,6 +130,7 @@ export const be: Translation = {
     beauty: 'Салон прыгажосці',
     restaurant: 'Рэстаран',
     fitness: 'Фітнес',
+    real_estate: 'Нерухомасць',
     other: 'Бізнес',
   },
   nichesPlural: {
@@ -140,6 +141,7 @@ export const be: Translation = {
     beauty: 'Салоны прыгажосці',
     restaurant: 'Рэстараны',
     fitness: 'Фітнес',
+    real_estate: 'Агенцтвы нерухомасці',
     other: 'Іншы бізнес',
   },
   nichesDetailed: {
@@ -149,6 +151,7 @@ export const be: Translation = {
     beauty: 'Салоны прыгажосці і спа',
     restaurant: 'Рэстараны і кейтэрынг',
     fitness: 'Фітнес і спартзалы',
+    real_estate: 'Агенцтвы нерухомасці',
     other: 'Іншы мясцовы бізнес',
   },
   statuses: {

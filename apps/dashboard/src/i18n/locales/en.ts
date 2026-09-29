@@ -131,6 +131,7 @@ export const en = {
     beauty: 'Beauty salon',
     restaurant: 'Restaurant',
     fitness: 'Fitness',
+    real_estate: 'Real estate',
     other: 'Business',
   },
   nichesPlural: {
@@ -141,6 +142,7 @@ export const en = {
     beauty: 'Beauty salons',
     restaurant: 'Restaurants',
     fitness: 'Fitness',
+    real_estate: 'Real estate agencies',
     other: 'Other business',
   },
   nichesDetailed: {
@@ -150,6 +152,7 @@ export const en = {
     beauty: 'Beauty salons & spa',
     restaurant: 'Restaurants & catering',
     fitness: 'Fitness & gyms',
+    real_estate: 'Real estate agencies',
     other: 'Other local business',
   },
   statuses: {

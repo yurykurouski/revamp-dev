@@ -10,7 +10,7 @@
 export const MVP_UI_LANGUAGES = ['en', 'ru', 'be', 'pl', 'lt'] as const;
 export type MvpUiLanguage = (typeof MVP_UI_LANGUAGES)[number];
 
-type Niche = 'dental' | 'auto' | 'legal' | 'beauty' | 'restaurant' | 'fitness' | 'other';
+type Niche = 'dental' | 'auto' | 'legal' | 'beauty' | 'restaurant' | 'fitness' | 'real_estate' | 'other';
 
 export interface MvpStrings {
   // Template chrome
@@ -111,6 +111,7 @@ const en: MvpStrings = {
     beauty: 'Beauty & care',
     restaurant: 'Restaurant',
     fitness: 'Fitness',
+    real_estate: 'Real estate agency',
     other: 'Local business',
   },
   nicheCta: {
@@ -120,6 +121,7 @@ const en: MvpStrings = {
     beauty: 'Book a visit',
     restaurant: 'Reserve a table',
     fitness: 'Start training',
+    real_estate: 'Arrange a viewing',
     other: 'Send a request',
   },
   aboutHeading: (b) => `About ${b}`,
@@ -179,6 +181,7 @@ const ru: MvpStrings = {
     beauty: 'Красота и уход',
     restaurant: 'Ресторан',
     fitness: 'Фитнес',
+    real_estate: 'Агентство недвижимости',
     other: 'Местный бизнес',
   },
   nicheCta: {
@@ -188,6 +191,7 @@ const ru: MvpStrings = {
     beauty: 'Записаться',
     restaurant: 'Забронировать столик',
     fitness: 'Начать тренировки',
+    real_estate: 'Записаться на просмотр',
     other: 'Оставить заявку',
   },
   aboutHeading: (b) => `О компании ${b}`,
@@ -247,6 +251,7 @@ const be: MvpStrings = {
     beauty: 'Прыгажосць і догляд',
     restaurant: 'Рэстаран',
     fitness: 'Фітнес',
+    real_estate: 'Агенцтва нерухомасці',
     other: 'Мясцовы бізнес',
   },
   nicheCta: {
@@ -256,6 +261,7 @@ const be: MvpStrings = {
     beauty: 'Запісацца',
     restaurant: 'Забраніраваць столік',
     fitness: 'Пачаць трэніроўкі',
+    real_estate: 'Запісацца на прагляд',
     other: 'Пакінуць заяўку',
   },
   aboutHeading: (b) => `Пра кампанію ${b}`,
@@ -315,6 +321,7 @@ const pl: MvpStrings = {
     beauty: 'Uroda i pielęgnacja',
     restaurant: 'Restauracja',
     fitness: 'Fitness',
+    real_estate: 'Biuro nieruchomości',
     other: 'Lokalna firma',
   },
   nicheCta: {
@@ -324,6 +331,7 @@ const pl: MvpStrings = {
     beauty: 'Umów wizytę',
     restaurant: 'Zarezerwuj stolik',
     fitness: 'Zacznij trening',
+    real_estate: 'Umów oglądanie',
     other: 'Wyślij zapytanie',
   },
   aboutHeading: (b) => `O firmie ${b}`,
@@ -383,6 +391,7 @@ const lt: MvpStrings = {
     beauty: 'Grožis ir priežiūra',
     restaurant: 'Restoranas',
     fitness: 'Sportas',
+    real_estate: 'Nekilnojamojo turto agentūra',
     other: 'Vietos verslas',
   },
   nicheCta: {
@@ -392,6 +401,7 @@ const lt: MvpStrings = {
     beauty: 'Registruotis vizitui',
     restaurant: 'Rezervuoti staliuką',
     fitness: 'Pradėti treniruotes',
+    real_estate: 'Užsisakyti apžiūrą',
     other: 'Siųsti užklausą',
   },
   aboutHeading: (b) => `Apie ${b}`,

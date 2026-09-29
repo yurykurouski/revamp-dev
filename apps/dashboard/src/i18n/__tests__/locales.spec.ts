@@ -50,6 +50,7 @@ describe('Dashboard translations (REV-24)', () => {
   }
 
   it('labels every selectable niche in each niche list', () => {
+    expect(NICHES).toContain('real_estate');
     for (const niche of NICHES) {
       expect(en.niches[niche]).toBeTruthy();
       expect(en.nichesPlural[niche]).toBeTruthy();

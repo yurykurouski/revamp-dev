@@ -26,6 +26,7 @@ export const GOOGLE_NICHE_QUERIES: Record<NicheType, string> = {
   medical: 'medical clinic',
   restaurant: 'restaurant',
   fitness: 'gym',
+  real_estate: 'real estate agency',
   other: '',
 };
 

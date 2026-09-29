@@ -130,6 +130,7 @@ export const pl: Translation = {
     beauty: 'Salon urody',
     restaurant: 'Restauracja',
     fitness: 'Fitness',
+    real_estate: 'Nieruchomości',
     other: 'Firma',
   },
   nichesPlural: {
@@ -140,6 +141,7 @@ export const pl: Translation = {
     beauty: 'Salony urody',
     restaurant: 'Restauracje',
     fitness: 'Fitness',
+    real_estate: 'Biura nieruchomości',
     other: 'Inne firmy',
   },
   nichesDetailed: {
@@ -149,6 +151,7 @@ export const pl: Translation = {
     beauty: 'Salony urody i spa',
     restaurant: 'Restauracje i catering',
     fitness: 'Fitness i siłownie',
+    real_estate: 'Biura nieruchomości',
     other: 'Inna lokalna firma',
   },
   statuses: {
