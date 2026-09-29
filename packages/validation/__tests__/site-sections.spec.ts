@@ -93,12 +93,10 @@ describe('SiteSectionsSchema (REV-109)', () => {
   });
 
   it('rejects a missing required field', () => {
-    const { arrangement: _arrangement, ...noArrangement } = section;
-    expect(ok({ ...result, sections: [noArrangement] })).toBe(false);
-    const { links: _links, ...noLinks } = item;
-    expect(ok(withSection({ items: [noLinks] }))).toBe(false);
-    const { coverage: _coverage, ...noCoverage } = result;
-    expect(ok(noCoverage)).toBe(false);
+    const without = <T extends object>(value: T, key: keyof T) => Object.fromEntries(Object.entries(value).filter(([k]) => k !== key));
+    expect(ok({ ...result, sections: [without(section, 'arrangement')] })).toBe(false);
+    expect(ok(withSection({ items: [without(item, 'links')] }))).toBe(false);
+    expect(ok(without(result, 'coverage'))).toBe(false);
     expect(ok({ ...result, typography: undefined })).toBe(true);
   });
 });
