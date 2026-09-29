@@ -440,6 +440,11 @@ export const lt: Translation = {
     a11yIssues: 'Prieinamumo problemos',
     violations: 'Pažeidimų: {{count}}',
     mobileFriendliness: 'Pritaikymas mobiliesiems',
+    metricHint: {
+      lcp: 'Laikas, per kurį telefone (375px) atvaizduojamas didžiausias pirmojo ekrano elementas. Gerai: iki 2,5 s.',
+      a11y: 'WCAG 2.1 A/AA taisyklės, kurias pažeidžia puslapis, rastos axe-core mobiliojoje versijoje. Skaičiuojamos taisyklės, ne elementai; geriausia 0.',
+      mobile: 'Vision modelio mobiliosios versijos įvertinimas pagal ekrano nuotraukas: skaitomumas ir matomas raginimas veikti. Kuo daugiau, tuo geriau.',
+    },
     measurementErrors: 'Neišmatuota. Bendras įvertinimas apima tik išmatuotas dalis:',
     measurement: {
       performance: 'Našumas (LCP, CLS)',
