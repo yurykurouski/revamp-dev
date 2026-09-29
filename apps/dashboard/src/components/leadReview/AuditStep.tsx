@@ -58,7 +58,7 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color }) => (
  * Step 1 of a lead review (REV-77): the original site's full-page screenshot next to (or, below `xl`, above) the audit — the
  * measured metrics (a value the audit did not measure shows as missing, REV-45, and a failed measurement
  * is listed with its reason, REV-100), the MVP data check,
- * the critical flaws and the quick wins.
+ * the critical flaws and the quick wins, marked as a template when the Vision model gave no critique (REV-101).
  */
 export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, error }) => {
   const { t } = useTranslation();
@@ -225,6 +225,12 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
             <ErrorOutlineIcon sx={{ color: 'error.main', fontSize: 18 }} />
             {t('inspector.criticalFlaws')}
           </Typography>
+          {/* The worker's template stands in when the Vision model gave no critique (REV-101) */}
+          {audit?.designCritiqueFallback && (
+            <Alert severity="info" data-testid="critique-fallback" sx={{ mb: 1.5, py: 0 }}>
+              <Typography variant="caption">{t('inspector.critiqueFallback')}</Typography>
+            </Alert>
+          )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
             {audit?.criticalFlaws.map((flaw, idx) => (
               <Card

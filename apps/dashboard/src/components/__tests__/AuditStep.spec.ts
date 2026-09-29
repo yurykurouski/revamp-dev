@@ -22,6 +22,7 @@ const audit: IAuditDetail = {
   quickWins: ['Compress the hero image'],
   colorPalette: { primary: '#123456' },
   measurementErrors: [],
+  designCritiqueFallback: false,
 };
 
 const theme = getTheme('dark', 'en');
@@ -134,9 +135,28 @@ describe('AuditStep measurement errors (REV-100)', () => {
     expect(container.textContent).toContain(NOT_MEASURED);
   });
 
+  it('marks a templated design critique and lists it as not measured (REV-101)', () => {
+    render({
+      ...audit,
+      mobileFriendlinessRating: undefined,
+      designCritiqueFallback: true,
+      measurementErrors: [{ measurement: 'design', message: 'The Vision model (anthropic) gave no valid critique in 3 attempts' }],
+    });
+
+    expect(container.querySelector('[data-testid="critique-fallback"]')!.textContent).toContain(
+      "Template, not the Vision model's critique",
+    );
+    const items = [...container.querySelectorAll('[data-testid="measurement-errors"] li')].map((li) => li.textContent);
+    expect(items).toEqual(['Design critique (Vision model): The Vision model (anthropic) gave no valid critique in 3 attempts']);
+    // The template's flaws stay readable; its rating is not shown as a number
+    expect(container.textContent).toContain('No call to action above the fold');
+    expect(container.textContent).not.toContain('/100');
+  });
+
   it('shows no warning when every measurement was taken', () => {
     render(audit);
 
+    expect(container.querySelector('[data-testid="critique-fallback"]')).toBeNull();
     expect(container.querySelector('[data-testid="measurement-errors"]')).toBeNull();
     expect(container.textContent).toContain('4.8s');
   });

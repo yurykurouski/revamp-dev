@@ -60,8 +60,24 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(err).toBeUndefined();
       expect(audit.status).toBe('QUEUED');
       expect(audit.scores.total).toBe(0);
-      expect(audit.scores.design).toBe(0);
+      // An unscored pillar stays absent, the design one included (REV-100, REV-101)
+      expect(audit.scores.design).toBeUndefined();
+      expect(audit.scores.performance).toBeUndefined();
       expect(audit.extractedBrandTokens.primaryColor).toBe('#000000');
+    });
+
+    it("accepts a 'design' measurement error for a templated critique (REV-101)", () => {
+      const audit = new Audit({
+        leadId: new mongoose.Types.ObjectId(),
+        measurementErrors: [{ measurement: 'design', message: 'The Vision model gave no valid critique' }],
+      });
+      const unknown = new Audit({
+        leadId: new mongoose.Types.ObjectId(),
+        measurementErrors: [{ measurement: 'layout', message: 'x' }],
+      });
+
+      expect(audit.validateSync()).toBeUndefined();
+      expect(unknown.validateSync()).toBeDefined();
     });
 
     it('should fail validation if leadId is missing', () => {

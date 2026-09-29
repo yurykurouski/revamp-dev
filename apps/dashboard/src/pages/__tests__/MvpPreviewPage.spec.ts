@@ -37,6 +37,7 @@ const audit: IAuditDetail = {
   quickWins: [],
   colorPalette: { primary: '#123456' },
   measurementErrors: [],
+  designCritiqueFallback: false,
 };
 
 const mvp: IMvpProjectDetail = {

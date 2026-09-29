@@ -517,6 +517,8 @@ export interface IAuditDetail {
   originalServiceCount?: number;
   /** Measurements the audit could not take; their values are undefined and the total is partial (REV-100) */
   measurementErrors: Serialized<IMeasurementError>[];
+  /** The design critique is the worker's template, not the Vision model's; its ratings are undefined (REV-101) */
+  designCritiqueFallback: boolean;
 }
 
 /**
@@ -526,26 +528,32 @@ export interface IAuditDetail {
 export type IServerAudit = Pick<Serialized<IAudit>, 'leadId'> & Partial<Serialized<IAudit>>;
 
 /** Maps an audit from the API, keeping unmeasured values undefined */
-export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail => ({
-  id: a._id || auditId,
-  leadId: a.leadId,
-  desktopScreenshotUrl: a.screenshotUrls?.desktopOriginal || undefined,
-  mobileScreenshotUrl: a.screenshotUrls?.mobileOriginal || undefined,
-  desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
-  mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
-  // lighthouseMetrics.lcp is in milliseconds
-  lcpSeconds: a.lighthouseMetrics?.lcp != null ? a.lighthouseMetrics.lcp / 1000 : undefined,
-  a11yScore: a.scores?.accessibility ?? undefined,
-  a11yViolationsCount: a.a11ySummary?.violationsCount ?? undefined,
-  visualHierarchyRating: a.designCritique?.visualHierarchyRating ?? undefined,
-  mobileFriendlinessRating: a.designCritique?.mobileFriendlinessRating ?? undefined,
-  criticalFlaws: a.designCritique?.criticalFlaws ?? [],
-  quickWins: a.designCritique?.quickWins ?? [],
-  colorPalette: {
-    primary: a.extractedBrandTokens?.primaryColor || undefined,
-    secondary: a.extractedBrandTokens?.secondaryColor || undefined,
-    accent: a.extractedBrandTokens?.accentColor || undefined,
-  },
-  originalServiceCount: a.extractedServices?.length ?? a.extractedContent?.serviceItems?.length ?? undefined,
-  measurementErrors: a.measurementErrors ?? [],
-});
+export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail => {
+  const measurementErrors = a.measurementErrors ?? [];
+  // A templated critique carries made-up ratings; only its flaws and quick wins are shown (REV-101)
+  const designCritiqueFallback = measurementErrors.some((failure) => failure.measurement === 'design');
+  return {
+    id: a._id || auditId,
+    leadId: a.leadId,
+    desktopScreenshotUrl: a.screenshotUrls?.desktopOriginal || undefined,
+    mobileScreenshotUrl: a.screenshotUrls?.mobileOriginal || undefined,
+    desktopFullScreenshotUrl: a.screenshotUrls?.desktopFull || undefined,
+    mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
+    // lighthouseMetrics.lcp is in milliseconds
+    lcpSeconds: a.lighthouseMetrics?.lcp != null ? a.lighthouseMetrics.lcp / 1000 : undefined,
+    a11yScore: a.scores?.accessibility ?? undefined,
+    a11yViolationsCount: a.a11ySummary?.violationsCount ?? undefined,
+    visualHierarchyRating: designCritiqueFallback ? undefined : (a.designCritique?.visualHierarchyRating ?? undefined),
+    mobileFriendlinessRating: designCritiqueFallback ? undefined : (a.designCritique?.mobileFriendlinessRating ?? undefined),
+    criticalFlaws: a.designCritique?.criticalFlaws ?? [],
+    quickWins: a.designCritique?.quickWins ?? [],
+    colorPalette: {
+      primary: a.extractedBrandTokens?.primaryColor || undefined,
+      secondary: a.extractedBrandTokens?.secondaryColor || undefined,
+      accent: a.extractedBrandTokens?.accentColor || undefined,
+    },
+    originalServiceCount: a.extractedServices?.length ?? a.extractedContent?.serviceItems?.length ?? undefined,
+    measurementErrors,
+    designCritiqueFallback,
+  };
+};

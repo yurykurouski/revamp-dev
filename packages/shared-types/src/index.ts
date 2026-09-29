@@ -139,14 +139,18 @@ export interface ILead {
  */
 export interface IAuditScores {
   total: number;
-  design: number;
+  /** Absent when the design critique is the templated fallback, not the Vision model's (REV-101) */
+  design?: number;
   accessibility?: number;
   performance?: number;
   standards?: number;
 }
 
-/** Deterministic audit measurements that can fail on their own without failing the audit (REV-100) */
-export const AUDIT_MEASUREMENTS = ['performance', 'accessibility', 'standards'] as const;
+/**
+ * Audit measurements that can fail on their own without failing the audit (REV-100). `design` is the
+ * Vision model's critique: when it fails, the critique is a template and its ratings are not scored (REV-101)
+ */
+export const AUDIT_MEASUREMENTS = ['performance', 'accessibility', 'standards', 'design'] as const;
 export type AuditMeasurement = (typeof AUDIT_MEASUREMENTS)[number];
 
 /** A measurement the audit could not take, and why; its values are left out of the audit */

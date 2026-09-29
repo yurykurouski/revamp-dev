@@ -38,6 +38,7 @@ const audit: IAuditDetail = {
   quickWins: [],
   colorPalette: { primary: '#123456' },
   measurementErrors: [],
+  designCritiqueFallback: false,
 };
 
 const mvpWith = (variant: MvpLayoutVariant | undefined, reasons = ['rule:default']): IMvpProjectDetail => ({
