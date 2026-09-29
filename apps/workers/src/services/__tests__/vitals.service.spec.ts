@@ -43,7 +43,6 @@ describe('VitalsService', () => {
       evaluate: vi.fn().mockResolvedValue({
         lcpMs: 2400,
         shifts: [shift(100, 0.03), shift(300, 0.01)],
-        loadEventEndMs: 2200,
         hasViewport: true,
         hasTitle: true,
       }),
@@ -52,9 +51,8 @@ describe('VitalsService', () => {
     const result = await service.collectVitals(mockPage, 'https://example-secure.com');
 
     expect(result.lcpSeconds).toBe(2.4);
-    expect(result.lighthouseMetrics.lcp).toBe(2400);
-    expect(result.lighthouseMetrics.cls).toBe(0.04);
-    expect(result.lighthouseMetrics.speedIndex).toBe(2200);
+    // Only the vitals the page measured; no Speed Index or INP estimated from them (REV-105)
+    expect(result.lighthouseMetrics).toEqual({ lcp: 2400, cls: 0.04 });
     expect(result.standards.hasSsl).toBe(true);
     expect(result.standards.hasViewport).toBe(true);
     expect(result.performanceScore).toBeGreaterThanOrEqual(80);
@@ -68,7 +66,6 @@ describe('VitalsService', () => {
       evaluate: vi.fn().mockResolvedValue({
         lcpMs: null,
         shifts: [shift(100, 0.02)],
-        loadEventEndMs: 300,
         hasViewport: true,
         hasTitle: false,
       }),
@@ -76,7 +73,7 @@ describe('VitalsService', () => {
 
     const result = await service.collectVitals(mockPage, 'https://example-secure.com');
 
-    // No other timing (here the 300 ms load) stands in for the missing LCP
+    // No other timing stands in for the missing LCP, and nothing is derived from it
     expect(result.lcpSeconds).toBeUndefined();
     expect(result.performanceScore).toBeUndefined();
     expect(result.lighthouseMetrics).toEqual({ cls: 0.02 });
@@ -172,6 +169,7 @@ describe.skipIf(!browser)('VitalsService (real Chromium)', () => {
 
     expect(result.lighthouseMetrics.lcp).toBeGreaterThan(0);
     expect(result.lighthouseMetrics.cls).toBeGreaterThan(0);
+    expect(Object.keys(result.lighthouseMetrics).sort()).toEqual(['cls', 'lcp']);
     expect(result.performanceScore).toBeGreaterThan(0);
     expect(result.standards).toEqual({ hasSsl: true, hasViewport: true, hasTitle: true });
     expect(result.errors).toEqual([]);

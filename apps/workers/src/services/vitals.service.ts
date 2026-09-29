@@ -32,7 +32,6 @@ export interface RawLayoutShift {
 interface RawVitals {
   lcpMs: number | null;
   shifts: RawLayoutShift[];
-  loadEventEndMs: number;
   hasViewport: boolean;
   hasTitle: boolean;
 }
@@ -152,14 +151,10 @@ export class VitalsService {
               lcpObserver.disconnect();
               clsObserver.disconnect();
 
-              const navEntries = performance.getEntriesByType('navigation');
-              const nav = navEntries[0] as PerformanceNavigationTiming | undefined;
-
               const viewportMeta = document.querySelector('meta[name="viewport"]');
               resolve({
                 lcpMs,
                 shifts,
-                loadEventEndMs: nav ? nav.loadEventEnd || nav.duration || 0 : 0,
                 hasViewport: !!viewportMeta && !!viewportMeta.getAttribute('content'),
                 hasTitle: !!document.title && document.title.trim().length > 0,
               });
@@ -188,11 +183,7 @@ export class VitalsService {
       const lcpMs = evaluation.lcpMs;
       const lcpSeconds = Math.round((lcpMs / 1000) * 100) / 100;
       result.lcpSeconds = lcpSeconds;
-      result.lighthouseMetrics = {
-        lcp: Math.round(lcpMs),
-        cls,
-        speedIndex: Math.round(evaluation.loadEventEndMs || lcpMs * 1.1),
-      };
+      result.lighthouseMetrics = { lcp: Math.round(lcpMs), cls };
       result.performanceScore = VitalsService.calculatePerformanceScore(lcpSeconds, cls);
       return result;
     } catch (err) {

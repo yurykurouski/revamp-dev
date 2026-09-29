@@ -20,7 +20,7 @@ vi.mock('../vitals.service.js', () => ({
   vitalsService: {
     collectVitals: vi.fn().mockResolvedValue({
       lcpSeconds: 1.8,
-      lighthouseMetrics: { lcp: 1800, cls: 0.02, speedIndex: 1700 },
+      lighthouseMetrics: { lcp: 1800, cls: 0.02 },
       standards: { hasSsl: true, hasViewport: true, hasTitle: true },
       performanceScore: 95,
       standardsScore: 100,

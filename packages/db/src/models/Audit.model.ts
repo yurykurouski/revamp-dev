@@ -68,9 +68,7 @@ const AuditSchema = new Schema<IAuditDocument>(
     },
     lighthouseMetrics: {
       lcp: { type: Number },
-      fidOrInp: { type: Number },
       cls: { type: Number },
-      speedIndex: { type: Number },
     },
     // No count defaults: an audit whose scan did not run has no violation counts (REV-100)
     a11ySummary: {
