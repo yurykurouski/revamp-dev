@@ -112,6 +112,10 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const CONTENT = 'h1, h2, h3, h4, h5, h6, p, img, video, li, a, button, blockquote, iframe, figure, input, textarea';
   const MAP_SRC = /google\.[a-z.]+\/maps|maps\.google|openstreetmap|mapy\.|yandex\.[a-z]+\/(map-widget|maps)/i;
   const VIDEO_SRC = /youtube\.com|youtu\.be|youtube-nocookie|vimeo\.com|wistia/i;
+  const MAX_SCAN = 1500;
+  const SLIDER =
+    '.swiper, .swiper-container, .slick-slider, .owl-carousel, .carousel, .splide, .flickity-enabled, .glide, rs-module, .rev_slider, [class*="slider" i], [class*="slideshow" i]';
+  const PRICE = /(?:(?:od|from|от|ад|nuo|ab)\s+)?\d[\d\s.,]*\s?(?:zł|pln|€|eur|\$|usd|₽|руб|byn|br\b|£|gbp|kč|czk)/i;
 
   const clean = (value: string | null | undefined): string => (value || '').replace(/­/g, '').replace(/\s+/g, ' ').trim();
   const classOf = (el: Element): string => (typeof el.className === 'string' ? el.className : el.getAttribute('class') || '');
@@ -239,6 +243,13 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       .find((value) => value !== undefined);
     if (!src) return undefined;
     const box = boxOf(img);
+    // A lazy image not loaded yet is drawn at its placeholder's size; its width and height attributes give the real one
+    const width = Number(img.getAttribute('width'));
+    const height = Number(img.getAttribute('height'));
+    if (img.naturalWidth === 0 && width > 0 && height > 0) {
+      box.width = width;
+      box.height = height;
+    }
     const parent = img.parentElement;
     const parentRadius = parent && window.getComputedStyle(parent).overflow === 'hidden' ? radiusOf(parent, boxOf(parent).width) : 0;
     return { src, alt: clean(img.getAttribute('alt')), box, radius: Math.round(Math.max(radiusOf(img, box.width), parentRadius)) };
@@ -284,15 +295,190 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     return undefined;
   };
 
-  // Item groups: filled in by Task 8
+  // Item groups: the largest group of repeated siblings, or one markup names outright
   type Found = { members: Element[]; covers: Element[]; markup?: RawGroupMarkup; weight: number; titles?: string[] };
-  const pickGroups = (_root: Element, _skip: Element[]): Found[] => [];
-  const readItem = (member: Element): RawSiteItem => ({ text: runsOf(member, []).map((r) => r.text), links: [], icon: false, box: boxOf(member) });
+  // Plain text elements are never items on their own; a list of paragraphs is text
+  const TEXT_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'SPAN', 'STRONG', 'EM', 'B', 'I', 'A', 'BUTTON', 'LABEL', 'BR', 'SMALL', 'SUMMARY']);
+  const ITEM_TAGS = new Set(['LI', 'DETAILS', 'ARTICLE', 'TR', 'FIGURE']);
+  const hasImage = (el: Element) => el.tagName === 'IMG' || el.querySelector('img') !== null;
+  const signature = (el: Element): string => {
+    const tags = (list: Element[]) => Array.from(new Set(list.map((node) => node.tagName))).sort().join(',');
+    const children = Array.from(el.children);
+    return `${el.tagName}(${tags(children)}|${tags(children.flatMap((child) => Array.from(child.children)))})`;
+  };
+  const profile = (el: Element) => `${hasImage(el) ? 'i' : ''}${clean(el.textContent) ? 't' : ''}`;
+  // An item holds more than one line of text, an image, a price, or is a list entry
+  const composite = (el: Element) => ITEM_TAGS.has(el.tagName) || hasImage(el) || runsOf(el, []).length >= 2 || PRICE.test(clean(el.textContent));
+  const markupOf = (parent: Element, members: Element[]): RawGroupMarkup | undefined => {
+    if (
+      members.every((m) => m.matches('details') || m.querySelector('details, [aria-expanded]') !== null) ||
+      /accordion|toggle|faq/i.test(`${classOf(parent)} ${classOf(members[0]!)}`)
+    ) {
+      return 'accordion';
+    }
+    if (parent.closest(SLIDER)) return 'slider';
+    if (members.every((m) => /schema\.org\/Person/i.test(m.getAttribute('itemtype') || ''))) return 'person';
+    if (members.every((m) => /schema\.org\/Review/i.test(m.getAttribute('itemtype') || ''))) return 'review';
+    return undefined;
+  };
+
+  const pickGroups = (root: Element, skip: Element[]): Found[] => {
+    const found: Found[] = [];
+    const taken = (el: Element) => skip.some((s) => s.contains(el) || el.contains(s));
+
+    // Tabs: each tab with the panel it controls, hidden panels included
+    for (const list of Array.from(root.querySelectorAll('[role="tablist"]'))) {
+      const tabs = Array.from(list.querySelectorAll('[role="tab"]')).filter((tab) => !taken(tab));
+      const panels = tabs.map((tab) => document.getElementById(tab.getAttribute('aria-controls') || ''));
+      if (tabs.length < 2 || panels.some((panel) => !panel || !root.contains(panel))) continue;
+      found.push({
+        members: panels as Element[],
+        covers: [list, ...(panels as Element[])],
+        markup: 'tabs',
+        titles: tabs.map((tab) => clean(tab.textContent)),
+        weight: (panels as Element[]).reduce((sum, panel) => sum + clean(panel.textContent).length, 0),
+      });
+    }
+
+    const parents = [root, ...Array.from(root.querySelectorAll('*')).slice(0, MAX_SCAN)];
+    for (const parent of parents) {
+      if (parent.children.length < 2 || excluded(parent) || TEXT_TAGS.has(parent.tagName) || parent.matches('[role="tablist"]')) continue;
+      const bySignature = new Map<string, Element[]>();
+      for (const child of Array.from(parent.children)) {
+        if (excluded(child) || TEXT_TAGS.has(child.tagName) || taken(child)) continue;
+        if (!clean(child.textContent) && !hasImage(child)) continue;
+        const key = signature(child);
+        const list = bySignature.get(key);
+        if (list) list.push(child);
+        else bySignature.set(key, [child]);
+      }
+      for (const members of Array.from(bySignature.values())) {
+        if (members.length < 2) continue;
+        // Most members must hold the same kinds of content: a text column beside a photo column is not a pair of cards
+        const counts = new Map<string, number>();
+        for (const m of members) counts.set(profile(m), (counts.get(profile(m)) ?? 0) + 1);
+        if (Math.max(...Array.from(counts.values())) < members.length * 0.75) continue;
+        const markup = markupOf(parent, members);
+        if (!markup && members.filter(composite).length < members.length * 0.75) continue;
+        const weight = members.reduce((sum, m) => sum + clean(m.textContent).length + (hasImage(m) ? 50 : 0), 0);
+        found.push({ members, covers: members, ...(markup ? { markup } : {}), weight });
+      }
+    }
+
+    const ranked = found.sort((a, b) => b.weight - a.weight);
+    const top = ranked[0];
+    if (!top) return [];
+    // Markup wins when its group holds at least half of the biggest group's content
+    const main = ranked.find((g) => g.markup && g.weight >= top.weight / 2) ?? top;
+    const apart = (a: Found, b: Found) => !a.covers.some((x) => b.covers.some((y) => x.contains(y) || y.contains(x)));
+    const second = ranked.find((g) => g !== main && apart(g, main) && g.weight >= 40);
+    return second ? [main, second] : [main];
+  };
+
+  const TITLE = 'h1, h2, h3, h4, h5, h6, summary, [aria-expanded], dt';
+  const TITLE_FALLBACK = 'strong, b, [class*="title" i], [class*="name" i], [class*="author" i]';
+  const ratingOf = (el: Element): number | undefined => {
+    const labels = [el, ...Array.from(el.querySelectorAll('[aria-label], [title]'))]
+      .map((node) => `${node.getAttribute('aria-label') || ''} ${node.getAttribute('title') || ''}`)
+      .join(' ');
+    const scored = `${labels} ${clean(el.textContent)}`.match(/(?<![\d/.,])(\d(?:[.,]\d+)?)\s*(?:\/|na|z|из|of)\s*(5|10)(?![\d/])/i);
+    if (scored) {
+      const value = parseFloat((scored[1] ?? '').replace(',', '.'));
+      return scored[2] === '10' ? value / 2 : value;
+    }
+    const glyphs = (clean(el.textContent).match(/★/g) || []).length;
+    if (glyphs >= 1 && glyphs <= 5) return glyphs;
+    const stars = Array.from(el.querySelectorAll('[class*="star" i]')).filter(
+      (node) => node.querySelector('[class*="star" i]') === null && !/empty|half|outline|-o\b/i.test(classOf(node)),
+    );
+    return stars.length >= 1 && stars.length <= 5 ? stars.length : undefined;
+  };
+
+  const readItem = (member: Element, titleOverride?: string): RawSiteItem => {
+    const titleEl =
+      titleOverride !== undefined
+        ? null
+        : (member.querySelector(TITLE) ??
+          Array.from(member.querySelectorAll(TITLE_FALLBACK)).find((el) => {
+            const text = clean(el.textContent);
+            return text.length > 0 && text.length <= 80;
+          }) ??
+          null);
+    const title = titleOverride ?? (titleEl ? clean(titleEl.textContent) : undefined);
+
+    // A short line right next to the title: a role under a name, a date over a review
+    let subtitleEl: Element | undefined;
+    if (titleEl && !member.matches('details') && !titleEl.matches('summary, [aria-expanded]')) {
+      let anchor: Element = titleEl;
+      while (anchor.parentElement && anchor.parentElement !== member && !anchor.nextElementSibling && !anchor.previousElementSibling) {
+        anchor = anchor.parentElement;
+      }
+      subtitleEl = [anchor.nextElementSibling, anchor.previousElementSibling].find((el): el is Element => {
+        if (!el || el.querySelector('img, h1, h2, h3, h4, h5, h6')) return false;
+        const text = clean(el.textContent);
+        return text.length > 0 && text.length <= 60 && !PRICE.test(text);
+      });
+    }
+
+    const { links, standalone } = linksIn(member, []);
+    const skip = [...(titleEl ? [titleEl] : []), ...(subtitleEl ? [subtitleEl] : []), ...standalone];
+    let text = runsOf(member, skip).map((run) => run.text);
+    const images = Array.from(member.querySelectorAll('img'))
+      .map(imageOf)
+      .filter((image): image is RawSiteImage => image !== undefined)
+      .sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height);
+    const image = images[0];
+    let subtitle = subtitleEl ? clean(subtitleEl.textContent) : undefined;
+    // With nothing else under the title, the short line is the item's text, not its subtitle
+    if (subtitle && text.length === 0 && !image) {
+      text = [subtitle];
+      subtitle = undefined;
+    }
+    const price = clean(member.textContent).match(PRICE)?.[0]?.trim();
+    const rating = ratingOf(member);
+    const icon =
+      member.querySelector('svg, i[class*="icon" i], i[class*="fa-" i], [class*="icon" i]') !== null ||
+      (image !== undefined && image.box.width > 0 && image.box.width <= 96);
+    return {
+      ...(title ? { title } : {}),
+      ...(subtitle ? { subtitle } : {}),
+      text,
+      ...(image ? { image } : {}),
+      ...(price ? { price } : {}),
+      ...(rating !== undefined ? { rating } : {}),
+      links,
+      icon,
+      box: boxOf(member),
+    };
+  };
+
   const readGroup = (found: Found): RawItemGroup => ({
     ...(found.markup ? { markup: found.markup } : {}),
-    items: found.members.slice(0, MAX_ITEMS).map((member) => readItem(member)),
+    items: found.members.slice(0, MAX_ITEMS).map((member, i) => readItem(member, found.titles?.[i])),
   });
-  const cardStyle = (_member: Element): RawSiteBlock['itemStyle'] => undefined;
+
+  // The element that paints the card: the member or a descendant nearly as big with a background, border or shadow
+  const cardStyle = (member: Element): RawSiteBlock['itemStyle'] => {
+    const areaOf = (el: Element) => {
+      const r = el.getBoundingClientRect();
+      return r.width * r.height;
+    };
+    const memberArea = areaOf(member);
+    const card =
+      [member, ...Array.from(member.querySelectorAll('*')).slice(0, 50)].find((el) => {
+        if (areaOf(el) < memberArea * 0.8) return false;
+        const s = window.getComputedStyle(el);
+        return OPAQUE(s.backgroundColor) || (s.borderTopStyle !== 'none' && parseFloat(s.borderTopWidth) >= 1) || s.boxShadow !== 'none';
+      }) ?? member;
+    const s = window.getComputedStyle(card);
+    return {
+      background: OPAQUE(s.backgroundColor) ? s.backgroundColor : '',
+      radius: radiusOf(card, boxOf(card).width),
+      borderWidth: s.borderTopStyle === 'none' ? 0 : parseFloat(s.borderTopWidth) || 0,
+      boxShadow: s.boxShadow,
+      textAlign: s.textAlign,
+    };
+  };
 
   const readBlock = (root: Element, role: RawSiteBlock['role'], index: number | undefined, skip: Element[]): RawSiteBlock => {
     const groups = role === 'content' ? pickGroups(root, skip) : [];

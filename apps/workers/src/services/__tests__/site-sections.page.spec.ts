@@ -131,4 +131,152 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(hero.intro.heading).toBe('Gabinet Falco-Dent');
     expectCovered(result);
   });
+
+  it('reads an Elementor-style card grid in nested wrappers', async () => {
+    const card = (name: string, i: number) => `
+      <div class="elementor-column elementor-element elementor-element-a${i}f3" style="flex:1"><div class="elementor-widget-wrap">
+        <div class="elementor-widget elementor-widget-image-box"><div class="elementor-widget-container" style="background:#fff;border-radius:12px;box-shadow:0 2px 8px rgba(0,0,0,.1);padding:16px">
+          <img src="https://img.test/s${i}.png" alt="${name}" width="300" height="200" style="display:block;width:100%;height:auto">
+          <h3>${name}</h3><p>Pełna diagnostyka, plan leczenia i opieka po zabiegu ${name.toLowerCase()} w naszym gabinecie.</p><p>od ${150 + i * 50} zł</p>
+        </div></div>
+      </div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section class="elementor-section elementor-element-3f2a1b" style="background:#f5f7fa">
+        <div class="elementor-container"><div class="elementor-column"><div class="elementor-widget-wrap"><div class="elementor-widget"><div class="elementor-widget-container"><h2>Nasze usługi</h2></div></div></div></div></div>
+        <div class="elementor-container" style="display:flex;gap:24px">${['Implanty', 'Ortodoncja', 'Wybielanie'].map(card).join('')}</div>
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasze usługi')!;
+    expect(s.kind).toBe('services');
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.columns).toBe(3);
+    expect(s.items.map((i) => [i.title, i.price])).toEqual([['Implanty', 'od 150 zł'], ['Ortodoncja', 'od 200 zł'], ['Wybielanie', 'od 250 zł']]);
+    expect(s.items[0]!.text).toEqual(['Pełna diagnostyka, plan leczenia i opieka po zabiegu implanty w naszym gabinecie.']);
+    expect(s.items[0]!.image!.src).toBe('https://img.test/s0.png');
+    expect(s.itemStyle).toMatchObject({ background: '#ffffff', radius: 12, shadow: true });
+    expect(s.style.background).toBe('#f5f7fa');
+    expectCovered(result);
+  });
+
+  it('reads a Divi-style team with round portraits', async () => {
+    const people = [
+      ['dr Anna Nowak', 'Ortodonta'], ['dr Jan Kowalski', 'Chirurg stomatolog'], ['lek. Ewa Wiśniewska', 'Endodonta'],
+      ['dr Piotr Zieliński', 'Implantolog'], ['Maria Lewandowska', 'Higienistka'], ['Karolina Wójcik', 'Asystentka'],
+    ];
+    const member = ([name, role]: string[], i: number) => `
+      <div class="et_pb_column et_pb_column_1_3" style="width:30%;text-align:center"><div class="et_pb_module et_pb_team_member et_pb_team_member_${i}">
+        <div class="et_pb_team_member_image" style="border-radius:50%;overflow:hidden;width:160px;height:160px;margin:0 auto"><img src="https://img.test/p${i}.jpg" alt="${name}" width="160" height="160" style="display:block"></div>
+        <div class="et_pb_team_member_description"><h4 class="et_pb_module_header">${name}</h4><p class="et_pb_member_position">${role}</p>
+          <div><p>Absolwentka Uniwersytetu Jagiellońskiego, pracuje z pacjentami od lat.</p></div></div>
+      </div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <div class="et_pb_section et_pb_section_3" style="padding:60px 40px">
+        <div class="et_pb_row"><div class="et_pb_column"><div class="et_pb_text"><div class="et_pb_text_inner"><h2>Poznaj nas</h2></div></div></div></div>
+        <div class="et_pb_row" style="display:flex;flex-wrap:wrap;gap:20px">${people.map(member).join('')}</div>
+      </div>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Poznaj nas')!;
+    expect(s.kind).toBe('team');
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.columns).toBe(3);
+    expect(s.items).toHaveLength(6);
+    expect(s.items[0]).toMatchObject({ title: 'dr Anna Nowak', subtitle: 'Ortodonta', text: ['Absolwentka Uniwersytetu Jagiellońskiego, pracuje z pacjentami od lat.'] });
+    expect(s.items[0]!.image!.src).toBe('https://img.test/p0.jpg');
+    expect(s.itemStyle!.imageShape).toBe('round');
+    expect(s.itemStyle!.align).toBe('center');
+    expectCovered(result);
+  });
+
+  it('reads an FAQ accordion with collapsed answers', async () => {
+    const qa = [
+      ['Czy leczenie kanałowe boli?', 'Zabieg wykonujemy w znieczuleniu, więc jest bezbolesny.'],
+      ['Ile trwa wizyta kontrolna?', 'Około trzydziestu minut, razem z przeglądem.'],
+      ['Czy przyjmujecie dzieci?', 'Tak, od trzeciego roku życia.'],
+    ];
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section id="faq"><h2>Najczęściej zadawane pytania</h2><div class="accordion">
+        ${qa.map(([q, a]) => `<div class="accordion-item"><button class="accordion-button" aria-expanded="false">${q}</button><div class="accordion-body" style="display:none"><p>${a}</p></div></div>`).join('')}
+      </div></section>`));
+    const s = result.sections.find((x) => x.kind === 'faq')!;
+    expect(s.arrangement).toBe('accordion');
+    expect(s.items.map((i) => [i.title, i.text])).toEqual(qa.map(([q, a]) => [q, [a]]));
+    expectCovered(result);
+  });
+
+  it('reads a details-based accordion too', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Pytania</h2>
+        <details><summary>Czy są raty?</summary><p>Tak, raty 0% do dwunastu miesięcy.</p></details>
+        <details><summary>Czy jest parking?</summary><p>Tak, bezpłatny, przy wejściu.</p></details>
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Pytania')!;
+    expect(s.arrangement).toBe('accordion');
+    expect(s.items.map((i) => i.title)).toEqual(['Czy są raty?', 'Czy jest parking?']);
+  });
+
+  it('reads a swiper slider without its cloned slides', async () => {
+    const slide = (quote: string, name: string, cls = 'swiper-slide') => `
+      <div class="${cls}" style="width:400px;flex-shrink:0"><div class="stars" aria-label="Ocena 5/5"><span class="star"></span><span class="star"></span><span class="star"></span><span class="star"></span><span class="star"></span></div>
+      <blockquote>${quote}</blockquote><p class="author">${name}</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="overflow:hidden"><h2>Opinie pacjentów</h2><div class="swiper"><div class="swiper-wrapper" style="display:flex">
+        ${slide('Klon slajdu, nie opinia.', 'Klon', 'swiper-slide swiper-slide-duplicate')}
+        ${slide('Bezbolesne leczenie i miła obsługa.', 'Anna K.')}${slide('Polecam każdemu, świetni lekarze.', 'Tomasz W.')}${slide('Szybka wizyta, bez kolejek.', 'Ewa M.')}
+        ${slide('Klon slajdu, nie opinia.', 'Klon', 'swiper-slide swiper-slide-duplicate')}
+      </div></div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Opinie pacjentów')!;
+    expect(s.kind).toBe('reviews');
+    expect(s.arrangement).toBe('slider');
+    expect(s.items.map((i) => [i.title, i.text, i.rating])).toEqual([
+      ['Anna K.', ['Bezbolesne leczenie i miła obsługa.'], 5],
+      ['Tomasz W.', ['Polecam każdemu, świetni lekarze.'], 5],
+      ['Ewa M.', ['Szybka wizyta, bez kolejek.'], 5],
+    ]);
+    expect(JSON.stringify(result)).not.toContain('Klon');
+    expectCovered(result);
+  });
+
+  it('reads a "why us" icon list as features', async () => {
+    const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Co nas wyróżnia</h2><ul style="display:grid;grid-template-columns:repeat(2,1fr);list-style:none;padding:0">
+        ${point('Doświadczenie', 'Ponad 20 lat praktyki.')}${point('Nowoczesny sprzęt', 'Mikroskop i tomograf na miejscu.')}
+        ${point('Raty 0%', 'Leczenie na wygodne raty.')}${point('Bez bólu', 'Znieczulenie komputerowe.')}
+      </ul></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Co nas wyróżnia')!;
+    expect(s.kind).toBe('features');
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.columns).toBe(2);
+    expect(s.items.map((i) => i.title)).toEqual(['Doświadczenie', 'Nowoczesny sprzęt', 'Raty 0%', 'Bez bólu']);
+    expectCovered(result);
+  });
+
+  it('keeps a lazy image by its data-src, never the placeholder', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Gabinet</h2><p>Nowe wnętrze od 2023 roku, z osobną salą zabiegową.</p>
+        <img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" data-src="https://img.test/lazy.jpg" alt="Wnętrze" width="600" height="400"></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Gabinet')!;
+    expect(s.images).toEqual([{ src: 'https://img.test/lazy.jpg', alt: 'Wnętrze', width: 600, height: 400 }]);
+  });
+
+  it('reads tabs with their panels, hidden ones included', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Cennik</h2><div role="tablist"><button role="tab" aria-controls="t1">Protetyka</button><button role="tab" aria-controls="t2">Chirurgia</button></div>
+        <div id="t1" role="tabpanel"><p>Korona porcelanowa od 1200 zł</p></div>
+        <div id="t2" role="tabpanel" hidden><p>Ekstrakcja zęba od 250 zł</p></div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Cennik')!;
+    expect(s.arrangement).toBe('tabs');
+    expect(s.items.map((i) => [i.title, i.text])).toEqual([['Protetyka', ['Korona porcelanowa od 1200 zł']], ['Chirurgia', ['Ekstrakcja zęba od 250 zł']]]);
+    expectCovered(result);
+  });
+
+  it('keeps plain paragraphs in their own divs as text, not a list of items', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>O gabinecie</h2>
+        <div><p>Gabinet działa od 1998 roku w centrum Krakowa.</p></div>
+        <div><p>Leczymy dzieci i dorosłych, z pełną diagnostyką na miejscu.</p></div>
+        <div><p>Współpracujemy z pracownią protetyczną na miejscu.</p></div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'O gabinecie')!;
+    expect(s.arrangement).toBe('text');
+    expect(s.items).toEqual([]);
+    expect(s.intro.text).toHaveLength(3);
+  });
 });
