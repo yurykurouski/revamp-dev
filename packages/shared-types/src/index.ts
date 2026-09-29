@@ -642,7 +642,15 @@ export interface IDiscoveryJobData {
   keyword?: string;
   /** Maximum number of new leads to create */
   limit: number;
+  /**
+   * Domains of businesses earlier searches already offered and checked (REV-107); the search leaves
+   * them out and looks further for `limit` new ones
+   */
+  excludeDomains?: string[];
 }
+
+/** Most checked domains a search can carry forward (REV-107); the oldest drop out first */
+export const DISCOVERY_MAX_EXCLUDED_DOMAINS = 1000;
 
 export interface IDiscoveredBusiness {
   provider: DiscoveryProvider;
@@ -781,6 +789,8 @@ export interface IDiscoveryJobResult {
   requests?: number;
   /** The provider had no more listings for this search, so fewer than `limit` new businesses may be offered (REV-35) */
   exhausted?: boolean;
+  /** Listings left out because an earlier search already checked their domain (REV-107) */
+  skippedChecked?: number;
 }
 
 export type DiscoveryImportOutcome = 'imported' | 'existing_lead' | 'not_importable' | 'not_found' | 'failed';

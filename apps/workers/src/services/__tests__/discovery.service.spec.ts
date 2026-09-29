@@ -366,6 +366,56 @@ describe('runDiscovery', () => {
     });
   });
 
+  describe('skipping businesses earlier searches checked (REV-107)', () => {
+    it('should leave out excluded domains, not count them toward the limit and page further', async () => {
+      const provider = providerPaging([
+        [business('a1'), business('a2', { website: 'https://www.Clinic-a2.lt/about' })],
+        [business('b1'), business('b2')],
+      ]);
+
+      const result = await runDiscovery(
+        { ...jobData, limit: 2, excludeDomains: ['clinic-a1.lt', 'clinic-a2.lt'] },
+        provider,
+      );
+
+      expect(provider.search).toHaveBeenCalledTimes(2);
+      expect(result.candidates.map((c) => c.externalId)).toEqual(['node/b1', 'node/b2']);
+      expect(result).toMatchObject({ found: 4, requests: 2, skippedChecked: 2 });
+      expect(result.counts).toMatchObject({ new: 2, duplicate: 0 });
+    });
+
+    it('should drop every listing of an excluded domain and never assess or match it', async () => {
+      const assess = vi.fn().mockResolvedValue(ASSESSMENT);
+      const provider = providerReturning([
+        business('1'),
+        business('1b', { website: 'https://clinic-1.lt/contacts' }),
+        business('2'),
+      ]);
+
+      const result = await runDiscovery({ ...jobData, excludeDomains: ['clinic-1.lt'] }, provider, { assess });
+
+      expect(result.candidates.map((c) => [c.externalId, c.status])).toEqual([['node/2', 'new']]);
+      expect(result.skippedChecked).toBe(2);
+      expect(assess).toHaveBeenCalledTimes(1);
+      expect(assess).toHaveBeenCalledWith('https://clinic-2.lt/');
+    });
+
+    it('should over-fetch for the excluded domains too, still capped at 300', async () => {
+      const provider = providerReturning([]);
+      await runDiscovery({ ...jobData, limit: 10, excludeDomains: ['a.lt', 'b.lt'] }, provider);
+      expect(vi.mocked(provider.search).mock.calls[0][0].maxResults).toBe(36);
+
+      const many = Array.from({ length: 200 }, (_, i) => `site-${i}.lt`);
+      await runDiscovery({ ...jobData, limit: 10, excludeDomains: many }, provider);
+      expect(vi.mocked(provider.search).mock.calls[1][0].maxResults).toBe(300);
+    });
+
+    it('should report no skipped count for a search without exclusions', async () => {
+      const result = await runDiscovery(jobData, providerReturning([business('1')]));
+      expect(result).not.toHaveProperty('skippedChecked');
+    });
+  });
+
   it('should propagate provider errors', async () => {
     const provider: DiscoveryProviderClient = { search: vi.fn().mockRejectedValue(new Error('Overpass down')) };
     await expect(runDiscovery(jobData, provider)).rejects.toThrow('Overpass down');

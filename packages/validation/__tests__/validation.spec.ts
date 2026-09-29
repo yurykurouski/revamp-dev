@@ -766,6 +766,31 @@ describe('Validation Schemas (@revamp/validation)', () => {
       ).toBe(true);
     });
 
+    it('should accept domains to skip, normalised and deduplicated (REV-107)', () => {
+      const result = StartDiscoverySchema.parse({
+        niche: 'dental',
+        location: 'Vilnius',
+        excludeDomains: ['Clinic.lt ', 'clinic.lt', 'xn--80ak6aa92e.com', 'a.b.co.uk'],
+      });
+      expect(result.excludeDomains).toEqual(['clinic.lt', 'xn--80ak6aa92e.com', 'a.b.co.uk']);
+      expect(StartDiscoverySchema.parse({ niche: 'dental', location: 'Vilnius' }).excludeDomains).toBeUndefined();
+    });
+
+    it('should reject malformed domains to skip and more than the maximum', () => {
+      for (const bad of ['localhost', 'https://clinic.lt', 'clinic.lt/path', 'a b.lt', '']) {
+        expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Vilnius', excludeDomains: [bad] }).success).toBe(
+          false,
+        );
+      }
+      const domains = (n: number) => Array.from({ length: n }, (_, i) => `site-${i}.lt`);
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', excludeDomains: domains(1000) }).success).toBe(
+        true,
+      );
+      expect(StartDiscoverySchema.safeParse({ niche: 'dental', location: 'Riga', excludeDomains: domains(1001) }).success).toBe(
+        false,
+      );
+    });
+
     it('should coerce a numeric string limit and trim location', () => {
       const result = StartDiscoverySchema.parse({
         provider: 'google',

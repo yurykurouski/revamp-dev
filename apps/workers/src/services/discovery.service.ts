@@ -186,7 +186,8 @@ async function markExistingLeads(candidates: IDiscoveryCandidate[]): Promise<voi
  *
  * Businesses that are already leads don't count toward the limit, so the search keeps paging
  * through the provider until it has `limit` new ones, the provider runs out, or it hits the
- * request cap.
+ * request cap. Listings whose domain an earlier search already checked (`excludeDomains`, REV-107)
+ * are left out altogether and don't count either.
  */
 export async function runDiscovery(
   data: IDiscoveryJobData,
@@ -194,18 +195,20 @@ export async function runDiscovery(
   overrides: Partial<RunDiscoveryOptions> = {},
 ): Promise<IDiscoveryJobResult> {
   const options = { ...defaultRunOptions(), ...overrides };
+  const excludedDomains = new Set(data.excludeDomains ?? []);
   const params: DiscoverySearchParams = {
     niche: data.niche,
     location: data.location,
     keyword: data.keyword,
-    // Many listings are skipped as duplicates or lacking a site, so over-fetch
-    maxResults: Math.min(data.limit * 3, 300),
+    // Many listings are skipped as duplicates, lacking a site or already checked, so over-fetch
+    maxResults: Math.min((data.limit + excludedDomains.size) * 3, 300),
   };
 
   const candidates: IDiscoveryCandidate[] = [];
   const seenListings = new Set<string>();
   const seenDomains = new Set<string>();
   let newCount = 0;
+  let skippedChecked = 0;
   let requests = 0;
   let cursor: string | undefined;
 
@@ -218,7 +221,9 @@ export async function runDiscovery(
     const fresh = page.businesses.filter((b) => !seenListings.has(b.externalId));
     for (const b of fresh) seenListings.add(b.externalId);
 
-    const pageCandidates = classify(fresh, seenDomains);
+    const classified = classify(fresh, seenDomains);
+    const pageCandidates = classified.filter((c) => !(c.domain && excludedDomains.has(c.domain)));
+    skippedChecked += classified.length - pageCandidates.length;
     await markExistingLeads(pageCandidates);
     candidates.push(...pageCandidates);
     newCount += pageCandidates.filter((c) => c.status === 'new').length;
@@ -237,5 +242,6 @@ export async function runDiscovery(
     counts: countCandidatesByStatus(limited),
     requests,
     exhausted: !cursor,
+    ...(excludedDomains.size > 0 ? { skippedChecked } : {}),
   };
 }

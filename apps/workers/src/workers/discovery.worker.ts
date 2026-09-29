@@ -12,9 +12,10 @@ export const createDiscoveryWorker = (): Worker => {
   const worker = new Worker<IDiscoveryJobData, IDiscoveryJobResult>(
     QUEUE_NAMES.DISCOVERY,
     async (job: Job<IDiscoveryJobData>) => {
-      const { provider, niche, location, keyword, limit } = job.data;
+      const { provider, niche, location, keyword, limit, excludeDomains } = job.data;
       console.log(
-        `[DiscoveryWorker] Job ${job.id}: ${provider} search for ${keyword ?? niche} in "${location}" (limit ${limit})`,
+        `[DiscoveryWorker] Job ${job.id}: ${provider} search for ${keyword ?? niche} in "${location}" (limit ${limit}` +
+          `${excludeDomains?.length ? `, skipping ${excludeDomains.length} checked domain(s)` : ''})`,
       );
 
       try {
@@ -24,7 +25,8 @@ export const createDiscoveryWorker = (): Worker => {
           `[DiscoveryWorker] Job ${job.id} done after ${result.requests} request(s)` +
             `${result.exhausted ? ' (provider exhausted)' : ''}: found ${result.found}, new ${counts.new}, ` +
             `already leads ${counts.existing_lead}, duplicates ${counts.duplicate}, ` +
-            `no website ${counts.no_website}, invalid ${counts.invalid}`,
+            `no website ${counts.no_website}, invalid ${counts.invalid}` +
+            `${result.skippedChecked ? `, already checked ${result.skippedChecked}` : ''}`,
         );
         const assessments = result.candidates.flatMap((c) => (c.assessment ? [c.assessment] : []));
         if (assessments.length > 0) {

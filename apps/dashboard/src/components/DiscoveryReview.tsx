@@ -53,6 +53,10 @@ interface DiscoveryReviewProps {
   limit: number;
   /** Returns to the Where step with this search's parameters */
   onBack: () => void;
+  /** The "Search again, skip checked" action (REV-107), when this search can be continued */
+  searchAgain?: React.ReactNode;
+  /** Why starting that search failed */
+  searchAgainError?: string | null;
 }
 
 /**
@@ -62,7 +66,14 @@ interface DiscoveryReviewProps {
  * filtered and sorted by its verdict (REV-98); select all and import act on the listed rows only.
  * Renders the step's scrolling body and its footer.
  */
-export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result, limit, onBack }) => {
+export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({
+  jobId,
+  result,
+  limit,
+  onBack,
+  searchAgain,
+  searchAgainError,
+}) => {
   const { t } = useTranslation();
   const importMutation = useImportDiscoveryMutation(jobId);
   const closeDiscovery = useDiscoveryStore((s) => s.close);
@@ -138,6 +149,14 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
                 label={`${t(`discovery.candidateStatus.${status}`)}: ${counts[status]}`}
               />
             ))}
+            {Boolean(result.skippedChecked) && (
+              <Chip
+                size="small"
+                variant="outlined"
+                label={t('discovery.skippedChecked', { count: result.skippedChecked })}
+                data-testid="skipped-checked"
+              />
+            )}
           </Box>
 
           {searchOutcome !== 'filled' && (
@@ -150,6 +169,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
           )}
           {counts.new === 0 && <Alert severity="info">{t('discovery.nothingNewHint')}</Alert>}
           {importError && <Alert severity="error">{importError}</Alert>}
+          {searchAgainError && <Alert severity="error">{searchAgainError}</Alert>}
 
           {assessed && (
             <Box
@@ -326,9 +346,12 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({ jobId, result,
       </Box>
 
       <DiscoveryDrawerFooter hint={counts.new > 0 ? t('discovery.reviewHint') : undefined}>
-        <Button onClick={onBack} color="inherit" disabled={importMutation.isPending} sx={{ fontWeight: 600 }}>
-          {t('discovery.back')}
-        </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <Button onClick={onBack} color="inherit" disabled={importMutation.isPending} sx={{ fontWeight: 600 }}>
+            {t('discovery.back')}
+          </Button>
+          {searchAgain}
+        </Box>
         {importable.length > 0 && (
           <Button
             variant="contained"

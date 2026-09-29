@@ -25,6 +25,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
 import SearchIcon from '@mui/icons-material/Search';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
+import ManageSearchIcon from '@mui/icons-material/ManageSearch';
 import { DiscoveryProvider, IDiscoveryJobStatus, NicheType } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
@@ -39,6 +40,7 @@ import {
   importableIds,
   isDiscoveryFinished,
   LocationDetectError,
+  searchAgainInput,
   summarizeImport,
   useDiscoveryStatusQuery,
   useStartDiscoveryMutation,
@@ -76,6 +78,7 @@ export const DiscoveryDrawer: React.FC = () => {
   const [form, setForm] = useState<DiscoveryFormValues>(DEFAULT_DISCOVERY_FORM);
   const [formError, setFormError] = useState<string | null>(null);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [searchAgainError, setSearchAgainError] = useState<string | null>(null);
   const locationRef = useRef<HTMLInputElement>(null);
 
   const status = statusQuery.data;
@@ -142,8 +145,40 @@ export const DiscoveryDrawer: React.FC = () => {
   const handleChangeSearch = () => {
     if (status) setForm(discoveryFormFromParams(status.params));
     setFormError(null);
+    setSearchAgainError(null);
     startNewSearch();
   };
+
+  /** The same search again without the businesses already checked (REV-107); stays on the step until it starts */
+  const againInput = status && isDiscoveryFinished(status) ? searchAgainInput(status) : null;
+  const handleSearchAgain = async () => {
+    if (!againInput) return;
+    setSearchAgainError(null);
+    try {
+      const { jobId } = await startMutation.mutateAsync(againInput);
+      setActiveJob(jobId);
+    } catch (err: unknown) {
+      setSearchAgainError(err instanceof Error ? err.message : t('discovery.errors.submitFailed'));
+    }
+  };
+
+  /** Offered in the Review and Import footers while there are checked businesses to skip */
+  const renderSearchAgain = () =>
+    againInput && (
+      <Tooltip title={t('discovery.searchAgainHint', { count: againInput.excludeDomains?.length ?? 0 })}>
+        <span>
+          <Button
+            onClick={handleSearchAgain}
+            color="inherit"
+            disabled={startMutation.isPending}
+            startIcon={startMutation.isPending ? <CircularProgress size={18} color="inherit" /> : <ManageSearchIcon />}
+            sx={{ fontWeight: 600 }}
+          >
+            {t('discovery.searchAgain')}
+          </Button>
+        </span>
+      </Tooltip>
+    );
 
   const busy = startMutation.isPending;
 
@@ -365,6 +400,8 @@ export const DiscoveryDrawer: React.FC = () => {
         result={result}
         limit={params.limit}
         onBack={handleChangeSearch}
+        searchAgain={renderSearchAgain()}
+        searchAgainError={searchAgainError}
       />
     );
   };
@@ -383,6 +420,7 @@ export const DiscoveryDrawer: React.FC = () => {
     return (
       <>
         <Box sx={{ flexGrow: 1, minHeight: 0, overflowY: 'auto', px: 3, py: 3, display: 'flex', flexDirection: 'column', gap: 2.5 }}>
+          {searchAgainError && <Alert severity="error">{searchAgainError}</Alert>}
           <Alert severity={summary.failed > 0 ? 'warning' : 'success'}>
             {t('discovery.importDone', { imported: summary.imported })}
             {summary.skipped > 0 && ` ${t('discovery.importSkipped', { skipped: summary.skipped })}`}
@@ -417,6 +455,7 @@ export const DiscoveryDrawer: React.FC = () => {
                 {t('discovery.reviewRemaining', { count: remaining })}
               </Button>
             )}
+            {renderSearchAgain()}
             <Button onClick={handleChangeSearch} color="inherit" startIcon={<SearchIcon />} sx={{ fontWeight: 600 }}>
               {t('discovery.newSearch')}
             </Button>

@@ -57,6 +57,16 @@ describe('DiscoveryService (API)', () => {
     expect(result).toEqual({ jobId: 'disc-9', params });
   });
 
+  it('startDiscovery should pass the domains to skip, and leave out an empty list (REV-107)', async () => {
+    vi.mocked(addDiscoveryJob).mockResolvedValue({ id: 'disc-10', data: params } as any);
+
+    await DiscoveryService.startDiscovery({ ...params, excludeDomains: ['a.lt'] } as any);
+    expect(addDiscoveryJob).toHaveBeenLastCalledWith({ ...params, excludeDomains: ['a.lt'] });
+
+    await DiscoveryService.startDiscovery({ ...params, excludeDomains: [] } as any);
+    expect(addDiscoveryJob).toHaveBeenLastCalledWith(params);
+  });
+
   it('getDiscoveryStatus should throw 404 when the job does not exist', async () => {
     vi.mocked(getDiscoveryJob).mockResolvedValue(undefined);
     const error = await DiscoveryService.getDiscoveryStatus('nope').catch((e) => e);
