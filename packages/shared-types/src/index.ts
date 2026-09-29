@@ -313,6 +313,8 @@ export const SITE_SECTION_KINDS = [
   'faq',
   'contact',
   'map',
+  // "Why us" / "Co nas wyróżnia": short headed points (REV-109)
+  'features',
   'other',
 ] as const;
 export type SiteSectionKind = (typeof SITE_SECTION_KINDS)[number];
@@ -355,6 +357,133 @@ export interface ISiteLayout {
   density: 'compact' | 'comfortable' | 'airy';
 }
 
+// The original home page read section by section, deterministically from the DOM (REV-109)
+
+/** Where a section sits on the page; `hero` is the first content block on the first screen */
+export const SITE_SECTION_ROLES = ['header', 'hero', 'content', 'footer'] as const;
+export type SiteSectionRole = (typeof SITE_SECTION_ROLES)[number];
+
+/** How a section lays out its content; the rebuild follows this rather than the kind */
+export const SITE_SECTION_ARRANGEMENTS = [
+  'banner',
+  'media-beside-text',
+  'text',
+  'card-grid',
+  'list',
+  'accordion',
+  'tabs',
+  'slider',
+  'gallery',
+  'embed',
+] as const;
+export type SiteSectionArrangement = (typeof SITE_SECTION_ARRANGEMENTS)[number];
+
+export const SITE_LINK_KINDS = ['cta', 'link', 'phone', 'email', 'map'] as const;
+export type SiteLinkKind = (typeof SITE_LINK_KINDS)[number];
+
+export const SITE_EMBED_KINDS = ['map', 'video', 'form', 'widget'] as const;
+export type SiteEmbedKind = (typeof SITE_EMBED_KINDS)[number];
+
+/** Why a block was left out of the sections; nothing is dropped without one */
+export const SITE_SKIP_REASONS = ['noise', 'empty', 'duplicate', 'cap'] as const;
+export type SiteSkipReason = (typeof SITE_SKIP_REASONS)[number];
+
+export const SITE_IMAGE_SHAPES = ['square', 'round', 'wide', 'tall'] as const;
+export type SiteImageShape = (typeof SITE_IMAGE_SHAPES)[number];
+
+export interface ISiteImage {
+  /** Absolute URL */
+  src: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface ISiteLink {
+  label: string;
+  href: string;
+  kind: SiteLinkKind;
+}
+
+/** One repeated thing in a section: a service card, a person, an FAQ entry, a review, a price row */
+export interface ISiteSectionItem {
+  /** Service name, person's name, question, reviewer */
+  title?: string;
+  /** Role, date, eyebrow */
+  subtitle?: string;
+  /** Paragraphs and bullets, verbatim (an FAQ answer, a review's quote) */
+  text: string[];
+  image?: ISiteImage;
+  /** As written, e.g. "od 150 zł" */
+  price?: string;
+  /** 0..5 */
+  rating?: number;
+  links: ISiteLink[];
+}
+
+export interface ISiteStyle {
+  /** Hex */
+  background?: string;
+  /** Absolute URL */
+  backgroundImage?: string;
+  textColor?: string;
+  align?: 'left' | 'center';
+  /** Vertical padding per side, px */
+  paddingY?: number;
+  /** The content runs edge to edge rather than in a centred container */
+  fullBleed?: boolean;
+  /** media-beside-text: the media's share of the width, 0..1 */
+  split?: number;
+}
+
+export interface ISiteItemStyle {
+  background?: string;
+  radius?: number;
+  border?: boolean;
+  shadow?: boolean;
+  imageShape?: SiteImageShape;
+  align?: 'left' | 'center';
+}
+
+export type ISiteSectionExtra =
+  | { type: 'text'; text: string[] }
+  | { type: 'items'; arrangement: SiteSectionArrangement; items: ISiteSectionItem[] };
+
+export interface ISiteSection {
+  /** Position in page order (header, blocks, footer), shared with `skipped` */
+  index: number;
+  role: SiteSectionRole;
+  /** A label for tuning and completeness; the rebuild follows `arrangement` */
+  kind: SiteSectionKind;
+  arrangement: SiteSectionArrangement;
+  columns?: number;
+  mediaSide?: 'left' | 'right';
+  intro: { eyebrow?: string; heading?: string; headingLevel?: number; text: string[]; links: ISiteLink[] };
+  items: ISiteSectionItem[];
+  itemStyle?: ISiteItemStyle;
+  /** Everything else in the section, in page order */
+  extra: ISiteSectionExtra[];
+  /** Images outside the items */
+  images: ISiteImage[];
+  embeds: { kind: SiteEmbedKind; src?: string }[];
+  style: ISiteStyle;
+  /** A cap cut something from this section */
+  truncated?: boolean;
+}
+
+export interface ISiteTypography {
+  heading: { family: string; size: number; weight: number; uppercase: boolean; color?: string };
+  body: { family: string; size: number; weight: number; lineHeight?: number; color?: string };
+  button?: { radius: number; filled: boolean; uppercase: boolean; background?: string; color?: string };
+}
+
+export interface ISiteSections {
+  sections: ISiteSection[];
+  typography?: ISiteTypography;
+  skipped: { index: number; reason: SiteSkipReason; heading?: string; sample: string }[];
+  coverage: { pageChars: number; capturedChars: number; ratio: number; uncaptured: string[] };
+}
+
 export interface IScreenshotUrls {
   desktopOriginal: string;
   mobileOriginal: string;
@@ -394,6 +523,10 @@ export interface IAudit {
   siteLayout?: ISiteLayout;
   /** Why the original layout could not be read; the MVP layout then falls back to the rule-based choice */
   siteLayoutError?: string;
+  /** The original home page read section by section (REV-109); absent when it could not be read */
+  siteSections?: ISiteSections;
+  /** Why the sections could not be read */
+  siteSectionsError?: string;
   generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;

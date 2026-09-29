@@ -28,7 +28,13 @@ import {
   SITE_COMPLEXITY_SIGNS,
   SITE_HERO_MEDIA,
   SITE_HERO_TONES,
+  SITE_EMBED_KINDS,
+  SITE_IMAGE_SHAPES,
+  SITE_LINK_KINDS,
+  SITE_SECTION_ARRANGEMENTS,
   SITE_SECTION_KINDS,
+  SITE_SECTION_ROLES,
+  SITE_SKIP_REASONS,
   SITE_VERDICT_REASONS,
   findLlmProvider,
 } from '@revamp/shared-types';
@@ -217,6 +223,153 @@ export const SiteLayoutSchema = z.object({
 });
 
 export type SiteLayoutDto = z.infer<typeof SiteLayoutSchema>;
+
+// ==============================================================================
+// Original site sections (REV-109)
+// ==============================================================================
+
+/** Caps on what the section reader keeps; a cut sets `truncated` on the section */
+export const SITE_SECTIONS_LIMITS = {
+  sections: 45,
+  items: 60,
+  textChars: 2000,
+  uncaptured: 12,
+  sampleChars: 120,
+  labelChars: 300,
+  urlChars: 2000,
+  textsPerArray: 40,
+  links: 40,
+  images: 24,
+  embeds: 8,
+  extra: 20,
+  skipped: 80,
+  /** All text in the result; keeps the audit document far below MongoDB's 16 MB */
+  totalChars: 150_000,
+} as const;
+
+const SL = SITE_SECTIONS_LIMITS;
+const siteHex = z.string().regex(/^#[0-9a-f]{6}$/i);
+const siteUrl = z.string().max(SL.urlChars).regex(/^https?:\/\//i);
+const siteHref = z.string().max(SL.urlChars).regex(/^(https?:|tel:|mailto:|sms:)/i);
+const siteLabel = z.string().min(1).max(SL.labelChars);
+const siteTexts = z.array(z.string().min(1).max(SL.textChars)).max(SL.textsPerArray);
+const siteAlign = z.enum(['left', 'center']);
+
+const SiteImageSchema = z.object({
+  src: siteUrl,
+  alt: z.string().max(SL.labelChars).optional(),
+  width: z.number().int().min(0).optional(),
+  height: z.number().int().min(0).optional(),
+});
+
+const SiteLinksSchema = z.array(z.object({ label: siteLabel, href: siteHref, kind: z.enum(SITE_LINK_KINDS) })).max(SL.links);
+
+const SiteSectionItemSchema = z.object({
+  title: siteLabel.optional(),
+  subtitle: siteLabel.optional(),
+  text: siteTexts,
+  image: SiteImageSchema.optional(),
+  price: siteLabel.optional(),
+  rating: z.number().min(0).max(5).optional(),
+  links: SiteLinksSchema,
+});
+
+const SiteItemsSchema = z.array(SiteSectionItemSchema).max(SL.items);
+
+export const SiteSectionSchema = z.object({
+  index: z.number().int().min(0),
+  role: z.enum(SITE_SECTION_ROLES),
+  kind: z.enum(SITE_SECTION_KINDS),
+  arrangement: z.enum(SITE_SECTION_ARRANGEMENTS),
+  columns: z.number().int().min(1).max(12).optional(),
+  mediaSide: z.enum(['left', 'right']).optional(),
+  intro: z.object({
+    eyebrow: siteLabel.optional(),
+    heading: siteLabel.optional(),
+    headingLevel: z.number().int().min(1).max(6).optional(),
+    text: siteTexts,
+    links: SiteLinksSchema,
+  }),
+  items: SiteItemsSchema,
+  itemStyle: z
+    .object({
+      background: siteHex.optional(),
+      radius: z.number().int().min(0).max(1000).optional(),
+      border: z.boolean().optional(),
+      shadow: z.boolean().optional(),
+      imageShape: z.enum(SITE_IMAGE_SHAPES).optional(),
+      align: siteAlign.optional(),
+    })
+    .optional(),
+  extra: z
+    .array(
+      z.discriminatedUnion('type', [
+        z.object({ type: z.literal('text'), text: siteTexts }),
+        z.object({ type: z.literal('items'), arrangement: z.enum(SITE_SECTION_ARRANGEMENTS), items: SiteItemsSchema }),
+      ]),
+    )
+    .max(SL.extra),
+  images: z.array(SiteImageSchema).max(SL.images),
+  embeds: z.array(z.object({ kind: z.enum(SITE_EMBED_KINDS), src: siteUrl.optional() })).max(SL.embeds),
+  style: z.object({
+    background: siteHex.optional(),
+    backgroundImage: siteUrl.optional(),
+    textColor: siteHex.optional(),
+    align: siteAlign.optional(),
+    paddingY: z.number().int().min(0).max(2000).optional(),
+    fullBleed: z.boolean().optional(),
+    split: z.number().min(0).max(1).optional(),
+  }),
+  truncated: z.boolean().optional(),
+});
+
+const siteFont = {
+  family: z.string().min(1).max(100),
+  size: z.number().int().min(1).max(200),
+  weight: z.number().int().min(100).max(1000),
+};
+
+/**
+ * The original home page as ordered sections, read from the DOM by code (never a model): each
+ * section's content, arrangement and measured style, what was left out and why, and how much of the
+ * page's text the sections hold.
+ */
+export const SiteSectionsSchema = z.object({
+  sections: z.array(SiteSectionSchema).max(SL.sections),
+  typography: z
+    .object({
+      heading: z.object({ ...siteFont, uppercase: z.boolean(), color: siteHex.optional() }),
+      body: z.object({ ...siteFont, lineHeight: z.number().min(0.5).max(5).optional(), color: siteHex.optional() }),
+      button: z
+        .object({
+          radius: z.number().int().min(0).max(1000),
+          filled: z.boolean(),
+          uppercase: z.boolean(),
+          background: siteHex.optional(),
+          color: siteHex.optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+  skipped: z
+    .array(
+      z.object({
+        index: z.number().int().min(0),
+        reason: z.enum(SITE_SKIP_REASONS),
+        heading: siteLabel.optional(),
+        sample: z.string().max(SL.sampleChars),
+      }),
+    )
+    .max(SL.skipped),
+  coverage: z.object({
+    pageChars: z.number().int().min(0),
+    capturedChars: z.number().int().min(0),
+    ratio: z.number().min(0).max(1),
+    uncaptured: z.array(z.string().min(1).max(SL.sampleChars)).max(SL.uncaptured),
+  }),
+});
+
+export type SiteSectionsDto = z.infer<typeof SiteSectionsSchema>;
 
 /** Query-string value: an empty parameter counts as missing */
 const optionalQueryParam = <T extends z.ZodTypeAny>(schema: T) =>
