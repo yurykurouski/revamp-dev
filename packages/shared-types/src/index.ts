@@ -160,12 +160,13 @@ export interface IMeasurementError {
   message: string;
 }
 
-/** Values the audit did not measure are absent (REV-100) */
+/**
+ * Web vitals read in the page (no Lighthouse run, REV-102). Values the audit did not measure are absent
+ * (REV-100); Speed Index and INP are not stored because a headless page load cannot measure them (REV-105)
+ */
 export interface ILighthouseMetrics {
-  lcp?: number;      // ms
-  fidOrInp?: number; // ms
+  lcp?: number; // ms
   cls?: number;
-  speedIndex?: number;
 }
 
 export interface IA11yViolation {

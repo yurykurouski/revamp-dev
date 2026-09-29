@@ -105,7 +105,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       },
       vitalsResult: {
         lcpSeconds: 2.1,
-        lighthouseMetrics: { lcp: 2100, cls: 0.03, speedIndex: 1900 },
+        lighthouseMetrics: { lcp: 2100, cls: 0.03 },
         standards: { hasSsl: true, hasViewport: true, hasTitle: true },
         performanceScore: 90,
         standardsScore: 100,
@@ -247,7 +247,7 @@ describe('AuditWorker (@revamp/workers)', () => {
           accessibility: 82,
           standards: 100,
         },
-        lighthouseMetrics: { lcp: 2100, cls: 0.03, speedIndex: 1900 },
+        lighthouseMetrics: { lcp: 2100, cls: 0.03 },
         // Everything was measured, so no measurement errors (REV-100)
         measurementErrors: [],
         designCritique: expect.objectContaining({

@@ -11,7 +11,8 @@
     "clean": "rm -rf dist",
     "backfill:lead-identity": "tsx src/scripts/backfill-lead-identity.ts",
     "backfill:stuck-audits": "tsx src/scripts/backfill-stuck-audits.ts",
-    "migrate:lead-statuses": "tsx src/scripts/migrate-lead-statuses.ts"
+    "migrate:lead-statuses": "tsx src/scripts/migrate-lead-statuses.ts",
+    "migrate:audit-vitals": "tsx src/scripts/migrate-audit-vitals.ts"
   },
   "dependencies": {
     "@revamp/db": "*",
