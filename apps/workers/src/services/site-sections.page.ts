@@ -212,6 +212,24 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   // hidden block of pictures alone; hidden text found nowhere else (a collapsed answer, a tab panel, a slide) still is
   const letters = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   let shownText: string | undefined;
+  // A class that hides the element on this screen size only (Elementor, Divi, Bootstrap, Tailwind, common themes)
+  const SCREEN_VARIANT = /^(elementor-hidden-(desktop|widescreen|laptop)|et_pb_hidden_desktop|hidden-(desktop|lg|xl)|hide-(on-)?desktop|visible-(xs|sm|mobile)|(lg|xl):hidden|d-(lg|xl)-none|mobile-only|show-on-mobile)$/i;
+  const stemOf = (src: string) =>
+    (src.split(/[?#]/)[0] ?? '').split('/').pop()!.replace(/\.[a-z0-9]+$/i, '').replace(/-\d+x\d+$/, '').toLowerCase();
+  let shownStems: Set<string> | undefined;
+  const pictureCopy = (node: Element): boolean => {
+    for (let el: Element | null = node; el && el !== document.body; el = el.parentElement) {
+      if (classOf(el).split(/\s+/).some((token) => SCREEN_VARIANT.test(token))) return true;
+    }
+    shownStems ??= new Set(
+      Array.from(document.querySelectorAll('img'))
+        .filter((img) => shown(img))
+        .map((img) => stemOf((img as HTMLImageElement).currentSrc || img.getAttribute('src') || ''))
+        .filter(Boolean),
+    );
+    const stems = Array.from(node.querySelectorAll('img')).map((img) => stemOf(img.getAttribute('data-src') || img.getAttribute('src') || ''));
+    return stems.length > 0 && stems.every((stem) => stem && shownStems!.has(stem));
+  };
   const hiddenCopies = new Map<Element, boolean>();
   const hiddenCopy = (el: Element): boolean => {
     for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
@@ -229,8 +247,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
             total += value.length;
             if (value && shownText.includes(value)) found += value.length;
           }
-          // Pictures alone, hidden, are the other screen size's variant of a block (a mobile-only carousel)
-          copy = total >= 20 ? found >= total * 0.9 : total === 0 && node.querySelector('img') !== null;
+          // Pictures alone, hidden, are a copy only when marked as another screen size's variant (a mobile-only
+          // carousel) or when the page shows the same pictures elsewhere; hidden slides of a fade slider are read
+          copy = total >= 20 ? found >= total * 0.9 : total === 0 && node.querySelector('img') !== null && pictureCopy(node);
         }
         hiddenCopies.set(node, copy);
       }

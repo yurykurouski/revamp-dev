@@ -447,7 +447,7 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
   it('leaves out a hidden image-only variant of a block, such as a mobile-only carousel (Falco-Dent hero)', async () => {
     const result = await sectionsOf(pageOf(`<section style="min-height:500px;background:#123;color:#fff"><h1>Gabinet Falco-Dent</h1>
         <p>Nowoczesna stomatologia na Bielanach od ponad dwudziestu lat.</p>
-        <div class="hidden-desktop" style="display:none"><div class="swiper"><div class="swiper-wrapper">
+        <div class="elementor-element elementor-hidden-desktop" style="display:none"><div class="swiper"><div class="swiper-wrapper">
           ${[1, 2, 3, 4, 5].map((n) => `<div class="swiper-slide"><figure><img src="https://img.test/m${n}.jpg" alt="${n}" width="400" height="300"></figure></div>`).join('')}
         </div></div></div></section><section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section>`));
     expect(JSON.stringify(result.sections)).not.toContain('img.test/m');
@@ -473,6 +473,24 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     const s = result.sections.find((x) => x.intro.heading?.startsWith('Bezpieczeństwo'))!;
     expect(s.intro.heading).toBe('Bezpieczeństwo w gabinecie stomatologicznym Falco-Dent');
     expect(s.items[0]!.title).toBe('Stomatologia zachowawcza i estetyczna');
+  });
+
+  it('still reads the hidden image-only slides of a fade slider (review fix)', async () => {
+    const slide = (n: number, shown: boolean) =>
+      `<div class="fade-slide" style="${shown ? '' : 'display:none;'}width:600px"><img src="https://img.test/slide-${n}.jpg" alt="Gabinet ${n}" width="600" height="400"></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasz gabinet</h2><div class="slider">${slide(1, true)}${slide(2, false)}${slide(3, false)}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasz gabinet')!;
+    const srcs = JSON.stringify(s);
+    for (const n of [1, 2, 3]) expect(srcs).toContain(`img.test/slide-${n}.jpg`);
+  });
+
+  it('leaves out a hidden block of the same pictures the page shows elsewhere (review fix)', async () => {
+    const pics = (size: string) => [1, 2, 3].map((n) => `<img src="https://img.test/gab-${n}${size}.jpg" alt="" width="300" height="200">`).join('');
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Galeria</h2><div style="display:flex;gap:10px">${pics('')}</div><div style="display:none">${pics('-150x150')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Galeria')!;
+    expect(JSON.stringify(s)).not.toContain('-150x150');
   });
 
   it('reads a "why us" icon list as features', async () => {
