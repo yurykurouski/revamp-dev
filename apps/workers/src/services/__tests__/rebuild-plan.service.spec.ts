@@ -55,6 +55,20 @@ describe('planRebuild (REV-110)', () => {
     expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
   });
 
+  it('gives items on their own background a text color readable there (Falco-Dent offer on a photo)', () => {
+    const offer = section(1, { arrangement: 'card-grid', items: [{ text: ['Implanty'], links: [] }],
+      itemStyle: { background: '#ffffff' }, style: { backgroundImage: 'https://falcodent.pl/bg.jpg', textColor: '#4a4a4a' } });
+    const dark = section(2, { arrangement: 'card-grid', items: [{ text: ['Laser'], links: [] }],
+      itemStyle: { background: '#173784' }, style: { background: '#ffffff', textColor: '#4a4a4a' } });
+    const plan = planRebuild(input([header, offer, dark]));
+    const [onPhoto, onDark] = plan.sections;
+    expect(onPhoto!.style.text).toBe('#ffffff');
+    expect(onPhoto!.itemStyle?.text).toBe('#4a4a4a');
+    expect(contrastRatio(onDark!.itemStyle!.text!, '#173784')).toBeGreaterThanOrEqual(4.5);
+    expect(plan.summary.tuning).toContain('contrast:2');
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+
   it('gives the hero heading the only h1', () => {
     const plan = planRebuild(input([header, hero, team]));
     expect(plan.sections.map((s) => s.headingLevel)).toEqual([1, 2]);

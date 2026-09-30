@@ -1307,6 +1307,7 @@ const RebuildSectionSchema = z.object({
   itemStyle: z
     .object({
       background: siteHex.optional(),
+      text: siteHex.optional(),
       radius: z.number().min(0).max(999).optional(),
       border: z.boolean().optional(),
       shadow: z.boolean().optional(),

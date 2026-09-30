@@ -1386,7 +1386,8 @@ export interface IRebuildSection {
   headingLevel: 1 | 2;
   intro: { eyebrow?: string; heading?: string; text: string[]; links: IRebuildLink[] };
   items: IRebuildItem[];
-  itemStyle?: ISiteItemStyle;
+  /** The original item style; `text` is set with a background, readable on it */
+  itemStyle?: ISiteItemStyle & { text?: string };
   extra: IRebuildBlock[];
   images: IRebuildImage[];
   embeds: { kind: 'map' | 'video'; src: string; title: string }[];

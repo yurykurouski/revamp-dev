@@ -191,6 +191,9 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toContain('--rb-item-radius: 12px');
     expect(html).toContain('--rb-item-bg: #f5f5f5');
     expect(html).toContain('[data-image-shape=round] .rb-item-image');
+    const withText = renderRebuild(plan([section(1, { arrangement: 'card-grid', items: [item('Anna')], itemStyle: { background: '#ffffff', text: '#4a4a4a' } })]));
+    expect(withText).toContain('--rb-item-text: #4a4a4a');
+    expect(withText).toContain('.rb-item { color: var(--rb-item-text, inherit);');
   });
 
   it('places media beside the text on the chosen side', () => {

@@ -195,6 +195,20 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
     if (fixed.changed) rec.fix(`contrast:${section.index}`);
   }
 
+  // Items on their own background get a text color readable there, not the section's (white over a photo)
+  let itemStyle: IRebuildSection['itemStyle'];
+  if (section.itemStyle) {
+    const { radius, background: itemBackground } = section.itemStyle;
+    const itemText = itemBackground && HEX.test(itemBackground) ? readableText(textColor, itemBackground) : undefined;
+    if (itemText?.changed) rec.fix(`contrast:${section.index}`);
+    itemStyle = {
+      ...section.itemStyle,
+      // The reader keeps radii up to 1000 px; the plan caps them at 999 (a pill either way)
+      ...(radius !== undefined ? { radius: Math.min(999, radius) } : {}),
+      ...(itemText ? { text: itemText.color } : {}),
+    };
+  }
+
   const collapsed = section.arrangement === 'text' && textLength(section) > COLLAPSE_CHARS;
   if (collapsed) rec.fix(`collapse:${section.index}`);
 
@@ -218,10 +232,7 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
       links: planLinks(section.intro.links, rec),
     },
     items: planItems(section.items, rec, eager),
-    // The reader keeps radii up to 1000 px; the plan caps them at 999 (a pill either way)
-    ...(section.itemStyle
-      ? { itemStyle: { ...section.itemStyle, ...(section.itemStyle.radius !== undefined ? { radius: Math.min(999, section.itemStyle.radius) } : {}) } }
-      : {}),
+    ...(itemStyle ? { itemStyle } : {}),
     extra,
     images: section.images
       .slice(0, LIMITS.images)

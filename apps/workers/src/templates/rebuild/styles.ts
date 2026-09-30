@@ -92,7 +92,7 @@ h4 { font-size: 1.1em; }
 [data-arrangement=media-beside-text] .rb-media .rb-embed { margin-top: 0; }
 
 /* Items */
-.rb-item { background: var(--rb-item-bg, transparent); border-radius: var(--rb-item-radius, 0); }
+.rb-item { color: var(--rb-item-text, inherit); background: var(--rb-item-bg, transparent); border-radius: var(--rb-item-radius, 0); }
 [data-item-border] .rb-item { border: 1px solid color-mix(in srgb, currentColor 18%, transparent); }
 [data-item-shadow] .rb-item { box-shadow: 0 4px 16px rgba(0,0,0,.08); }
 [data-item-border] .rb-item-body, [data-item-shadow] .rb-item-body, [style*="--rb-item-bg"] .rb-item-body { padding: 16px 20px 20px; }

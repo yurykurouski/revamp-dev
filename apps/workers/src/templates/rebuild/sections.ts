@@ -139,6 +139,7 @@ export function renderSection(section: IRebuildSection, ctx: RenderCtx, tag: 'se
     section.split !== undefined ? `--rb-split: ${Math.round(section.split * 100)}%` : '',
     itemStyle?.radius !== undefined ? `--rb-item-radius: ${itemStyle.radius}px` : '',
     itemStyle?.background ? `--rb-item-bg: ${itemStyle.background}` : '',
+    itemStyle?.text ? `--rb-item-text: ${itemStyle.text}` : '',
   ]
     .filter(Boolean)
     .join('; ');
