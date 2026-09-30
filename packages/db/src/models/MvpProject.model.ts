@@ -77,6 +77,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     editedAt: { type: Date },
     // REV-92: the operator's custom design spec, applied by the template on every render
     design: { type: Schema.Types.Mixed },
+    // REV-110: what the rebuild of the original site left out and which fixes it applied
+    rebuild: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,

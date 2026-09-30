@@ -18,7 +18,11 @@ import {
   MVP_DESIGN_SECTIONS,
   MVP_DESIGN_TOKENS,
   MVP_LAYOUT_MANUAL_REASON,
+  BENTO_LAYOUT_VARIANTS,
   MVP_LAYOUT_VARIANTS,
+  REBUILD_OMISSIONS,
+  RebuildFallbackReason,
+  ISiteSections,
   MvpDesignElement,
   MvpLayoutVariant,
   SITE_ASSESSMENT_FAILURES,
@@ -782,6 +786,12 @@ const HttpUrlSchema = z
 // Layout variants of the generated MVP (REV-54)
 export const MvpLayoutVariantSchema = z.enum(MVP_LAYOUT_VARIANTS);
 
+export const BentoLayoutVariantSchema = z.enum(BENTO_LAYOUT_VARIANTS);
+
+/** Codes that describe one render (REV-110), not the audit; a new pick starts without them */
+const isRenderOutcome = (reason: string) =>
+  reason.startsWith('rule:') || reason.startsWith('rebuild:') || reason.startsWith('coverage:') || reason.startsWith('manual:');
+
 export const MvpLayoutSelectionSchema = z.object({
   variant: MvpLayoutVariantSchema,
   reasons: z.array(z.string().min(1).max(60)).max(12),
@@ -800,7 +810,7 @@ export function manualMvpLayout(
   previous: { reasons?: string[] | null; design?: unknown } | null | undefined,
   variant: MvpLayoutVariant,
 ): MvpLayoutSelection {
-  const facts = (previous?.reasons ?? []).filter((reason) => !reason.startsWith('rule:'));
+  const facts = (previous?.reasons ?? []).filter((reason) => !isRenderOutcome(reason));
   return MvpLayoutSelectionSchema.parse({
     variant,
     reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
@@ -959,7 +969,7 @@ export type MvpEditOutput = z.infer<typeof MvpEditOutputSchema>;
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
   design: MvpDesignSchema.optional(),
-  layout: MvpLayoutVariantSchema.optional(),
+  layout: BentoLayoutVariantSchema.optional(),
   language: z.string().regex(/^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i).optional(),
   niche: NicheEnumSchema.optional(),
   logoUrl: HttpUrlSchema.optional(),
@@ -1197,3 +1207,183 @@ export function sanitizeAuditError(error: unknown): string {
 export function isPermanentAuditError(message: string): boolean {
   return PERMANENT_AUDIT_ERROR.test(message);
 }
+
+// ---------------------------------------------------------------------------------------------
+// Section rebuild (REV-110)
+// ---------------------------------------------------------------------------------------------
+
+/** Below this share of the original page's text the MVP falls back to the Bento template */
+export const REBUILD_MIN_COVERAGE = 0.85;
+
+export type RebuildEligibility = { ok: true } | { ok: false; reason: RebuildFallbackReason; facts: string[] };
+
+/**
+ * Whether the audit's sections can be rebuilt (REV-110). The plan and size checks happen at render
+ * time; these are the checks the API can make before it accepts a switch to `original`.
+ */
+export function rebuildEligibility(
+  audit: { siteSections?: ISiteSections | null; siteSectionsError?: string | null } | null | undefined,
+): RebuildEligibility {
+  const read = audit?.siteSections;
+  if (!read || audit?.siteSectionsError) return { ok: false, reason: 'rebuild:unread', facts: [] };
+  if (!read.sections.some((section) => section.role === 'hero' || section.role === 'content')) {
+    return { ok: false, reason: 'rebuild:no_content', facts: [] };
+  }
+  if (read.coverage.ratio < REBUILD_MIN_COVERAGE) {
+    return { ok: false, reason: 'rebuild:low_coverage', facts: [`coverage:${read.coverage.ratio}`] };
+  }
+  return { ok: true };
+}
+
+export const REBUILD_SUMMARY_LIMITS = { omitted: 80, tuning: 120 } as const;
+
+export const MvpRebuildSummarySchema = z.object({
+  coverage: z.number().min(0).max(1),
+  sections: z.number().int().min(0),
+  omitted: z
+    .array(z.object({ what: z.enum(REBUILD_OMISSIONS), reason: z.string().min(1).max(60), sample: z.string().max(120).optional() }))
+    .max(REBUILD_SUMMARY_LIMITS.omitted),
+  tuning: z.array(z.string().min(1).max(60)).max(REBUILD_SUMMARY_LIMITS.tuning),
+});
+
+/** Iframe hosts the rebuild may embed (REV-110) */
+export const REBUILD_IFRAME_HOSTS = [
+  /^https:\/\/(www\.)?google\.[a-z.]+\/maps/i,
+  /^https:\/\/maps\.google\.[a-z.]+\//i,
+  /^https:\/\/(www\.)?openstreetmap\.org\//i,
+  /^https:\/\/(www\.)?youtube\.com\/embed\//i,
+  /^https:\/\/(www\.)?youtube-nocookie\.com\/embed\//i,
+  /^https:\/\/player\.vimeo\.com\/video\//i,
+];
+
+const rebuildText = z.string().min(1).max(SITE_SECTIONS_LIMITS.textChars);
+const rebuildShort = z.string().min(1).max(300);
+const rebuildHttp = z.string().max(2000).regex(/^https?:\/\//i, 'Only http(s) URLs are allowed');
+const RebuildImageSchema = z.object({
+  src: rebuildHttp,
+  alt: z.string().max(300),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  eager: z.boolean().optional(),
+});
+const RebuildLinkSchema = z
+  .object({ label: rebuildShort, href: z.string().max(2000), kind: z.enum(['booking', 'anchor', 'phone', 'email', 'map']) })
+  .refine(
+    (link) =>
+      ({
+        booking: link.href === '#booking',
+        anchor: /^#s-\d+$/.test(link.href),
+        phone: /^tel:\+?[\d]{3,20}$/.test(link.href),
+        email: /^mailto:[^\s@<>"]+@[^\s@<>"]+$/.test(link.href),
+        map: /^https?:\/\//i.test(link.href),
+      })[link.kind],
+    'Link href does not match its kind',
+  );
+const RebuildItemSchema = z.object({
+  title: rebuildShort.optional(),
+  subtitle: rebuildShort.optional(),
+  text: z.array(rebuildText).max(SITE_SECTIONS_LIMITS.textsPerArray),
+  image: RebuildImageSchema.optional(),
+  price: rebuildShort.optional(),
+  rating: z.number().min(0).max(5).optional(),
+  links: z.array(RebuildLinkSchema).max(SITE_SECTIONS_LIMITS.links),
+});
+const RebuildSectionSchema = z.object({
+  id: z.string().regex(/^s-\d+$/),
+  index: z.number().int().min(0),
+  kind: z.enum(SITE_SECTION_KINDS),
+  arrangement: z.enum(SITE_SECTION_ARRANGEMENTS),
+  columns: z.number().int().min(1).max(8).optional(),
+  mediaSide: z.enum(['left', 'right']).optional(),
+  split: z.number().min(0.1).max(0.9).optional(),
+  headingLevel: z.union([z.literal(1), z.literal(2)]),
+  intro: z.object({
+    eyebrow: rebuildShort.optional(),
+    heading: rebuildShort.optional(),
+    text: z.array(rebuildText).max(SITE_SECTIONS_LIMITS.textsPerArray),
+    links: z.array(RebuildLinkSchema).max(SITE_SECTIONS_LIMITS.links),
+  }),
+  items: z.array(RebuildItemSchema).max(SITE_SECTIONS_LIMITS.items),
+  itemStyle: z
+    .object({
+      background: siteHex.optional(),
+      radius: z.number().min(0).max(999).optional(),
+      border: z.boolean().optional(),
+      shadow: z.boolean().optional(),
+      imageShape: z.enum(SITE_IMAGE_SHAPES).optional(),
+      align: z.enum(['left', 'center']).optional(),
+    })
+    .optional(),
+  extra: z
+    .array(
+      z.discriminatedUnion('type', [
+        z.object({ type: z.literal('text'), text: z.array(rebuildText).max(SITE_SECTIONS_LIMITS.textsPerArray) }),
+        z.object({ type: z.literal('items'), arrangement: z.enum(SITE_SECTION_ARRANGEMENTS), items: z.array(RebuildItemSchema).max(SITE_SECTIONS_LIMITS.items) }),
+      ]),
+    )
+    .max(SITE_SECTIONS_LIMITS.extra),
+  images: z.array(RebuildImageSchema).max(SITE_SECTIONS_LIMITS.images),
+  embeds: z
+    .array(
+      z.object({
+        kind: z.enum(['map', 'video']),
+        src: rebuildHttp.refine((src) => REBUILD_IFRAME_HOSTS.some((host) => host.test(src)), 'Iframe host not allowed'),
+        title: rebuildShort,
+      }),
+    )
+    .max(SITE_SECTIONS_LIMITS.embeds),
+  booking: z.boolean(),
+  collapsed: z.boolean(),
+  style: z.object({
+    background: siteHex.optional(),
+    backgroundImage: rebuildHttp.optional(),
+    text: siteHex,
+    overlay: z.number().min(0).max(1).optional(),
+    align: z.enum(['left', 'center']),
+    paddingY: z.number().int().min(0).max(200),
+    fullBleed: z.boolean(),
+  }),
+});
+
+export const RebuildPlanSchema = z.object({
+  language: z.string().min(2).max(35),
+  businessName: rebuildShort,
+  hiddenH1: rebuildShort.optional(),
+  year: z.number().int().min(2000).max(2200),
+  theme: z.object({
+    primary: siteHex,
+    onPrimary: siteHex,
+    pageBackground: siteHex,
+    pageText: siteHex,
+    headingFont: z.string().min(1).max(300),
+    bodyFont: z.string().min(1).max(300),
+    headingWeight: z.number().int().min(100).max(1000),
+    headingUppercase: z.boolean(),
+    h1Size: z.number().min(16).max(96),
+    h2Size: z.number().min(16).max(72),
+    bodySize: z.number().min(16).max(22),
+    lineHeight: z.number().min(1.5).max(2.2),
+    buttonRadius: z.number().min(0).max(999),
+    buttonUppercase: z.boolean(),
+  }),
+  header: z.object({
+    logo: RebuildImageSchema.optional(),
+    nav: z.array(z.object({ label: rebuildShort, href: z.string().regex(/^#s-\d+$/) })).max(SITE_SECTIONS_LIMITS.links),
+    cta: z.object({ label: rebuildShort }),
+    phone: z.string().max(30).optional(),
+  }),
+  sections: z.array(RebuildSectionSchema).min(1).max(SITE_SECTIONS_LIMITS.sections),
+  bookingAppended: z.boolean(),
+  bookingServices: z.array(z.string().min(1).max(60)).max(SITE_SECTIONS_LIMITS.items),
+  footer: z.object({
+    section: RebuildSectionSchema.optional(),
+    contacts: z.object({
+      phone: z.string().max(30).optional(),
+      email: z.string().email().max(254).optional(),
+      address: z.string().max(300).optional(),
+      workingHours: z.string().max(300).optional(),
+    }),
+    social: z.array(z.object({ label: rebuildShort, href: rebuildHttp })).max(12),
+  }),
+  summary: MvpRebuildSummarySchema,
+});
