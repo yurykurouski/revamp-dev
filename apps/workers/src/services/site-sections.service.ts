@@ -415,8 +415,10 @@ export function toTypography(raw: RawTypography | undefined): ISiteTypography | 
   const family = (value: string) => cleanText(value.split(',')[0]?.replace(/["']/g, '')).slice(0, 100) || 'sans-serif';
   const clampInt = (value: number, min: number, max: number) => Math.min(max, Math.max(min, Math.round(value)));
   const { heading, body, button } = raw;
-  const lineHeight =
+  const ratio =
     body.lineHeight.endsWith('px') && body.size > 0 ? Math.round((parseFloat(body.lineHeight) / body.size) * 100) / 100 : undefined;
+  // Outside 0.5..5 it is a centring trick, not a reading line height: left out rather than failing the reading
+  const lineHeight = ratio !== undefined && ratio >= 0.5 && ratio <= 5 ? ratio : undefined;
   return {
     heading: { family: family(heading.family), size: clampInt(heading.size, 1, 200), weight: clampInt(heading.weight, 100, 1000), uppercase: heading.transform === 'uppercase', color: toHex(heading.color) },
     body: { family: family(body.family), size: clampInt(body.size, 1, 200), weight: clampInt(body.weight, 100, 1000), lineHeight, color: toHex(body.color) },

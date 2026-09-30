@@ -409,6 +409,9 @@ describe('toTypography (REV-109)', () => {
       button: { radius: 4, filled: true, uppercase: false, background: '#00aa77', color: '#ffffff' },
     });
     expect(toTypography({ heading: undefined })).toBeUndefined();
+    // A line height used for vertical centring (80px on 12px text) is not a reading line height: left out, never failing the reading
+    const tall = toTypography({ heading: { family: 'A', size: 30, weight: 700, transform: 'none', color: '' }, body: { family: 'B', size: 12, weight: 400, lineHeight: '80px', color: '' } });
+    expect(tall!.body.lineHeight).toBeUndefined();
     expect(toTypography({ heading: { family: 'A', size: 30, weight: 700, transform: 'none', color: '' }, body: { family: 'B', size: 16, weight: 400, lineHeight: 'normal', color: '' } })!.body.lineHeight).toBeUndefined();
   });
 });

@@ -559,12 +559,15 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     // Intro: what comes before the items; header and footer keep all their text as extra
     const introRuns = role === 'content' ? runs.filter((run) => precedes(run.el)) : [];
     let eyebrow: string | undefined;
+    let eyebrowRun: (typeof runs)[number] | undefined;
     const firstRun = introRuns[0];
     if (headingEl && firstRun && firstRun.text.length <= 60 && firstRun.el.compareDocumentPosition(headingEl) & Node.DOCUMENT_POSITION_FOLLOWING) {
       eyebrow = firstRun.text;
+      eyebrowRun = firstRun;
       introRuns.shift();
     }
-    const restRuns = runs.filter((run) => !introRuns.includes(run) && run.text !== eyebrow);
+    // The eyebrow run itself, not every later line that happens to repeat its text
+    const restRuns = runs.filter((run) => !introRuns.includes(run) && run !== eyebrowRun);
 
     const extra: RawSiteBlock['extra'] = [];
     const secondAt = second?.members[0];
@@ -629,10 +632,19 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       (node) => shown(node) && node.getBoundingClientRect().top < 200,
     ) ?? Array.from(document.querySelectorAll('nav')).find((node) => shown(node) && node.getBoundingClientRect().top < 200);
   const headerEl = headerCandidate && !blocks.some((b) => headerCandidate.contains(b)) ? headerCandidate : undefined;
-  const footerCandidates = Array.from(document.querySelectorAll('footer, [role="contentinfo"], #footer, .footer, .site-footer')).filter(
+  // Footers named only by an id or class token, as REV-104's layout walk leaves them out (its CHROME_CLASSES; copied, in-page code cannot import)
+  const FOOTER_TOKEN = /^(footer|site-footer|footer[-_]wrapper)$/i;
+  const namedFooters = Array.from(document.querySelectorAll('[id], [class]')).filter((el) =>
+    [el.id, ...Array.from(el.classList)].some((token) => FOOTER_TOKEN.test(token)),
+  );
+  const footerCandidates = Array.from(new Set([...Array.from(document.querySelectorAll('footer, [role="contentinfo"]')), ...namedFooters])).filter(
     (el) => shown(el) && !el.closest('[data-revamp-block]') && !blocks.some((b) => el.contains(b)) && !(headerEl && headerEl.contains(el)),
   );
-  const footerEl = footerCandidates.filter((el) => !footerCandidates.some((other) => other !== el && other.contains(el))).pop();
+  // The last one in page order
+  const footerEl = footerCandidates
+    .filter((el) => !footerCandidates.some((other) => other !== el && other.contains(el)))
+    .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
+    .pop();
   const chrome = [headerEl, footerEl].filter((el): el is Element => el !== undefined);
 
   // Site-wide typography

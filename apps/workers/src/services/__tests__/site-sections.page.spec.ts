@@ -399,4 +399,35 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.items[0]).toMatchObject({ subtitle: 'Warszawski Uniwersytet Medyczny', text: ['Lek. dent.'] });
     expectCovered(result);
   });
+
+  it('reads a footer named only by its class, the way the layout walk leaves it out', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasze usługi</h2><p>Leczenie zachowawcze i protetyka.</p></section>
+      <div class="footer-wrapper" style="padding:40px;background:#222;color:#eee"><p>ul. Długa 5, Kraków</p><p><a href="tel:+48123456789">+48 123 456 789</a></p></div>`));
+    const footer = result.sections.find((s) => s.role === 'footer')!;
+    expect(footer.kind).toBe('contact');
+    expect(footer.intro.links).toEqual([{ label: '+48 123 456 789', href: 'tel:+48123456789', kind: 'phone' }]);
+    expect(JSON.stringify(result.sections.find((s) => s.intro.heading === 'Nasze usługi'))).not.toContain('Długa');
+    expectCovered(result);
+  });
+
+  it('takes the last footer in page order when a named one comes before a footer element', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasze usługi</h2><p>Leczenie zachowawcze i protetyka.</p></section>
+      <div class="site-footer" style="padding:40px"><p>Zapisz się do newslettera gabinetu.</p></div>
+      <footer style="padding:40px"><p><a href="tel:+48123456789">+48 123 456 789</a></p></footer>`));
+    const footer = result.sections.find((s) => s.role === 'footer')!;
+    expect(footer.intro.links.map((l) => l.kind)).toEqual(['phone']);
+  });
+
+  it('keeps a later line that repeats the eyebrow text', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><p>Umów wizytę</p><h2>Nasze usługi</h2>
+        <div style="display:flex;gap:24px">${['Implanty', 'Ortodoncja', 'Protetyka'].map((t) => `<div style="flex:1"><h3>${t}</h3><p>Pełna diagnostyka i plan leczenia na miejscu.</p></div>`).join('')}</div>
+        <p>Umów wizytę</p></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasze usługi')!;
+    expect(s.intro.eyebrow).toBe('Umów wizytę');
+    expect(s.items).toHaveLength(3);
+    expect(s.extra).toEqual([{ type: 'text', text: ['Umów wizytę'] }]);
+  });
 });
