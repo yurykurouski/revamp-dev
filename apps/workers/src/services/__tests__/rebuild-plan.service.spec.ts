@@ -87,7 +87,7 @@ describe('planRebuild (REV-110)', () => {
     const slides = section(1, { role: 'hero', arrangement: 'slider', intro: { text: [], links: [] },
       items: [
         { title: 'Nakładki ortodontyczne', text: ['Przejrzysta droga do uśmiechu'], backgroundImage: 'https://falcodent.pl/ortheo.jpg', links: [] },
-        { text: ['Stomatologia estetyczna'], image: { src: 'https://falcodent.pl/o-6.jpg', alt: '' }, links: [] },
+        { text: ['Stomatologia estetyczna'], image: { src: 'https://falcodent.pl/o-6.jpg', alt: 'Licówki porcelanowe' }, links: [] },
         { text: [], backgroundImage: 'https://falcodent.pl/team.jpg', links: [] },
         { text: ['Bez zdjęcia'], links: [] },
       ],
@@ -101,6 +101,8 @@ describe('planRebuild (REV-110)', () => {
       ['https://falcodent.pl/team.jpg', undefined],
       [undefined, undefined],
     ]);
+    // A picture moved behind the caption keeps its original alt as the slide's text alternative; nothing is made up
+    expect(hero.items.map((i) => i.backgroundAlt)).toEqual([undefined, 'Licówki porcelanowe', undefined, undefined]);
     // Each slide carries its photo; the section keeps none of its own, and captions are white over the overlay
     expect(hero.style.backgroundImage).toBeUndefined();
     expect(hero.style.text).toBe('#ffffff');

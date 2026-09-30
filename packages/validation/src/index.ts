@@ -1286,6 +1286,7 @@ const RebuildItemSchema = z.object({
   text: z.array(rebuildText).max(SITE_SECTIONS_LIMITS.textsPerArray),
   image: RebuildImageSchema.optional(),
   backgroundImage: rebuildHttp.optional(),
+  backgroundAlt: rebuildShort.optional(),
   price: rebuildShort.optional(),
   rating: z.number().min(0).max(5).optional(),
   links: z.array(RebuildLinkSchema).max(SITE_SECTIONS_LIMITS.links),

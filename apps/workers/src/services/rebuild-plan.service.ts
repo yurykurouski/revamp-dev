@@ -144,9 +144,14 @@ function planItem(item: ISiteSectionItem, rec: Recorder, eager: boolean, photo =
   let image = item.image ? planImage(item.image, title, rec, eager) : undefined;
   // A photo slide shows its background photo, else its picture, behind the caption
   let backgroundImage: string | undefined;
+  let backgroundAlt: string | undefined;
   if (photo) {
     backgroundImage = isHttp(item.backgroundImage) ? item.backgroundImage : image?.src;
-    if (backgroundImage === image?.src) image = undefined;
+    if (image && backgroundImage === image.src) {
+      // The picture's own alt stays as the slide's text alternative (never one made up from the title)
+      backgroundAlt = label(item.image?.alt);
+      image = undefined;
+    }
   }
   return {
     ...(title ? { title } : {}),
@@ -154,6 +159,7 @@ function planItem(item: ISiteSectionItem, rec: Recorder, eager: boolean, photo =
     text: texts(item.text),
     ...(image ? { image } : {}),
     ...(backgroundImage ? { backgroundImage } : {}),
+    ...(backgroundAlt ? { backgroundAlt } : {}),
     ...(price ? { price } : {}),
     ...(item.rating !== undefined ? { rating: Math.min(5, Math.max(0, item.rating)) } : {}),
     links: planLinks(item.links, rec),

@@ -46,9 +46,10 @@ export function renderItem(item: IRebuildItem, level: 3 | 4 = 3): string {
 
 /** A photo slide: the caption in the page's container, over the slide's own photo and the overlay */
 const photoSlide = (i: IRebuildItem) => {
-  const { backgroundImage, ...caption } = i;
+  const { backgroundImage, backgroundAlt, ...caption } = i;
   const style = backgroundImage ? ` style="--rb-slide-image: url('${cssUrl(backgroundImage).replace(/&/g, '&amp;')}')"` : '';
-  return `<div class="rb-slide rb-photo-slide"${style}><div class="rb-container">${renderItem(caption)}</div></div>`;
+  const alt = backgroundAlt ? `<span class="rb-visually-hidden">${escapeHtml(backgroundAlt)}</span>` : '';
+  return `<div class="rb-slide rb-photo-slide"${style}>${alt}<div class="rb-container">${renderItem(caption)}</div></div>`;
 };
 
 function renderSlider(items: IRebuildItem[], ctx: RenderCtx, label: string, photo = false): string {

@@ -1368,6 +1368,8 @@ export interface IRebuildItem {
   image?: IRebuildImage;
   /** A photo slide's photo, painted behind its caption (only in a section with `photoSlides`) */
   backgroundImage?: string;
+  /** The original alt of a picture moved behind the caption, kept as the slide's text alternative */
+  backgroundAlt?: string;
   price?: string;
   rating?: number;
   links: IRebuildLink[];
