@@ -100,9 +100,32 @@ export function bookingScript(opts: {
   t: MvpStrings;
   tracker: ReturnType<typeof resolveTrackerUrls>;
   trackingToken?: string;
-  themeVars: { primary: string; primaryRgb: string; secondary: string; accent: string };
+  themeVars: { primary: string; primaryRgb?: string; secondary?: string; accent?: string };
 }): string {
   const { t, tracker, trackingToken, themeVars } = opts;
+  // Only the properties the page has are set; each optional block starts with its own newline
+  const rgbBlock = themeVars.primaryRgb
+    ? `
+          const hex = palette.primary.replace('#', '');
+          if (hex.length === 6) {
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            document.documentElement.style.setProperty('${themeVars.primaryRgb}', r + ', ' + g + ', ' + b);
+          }`
+    : '';
+  const secondaryBlock = themeVars.secondary
+    ? `
+        if (palette.secondary) {
+          document.documentElement.style.setProperty('${themeVars.secondary}', palette.secondary);
+        }`
+    : '';
+  const accentBlock = themeVars.accent
+    ? `
+        if (palette.accent) {
+          document.documentElement.style.setProperty('${themeVars.accent}', palette.accent);
+        }`
+    : '';
   return `<script>
     (function() {
       const form = document.getElementById('lead-booking-form');
@@ -192,21 +215,8 @@ export function bookingScript(opts: {
         if (!event.data || event.data.type !== 'REVAMP_UPDATE_THEME' || !event.data.palette) return;
         const palette = event.data.palette;
         if (palette.primary) {
-          document.documentElement.style.setProperty('${themeVars.primary}', palette.primary);
-          const hex = palette.primary.replace('#', '');
-          if (hex.length === 6) {
-            const r = parseInt(hex.substring(0, 2), 16);
-            const g = parseInt(hex.substring(2, 4), 16);
-            const b = parseInt(hex.substring(4, 6), 16);
-            document.documentElement.style.setProperty('${themeVars.primaryRgb}', r + ', ' + g + ', ' + b);
-          }
-        }
-        if (palette.secondary) {
-          document.documentElement.style.setProperty('${themeVars.secondary}', palette.secondary);
-        }
-        if (palette.accent) {
-          document.documentElement.style.setProperty('${themeVars.accent}', palette.accent);
-        }
+          document.documentElement.style.setProperty('${themeVars.primary}', palette.primary);${rgbBlock}
+        }${secondaryBlock}${accentBlock}
       });
     })();
   </script>`;
