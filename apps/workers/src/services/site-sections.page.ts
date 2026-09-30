@@ -303,8 +303,14 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       }
       return labelBlocks.size === 1;
     };
+    // An icon inside a button (a small image before its label) does not make it a card
+    const holdsPicture = (a: Element) =>
+      Array.from(a.querySelectorAll('img')).some((img) => {
+        const r = img.getBoundingClientRect();
+        return r.width > 40 || r.height > 40 || (r.width === 0 && r.height === 0);
+      });
     const standalone = anchors.filter(
-      (a) => !a.querySelector('p, h1, h2, h3, h4, h5, h6, li, img') && (onlyLinks(blockOf(a, root), root) || labelInside(a)),
+      (a) => !a.querySelector('p, h1, h2, h3, h4, h5, h6, li') && !holdsPicture(a) && (onlyLinks(blockOf(a, root), root) || labelInside(a)),
     );
     return { links, standalone };
   };
@@ -469,6 +475,12 @@ export function collectSiteSectionsInPage(): RawSiteSections {
           .filter((other) => other !== group && other.members.every((member) => member !== row && row.contains(member)))
           .sort((a, b) => b.weight - a.weight)[0],
       );
+      // A layout of a few columns where one column holds the cards (an intro column beside a carousel) is not a
+      // group: the cards are; the other columns' text stays intro or extra text
+      const holders = inner.filter((g): g is Found => g !== undefined);
+      if (group.members.length <= 3 && holders.length === 1 && holders[0]!.members.length >= 3 && holders[0]!.weight >= group.weight * 0.5) {
+        return holders[0]!;
+      }
       const first = inner.findIndex((g) => g !== undefined);
       const last = inner.length - 1 - [...inner].reverse().findIndex((g) => g !== undefined);
       if (first < 0 || last - first + 1 < 2) return group;

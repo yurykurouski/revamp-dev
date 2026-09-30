@@ -390,6 +390,32 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.intro.text).toEqual(['Cieszymy się, że jesteś!', 'Zapewniamy pełną opiekę.']);
   });
 
+  it('reads the cards of a carousel beside an intro column as the items (Elefant offer)', async () => {
+    const card = (title: string, text: string) => `<div class="px-2 group flex flex-col" style="width:268px;flex-shrink:0">
+      <div><div style="overflow:hidden"><img src="https://img.test/${title.length}.jpg" alt="" style="width:252px;height:168px"></div>
+        <div><h3><a href="/oferta/${title.length}"><span>${title}</span></a></h3></div></div>
+      <div><p>${text}</p><div><a href="/oferta/${title.length}" style="display:inline-flex;padding:8px 16px;border:1px solid #c0c"><span><img src="https://img.test/icon.png" alt="" style="width:20px;height:20px"></span> Więcej</a></div></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div style="display:grid;grid-template-columns:1fr 2fr;gap:24px">
+        <div><div><h2 style="font-size:48px">OFERTA</h2><h3 style="font-size:30px">Usługi skierowane do dzieci, młodzieży i dorosłych.</h3>
+          <p>Każdego dnia mali i więksi pacjenci otrzymują profesjonalne wsparcie.</p>
+          <div><a href="/oferta" style="display:inline-flex;padding:8px 16px;background:#c0c;color:#fff"><span><img src="https://img.test/icon.png" alt="" style="width:20px;height:20px"></span> Zobacz nasze usługi</a></div></div></div>
+        <div><div style="overflow:hidden"><div><button aria-label="Poprzedni"><svg width="20" height="20"></svg></button><button aria-label="Następny"><svg width="20" height="20"></svg></button></div>
+          <div style="display:flex">${card('Leczenie zachowawcze', 'Zapobieganie i leczenie próchnicy u dzieci.')}${card('Profilaktyka', 'Lakowanie bruzd i lakierowanie zębów.')}
+            ${card('Narkoza i sedacja wziewna', 'Gaz rozweselający, bezpieczny i skuteczny.')}${card('Chirurgia', 'Bezpieczne zabiegi chirurgiczne dla dzieci.')}${card('Ortodoncja', 'Aparaty dla dzieci i młodzieży.')}</div></div></div>
+      </div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'OFERTA')!;
+    expect(s.intro.text).toEqual(['Usługi skierowane do dzieci, młodzieży i dorosłych.', 'Każdego dnia mali i więksi pacjenci otrzymują profesjonalne wsparcie.']);
+    expect(s.intro.links.map((l) => l.label)).toEqual(['Zobacz nasze usługi']);
+    expect(s.items.map((i) => [i.title, i.text, i.links.map((l) => l.label)])).toEqual([
+      ['Leczenie zachowawcze', ['Zapobieganie i leczenie próchnicy u dzieci.'], ['Leczenie zachowawcze', 'Więcej']],
+      ['Profilaktyka', ['Lakowanie bruzd i lakierowanie zębów.'], ['Profilaktyka', 'Więcej']],
+      ['Narkoza i sedacja wziewna', ['Gaz rozweselający, bezpieczny i skuteczny.'], ['Narkoza i sedacja wziewna', 'Więcej']],
+      ['Chirurgia', ['Bezpieczne zabiegi chirurgiczne dla dzieci.'], ['Chirurgia', 'Więcej']],
+      ['Ortodoncja', ['Aparaty dla dzieci i młodzieży.'], ['Ortodoncja', 'Więcej']],
+    ]);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}
