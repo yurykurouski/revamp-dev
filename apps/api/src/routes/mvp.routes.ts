@@ -7,9 +7,11 @@ import {
   canChangeMvpLayout,
   manualMvpLayout,
   mvpGenerationMode,
+  rebuildEligibility,
 } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { MvpProject } from '../models/MvpProject.model.js';
+import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { Lead } from '../models/Lead.model.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
@@ -246,6 +248,18 @@ router.patch(
         return;
       }
 
+      // A switch to the rebuild (REV-110) only when the audit's sections can be rebuilt
+      if (variant === 'original') {
+        const audit = await Audit.findById(project.auditId).select('siteSections siteSectionsError').exec();
+        const eligible = rebuildEligibility(audit);
+        if (!eligible.ok) {
+          throw new AppError(409, 'MVP_REBUILD_UNAVAILABLE', `The original site cannot be rebuilt: ${eligible.reason}`, {
+            reason: eligible.reason,
+            facts: eligible.facts,
+          });
+        }
+      }
+
       // The audit facts and the derived look (REV-104) are kept; the rule becomes the operator's
       const layout = manualMvpLayout(project.layout, variant);
       const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout } }, { new: true }).exec();
@@ -296,6 +310,15 @@ async function runMvpChange(
     throw new AppError(409, 'MVP_EDIT_NOT_ALLOWED', `The MVP cannot be changed while the lead is ${lead.status}`, {
       status: lead.status,
     });
+  }
+
+  // The rebuilt original (REV-110) has no design spec or Bento copy to change until REV-111
+  if (project.layout?.variant === 'original') {
+    throw new AppError(
+      409,
+      'MVP_EDIT_UNSUPPORTED',
+      'Free-text changes and custom designs are not available for the rebuilt original site yet. Switch to a template layout to use them.',
+    );
   }
 
   const outcome = await runMvpEditJob({

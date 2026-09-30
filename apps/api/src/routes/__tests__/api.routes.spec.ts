@@ -1738,6 +1738,99 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
   });
 
+  describe('rebuilt MVPs (REV-110)', () => {
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const auditId = new mongoose.Types.ObjectId().toString();
+    const mockProject = (variant: string) =>
+      vi.spyOn(MvpProject, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant, reasons: ['rule:derived'] } }),
+      } as any);
+    const mockLead = (status: string) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, status }) } as any);
+    const mockAudit = (doc: unknown) =>
+      vi.spyOn(Audit, 'findById').mockReturnValue({
+        select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) }),
+      } as any);
+
+    beforeEach(() => {
+      vi.mocked(addMvpRelayoutJob).mockClear();
+      vi.mocked(runMvpEditJob).mockClear();
+    });
+
+    it('refuses a free-text change on the rebuild', async () => {
+      mockProject('original');
+      mockLead('NEEDS_APPROVAL');
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Make it blue' });
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('MVP_EDIT_UNSUPPORTED');
+      expect(runMvpEditJob).not.toHaveBeenCalled();
+    });
+
+    it('refuses a design reset on the rebuild', async () => {
+      mockProject('original');
+      mockLead('NEEDS_APPROVAL');
+      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('MVP_EDIT_UNSUPPORTED');
+      expect(runMvpEditJob).not.toHaveBeenCalled();
+    });
+
+    it('refuses a switch to original when the audit has no read sections (pre-REV-109 audit)', async () => {
+      mockProject('split');
+      mockLead('NEEDS_APPROVAL');
+      mockAudit({});
+      const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+      save.mockClear();
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', details: { reason: 'rebuild:unread' } });
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('refuses a switch to original when the audit is missing', async () => {
+      mockProject('split');
+      mockLead('NEEDS_APPROVAL');
+      mockAudit(null);
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('MVP_REBUILD_UNAVAILABLE');
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+    });
+
+    it('accepts a switch to original when the audit can be rebuilt', async () => {
+      mockProject('split');
+      mockLead('NEEDS_APPROVAL');
+      mockAudit({
+        siteSections: {
+          sections: [{ index: 1, role: 'hero' }],
+          skipped: [],
+          coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
+        },
+      });
+      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'original', reasons: [] } }),
+      } as any);
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
+      expect(res.status).toBe(200);
+      expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
+    });
+
+    it('still allows a switch away from the rebuild without reading the audit', async () => {
+      mockProject('original');
+      mockLead('NEEDS_APPROVAL');
+      const audit = mockAudit({});
+      audit.mockClear();
+      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'split', reasons: [] } }),
+      } as any);
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
+      expect(res.status).toBe(200);
+      expect(audit).not.toHaveBeenCalled();
+    });
+  });
+
   describe('Unknown route handling', () => {
     it('should return 404 for non-existent endpoint', async () => {
       const res = await request(app).get('/api/v1/non-existent-route');
