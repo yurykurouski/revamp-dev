@@ -187,7 +187,7 @@ const rule = (selectors: string[], declarations: string[]) =>
 // ---------------------------------------------------------------------------------------------
 
 /** System font stacks only (modernfontstacks.com): the page loads no external fonts */
-const FONT_STACKS = {
+export const FONT_STACKS = {
   humanist: "Seravek, 'Gill Sans Nova', Ubuntu, Calibri, 'DejaVu Sans', source-sans-pro, sans-serif",
   geometric: "Avenir, Montserrat, Corbel, 'URW Gothic', source-sans-pro, sans-serif",
   rounded:
