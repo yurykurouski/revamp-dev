@@ -67,6 +67,11 @@ export interface MvpStrings {
   testimonialsOnSite: string;
   offerCall: (phone: string) => string;
   offerOnline: string;
+  mapTitle: string;
+  videoTitle: string;
+  previousSlide: string;
+  nextSlide: string;
+  readMore: string;
 }
 
 const en: MvpStrings = {
@@ -138,6 +143,11 @@ const en: MvpStrings = {
   testimonialsOnSite: 'Customer testimonials on our site',
   offerCall: (p) => `Call ${p} or send a request online`,
   offerOnline: 'Send a request online and we will get back to you',
+  mapTitle: 'Map',
+  videoTitle: 'Video',
+  previousSlide: 'Previous',
+  nextSlide: 'Next',
+  readMore: 'Read more',
 };
 
 const ru: MvpStrings = {
@@ -209,6 +219,11 @@ const ru: MvpStrings = {
   testimonialsOnSite: 'Отзывы клиентов на нашем сайте',
   offerCall: (p) => `Позвоните по номеру ${p} или оставьте заявку онлайн`,
   offerOnline: 'Оставьте заявку онлайн, и мы свяжемся с вами',
+  mapTitle: 'Карта',
+  videoTitle: 'Видео',
+  previousSlide: 'Назад',
+  nextSlide: 'Далее',
+  readMore: 'Подробнее',
 };
 
 const be: MvpStrings = {
@@ -280,6 +295,11 @@ const be: MvpStrings = {
   testimonialsOnSite: 'Водгукі кліентаў на нашым сайце',
   offerCall: (p) => `Патэлефануйце па нумары ${p} або пакіньце заяўку анлайн`,
   offerOnline: 'Пакіньце заяўку анлайн, і мы звяжамся з вамі',
+  mapTitle: 'Карта',
+  videoTitle: 'Відэа',
+  previousSlide: 'Назад',
+  nextSlide: 'Далей',
+  readMore: 'Падрабязней',
 };
 
 const pl: MvpStrings = {
@@ -351,6 +371,11 @@ const pl: MvpStrings = {
   testimonialsOnSite: 'Opinie klientów na naszej stronie',
   offerCall: (p) => `Zadzwoń pod numer ${p} lub wyślij zapytanie online`,
   offerOnline: 'Wyślij zapytanie online, a skontaktujemy się z Tobą',
+  mapTitle: 'Mapa',
+  videoTitle: 'Wideo',
+  previousSlide: 'Poprzedni',
+  nextSlide: 'Następny',
+  readMore: 'Czytaj więcej',
 };
 
 const lt: MvpStrings = {
@@ -422,6 +447,11 @@ const lt: MvpStrings = {
   testimonialsOnSite: 'Klientų atsiliepimai mūsų svetainėje',
   offerCall: (p) => `Skambinkite ${p} arba siųskite užklausą internetu`,
   offerOnline: 'Siųskite užklausą internetu ir mes su jumis susisieksime',
+  mapTitle: 'Žemėlapis',
+  videoTitle: 'Vaizdo įrašas',
+  previousSlide: 'Ankstesnis',
+  nextSlide: 'Kitas',
+  readMore: 'Skaityti daugiau',
 };
 
 const DICTIONARIES: Record<MvpUiLanguage, MvpStrings> = { en, ru, be, pl, lt };
