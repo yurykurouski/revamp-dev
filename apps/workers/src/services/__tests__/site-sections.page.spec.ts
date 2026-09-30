@@ -366,6 +366,21 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(JSON.stringify({ text: s.intro.text, extra: s.extra })).not.toContain('Dodaj nową opinię');
   });
 
+  it('reads two rows of three cards under a heading row as one grid of six (Dentalux amenities)', async () => {
+    const card = (title: string, text: string) =>
+      `<div class="col" style="flex:1"><div class="icon"><span>\ue900</span></div><div><h3><strong>${title}</strong></h3><p>${text}</p></div></div>`;
+    const row = (cards: string) => `<div class="row" style="display:flex;gap:40px;margin:20px 0">${cards}</div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div class="row"><div class="col"><div><h2>Zadbaliśmy o udogodnienia</h2></div></div></div>
+        ${row(card('Elastyczne godziny', 'Wydłużyliśmy godziny pracy.') + card('Dogodna lokalizacja', 'Blisko stacji metra.') + card('Raty', 'Leczenie na raty.'))}
+        ${row(card('Klimatyzacja', 'Klimatyzowane gabinety.') + card('Internet', 'Bezpłatne Wi-Fi.') + card('Dostępność', 'Wygodne podjazdy.'))}
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Zadbaliśmy o udogodnienia')!;
+    expect(s.columns).toBe(3);
+    expect(s.items.map((i) => i.title)).toEqual(['Elastyczne godziny', 'Dogodna lokalizacja', 'Raty', 'Klimatyzacja', 'Internet', 'Dostępność']);
+    expect(s.extra).toEqual([]);
+  });
+
   it('takes a label of up to 60 characters above a larger heading for the eyebrow (Dentalux)', async () => {
     const result = await sectionsOf(pageOf(`${HERO}
       <section><h4 style="font-size:14px">30 lat dbamy o uśmiech Warszawy – a teraz Twój</h4>
