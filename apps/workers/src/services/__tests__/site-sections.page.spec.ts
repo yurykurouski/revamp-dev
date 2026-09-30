@@ -465,6 +465,16 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(result.coverage.uncaptured).toEqual([]);
   });
 
+  it('keeps the words apart where a heading or title breaks its line with <br> (Dentalux, Falco-Dent)', async () => {
+    const card = (title: string) => `<div style="flex:1"><h4><a href="/oferta">${title}</a></h4><p>Opis zabiegu i jego przebiegu.</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Bezpieczeństwo w gabinecie<br>stomatologicznym Falco-Dent</h2><div style="display:flex;gap:20px">
+        ${card('Stomatologia zachowawcza<br>i estetyczna')}${card('Endodoncja')}${card('Implanty')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading?.startsWith('Bezpieczeństwo'))!;
+    expect(s.intro.heading).toBe('Bezpieczeństwo w gabinecie stomatologicznym Falco-Dent');
+    expect(s.items[0]!.title).toBe('Stomatologia zachowawcza i estetyczna');
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

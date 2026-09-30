@@ -129,6 +129,17 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   // Soft hyphens and icon-font glyphs (private-use characters) are not copy
   const clean = (value: string | null | undefined): string =>
     (value || '').replace(/­/g, '').replace(/\p{Co}/gu, '').replace(/\s+/g, ' ').trim();
+  /** An element's text, cleaned, with a <br> read as a space (textContent runs the two lines together) */
+  const textOf = (el: Element): string => {
+    if (!el.querySelector('br')) return clean(el.textContent);
+    const parts: string[] = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE) parts.push(node.nodeValue || '');
+      else if ((node as Element).tagName === 'BR') parts.push(' ');
+    }
+    return clean(parts.join(''));
+  };
   const classOf = (el: Element): string => (typeof el.className === 'string' ? el.className : el.getAttribute('class') || '');
   const boxOf = (el: Element): RawBox => {
     const r = el.getBoundingClientRect();
@@ -268,7 +279,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   };
   const linkOf = (el: Element): RawSiteLink | undefined => {
     const href = absolute(el.getAttribute('href'));
-    const text = clean(el.textContent);
+    const text = textOf(el);
     const label = text || clean(el.getAttribute('aria-label')) || clean(el.getAttribute('title'));
     if (!href || !label) return undefined;
     return { label, href, button: isButton(el), ...(text ? {} : { labelFromAttribute: true }) };
@@ -294,7 +305,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     // A button whose short label sits in one block inside the link (<a><span style="display:block">) is standalone
     // too; a linked card with several blocks of copy is not
     const labelInside = (a: Element): boolean => {
-      if (clean(a.textContent).length > 60) return false;
+      if (textOf(a).length > 60) return false;
       const walker = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
       const labelBlocks = new Set<Element>();
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -389,9 +400,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const children = Array.from(el.children);
     return `${el.tagName}(${tags(children)}|${tags(children.flatMap((child) => Array.from(child.children)))})`;
   };
-  const profile = (el: Element) => `${hasImage(el) ? 'i' : ''}${clean(el.textContent) ? 't' : ''}`;
+  const profile = (el: Element) => `${hasImage(el) ? 'i' : ''}${textOf(el) ? 't' : ''}`;
   // An item holds more than one line of text, an image, a price, or is a list entry
-  const composite = (el: Element) => ITEM_TAGS.has(el.tagName) || hasImage(el) || runsOf(el, []).length >= 2 || PRICE.test(clean(el.textContent));
+  const composite = (el: Element) => ITEM_TAGS.has(el.tagName) || hasImage(el) || runsOf(el, []).length >= 2 || PRICE.test(textOf(el));
   // A class token naming a slider; flags such as Elementor's `has_eae_slider` on every section do not
   const SLIDER_TOKEN = /slider|slideshow/i;
   const FLAG_TOKEN = /^(has|no|is|with|enable|disable)[-_]/i;
@@ -442,8 +453,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         members: panels as Element[],
         covers: [list, ...(panels as Element[])],
         markup: 'tabs',
-        titles: tabs.map((tab) => clean(tab.textContent)),
-        weight: (panels as Element[]).reduce((sum, panel) => sum + clean(panel.textContent).length, 0),
+        titles: tabs.map((tab) => textOf(tab)),
+        weight: (panels as Element[]).reduce((sum, panel) => sum + textOf(panel).length, 0),
       });
     }
 
@@ -454,7 +465,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       for (const child of Array.from(parent.children)) {
         // A link is text, unless it wraps a photo or a card: a gallery of linked images
         if (excluded(child) || (TEXT_TAGS.has(child.tagName) && !(child.tagName === 'A' && hasImage(child))) || taken(child)) continue;
-        if (!clean(child.textContent) && !hasImage(child)) continue;
+        if (!textOf(child) && !hasImage(child)) continue;
         const key = signature(child);
         const list = bySignature.get(key);
         if (list) list.push(child);
@@ -473,7 +484,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         if (Math.max(...Array.from(counts.values())) < members.length * 0.75) continue;
         const markup = markupOf(parent, members, root);
         if (!markup && members.filter(composite).length < members.length * 0.75) continue;
-        const weight = members.reduce((sum, m) => sum + clean(m.textContent).length + (hasImage(m) ? 50 : 0), 0);
+        const weight = members.reduce((sum, m) => sum + textOf(m).length + (hasImage(m) ? 50 : 0), 0);
         found.push({ members, covers: members, ...(markup ? { markup } : {}), weight });
       }
     }
@@ -500,7 +511,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       const cards = inner.slice(first, last + 1);
       if (cards.some((g) => g === undefined)) return group;
       const rows = group.members.slice(first, last + 1);
-      const rowsWeight = rows.reduce((sum, m) => sum + clean(m.textContent).length + (hasImage(m) ? 50 : 0), 0);
+      const rowsWeight = rows.reduce((sum, m) => sum + textOf(m).length + (hasImage(m) ? 50 : 0), 0);
       const cardGroups = cards as Found[];
       const cardSignature = signature(cardGroups[0]!.members[0]!);
       if (!cardGroups.every((g) => g.members.every((member) => signature(member) === cardSignature))) return group;
@@ -527,12 +538,12 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       .filter((node) => !isSlideLabel(node))
       .map((node) => `${node.getAttribute('aria-label') || ''} ${node.getAttribute('title') || ''}`)
       .join(' ');
-    const scored = `${labels} ${clean(el.textContent)}`.match(/(?<![\d/.,])(\d(?:[.,]\d+)?)\s*(?:\/|na|z|из|of)\s*(5|10)(?![\d/])/i);
+    const scored = `${labels} ${textOf(el)}`.match(/(?<![\d/.,])(\d(?:[.,]\d+)?)\s*(?:\/|na|z|из|of)\s*(5|10)(?![\d/])/i);
     if (scored) {
       const value = parseFloat((scored[1] ?? '').replace(',', '.'));
       return scored[2] === '10' ? value / 2 : value;
     }
-    const glyphs = (clean(el.textContent).match(/★/g) || []).length;
+    const glyphs = (textOf(el).match(/★/g) || []).length;
     if (glyphs >= 1 && glyphs <= 5) return glyphs;
     // A star is a class token "star"/"stars" or one joined by - or _ ("fa-star", "star-full"), never "justify-start"
     const isStar = (node: Element) => classOf(node).split(/\s+/).some((token) => /(^|[-_])stars?($|[-_])/i.test(token));
@@ -548,7 +559,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   /** The item's most prominent heading (h2 over h4), the first of its level; a smaller label before it is not the title */
   const headingOf = (member: Element): Element | null => {
     for (const level of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
-      const found = Array.from(member.querySelectorAll(level)).find((h) => clean(h.textContent));
+      const found = Array.from(member.querySelectorAll(level)).find((h) => textOf(h));
       if (found) return found;
     }
     return null;
@@ -560,11 +571,11 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         : (headingOf(member) ??
           member.querySelector(TITLE) ??
           Array.from(member.querySelectorAll(TITLE_FALLBACK)).find((el) => {
-            const text = clean(el.textContent);
+            const text = textOf(el);
             return text.length > 0 && text.length <= 80;
           }) ??
           null);
-    const title = titleOverride ?? (titleEl ? clean(titleEl.textContent) : undefined);
+    const title = titleOverride ?? (titleEl ? textOf(titleEl) : undefined);
 
     // A short line right next to the title: a role under a name, a date over a review
     let subtitleEl: Element | undefined;
@@ -575,7 +586,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       }
       subtitleEl = [anchor.nextElementSibling, anchor.previousElementSibling].find((el): el is Element => {
         if (!el || el.querySelector('img, h1, h2, h3, h4, h5, h6')) return false;
-        const text = clean(el.textContent);
+        const text = textOf(el);
         return text.length > 0 && text.length <= 60 && !PRICE.test(text);
       });
     }
@@ -588,13 +599,13 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       .filter((image): image is RawSiteImage => image !== undefined)
       .sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height);
     const image = images[0];
-    let subtitle = subtitleEl ? clean(subtitleEl.textContent) : undefined;
+    let subtitle = subtitleEl ? textOf(subtitleEl) : undefined;
     // With nothing else under the title, the short line is the item's text, not its subtitle
     if (subtitle && text.length === 0 && !image) {
       text = [subtitle];
       subtitle = undefined;
     }
-    const price = clean(member.textContent).match(PRICE)?.[0]?.trim();
+    const price = textOf(member).match(PRICE)?.[0]?.trim();
     const rating = ratingOf(member);
     const backgroundImage = backgroundImageOf(member);
     const icon =
@@ -671,14 +682,14 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const headings =
       role === 'content'
         ? Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
-            .filter((h) => !hidden.some((el) => el.contains(h)) && !excluded(h) && precedes(h) && clean(h.textContent))
+            .filter((h) => !hidden.some((el) => el.contains(h)) && !excluded(h) && precedes(h) && textOf(h))
             .slice(0, 2)
         : [];
     let headingEl: Element | undefined = headings[0];
     // A short label right above a clearly larger heading is the eyebrow ("O NAS" over "Poznaj gabinet…")
     let eyebrowEl: Element | undefined;
     const larger = headings[1];
-    if (headingEl && larger && !headingEl.contains(larger) && clean(headingEl.textContent).length <= 60) {
+    if (headingEl && larger && !headingEl.contains(larger) && textOf(headingEl).length <= 60) {
       const between = document.createRange();
       between.setStartAfter(headingEl);
       between.setEndBefore(larger);
@@ -692,7 +703,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
 
     // Intro: what comes before the items; header and footer keep all their text as extra
     const introRuns = role === 'content' ? runs.filter((run) => precedes(run.el)) : [];
-    let eyebrow: string | undefined = eyebrowEl ? clean(eyebrowEl.textContent) : undefined;
+    let eyebrow: string | undefined = eyebrowEl ? textOf(eyebrowEl) : undefined;
     let eyebrowRun: (typeof runs)[number] | undefined;
     const firstRun = introRuns[0];
     if (
@@ -746,7 +757,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       ...(contentBox ? { contentBox } : {}),
       intro: {
         ...(eyebrow ? { eyebrow } : {}),
-        ...(headingEl ? { heading: clean(headingEl.textContent), headingLevel } : {}),
+        ...(headingEl ? { heading: textOf(headingEl), headingLevel } : {}),
         text: introRuns.map((run) => run.text),
         links,
       },
@@ -795,7 +806,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const headerTop = headerEl.getBoundingClientRect().top;
     for (let sib = headerEl.previousElementSibling; sib; sib = sib.previousElementSibling) {
       const r = sib.getBoundingClientRect();
-      if (!shown(sib) || excluded(sib) || !clean(sib.textContent)) continue;
+      if (!shown(sib) || excluded(sib) || !textOf(sib)) continue;
       if (sib.matches('[data-revamp-block]') || sib.querySelector('[data-revamp-block], h1, h2') || r.height > 200 || r.bottom > headerTop + 5) break;
       headerBars.unshift(sib);
     }
@@ -822,9 +833,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const s = window.getComputedStyle(el);
     return { family: s.fontFamily, size: parseFloat(s.fontSize) || 0, weight: Number(s.fontWeight) || 400, transform: s.textTransform, color: s.color, lineHeight: s.lineHeight };
   };
-  const headingSample = firstIn(blocks, 'h2', (el) => clean(el.textContent).length > 0) ?? firstIn(blocks, 'h1', (el) => clean(el.textContent).length > 0);
-  const bodySample = firstIn(blocks, 'p', (el) => clean(el.textContent).length >= 40);
-  const buttonSample = firstIn([...chrome, ...blocks], 'a[href], button', (el) => clean(el.textContent).length > 0 && isButton(el));
+  const headingSample = firstIn(blocks, 'h2', (el) => textOf(el).length > 0) ?? firstIn(blocks, 'h1', (el) => textOf(el).length > 0);
+  const bodySample = firstIn(blocks, 'p', (el) => textOf(el).length >= 40);
+  const buttonSample = firstIn([...chrome, ...blocks], 'a[href], button', (el) => textOf(el).length > 0 && isButton(el));
   const typography: RawTypography = {};
   if (headingSample) {
     const { family, size, weight, transform, color } = fontOf(headingSample);
