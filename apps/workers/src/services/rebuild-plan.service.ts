@@ -163,8 +163,9 @@ const planItems = (items: ISiteSectionItem[], rec: Recorder, eagerFirst: boolean
     .map((item, i) => planItem(item, rec, eagerFirst && i === 0))
     .filter((item) => !isEmptyItem(item));
 
-/** A planned section with nothing to render: no heading, copy, items, images, embeds or booking form */
+/** A planned section with nothing to render: no heading, copy, items, images, photo, embeds or booking form */
 const isEmptySection = (s: IRebuildSection) =>
+  !s.style.backgroundImage &&
   !s.intro.heading &&
   !s.intro.eyebrow &&
   !s.intro.text.length &&
