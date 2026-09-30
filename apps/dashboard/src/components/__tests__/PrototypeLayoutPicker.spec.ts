@@ -127,9 +127,13 @@ describe('Prototype step layout picker (REV-84)', () => {
   const setLayoutMessages = () =>
     posted.filter((message) => (message as { type?: string }).type === 'REVAMP_SET_LAYOUT');
 
-  it('offers all four layouts with the saved one selected', () => {
+  it('offers the original site first, then the four template layouts, with the saved one selected', () => {
     render(mvpWith('editorial'));
-    for (const variant of ['bento', 'split', 'editorial', 'compact'] as const) {
+    expect(
+      Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="mvp-layout-picker"] button')).map((el) => el.value),
+    ).toEqual(['original', 'bento', 'split', 'editorial', 'compact']);
+    expect(button('original').getAttribute('title')).toBe(en.mvpLayout.descriptions.original);
+    for (const variant of ['original', 'bento', 'split', 'editorial', 'compact'] as const) {
       expect(button(variant).textContent).toBe(en.mvpLayout.variants[variant]);
       expect(button(variant).disabled).toBe(false);
     }
@@ -413,6 +417,117 @@ describe('Prototype step layout picker (REV-84)', () => {
       act(() => swatch?.click());
       expect(save).not.toHaveBeenCalled();
       expect(posted.filter((m) => (m as { type?: string }).type === 'REVAMP_UPDATE_THEME')).toEqual([]);
+    });
+  });
+
+  describe('switching between the rebuilt original and the templates (REV-110)', () => {
+    const rerendering = () => document.body.textContent?.includes(en.mvpLayout.rerendering) ?? false;
+    /** Moves the faked clock and lets the refetches it starts settle inside act */
+    const tick = (ms: number) =>
+      act(async () => {
+        vi.advanceTimersByTime(ms);
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      });
+
+    beforeEach(() => {
+      // Only the polling interval and the clock are faked; React Query keeps its real timeouts
+      vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+    });
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it('waits for the re-rendered page instead of switching the old one in place, then reloads it', async () => {
+      render(mvpWith('bento'));
+      const save = deferred<IMvpProjectDetail>();
+      vi.spyOn(apiClient, 'updateMvpLayout').mockReturnValue(save.promise);
+
+      click('original');
+      expect(pressed()).toEqual(['original']);
+      // The Bento page cannot show the rebuild, so nothing is posted to it for this pick
+      expect(setLayoutMessages()).not.toContainEqual(expect.objectContaining({ layout: 'original' }));
+      expect(rerendering()).toBe(false);
+
+      save.resolve(mvpWith('original', ['rule:manual']));
+      await vi.waitFor(() => expect(rerendering()).toBe(true));
+      const src = container.querySelector('iframe')!.getAttribute('src');
+
+      // The MVP is polled until the worker has re-published it
+      const getMvp = vi.mocked(apiClient.getMvp);
+      getMvp.mockClear();
+      await tick(2000);
+      await vi.waitFor(() => expect(getMvp).toHaveBeenCalled());
+      expect(rerendering()).toBe(true);
+
+      const republished = { ...mvpWith('original', ['rule:rebuild']), editedAt: '2026-09-30T12:00:00.000Z' };
+      getMvp.mockResolvedValue(republished);
+      await tick(2000);
+      await vi.waitFor(() => expect(rerendering()).toBe(false));
+      // The new page is loaded rather than switched in place
+      expect(container.querySelector('iframe')!.getAttribute('src')).not.toBe(src);
+      expect(pressed()).toEqual(['original']);
+
+      // Polling stops once the page is back
+      getMvp.mockClear();
+      await tick(6000);
+      expect(getMvp).not.toHaveBeenCalled();
+    });
+
+    it('stops waiting after a while if the page never comes back', async () => {
+      render(mvpWith('split'));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', ['rule:manual']));
+      click('original');
+      await vi.waitFor(() => expect(rerendering()).toBe(true));
+
+      await tick(92_000);
+      await vi.waitFor(() => expect(rerendering()).toBe(false), { timeout: 5000 });
+    });
+
+    it('also waits when going back from the rebuild to a template', async () => {
+      render(mvpWith('original', ['rule:rebuild']));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('compact', ['rule:manual']));
+      click('compact');
+      expect(setLayoutMessages()).not.toContainEqual(expect.objectContaining({ layout: 'compact', animate: true }));
+      await vi.waitFor(() => expect(rerendering()).toBe(true));
+    });
+
+    it('never waits for a switch between two templates, which the page makes in place', async () => {
+      render(mvpWith('bento'));
+      const save = vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('split', ['rule:manual']));
+      click('split');
+      expect(setLayoutMessages()).toContainEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
+      await vi.waitFor(() => expect(save).toHaveBeenCalled());
+      await flush();
+      expect(rerendering()).toBe(false);
+    });
+
+    it('says why the original site cannot be rebuilt when the switch is refused', async () => {
+      render(mvpWith('bento'));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(
+        new ApiError('The original site cannot be rebuilt: rebuild:low_coverage', 409, 'MVP_REBUILD_UNAVAILABLE', {
+          reason: 'rebuild:low_coverage',
+          facts: ['coverage:0.72'],
+        }),
+      );
+      click('original');
+      await vi.waitFor(() => expect(pressed()).toEqual(['bento']));
+      expect(document.body.textContent).toContain(
+        en.mvpLayout.saveFailed.replace('{{message}}', en.mvpLayout.fallback.low_coverage.replace('{{percent}}', '72')),
+      );
+      expect(rerendering()).toBe(false);
+    });
+
+    it("shows the server's message for a refusal without a known reason", async () => {
+      render(mvpWith('bento'));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(
+        new ApiError('The original site cannot be rebuilt: rebuild:other', 409, 'MVP_REBUILD_UNAVAILABLE', { reason: 'rebuild:other' }),
+      );
+      click('original');
+      await vi.waitFor(() =>
+        expect(document.body.textContent).toContain(
+          en.mvpLayout.saveFailed.replace('{{message}}', 'The original site cannot be rebuilt: rebuild:other'),
+        ),
+      );
     });
   });
 });

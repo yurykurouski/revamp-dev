@@ -1,5 +1,5 @@
 import React, { RefObject, useState } from 'react';
-import { Alert, Snackbar } from '@mui/material';
+import { Alert, Snackbar, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
 import {
@@ -167,6 +167,9 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, locked })
   // pickers while a free-text change is being applied, which saves the palette and layout too (REV-85)
   const disabled = !liveLayout.canChange || locked;
   const pickersDisabled = disabled || tools.edit.isPending;
+  // The rebuilt original site (REV-110) has no free-text changes yet; the layout picker stays open so the
+  // operator can switch to a template to use them
+  const rebuilt = liveLayout.layout === 'original';
 
   return (
     <>
@@ -187,7 +190,18 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, locked })
             disabledReason={disabled ? t('mvpLayout.locked') : t('mvpEdit.busy')}
           />
         )}
-        {tools.hasMvp && <MvpEditPrompt edit={tools.edit} disabled={disabled} disabledReason={t('mvpEdit.locked')} />}
+        {tools.hasMvp && liveLayout.rerendering && (
+          <Typography variant="caption" color="text.secondary" role="status">
+            {t('mvpLayout.rerendering')}
+          </Typography>
+        )}
+        {tools.hasMvp && (
+          <MvpEditPrompt
+            edit={tools.edit}
+            disabled={disabled || rebuilt}
+            disabledReason={disabled ? t('mvpEdit.locked') : t('mvpEdit.unsupported')}
+          />
+        )}
       </FloatingToolsPanel>
 
       <Snackbar

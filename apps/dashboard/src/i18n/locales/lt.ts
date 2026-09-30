@@ -226,6 +226,7 @@ export const lt: Translation = {
     tooltip: 'Maketas: {{name}} — {{reason}}',
     unread: 'Nepavyko nuskaityti originalios svetainės struktūros, todėl maketą parinko taisyklės.',
     variants: {
+      original: 'Originali svetainė',
       bento: 'Bento',
       split: 'Padalytas',
       editorial: 'Redakcinis',
@@ -240,8 +241,10 @@ export const lt: Translation = {
       default: 'numatytasis maketas',
       manual: 'pasirinko operatorius',
       derived: 'atkartoja originalios svetainės struktūrą',
+      rebuild: 'atkurta iš originalios svetainės',
     },
     descriptions: {
+      original: 'Jų pačių svetainė, atkurta skiltis po skilties',
       bento: 'Paslaugų kortelių tinklelis',
       split: 'Tekstas šalia didelės nuotraukos',
       editorial: 'Tipografinis, tekstu paremtas puslapis',
@@ -250,6 +253,15 @@ export const lt: Translation = {
     picker: 'Maketas:',
     saveFailed: 'Nepavyko išsaugoti maketo: {{message}}',
     locked: 'Maketą galima keisti tik kol MVP laukia peržiūros',
+    rebuildSummary: 'Atkurta skilčių: {{sections}}, praleista: {{omitted}}, pataisymų: {{fixes}}',
+    rerendering: 'Puslapis perpiešiamas…',
+    fallback: {
+      unread: 'Originalaus puslapio nepavyko perskaityti skiltimis, todėl naudotas šablonas.',
+      no_content: 'Originaliame puslapyje nerasta turinio skilčių, todėl naudotas šablonas.',
+      low_coverage: 'Pavyko perskaityti tik {{percent}}% originalaus puslapio, todėl naudotas šablonas.',
+      invalid: 'Atkurtas puslapis nepraėjo patikros, todėl naudotas šablonas.',
+      too_large: 'Atkurtas puslapis buvo per didelis, todėl naudotas šablonas.',
+    },
   },
   llm: {
     provider: 'LLM teikėjas',
@@ -636,6 +648,7 @@ export const lt: Translation = {
     resetDesign: 'Atkurti numatytąjį dizainą',
     designReset: 'Savas dizainas pašalintas: puslapis vėl atrodo kaip pasirinktame makete.',
     noDesign: 'MVP neturi savo dizaino, nėra ko atkurti.',
+    unsupported: 'Laisvo teksto pakeitimai dar negalimi atkurtai svetainei. Perjunkite į šablono išdėstymą, kad galėtumėte juos naudoti.',
   },
   colorPicker: {
     brandPalette: 'Prekės ženklo paletė:',
