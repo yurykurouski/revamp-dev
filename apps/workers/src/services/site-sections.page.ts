@@ -462,12 +462,10 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       }
       for (const sameSignature of Array.from(bySignature.values())) {
         let members = sameSignature;
-        // A heading row or a button row before or after rows of cards shares their markup; it is not an item
-        // (slides, tabs and accordion entries are items whatever they hold)
-        if (members.length > 2 && !markupOf(parent, members, root)) {
-          while (members.length > 2 && !composite(members[0]!)) members = members.slice(1);
-          while (members.length > 2 && !composite(members[members.length - 1]!)) members = members.slice(0, -1);
-        }
+        // A heading row above rows of cards shares their markup; it is not an item (slides, tabs and accordion
+        // entries are items whatever they hold). Only a row holding a heading and nothing more is left out.
+        const headingRow = (el: Element) => !composite(el) && el.querySelector('h1, h2, h3, h4, h5, h6') !== null;
+        if (members.length > 2 && headingRow(members[0]!) && !markupOf(parent, members, root)) members = members.slice(1);
         if (members.length < 2) continue;
         // Most members must hold the same kinds of content: a text column beside a photo column is not a pair of cards
         const counts = new Map<string, number>();

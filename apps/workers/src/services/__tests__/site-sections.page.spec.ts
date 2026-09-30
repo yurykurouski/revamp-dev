@@ -381,6 +381,18 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.extra).toEqual([]);
   });
 
+  it('does not make items of a button, a contact box and a form that share their widget markup (Falco-Dent)', async () => {
+    const widget = (inner: string) => `<div class="widget"><div class="widget-container"><div class="widget-inner">${inner}</div></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="display:flex;gap:40px"><div style="flex:1"><img src="https://img.test/team.jpg" alt="" width="600" height="400"></div>
+        <div style="flex:1">${widget('<a href="/kontakt" style="display:inline-block;padding:20px 60px;background:#173784;color:#fff">Umów wizytę</a>')}
+          ${widget('<h3>Masz pytania? Napisz do nas!</h3><p><strong>recepcja@falcodent.pl</strong> Lub zostaw swój email - odpiszemy!</p>')}
+          ${widget('<form action="/wyslij"><div><label>Adres e-mail</label><input type="email"></div><div><button>Wyślij</button></div></form>')}</div></section>`));
+    const s = result.sections.find((x) => JSON.stringify(x).includes('Masz pytania'))!;
+    expect(s.items).toEqual([]);
+    expect(s.intro.heading).toBe('Masz pytania? Napisz do nas!');
+  });
+
   it('takes a label of up to 60 characters above a larger heading for the eyebrow (Dentalux)', async () => {
     const result = await sectionsOf(pageOf(`${HERO}
       <section><h4 style="font-size:14px">30 lat dbamy o uśmiech Warszawy – a teraz Twój</h4>
