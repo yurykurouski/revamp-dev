@@ -88,6 +88,16 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toContain('<img src="https://x.pl/b.jpg" alt="" loading="lazy" decoding="async">');
   });
 
+  it('never stretches an image past the width it had on the original page', () => {
+    const html = renderRebuild(plan([section(1, { images: [{ src: 'https://x.pl/separator.png', alt: '', width: 45, height: 141 }],
+      arrangement: 'card-grid', items: [{ text: ['Ikona'], image: { src: 'https://x.pl/icon.png', alt: '', width: 32, height: 32 }, links: [] }] })]));
+    expect(html).toContain('width="45" height="141"');
+    // The width attribute holds the original width and `img { max-width: 100% }` caps it at the column
+    expect(html).toContain('img { max-width: 100%; height: auto; display: block; }');
+    expect(html).not.toMatch(/\.rb-media img \{[^}]*\bwidth: 100%/);
+    expect(html).not.toMatch(/\.rb-item-image \{[^}]*\bwidth: 100%/);
+  });
+
   it('renders the header nav, CTA and phone, and the footer contacts', () => {
     const html = renderRebuild(plan([section(1)]));
     expect(html).toContain('<a class="rb-nav-link" href="#s-2">Zespół</a>');
