@@ -112,6 +112,13 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toMatch(/\.rb-photo-slide \{[^}]*var\(--rb-slide-image, none\)/);
   });
 
+  it('puts a photo banner on a dark fallback so its white text stays readable when the photo fails to load', () => {
+    const html = renderRebuild(plan([section(1, { arrangement: 'banner', style: { background: '#f5f5f5', backgroundImage: 'https://x.pl/h.jpg', overlay: 0.55, text: '#ffffff', align: 'center', paddingY: 96, fullBleed: true } })]));
+    expect(html).toMatch(/\[data-bg-image\] \{[^}]*background-color: #333333;/);
+    // A section without a photo keeps its own background
+    expect(html).toMatch(/\.rb-section \{[^}]*background: var\(--rb-section-bg, transparent\);/);
+  });
+
   it('never crops a gallery picture to a fixed shape, so partner logos stay whole (Elefant)', () => {
     const html = renderRebuild(plan([section(1, { arrangement: 'gallery', items: [{ text: [], image: { src: 'https://x.pl/logo.webp', alt: 'The Palms', width: 171, height: 80 }, links: [] }] })]));
     expect(html).toContain('width="171" height="80"');

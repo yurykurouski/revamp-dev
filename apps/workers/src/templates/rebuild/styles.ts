@@ -78,7 +78,7 @@ h4 { font-size: 1.1em; }
 .rb-collapsed[open] summary { margin-bottom: 16px; }
 
 /* Banner: copy over the photo, with the tuning overlay */
-[data-bg-image] { background-image: linear-gradient(rgba(0,0,0,var(--rb-overlay,0)), rgba(0,0,0,var(--rb-overlay,0))), var(--rb-bg-image); background-size: cover; background-position: center; }
+[data-bg-image] { background-color: #333333; background-image: linear-gradient(rgba(0,0,0,var(--rb-overlay,0)), rgba(0,0,0,var(--rb-overlay,0))), var(--rb-bg-image); background-size: cover; background-position: center; }
 [data-arrangement=banner][data-bg-image] { display: flex; align-items: center; min-height: min(70vh, 640px); }
 [data-arrangement=banner] .rb-container { width: 100%; }
 [data-arrangement=banner] .rb-copy { max-width: 820px; }
