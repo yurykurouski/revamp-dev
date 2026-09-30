@@ -96,6 +96,8 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toContain('img { max-width: 100%; height: auto; display: block; }');
     expect(html).not.toMatch(/\.rb-media img \{[^}]*\bwidth: 100%/);
     expect(html).not.toMatch(/\.rb-item-image \{[^}]*\bwidth: 100%/);
+    // A narrower image sits in the middle of a centered section or card (Falco-Dent's team)
+    expect(html).toMatch(/\[data-align=center\] \.rb-item-image[^{]*\{ margin-inline: auto; \}/);
   });
 
   it('renders the header nav, CTA and phone, and the footer contacts', () => {

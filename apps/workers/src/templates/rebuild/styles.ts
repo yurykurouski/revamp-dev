@@ -71,7 +71,7 @@ h4 { font-size: 1.1em; }
 .rb-copy > * + .rb-grid, .rb-copy > * + .rb-list, .rb-copy > * + .rb-slider, .rb-copy > * + .rb-gallery, .rb-copy > * + .rb-accordion, .rb-copy > * + .rb-tabs, .rb-copy > * + .rb-text { margin-top: 32px; }
 /* An image keeps the width it had on the original (its width attribute), capped by the column; never stretched */
 .rb-media img { border-radius: var(--rb-item-radius, 8px); }
-[data-align=center] .rb-media img, [data-item-align=center] .rb-item-image { margin-inline: auto; }
+[data-align=center] .rb-media img, [data-align=center] .rb-item-image, [data-item-align=center] .rb-item-image { margin-inline: auto; }
 .rb-embed { margin-top: 32px; }
 .rb-embed iframe { display: block; width: 100%; aspect-ratio: 16/9; border: 0; border-radius: 8px; }
 .rb-collapsed summary { cursor: pointer; font-family: var(--rb-heading-font); font-weight: var(--rb-heading-weight); text-transform: var(--rb-heading-case); font-size: var(--rb-h2); line-height: 1.2; }
