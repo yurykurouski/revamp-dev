@@ -111,6 +111,18 @@ describe('planRebuild (REV-110)', () => {
     expect(planRebuild(input([header, slides, reviews])).sections[1]!.photoSlides).toBeUndefined();
   });
 
+  it('puts the largest picture in the media slot beside the text, not a small icon before it (Elefant)', () => {
+    const about = section(1, { arrangement: 'media-beside-text', mediaSide: 'left', images: [
+      { src: 'https://elefant.med.pl/icon.webp', width: 48, height: 48 },
+      { src: 'https://elefant.med.pl/slonik.webp', width: 373, height: 349 },
+      { src: 'https://elefant.med.pl/standardy.webp', width: 112, height: 112 },
+    ] });
+    const plan = planRebuild(input([header, about]));
+    expect(plan.sections[0]!.images.map((i) => i.src)).toEqual([
+      'https://elefant.med.pl/slonik.webp', 'https://elefant.med.pl/icon.webp', 'https://elefant.med.pl/standardy.webp',
+    ]);
+  });
+
   it('gives the hero heading the only h1', () => {
     const plan = planRebuild(input([header, hero, team]));
     expect(plan.sections.map((s) => s.headingLevel)).toEqual([1, 2]);

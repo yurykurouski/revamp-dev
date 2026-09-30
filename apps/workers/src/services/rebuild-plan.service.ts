@@ -177,6 +177,14 @@ const planItems = (items: ISiteSectionItem[], rec: Recorder, eagerFirst: boolean
     .map((item, i) => planItem(item, rec, eagerFirst && i === 0, photo))
     .filter((item) => !isEmptyItem(item));
 
+/** Beside the text, the largest picture takes the media slot (the renderer's first image); the rest keep their order */
+function mediaFirst(section: ISiteSection): ISiteImage[] {
+  if (section.arrangement !== 'media-beside-text' || section.images.length < 2) return section.images;
+  const area = (image: ISiteImage) => (image.width ?? 0) * (image.height ?? 0);
+  const largest = section.images.reduce((best, image) => (area(image) > area(best) ? image : best));
+  return [largest, ...section.images.filter((image) => image !== largest)];
+}
+
 /** A hero slider whose slides mostly carry a photo is shown as photo slides, one at a time */
 const isPhotoSlider = (section: ISiteSection) =>
   section.role === 'hero' &&
@@ -278,7 +286,7 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
     items: planItems(section.items, rec, eager, photoSlides),
     ...(itemStyle ? { itemStyle } : {}),
     extra,
-    images: section.images
+    images: mediaFirst(section)
       .slice(0, LIMITS.images)
       .map((image, i) => planImage(image, heading, rec, eager && i === 0))
       .filter((image): image is IRebuildImage => Boolean(image)),
