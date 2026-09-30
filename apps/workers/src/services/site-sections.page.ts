@@ -195,7 +195,37 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     }
     return false;
   };
-  const excluded = (el: Element): boolean => el.closest(EXCLUDED) !== null || inBoilerplate(el) || screenReaderOnly(el);
+  // A hidden copy of content the page shows elsewhere (a mobile-only variant of a box) is not read twice; hidden
+  // content found nowhere else (a collapsed answer, a tab panel, a slide) still is
+  const letters = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  let shownText: string | undefined;
+  const hiddenCopies = new Map<Element, boolean>();
+  const hiddenCopy = (el: Element): boolean => {
+    for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
+      let copy = hiddenCopies.get(node);
+      if (copy === undefined) {
+        copy = false;
+        const style = window.getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          shownText ??= letters(document.body.innerText);
+          let total = 0;
+          let found = 0;
+          const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+            const value = letters(text.nodeValue || '');
+            total += value.length;
+            if (value && shownText.includes(value)) found += value.length;
+          }
+          copy = total >= 20 && found >= total * 0.9;
+        }
+        hiddenCopies.set(node, copy);
+      }
+      if (copy) return true;
+    }
+    return false;
+  };
+  const excluded = (el: Element): boolean =>
+    el.closest(EXCLUDED) !== null || inBoilerplate(el) || screenReaderOnly(el) || hiddenCopy(el);
   const displays = new Map<Element, string>();
   const isBlock = (el: Element): boolean => {
     let display = displays.get(el);

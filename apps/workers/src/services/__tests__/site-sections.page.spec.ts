@@ -300,6 +300,19 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined]);
   });
 
+  it('leaves out a hidden responsive copy of content shown elsewhere on the page (Dentalux)', async () => {
+    const box = (heading: string) => `<div class="promo" style="background:#fbcfe8;padding:30px"><h4>30 lat dbamy o uśmiech Warszawy</h4>
+      <h3>${heading}</h3><h2>Cieszymy się, że jesteś!</h2><h5>Centrum przy ul. Racławickiej 131 zapewnia pełną opiekę stomatologiczną.</h5></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div style="display:none">${box('Dentysta Warszawa Mokotów – Centrum Dentalux')}</div>
+        <h2>Nasza oferta</h2><p>Leczenie zachowawcze, protetyka i implanty w jednym miejscu.</p></section>
+      <section>${box('Dentysta Warszawa Mokotów Centrum Dentalux')}</section>`));
+    const offer = result.sections.find((x) => x.intro.heading === 'Nasza oferta')!;
+    expect(JSON.stringify(offer)).not.toContain('Cieszymy');
+    expect(JSON.stringify(result.sections).match(/Cieszymy się/g)).toHaveLength(1);
+    expectCovered(result);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}
