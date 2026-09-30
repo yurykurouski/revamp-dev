@@ -100,7 +100,8 @@ export function bookingScript(opts: {
   t: MvpStrings;
   tracker: ReturnType<typeof resolveTrackerUrls>;
   trackingToken?: string;
-  themeVars: { primary: string; primaryRgb?: string; secondary?: string; accent?: string };
+  /** `onPrimary`: the text color on the primary, set to near-black or white by contrast (the rebuild's `onColor`) */
+  themeVars: { primary: string; primaryRgb?: string; onPrimary?: string; secondary?: string; accent?: string };
 }): string {
   const { t, tracker, trackingToken, themeVars } = opts;
   // Only the properties the page has are set; each optional block starts with its own newline
@@ -112,6 +113,19 @@ export function bookingScript(opts: {
             const g = parseInt(hex.substring(2, 4), 16);
             const b = parseInt(hex.substring(4, 6), 16);
             document.documentElement.style.setProperty('${themeVars.primaryRgb}', r + ', ' + g + ', ' + b);
+          }`
+    : '';
+  // Same rule as onColor (rebuild-tuning.ts): #111111 when it reads at least as well as white on the primary
+  const onPrimaryBlock = themeVars.onPrimary
+    ? `
+          const onHex = palette.primary.replace('#', '');
+          if (/^[0-9a-fA-F]{6}$/.test(onHex)) {
+            const lin = function(c) { c = c / 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+            const lum = function(h) { return 0.2126 * lin(parseInt(h.substring(0, 2), 16)) + 0.7152 * lin(parseInt(h.substring(2, 4), 16)) + 0.0722 * lin(parseInt(h.substring(4, 6), 16)); };
+            const bg = lum(onHex);
+            const dark = (Math.max(bg, lum('111111')) + 0.05) / (Math.min(bg, lum('111111')) + 0.05);
+            const light = (Math.max(bg, 1) + 0.05) / (Math.min(bg, 1) + 0.05);
+            document.documentElement.style.setProperty('${themeVars.onPrimary}', dark >= light ? '#111111' : '#ffffff');
           }`
     : '';
   const secondaryBlock = themeVars.secondary
@@ -215,7 +229,7 @@ export function bookingScript(opts: {
         if (!event.data || event.data.type !== 'REVAMP_UPDATE_THEME' || !event.data.palette) return;
         const palette = event.data.palette;
         if (palette.primary) {
-          document.documentElement.style.setProperty('${themeVars.primary}', palette.primary);${rgbBlock}
+          document.documentElement.style.setProperty('${themeVars.primary}', palette.primary);${rgbBlock}${onPrimaryBlock}
         }${secondaryBlock}${accentBlock}
       });
     })();

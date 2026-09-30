@@ -37,7 +37,7 @@ ${plan.sections.map((section) => renderSection(section, ctx)).join('\n')}
 ${ctx.booking.placed ? '' : bookingHtml}
 </main>
 ${renderFooter(plan, t, ctx)}
-${bookingScript({ t, tracker, trackingToken: opts.trackingToken, themeVars: { primary: '--rb-primary' } })}
+${bookingScript({ t, tracker, trackingToken: opts.trackingToken, themeVars: { primary: '--rb-primary', onPrimary: '--rb-on-primary' } })}
 ${REBUILD_SCRIPT}
 ${trackerScriptTag(tracker, opts.trackingToken)}
 </body>

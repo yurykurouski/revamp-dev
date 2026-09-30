@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { Window } from 'happy-dom';
 import type { IRebuildPlan } from '@revamp/shared-types';
 import { renderRebuild } from '../rebuild/index.js';
+import { onColor } from '../../services/rebuild-tuning.js';
 
 const windows: Window[] = [];
 afterEach(async () => {
@@ -62,5 +63,14 @@ describe('rebuild page script (REV-110)', () => {
     window.postMessage({ type: 'REVAMP_UPDATE_THEME', palette: { primary: '#ff0000' } }, '*');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(window.document.documentElement.style.getPropertyValue('--rb-primary')).toBe('#ff0000');
+  });
+
+  it('sets the CTA text color of a live palette by contrast, the same rule as the planner', async () => {
+    const window = open(slider(1));
+    for (const primary of ['#ffff00', '#0e1a4a', '#ff0000', '#777777', '#0e7490', '#f5a623']) {
+      window.postMessage({ type: 'REVAMP_UPDATE_THEME', palette: { primary } }, '*');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(window.document.documentElement.style.getPropertyValue('--rb-on-primary'), primary).toBe(onColor(primary));
+    }
   });
 });
