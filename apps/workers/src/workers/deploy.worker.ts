@@ -154,9 +154,10 @@ export async function republishSavedMvp(leadId: string) {
 
   // The saved layout and palette are read again after each upload: a change made meanwhile gets its
   // own pass, so an older job can never leave an outdated look published
-  let layout = savedLayout(project, design.variant);
+  // The lead and the audit do not change between passes; the stored copy is the one the MVP was made with
+  const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, project.generatedContent));
+  let layout: IMvpLayoutSelection | undefined;
   for (let pass = 0; pass < MAX_RELAYOUT_PASSES; pass++) {
-    const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, project.generatedContent));
     const requested = savedLayout(project, design.variant);
     const rendered = renderMvp({
       lead: leadData,
@@ -175,18 +176,25 @@ export async function republishSavedMvp(leadId: string) {
     // (an MVP saved without a layout keeps none while it renders as Bento)
     const layoutChanged = JSON.stringify(rendered.layout) !== JSON.stringify(project.layout?.variant ? project.layout : requested);
     const switched = Boolean(project.rebuild) !== Boolean(rendered.rebuild);
-    if (rendered.rebuild || project.rebuild || layoutChanged) {
+    if (rendered.rebuild || project.rebuild || switched) {
       await MvpProject.findByIdAndUpdate(project._id, {
         $set: {
           ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
-          ...(layoutChanged ? { layout: rendered.layout } : {}),
           ...(switched ? { editedAt: new Date() } : {}),
         },
         ...(rendered.rebuild ? {} : { $unset: { rebuild: '' } }),
       }).exec();
     }
-    // What this pass saved, so the re-read below compares against it
-    if (layoutChanged) design = savedDesign({ layout: rendered.layout, colorPalette: project.colorPalette, design: project.design });
+    // The layout is written only while it is still the one this pass rendered from: an operator's pick
+    // made during the upload wins, and shows up as a difference in the re-read below (another pass)
+    if (layoutChanged) {
+      const saved = await MvpProject.findOneAndUpdate(
+        { _id: project._id, layout: project.layout ?? { $exists: false } },
+        { $set: { layout: rendered.layout } },
+      ).exec();
+      // What this pass saved, so the re-read below compares against it
+      if (saved) design = savedDesign({ layout: rendered.layout, colorPalette: project.colorPalette, design: project.design });
+    }
 
     const latest = await MvpProject.findById(project._id).exec();
     if (!latest) break;
@@ -197,9 +205,9 @@ export async function republishSavedMvp(leadId: string) {
   }
 
   console.log(
-    `[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${layout.variant} layout (${layout.reasons.join(', ')}), primary ${design.palette.primary ?? 'from the audit'}`,
+    `[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${layout?.variant} layout (${layout?.reasons.join(', ')}), primary ${design.palette.primary ?? 'from the audit'}`,
   );
-  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: layout.variant, ...published };
+  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: layout?.variant, ...published };
 }
 
 export const createDeployWorker = (): Worker => {

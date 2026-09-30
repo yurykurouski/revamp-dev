@@ -245,18 +245,42 @@ describe('re-publish with the rebuild (REV-110)', () => {
       throw new RebuildUnavailable('rebuild:too_large');
     });
     vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
-    // The re-read returns what the fallback wrote
-    vi.mocked(MvpProject.findByIdAndUpdate).mockImplementation(((_id: string, update: any) => {
+    // The layout is still the one rendered from, so the write lands and the re-read returns it
+    vi.mocked(MvpProject.findOneAndUpdate).mockImplementation(((_filter: unknown, update: any) => {
       vi.mocked(MvpProject.findById).mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: projectId, previewSlug: 'falco-dent-456789', layout: update.$set.layout }),
       } as any);
-      return { exec: vi.fn().mockResolvedValue(null) };
+      return { exec: vi.fn().mockResolvedValue({ _id: projectId }) };
     }) as any);
     const result = await republishSavedMvp(leadId);
-    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    const [filter, update] = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]! as [Record<string, any>, Record<string, any>];
+    expect(filter).toEqual({ _id: projectId, layout: { variant: 'original', reasons: ['rule:manual'] } });
     expect(update.$set.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:too_large']);
-    expect(update.$set.editedAt).toBeUndefined();
+    // Bento before and after: no renderer switch, nothing else to write
+    expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
     expect(storageService.uploadHtml).toHaveBeenCalledTimes(1);
     expect(result.layout).toBe(update.$set.layout.variant);
+  });
+
+  it("never overwrites a layout the operator picked while the fallback published, and renders that pick", async () => {
+    savedProject({ layout: { variant: 'original', reasons: ['rule:manual'] }, rebuild: undefined });
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation(() => {
+      throw new RebuildUnavailable('rebuild:too_large');
+    });
+    vi.mocked(bentoTemplateService.renderFromAudit).mockImplementation((_lead, _audit, _content, variant) => `<html>${variant}</html>`);
+    // The operator picked Compact during the upload: the guarded write matches nothing
+    const picked = { _id: projectId, previewSlug: 'falco-dent-456789', layout: { variant: 'compact', reasons: ['rule:manual'] } };
+    vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+    vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(picked) } as any);
+
+    const result = await republishSavedMvp(leadId);
+
+    const uploads = vi.mocked(storageService.uploadHtml).mock.calls.map((call) => call[1]);
+    expect(uploads).toHaveLength(2);
+    expect(uploads[1]).toBe('<html>compact</html>');
+    // Only the first pass tried to record its fallback, guarded on the layout it rendered from
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![0]).toMatchObject({ layout: { variant: 'original' } });
+    expect(result.layout).toBe('compact');
   });
 });
