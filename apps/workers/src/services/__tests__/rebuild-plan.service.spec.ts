@@ -123,6 +123,17 @@ describe('planRebuild (REV-110)', () => {
     ]);
   });
 
+  it('leaves out a footer left empty once its links to other pages are gone (Dentalux)', () => {
+    const footer = section(9, { role: 'footer', intro: { text: [], links: [
+      { label: 'Facebook', href: 'https://facebook.com/dentalux', kind: 'link' },
+      { label: 'Polityka prywatności', href: 'https://dentalux.pl/polityka/', kind: 'link' },
+    ] } });
+    const plan = planRebuild(input([header, hero, { ...footer, intro: { ...footer.intro, heading: undefined } }]));
+    expect(plan.footer.section).toBeUndefined();
+    expect(plan.summary.tuning).toContain('footer:added');
+    expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'empty', sample: 'Facebook' });
+  });
+
   it('gives the hero heading the only h1', () => {
     const plan = planRebuild(input([header, hero, team]));
     expect(plan.sections.map((s) => s.headingLevel)).toEqual([1, 2]);

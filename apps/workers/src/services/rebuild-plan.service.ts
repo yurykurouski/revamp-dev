@@ -334,7 +334,12 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
 
   const businessName = label(input.businessName) ?? 'Business';
   // The footer never claims the booking slot (R2): a form there is an omitted second form
-  const footerSection = footer ? planSection(footer, { ...ctx, booking: { placed: true }, h1: { used: true } }) : undefined;
+  const plannedFooter = footer ? planSection(footer, { ...ctx, booking: { placed: true }, h1: { used: true } }) : undefined;
+  // A footer of links to other pages alone is empty once they are dropped; the page's own footer takes its place
+  const footerSection = plannedFooter && !isEmptySection(plannedFooter) ? plannedFooter : undefined;
+  if (footer && plannedFooter && !footerSection) {
+    rec.omit('section', 'empty', [...footer.intro.links, ...footer.items.flatMap((item) => item.links)][0]?.label);
+  }
   if (!footerSection) rec.fix('footer:added');
 
   // Header: logo, nav links that name a section on this page (the footer included), and the CTA label
