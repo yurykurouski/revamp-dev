@@ -234,6 +234,20 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expectCovered(result);
   });
 
+  it('does not take a slide position label ("1 / 5") for a rating (Falco-Dent)', async () => {
+    const slide = (n: number, text: string) =>
+      `<div class="swiper-slide" role="group" aria-label="${n} / 5" style="width:400px;flex-shrink:0"><p>${text}</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="overflow:hidden"><h2>Nasze zabiegi</h2><div class="swiper"><div class="swiper-wrapper" style="display:flex">
+        ${slide(1, 'Estetyczne nakładki ortodontyczne')}${slide(2, 'Stomatologia estetyczna i licówki')}${slide(3, 'Zabiegi laserowe i profilaktyka')}
+        ${slide(4, 'Implanty i protetyka na miejscu')}${slide(5, 'NOWOŚĆ! Medycyna estetyczna')}
+      </div></div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasze zabiegi')!;
+    expect(s.arrangement).toBe('slider');
+    expect(s.items).toHaveLength(5);
+    expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

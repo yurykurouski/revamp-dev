@@ -410,8 +410,12 @@ export function collectSiteSectionsInPage(): RawSiteSections {
 
   const TITLE = 'h1, h2, h3, h4, h5, h6, summary, [aria-expanded], dt';
   const TITLE_FALLBACK = 'strong, b, [class*="title" i], [class*="name" i], [class*="author" i]';
+  // A slide's position label ("1 / 5" on a Swiper slide) is not a rating
+  const isSlideLabel = (node: Element): boolean =>
+    node.matches('[role="group" i], [aria-roledescription="slide" i]') || /(^|[\s_-])slide($|[\s_-])|swiper-slide|slick-slide/i.test(classOf(node));
   const ratingOf = (el: Element): number | undefined => {
     const labels = [el, ...Array.from(el.querySelectorAll('[aria-label], [title]'))]
+      .filter((node) => !isSlideLabel(node))
       .map((node) => `${node.getAttribute('aria-label') || ''} ${node.getAttribute('title') || ''}`)
       .join(' ');
     const scored = `${labels} ${clean(el.textContent)}`.match(/(?<![\d/.,])(\d(?:[.,]\d+)?)\s*(?:\/|na|z|из|of)\s*(5|10)(?![\d/])/i);
