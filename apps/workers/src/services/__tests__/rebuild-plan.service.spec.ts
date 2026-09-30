@@ -69,6 +69,17 @@ describe('planRebuild (REV-110)', () => {
     expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
   });
 
+  it('drops items left empty once their links to other pages are gone, and records a section left empty (Falco-Dent marquee)', () => {
+    const menu = { text: [], links: [{ label: 'Implanty', href: 'https://falcodent.pl/implanty/', kind: 'link' as const }] };
+    const marquee = section(2, { arrangement: 'card-grid', intro: { text: [], links: [] }, items: [menu, menu] });
+    const mixed = section(3, { arrangement: 'card-grid', items: [menu, { title: 'Laser', text: [], links: [] }] });
+    const plan = planRebuild(input([header, hero, marquee, mixed]));
+    expect(plan.sections.map((s) => s.id)).toEqual(['s-1', 's-3']);
+    expect(plan.sections[1]!.items).toEqual([{ title: 'Laser', text: [], links: [] }]);
+    expect(plan.summary.sections).toBe(2);
+    expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'empty', sample: 'Implanty' });
+  });
+
   it('gives the hero heading the only h1', () => {
     const plan = planRebuild(input([header, hero, team]));
     expect(plan.sections.map((s) => s.headingLevel)).toEqual([1, 2]);

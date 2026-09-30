@@ -153,8 +153,27 @@ function planItem(item: ISiteSectionItem, rec: Recorder, eager: boolean): IRebui
   };
 }
 
+/** An item with nothing left to show, e.g. a menu of links to other pages once those are dropped */
+const isEmptyItem = (item: IRebuildItem) =>
+  !item.title && !item.subtitle && !item.text.length && !item.image && !item.price && item.rating === undefined && !item.links.length;
+
 const planItems = (items: ISiteSectionItem[], rec: Recorder, eagerFirst: boolean) =>
-  items.slice(0, LIMITS.items).map((item, i) => planItem(item, rec, eagerFirst && i === 0));
+  items
+    .slice(0, LIMITS.items)
+    .map((item, i) => planItem(item, rec, eagerFirst && i === 0))
+    .filter((item) => !isEmptyItem(item));
+
+/** A planned section with nothing to render: no heading, copy, items, images, embeds or booking form */
+const isEmptySection = (s: IRebuildSection) =>
+  !s.intro.heading &&
+  !s.intro.eyebrow &&
+  !s.intro.text.length &&
+  !s.intro.links.length &&
+  !s.items.length &&
+  s.extra.every((block) => (block.type === 'text' ? !block.text.length : !block.items.length)) &&
+  !s.images.length &&
+  !s.embeds.length &&
+  !s.booking;
 
 const textLength = (section: ISiteSection) =>
   [...section.intro.text, ...section.extra.flatMap((e) => (e.type === 'text' ? e.text : []))].join('').length;
@@ -265,7 +284,17 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
   const ctx = { rec, t, booking: { placed: false }, h1: { used: false } };
   const mainSections = read.sections.filter((s) => s.role === 'hero' || s.role === 'content');
   for (const dropped of mainSections.slice(LIMITS.sections)) rec.omit('section', 'over_cap', dropped.intro.heading);
-  const sections = mainSections.slice(0, LIMITS.sections).map((s) => planSection(s, ctx));
+  const sections = mainSections
+    .slice(0, LIMITS.sections)
+    .map((s) => ({ read: s, planned: planSection(s, ctx) }))
+    .filter(({ read: s, planned }) => {
+      if (!isEmptySection(planned)) return true;
+      // Recorded with what it held, e.g. the first of its dropped links
+      const held = [...s.intro.links, ...s.items.flatMap((item) => item.links)][0]?.label;
+      rec.omit('section', 'empty', held);
+      return false;
+    })
+    .map(({ planned }) => planned);
   rec.summary.sections = sections.length;
   if (!ctx.h1.used) rec.fix('h1:hidden');
   if (!ctx.booking.placed) rec.fix('booking:appended');
