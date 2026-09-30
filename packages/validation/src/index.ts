@@ -1248,8 +1248,8 @@ export const MvpRebuildSummarySchema = z.object({
 
 /** Iframe hosts the rebuild may embed (REV-110) */
 export const REBUILD_IFRAME_HOSTS = [
-  /^https:\/\/(www\.)?google\.[a-z.]+\/maps/i,
-  /^https:\/\/maps\.google\.[a-z.]+\//i,
+  /^https:\/\/(www\.)?google\.(?:com|[a-z]{2,3}|com?\.[a-z]{2})\/maps(?:\/|\?|$)/i,
+  /^https:\/\/maps\.google\.(?:com|[a-z]{2,3}|com?\.[a-z]{2})\//i,
   /^https:\/\/(www\.)?openstreetmap\.org\//i,
   /^https:\/\/(www\.)?youtube\.com\/embed\//i,
   /^https:\/\/(www\.)?youtube-nocookie\.com\/embed\//i,

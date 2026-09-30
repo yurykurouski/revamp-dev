@@ -115,3 +115,44 @@ describe('RebuildPlanSchema', () => {
     expect(() => RebuildPlanSchema.parse(plan)).toThrow();
   });
 });
+
+describe('RebuildPlanSchema embeds and links (REV-110 fix)', () => {
+  const withEmbed = (src: string) => {
+    const plan = minimalPlan();
+    plan.sections[0]!.embeds = [{ kind: 'map', src, title: 'Mapa' }];
+    return plan;
+  };
+  it.each([
+    'https://www.google.com/maps/embed?pb=1',
+    'https://maps.google.pl/maps?q=x',
+    'https://www.youtube.com/embed/abc',
+    'https://player.vimeo.com/video/1',
+  ])('accepts the embed %s', (src) => {
+    expect(() => RebuildPlanSchema.parse(withEmbed(src))).not.toThrow();
+  });
+  it.each([
+    'https://google.evil.com/maps',
+    'https://google.com.evil.com/maps',
+    'https://maps.google.evil.com/',
+    'https://www.google.com/mapsX',
+    'https://www.youtube.com.evil.com/embed/abc',
+    'https://player.vimeo.com.evil.com/video/1',
+  ])('rejects the embed %s', (src) => {
+    expect(() => RebuildPlanSchema.parse(withEmbed(src))).toThrow();
+  });
+  it.each([
+    ['phone', 'tel:+48510510706'],
+    ['email', 'mailto:a@b.pl'],
+    ['booking', '#booking'],
+    ['anchor', '#s-2'],
+  ] as const)('accepts a %s link %s', (kind, href) => {
+    const plan = minimalPlan();
+    plan.sections[0]!.intro.links = [{ label: 'x', href, kind }];
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+  it('rejects a link whose href does not match its kind', () => {
+    const plan = minimalPlan();
+    plan.sections[0]!.intro.links = [{ label: 'x', href: '#booking', kind: 'anchor' }];
+    expect(() => RebuildPlanSchema.parse(plan)).toThrow();
+  });
+});
