@@ -273,6 +273,7 @@ const SiteSectionItemSchema = z.object({
   subtitle: siteLabel.optional(),
   text: siteTexts,
   image: SiteImageSchema.optional(),
+  backgroundImage: siteUrl.optional(),
   price: siteLabel.optional(),
   rating: z.number().min(0).max(5).optional(),
   links: SiteLinksSchema,

@@ -418,6 +418,19 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     ]);
   });
 
+  it('reads each slide\'s background photo in a photo slider hero (Falco-Dent)', async () => {
+    const slide = (photo: string, heading: string, text: string) => `<div class="swiper-slide" style="width:1360px;height:550px;flex-shrink:0;background-image:url(https://img.test/${photo}.jpg);background-size:cover">
+      <div class="slide-inner"><div class="slide-content"><div class="slide-heading" style="font-size:36px">${heading}</div><div class="slide-text">${text}</div></div></div></div>`;
+    const result = await sectionsOf(pageOf(`<section style="overflow:hidden;padding:0"><div class="swiper"><div class="swiper-wrapper" style="display:flex">
+      ${slide('ortheo', 'Estetyczne nakładki ortodontyczne', 'Najbardziej przejrzysta droga do zmiany uśmiechu')}${slide('o-6', 'Stomatologia estetyczna', 'Licówki, korony pełnoceramiczne, wybielanie')}
+      </div></div></section><section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section>`));
+    const hero = result.sections.find((x) => x.arrangement === 'slider')!;
+    expect(hero.items.map((i) => [i.title ?? i.text[0], i.backgroundImage])).toEqual([
+      ['Estetyczne nakładki ortodontyczne', 'https://img.test/ortheo.jpg'],
+      ['Stomatologia estetyczna', 'https://img.test/o-6.jpg'],
+    ]);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

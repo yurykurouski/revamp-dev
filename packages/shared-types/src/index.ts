@@ -414,6 +414,8 @@ export interface ISiteSectionItem {
   /** Paragraphs and bullets, verbatim (an FAQ answer, a review's quote) */
   text: string[];
   image?: ISiteImage;
+  /** A photo painted behind the item, e.g. a hero slide's background */
+  backgroundImage?: string;
   /** As written, e.g. "od 150 zł" */
   price?: string;
   /** 0..5 */

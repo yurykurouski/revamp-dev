@@ -38,6 +38,8 @@ export interface RawSiteItem {
   subtitle?: string;
   text: string[];
   image?: RawSiteImage;
+  /** A photo painted behind the item (a slide's background image), absolute */
+  backgroundImage?: string;
   price?: string;
   rating?: number;
   links: RawSiteLink[];
@@ -595,6 +597,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     }
     const price = clean(member.textContent).match(PRICE)?.[0]?.trim();
     const rating = ratingOf(member);
+    const backgroundImage = backgroundImageOf(member);
     const icon =
       member.querySelector('svg, i[class*="icon" i], i[class*="fa-" i], [class*="icon" i]') !== null ||
       (image !== undefined && image.box.width > 0 && image.box.width <= 96);
@@ -603,6 +606,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       ...(subtitle ? { subtitle } : {}),
       text,
       ...(image ? { image } : {}),
+      ...(backgroundImage ? { backgroundImage } : {}),
       ...(price ? { price } : {}),
       ...(rating !== undefined ? { rating } : {}),
       links,
