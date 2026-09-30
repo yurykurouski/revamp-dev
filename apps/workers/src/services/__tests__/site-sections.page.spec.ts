@@ -396,7 +396,7 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
         <div><h3><a href="/oferta/${title.length}"><span>${title}</span></a></h3></div></div>
       <div><p>${text}</p><div><a href="/oferta/${title.length}" style="display:inline-flex;padding:8px 16px;border:1px solid #c0c"><span><img src="https://img.test/icon.png" alt="" style="width:20px;height:20px"></span> Więcej</a></div></div></div>`;
     const result = await sectionsOf(pageOf(`${HERO}
-      <section><div style="display:grid;grid-template-columns:1fr 2fr;gap:24px">
+      <section><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:24px">
         <div><div><h2 style="font-size:48px">OFERTA</h2><h3 style="font-size:30px">Usługi skierowane do dzieci, młodzieży i dorosłych.</h3>
           <p>Każdego dnia mali i więksi pacjenci otrzymują profesjonalne wsparcie.</p>
           <div><a href="/oferta" style="display:inline-flex;padding:8px 16px;background:#c0c;color:#fff"><span><img src="https://img.test/icon.png" alt="" style="width:20px;height:20px"></span> Zobacz nasze usługi</a></div></div></div>
@@ -407,6 +407,8 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     const s = result.sections.find((x) => x.intro.heading === 'OFERTA')!;
     expect(s.intro.text).toEqual(['Usługi skierowane do dzieci, młodzieży i dorosłych.', 'Każdego dnia mali i więksi pacjenci otrzymują profesjonalne wsparcie.']);
     expect(s.intro.links.map((l) => l.label)).toEqual(['Zobacz nasze usługi']);
+    // Cards running past the edge of a clipping box, on one row, are a carousel
+    expect(s.arrangement).toBe('slider');
     expect(s.items.map((i) => [i.title, i.text, i.links.map((l) => l.label)])).toEqual([
       ['Leczenie zachowawcze', ['Zapobieganie i leczenie próchnicy u dzieci.'], ['Leczenie zachowawcze', 'Więcej']],
       ['Profilaktyka', ['Lakowanie bruzd i lakierowanie zębów.'], ['Profilaktyka', 'Więcej']],

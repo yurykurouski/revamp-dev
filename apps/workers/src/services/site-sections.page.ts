@@ -401,6 +401,18 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     }
     return false;
   };
+  /** Cards on one row running past the edge of a box that clips them: a carousel built without a slider library */
+  const runsPastClip = (members: Element[]): boolean => {
+    const boxes = members.map((m) => m.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    if (boxes.length < 3 || boxes.some((r) => Math.abs(r.top - boxes[0]!.top) > 10)) return false;
+    for (let node = members[0]!.parentElement; node && node !== document.body; node = node.parentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.overflowX !== 'hidden' && style.overflowX !== 'clip' && style.overflowX !== 'auto' && style.overflowX !== 'scroll') continue;
+      const clip = node.getBoundingClientRect();
+      return boxes.some((r) => r.right > clip.right + 20 || r.left < clip.left - 20);
+    }
+    return false;
+  };
   const markupOf = (parent: Element, members: Element[], root: Element): RawGroupMarkup | undefined => {
     if (
       members.every((m) => m.matches('details') || m.querySelector('details, [aria-expanded]') !== null) ||
@@ -408,7 +420,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     ) {
       return 'accordion';
     }
-    if (inSlider(parent, root)) return 'slider';
+    if (inSlider(parent, root) || runsPastClip(members)) return 'slider';
     if (members.every((m) => /schema\.org\/Person/i.test(m.getAttribute('itemtype') || ''))) return 'person';
     if (members.every((m) => /schema\.org\/Review/i.test(m.getAttribute('itemtype') || ''))) return 'review';
     return undefined;
