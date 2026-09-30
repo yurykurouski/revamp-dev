@@ -245,6 +245,17 @@ describe('planRebuild (REV-110)', () => {
     expect(planRebuild(input([hero, services])).bookingServices).toEqual(['Implanty', 'Ortodoncja']);
   });
 
+  it('lists a service repeated in the services and pricing sections once, in its first spelling', () => {
+    const services = section(3, { kind: 'services', arrangement: 'card-grid', items: [
+      { title: 'Implanty', text: [], links: [] }, { title: 'Ortodoncja', text: [], links: [] },
+    ] });
+    const pricing = section(4, { kind: 'pricing', arrangement: 'list', items: [
+      { title: ' implanty ', text: [], links: [] }, { title: 'ORTODONCJA', text: [], links: [] }, { title: 'Wybielanie  zębów', text: [], links: [] },
+      { title: 'wybielanie zębów', text: [], links: [] },
+    ] });
+    expect(planRebuild(input([hero, services, pricing])).bookingServices).toEqual(['Implanty', 'Ortodoncja', 'Wybielanie  zębów']);
+  });
+
   it('carries the reader skipped blocks into the omissions', () => {
     const plan = planRebuild({ ...input([hero]), siteSections: read([hero], { skipped: [{ index: 12, reason: 'noise', sample: 'Polityka prywatności' }] }) });
     expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'noise', sample: 'Polityka prywatności' });

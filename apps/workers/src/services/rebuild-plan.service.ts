@@ -319,6 +319,24 @@ function planSection(
   };
 }
 
+/** The services and pricing item titles as booking options, each once (case and spacing ignored), in its first spelling */
+function bookingServices(sections: ISiteSection[]): string[] {
+  const seen = new Set<string>();
+  const list: string[] = [];
+  for (const s of sections) {
+    if (s.kind !== 'services' && s.kind !== 'pricing') continue;
+    for (const item of s.items) {
+      const title = item.title?.trim().slice(0, 60);
+      if (!title) continue;
+      const key = title.toLowerCase().replace(/\s+/g, ' ');
+      if (seen.has(key)) continue;
+      seen.add(key);
+      list.push(title);
+    }
+  }
+  return list.slice(0, LIMITS.items);
+}
+
 export function planRebuild(input: RebuildInput): IRebuildPlan {
   const read = input.siteSections;
   const rec = new Recorder(Math.min(1, Math.max(0, read.coverage.ratio)));
@@ -423,10 +441,7 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     },
     sections,
     bookingAppended: !ctx.booking.placed,
-    bookingServices: read.sections
-      .filter((s) => s.kind === 'services' || s.kind === 'pricing')
-      .flatMap((s) => s.items.map((item) => item.title?.trim().slice(0, 60)).filter((title): title is string => Boolean(title)))
-      .slice(0, LIMITS.items),
+    bookingServices: bookingServices(read.sections),
     footer: {
       ...(footerSection ? { section: footerSection } : {}),
       contacts: {
