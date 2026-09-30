@@ -791,7 +791,31 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     .filter((el) => !footerCandidates.some((other) => other !== el && other.contains(el)))
     .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
     .pop();
-  const chrome = [headerEl, footerEl].filter((el): el is Element => el !== undefined);
+  // A top bar right above the header (address, phones: OceanWP's #top-bar-wrap) belongs to the header
+  const headerBars: Element[] = [];
+  if (headerEl) {
+    const headerTop = headerEl.getBoundingClientRect().top;
+    for (let sib = headerEl.previousElementSibling; sib; sib = sib.previousElementSibling) {
+      const r = sib.getBoundingClientRect();
+      if (!shown(sib) || excluded(sib) || !clean(sib.textContent)) continue;
+      if (sib.matches('[data-revamp-block]') || sib.querySelector('[data-revamp-block], h1, h2') || r.height > 200 || r.bottom > headerTop + 5) break;
+      headerBars.unshift(sib);
+    }
+  }
+  const chrome = [...headerBars, headerEl, footerEl].filter((el): el is Element => el !== undefined);
+
+  /** The header read together with its top bars: their links and text first, the header's logo first */
+  const withBars = (header: RawSiteBlock, bars: RawSiteBlock[]): RawSiteBlock =>
+    bars.length === 0
+      ? header
+      : {
+          ...header,
+          box: unionOf([...bars.map((b) => b.box), header.box]) ?? header.box,
+          intro: { ...header.intro, links: [...bars.flatMap((b) => b.intro.links), ...header.intro.links] },
+          extra: [...bars.flatMap((b) => b.extra), ...header.extra],
+          images: [...header.images, ...bars.flatMap((b) => b.images)],
+          embeds: [...bars.flatMap((b) => b.embeds), ...header.embeds],
+        };
 
   // Site-wide typography
   const firstIn = (roots: Element[], selector: string, test: (el: Element) => boolean) =>
@@ -849,7 +873,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   return {
     viewportWidth: vw,
     viewportHeight: vh,
-    ...(headerEl ? { header: readBlock(headerEl, 'header', undefined, []) } : {}),
+    ...(headerEl ? { header: withBars(readBlock(headerEl, 'header', undefined, []), headerBars.map((bar) => readBlock(bar, 'header', undefined, []))) } : {}),
     blocks: blocks.map((el) => readBlock(el, 'content', Number(el.getAttribute('data-revamp-block')), chrome)),
     ...(footerEl ? { footer: readBlock(footerEl, 'footer', undefined, []) } : {}),
     typography,

@@ -440,6 +440,18 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(JSON.stringify(result.sections)).not.toContain('img.test/m');
   });
 
+  it('reads a top bar right above the header as part of the header, not as hero text (Falco-Dent)', async () => {
+    const result = await sectionsOf(pageOf(`<div id="wrap"><div id="top-bar-wrap" style="background:#173784;color:#fff;padding:6px 40px;font-size:12px">
+        <div id="top-bar-content">Aleja Zjednoczenia 21/23, 01-829 Warszawa | <a href="tel:+48510510706">+48 510-510-706</a></div></div>
+      ${HEADER}<main>${HERO}<section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section></main></div>`));
+    const header = result.sections.find((x) => x.role === 'header')!;
+    expect(header.intro.links.map((l) => [l.label, l.kind])).toContainEqual(['+48 510-510-706', 'phone']);
+    expect(JSON.stringify(header)).toContain('Aleja Zjednoczenia 21/23');
+    const hero = result.sections.find((x) => x.role === 'hero')!;
+    expect(JSON.stringify(hero)).not.toContain('Aleja');
+    expect(result.coverage.uncaptured).toEqual([]);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}
