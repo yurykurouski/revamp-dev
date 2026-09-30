@@ -391,6 +391,12 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     const s = result.sections.find((x) => JSON.stringify(x).includes('Masz pytania'))!;
     expect(s.items).toEqual([]);
     expect(s.intro.heading).toBe('Masz pytania? Napisz do nas!');
+    // The form's own labels and button belong to the form embed, not the section's copy
+    expect(s.embeds.map((e) => e.kind)).toEqual(['form']);
+    const copy = JSON.stringify({ text: s.intro.text, extra: s.extra });
+    expect(copy).not.toContain('Adres e-mail');
+    expect(copy).not.toContain('Wyślij');
+    expect(result.coverage.uncaptured).toEqual([]);
   });
 
   it('takes a label of up to 60 characters above a larger heading for the eyebrow (Dentalux)', async () => {

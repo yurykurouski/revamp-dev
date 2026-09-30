@@ -274,6 +274,19 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     return node ?? root;
   };
 
+  // A form's labels, placeholders and button are the form's own interface, recorded with the form embed: not copy,
+  // and not page text for coverage either. A form that wraps page content (ASP.NET's page-wide form) is not one.
+  const formUi = new Map<Element, boolean>();
+  const inFormUi = (el: Element): boolean => {
+    const form = el.closest('form');
+    if (!form) return false;
+    let ui = formUi.get(form);
+    if (ui === undefined) {
+      ui = !form.querySelector('[data-revamp-block], h1, h2, header, footer, main');
+      formUi.set(form, ui);
+    }
+    return ui;
+  };
   /** Text of `root` as one string per nearest block-level ancestor, in page order; text inside `skip` is left out */
   const runsOf = (root: Element, skip: Element[]): Array<{ el: Element; text: string }> => {
     const runs = new Map<Element, string[]>();
@@ -281,7 +294,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const parent = node.parentElement;
       if (!parent || !node.nodeValue || !node.nodeValue.trim()) continue;
-      if (excluded(parent) || skip.some((el) => el.contains(parent))) continue;
+      if (excluded(parent) || skip.some((el) => el.contains(parent)) || inFormUi(parent)) continue;
       const block = blockOf(parent, root);
       const parts = runs.get(block);
       if (parts) parts.push(node.nodeValue);
