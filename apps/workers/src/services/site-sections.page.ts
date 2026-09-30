@@ -197,8 +197,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     }
     return false;
   };
-  // A hidden copy of content the page shows elsewhere (a mobile-only variant of a box) is not read twice; hidden
-  // content found nowhere else (a collapsed answer, a tab panel, a slide) still is
+  // A hidden copy of content the page shows elsewhere (a mobile-only variant of a box) is not read twice, nor is a
+  // hidden block of pictures alone; hidden text found nowhere else (a collapsed answer, a tab panel, a slide) still is
   const letters = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
   let shownText: string | undefined;
   const hiddenCopies = new Map<Element, boolean>();
@@ -218,7 +218,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
             total += value.length;
             if (value && shownText.includes(value)) found += value.length;
           }
-          copy = total >= 20 && found >= total * 0.9;
+          // Pictures alone, hidden, are the other screen size's variant of a block (a mobile-only carousel)
+          copy = total >= 20 ? found >= total * 0.9 : total === 0 && node.querySelector('img') !== null;
         }
         hiddenCopies.set(node, copy);
       }

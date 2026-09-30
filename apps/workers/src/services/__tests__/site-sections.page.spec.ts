@@ -431,6 +431,15 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     ]);
   });
 
+  it('leaves out a hidden image-only variant of a block, such as a mobile-only carousel (Falco-Dent hero)', async () => {
+    const result = await sectionsOf(pageOf(`<section style="min-height:500px;background:#123;color:#fff"><h1>Gabinet Falco-Dent</h1>
+        <p>Nowoczesna stomatologia na Bielanach od ponad dwudziestu lat.</p>
+        <div class="hidden-desktop" style="display:none"><div class="swiper"><div class="swiper-wrapper">
+          ${[1, 2, 3, 4, 5].map((n) => `<div class="swiper-slide"><figure><img src="https://img.test/m${n}.jpg" alt="${n}" width="400" height="300"></figure></div>`).join('')}
+        </div></div></div></section><section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section>`));
+    expect(JSON.stringify(result.sections)).not.toContain('img.test/m');
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}
