@@ -366,6 +366,15 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(JSON.stringify({ text: s.intro.text, extra: s.extra })).not.toContain('Dodaj nową opinię');
   });
 
+  it('takes a label of up to 60 characters above a larger heading for the eyebrow (Dentalux)', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h4 style="font-size:14px">30 lat dbamy o uśmiech Warszawy – a teraz Twój</h4>
+        <h1 style="font-size:48px">Dentysta Warszawa Mokotów</h1><h2 style="font-size:32px">Cieszymy się, że jesteś!</h2><p>Zapewniamy pełną opiekę.</p></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Dentysta Warszawa Mokotów')!;
+    expect(s.intro.eyebrow).toBe('30 lat dbamy o uśmiech Warszawy – a teraz Twój');
+    expect(s.intro.text).toEqual(['Cieszymy się, że jesteś!', 'Zapewniamy pełną opiekę.']);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

@@ -644,7 +644,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     // A short label right above a clearly larger heading is the eyebrow ("O NAS" over "Poznaj gabinet…")
     let eyebrowEl: Element | undefined;
     const larger = headings[1];
-    if (headingEl && larger && !headingEl.contains(larger) && clean(headingEl.textContent).length <= 40) {
+    if (headingEl && larger && !headingEl.contains(larger) && clean(headingEl.textContent).length <= 60) {
       const between = document.createRange();
       between.setStartAfter(headingEl);
       between.setEndBefore(larger);
