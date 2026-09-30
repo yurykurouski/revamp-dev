@@ -2,7 +2,7 @@
 
 Ticket: [REV-110](https://linear.app/revamp-proect/issue/REV-110) (sub-project 2 of [REV-108](https://linear.app/revamp-proect/issue/REV-108))
 Builds on: [REV-109](https://linear.app/revamp-proect/issue/REV-109) (`Audit.siteSections`, PR #88)
-Status: agreed in chat on 2026-09-30.
+Status: agreed in chat on 2026-09-30. Planning added three refinements, listed in the plan under "Spec additions made while planning" (`MVP_REBUILD_UNAVAILABLE`, the preview reload on a renderer switch, `manual:original`).
 
 ## 1. Purpose
 
