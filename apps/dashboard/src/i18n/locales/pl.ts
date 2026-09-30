@@ -254,6 +254,11 @@ export const pl: Translation = {
     saveFailed: 'Nie udało się zapisać układu: {{message}}',
     locked: 'Układ można zmienić tylko wtedy, gdy MVP czeka na przegląd',
     rebuildSummary: 'Odtworzono sekcje: {{sections}}, pominięto: {{omitted}}, poprawki: {{fixes}}',
+    rebuildRefused: {
+      unread: 'Nie można odtworzyć oryginalnej strony, ponieważ nie udało się jej odczytać sekcja po sekcji.',
+      no_content: 'Nie można odtworzyć oryginalnej strony, ponieważ nie znaleziono na niej sekcji z treścią.',
+      low_coverage: 'Nie można odtworzyć oryginalnej strony, ponieważ udało się odczytać tylko {{percent}}% jej treści.',
+    },
     rerendering: 'Ponowne renderowanie strony…',
     fallback: {
       unread: 'Nie udało się odczytać oryginalnej strony sekcja po sekcji, więc użyto szablonu.',

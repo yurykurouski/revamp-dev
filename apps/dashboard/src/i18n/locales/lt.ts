@@ -254,6 +254,11 @@ export const lt: Translation = {
     saveFailed: 'Nepavyko išsaugoti maketo: {{message}}',
     locked: 'Maketą galima keisti tik kol MVP laukia peržiūros',
     rebuildSummary: 'Atkurta skilčių: {{sections}}, praleista: {{omitted}}, pataisymų: {{fixes}}',
+    rebuildRefused: {
+      unread: 'Originalios svetainės atkurti negalima, nes jos puslapio nepavyko perskaityti skiltimis.',
+      no_content: 'Originalios svetainės atkurti negalima, nes jos puslapyje nerasta turinio skilčių.',
+      low_coverage: 'Originalios svetainės atkurti negalima, nes pavyko perskaityti tik {{percent}}% jos puslapio.',
+    },
     rerendering: 'Puslapis perpiešiamas…',
     fallback: {
       unread: 'Originalaus puslapio nepavyko perskaityti skiltimis, todėl naudotas šablonas.',

@@ -254,7 +254,12 @@ export const en = {
     picker: 'Layout:',
     saveFailed: 'Could not save the layout: {{message}}',
     locked: 'The layout can be changed only while the MVP awaits review',
-    rebuildSummary: '{{sections}} sections rebuilt, {{omitted}} left out, {{fixes}} fixes',
+    rebuildSummary: 'Sections rebuilt: {{sections}}, left out: {{omitted}}, fixes: {{fixes}}',
+    rebuildRefused: {
+      unread: 'The original site cannot be rebuilt because its page could not be read section by section.',
+      no_content: 'The original site cannot be rebuilt because no content sections were found on its page.',
+      low_coverage: 'The original site cannot be rebuilt because only {{percent}}% of its page could be read.',
+    },
     rerendering: 'Re-rendering the page…',
     fallback: {
       unread: 'The original page could not be read section by section, so the template was used.',

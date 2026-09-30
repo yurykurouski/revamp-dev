@@ -484,11 +484,51 @@ describe('Prototype step layout picker (REV-84)', () => {
     });
 
     it('also waits when going back from the rebuild to a template', async () => {
-      render(mvpWith('original', ['rule:rebuild']));
-      vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('compact', ['rule:manual']));
+      const rebuild = { coverage: 0.97, sections: 9, omitted: [], tuning: [] };
+      render({ ...mvpWith('original', ['rule:rebuild']), rebuild });
+      // The save's answer still carries the rebuild summary: the page is re-rendered after it
+      vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue({ ...mvpWith('compact', ['rule:manual']), rebuild });
       click('compact');
       expect(setLayoutMessages()).not.toContainEqual(expect.objectContaining({ layout: 'compact', animate: true }));
       await vi.waitFor(() => expect(rerendering()).toBe(true));
+
+      const republished = { ...mvpWith('compact', ['rule:manual']), editedAt: '2026-09-30T12:00:00.000Z' };
+      vi.mocked(apiClient.getMvp).mockResolvedValue(republished);
+      await tick(2000);
+      await vi.waitFor(() => expect(rerendering()).toBe(false));
+    });
+
+    it('stops waiting when the rebuild falls back to a template, which leaves the renderer as it was', async () => {
+      render(mvpWith('bento'));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', ['rule:manual']));
+      click('original');
+      await vi.waitFor(() => expect(rerendering()).toBe(true));
+
+      // The worker records the fallback on the layout; the page stays a template, so no new editedAt
+      vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('split', ['rebuild:invalid', 'manual:original', 'rule:derived']));
+      await tick(2000);
+      await vi.waitFor(() => expect(rerendering()).toBe(false));
+      expect(container.querySelector('.MuiChip-colorWarning')?.textContent).toBe(en.mvpLayout.variants.split);
+      expect(pressed()).toEqual(['split']);
+      // The template page switches to the fallback layout in place
+      expect(setLayoutMessages().at(-1)).toEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
+    });
+
+    it('stops waiting when a quick pick back to a template makes the re-render unnecessary', async () => {
+      render(mvpWith('bento'));
+      const save = vi
+        .spyOn(apiClient, 'updateMvpLayout')
+        .mockResolvedValueOnce(mvpWith('original', ['rule:manual']))
+        .mockResolvedValueOnce(mvpWith('split', ['rule:manual']));
+      click('original');
+      await vi.waitFor(() => expect(rerendering()).toBe(true));
+
+      click('split');
+      await vi.waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+      await vi.waitFor(() => expect(rerendering()).toBe(false));
+      expect(pressed()).toEqual(['split']);
+      // The Bento page never left, so it switches in place
+      expect(setLayoutMessages().at(-1)).toEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
     });
 
     it('never waits for a switch between two templates, which the page makes in place', async () => {
@@ -512,7 +552,7 @@ describe('Prototype step layout picker (REV-84)', () => {
       click('original');
       await vi.waitFor(() => expect(pressed()).toEqual(['bento']));
       expect(document.body.textContent).toContain(
-        en.mvpLayout.saveFailed.replace('{{message}}', en.mvpLayout.fallback.low_coverage.replace('{{percent}}', '72')),
+        en.mvpLayout.saveFailed.replace('{{message}}', en.mvpLayout.rebuildRefused.low_coverage.replace('{{percent}}', '72')),
       );
       expect(rerendering()).toBe(false);
     });

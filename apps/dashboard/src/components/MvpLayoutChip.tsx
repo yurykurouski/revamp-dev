@@ -42,13 +42,15 @@ export function rebuildFallbackOf(
   if (!reason) return undefined;
   const coverage = reasons?.find((r) => r.startsWith('coverage:'));
   const ratio = coverage ? Number(coverage.slice('coverage:'.length)) : NaN;
-  return Number.isFinite(ratio) ? { reason, percent: Math.round(ratio * 100) } : { reason };
+  // Rounded down, so a page just under the threshold never reads as reaching it; the epsilon absorbs
+  // float error (0.29 * 100 is 28.999…)
+  return Number.isFinite(ratio) ? { reason, percent: Math.floor(ratio * 100 + 1e-9) } : { reason };
 }
 
 type RebuildFallbackKind = RebuildFallbackReason extends `rebuild:${infer Kind}` ? Kind : never;
 
 /** The localized sentence for a rebuild fallback (REV-110) */
-export function rebuildFallbackText(t: TFunction, fallback: { reason: RebuildFallbackReason; percent?: number }): string {
+function rebuildFallbackText(t: TFunction, fallback: { reason: RebuildFallbackReason; percent?: number }): string {
   const kind = fallback.reason.slice('rebuild:'.length) as RebuildFallbackKind;
   return t(`mvpLayout.fallback.${kind}`, { percent: fallback.percent });
 }
@@ -66,7 +68,8 @@ export const MvpLayoutChip: React.FC<{ mvp: IMvpProjectDetail | null | undefined
   const rule = layoutRuleOf(mvp.layout?.reasons);
   const chosen = rule ? t('mvpLayout.tooltip', { name, reason: t(`mvpLayout.rules.${rule}`) }) : name;
   const fallback = rebuildFallbackOf(mvp.layout?.reasons);
-  const rebuild = mvp.rebuild;
+  // The summary belongs to the rebuilt page; it can outlive a switch to a template until the re-render
+  const rebuild = variant === 'original' ? mvp.rebuild : undefined;
   const notes = [
     chosen,
     rebuild &&

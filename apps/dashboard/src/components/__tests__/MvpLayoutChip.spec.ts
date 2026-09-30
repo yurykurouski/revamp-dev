@@ -89,6 +89,9 @@ describe('MvpLayoutChip (REV-54)', () => {
       percent: 72,
     });
     expect(rebuildFallbackOf(['rebuild:unread'])).toEqual({ reason: 'rebuild:unread' });
+    // Rounded down: just under the threshold never reads as reaching it, and float error is absorbed
+    expect(rebuildFallbackOf(['rebuild:low_coverage', 'coverage:0.849'])?.percent).toBe(84);
+    expect(rebuildFallbackOf(['rebuild:low_coverage', 'coverage:0.29'])?.percent).toBe(29);
     expect(rebuildFallbackOf(['rebuild:too_large', 'coverage:abc'])).toEqual({ reason: 'rebuild:too_large' });
     expect(rebuildFallbackOf(['rebuild:made_up'])).toBeUndefined();
     expect(rebuildFallbackOf(['rule:rebuild'])).toBeUndefined();
@@ -108,8 +111,16 @@ describe('MvpLayoutChip (REV-54)', () => {
     });
     expect(html).toContain(en.mvpLayout.variants.original);
     expect(html).toContain(en.mvpLayout.rules.rebuild);
-    expect(html).toContain('17 sections rebuilt, 1 left out, 2 fixes');
+    expect(html).toContain('Sections rebuilt: 17, left out: 1, fixes: 2');
     expect(html).not.toContain('MuiChip-colorWarning');
+  });
+
+  it('drops the rebuild summary once the MVP is on a template, before the re-render removes it (REV-110)', () => {
+    const html = render({
+      ...mvp({ variant: 'split', reasons: ['rule:manual'] }),
+      rebuild: { coverage: 0.98, sections: 17, omitted: [], tuning: [] },
+    });
+    expect(html).not.toContain('Sections rebuilt');
   });
 
   it('marks a fallback to the template with a warning chip and says why (REV-110)', () => {
