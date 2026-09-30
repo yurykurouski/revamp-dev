@@ -280,6 +280,14 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(result.sections.find((x) => x.intro.heading === 'Opinie')!.items.map((i) => i.title)).toEqual(['Anna K.', 'Marta B.']);
   });
 
+  it('leaves screen-reader-only text such as a skip link out of the copy (Falco-Dent)', async () => {
+    const result = await sectionsOf(pageOf(`<div class="site"><a class="skip-link screen-reader-text" href="#content"
+        style="position:absolute;clip:rect(1px,1px,1px,1px);clip-path:inset(50%);width:1px;height:1px;overflow:hidden">Skip to content</a>
+      <div id="wrap">${HEADER}${HERO}<section><h2>O nas</h2><p>Gabinet działa od 1995 roku na Bielanach.</p></section></div></div>`));
+    expect(JSON.stringify(result.sections)).not.toContain('Skip to content');
+    expect(result.coverage.uncaptured).toEqual([]);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

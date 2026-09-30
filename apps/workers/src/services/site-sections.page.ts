@@ -179,7 +179,23 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     if (!match || match === document.body || match === document.documentElement) return false;
     return !match.querySelector('h1, main, article');
   };
-  const excluded = (el: Element): boolean => el.closest(EXCLUDED) !== null || inBoilerplate(el);
+  // Screen-reader-only text (a skip link, a visually hidden label) is clipped to nothing: not copy
+  const clippedAway = new Map<Element, boolean>();
+  const screenReaderOnly = (el: Element): boolean => {
+    for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
+      let clipped = clippedAway.get(node);
+      if (clipped === undefined) {
+        const style = window.getComputedStyle(node);
+        clipped =
+          style.position === 'absolute' &&
+          (/^rect\((0|1)px,? (0|1)px,? (0|1)px,? (0|1)px\)$/.test(style.clip) || style.clipPath === 'inset(50%)');
+        clippedAway.set(node, clipped);
+      }
+      if (clipped) return true;
+    }
+    return false;
+  };
+  const excluded = (el: Element): boolean => el.closest(EXCLUDED) !== null || inBoilerplate(el) || screenReaderOnly(el);
   const displays = new Map<Element, string>();
   const isBlock = (el: Element): boolean => {
     let display = displays.get(el);
