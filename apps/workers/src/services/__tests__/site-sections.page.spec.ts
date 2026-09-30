@@ -288,6 +288,18 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(result.coverage.uncaptured).toEqual([]);
   });
 
+  it('does not count Tailwind "start" classes as rating stars (Elefant)', async () => {
+    const post = (title: string) => `<div class="group flex flex-col items-start justify-between" style="flex:1">
+      <div class="mt-8 flex items-center sm:justify-start text-xs"><time>07 sierpnia 2025</time></div>
+      <h3 class="mt-4 flex sm:justify-start sm:text-start">${title}</h3><p class="mt-5 sm:text-start">Zapraszamy wszystkich pacjentów.</p>
+      <div class="mt-4 relative flex items-center sm:justify-start"></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Wydarzenia</h2><div style="display:flex;gap:20px">${post('Turniej ElefantCup')}${post('Dzień Dziecka')}${post('Walentynki')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Wydarzenia')!;
+    expect(s.items.map((i) => i.title)).toEqual(['Turniej ElefantCup', 'Dzień Dziecka', 'Walentynki']);
+    expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined]);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

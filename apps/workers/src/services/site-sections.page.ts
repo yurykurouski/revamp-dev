@@ -448,8 +448,13 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     }
     const glyphs = (clean(el.textContent).match(/★/g) || []).length;
     if (glyphs >= 1 && glyphs <= 5) return glyphs;
+    // A star is a class token "star"/"stars" or one joined by - or _ ("fa-star", "star-full"), never "justify-start"
+    const isStar = (node: Element) => classOf(node).split(/\s+/).some((token) => /(^|[-_])stars?($|[-_])/i.test(token));
     const stars = Array.from(el.querySelectorAll('[class*="star" i]')).filter(
-      (node) => node.querySelector('[class*="star" i]') === null && !/empty|half|outline|-o\b/i.test(classOf(node)),
+      (node) =>
+        isStar(node) &&
+        !Array.from(node.querySelectorAll('[class*="star" i]')).some(isStar) &&
+        !/empty|half|outline|-o\b/i.test(classOf(node)),
     );
     return stars.length >= 1 && stars.length <= 5 ? stars.length : undefined;
   };
