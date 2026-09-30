@@ -1366,6 +1366,8 @@ export interface IRebuildItem {
   subtitle?: string;
   text: string[];
   image?: IRebuildImage;
+  /** A photo slide's photo, painted behind its caption (only in a section with `photoSlides`) */
+  backgroundImage?: string;
   price?: string;
   rating?: number;
   links: IRebuildLink[];
@@ -1386,6 +1388,8 @@ export interface IRebuildSection {
   split?: number;
   /** 1 only for the hero's heading */
   headingLevel: 1 | 2;
+  /** A hero slider of photos: one full-width slide at a time, each over its own photo */
+  photoSlides?: boolean;
   intro: { eyebrow?: string; heading?: string; text: string[]; links: IRebuildLink[] };
   items: IRebuildItem[];
   /** The original item style; `text` is set with a background, readable on it */

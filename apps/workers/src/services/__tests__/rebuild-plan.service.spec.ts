@@ -83,6 +83,34 @@ describe('planRebuild (REV-110)', () => {
     expect(planRebuild(input([header, hero, photo])).sections.map((s) => s.id)).toEqual(['s-1', 's-4']);
   });
 
+  it('renders a hero slider of photos one photo slide at a time, each with its own photo under the overlay', () => {
+    const slides = section(1, { role: 'hero', arrangement: 'slider', intro: { text: [], links: [] },
+      items: [
+        { title: 'Nakładki ortodontyczne', text: ['Przejrzysta droga do uśmiechu'], backgroundImage: 'https://falcodent.pl/ortheo.jpg', links: [] },
+        { text: ['Stomatologia estetyczna'], image: { src: 'https://falcodent.pl/o-6.jpg', alt: '' }, links: [] },
+        { text: [], backgroundImage: 'https://falcodent.pl/team.jpg', links: [] },
+        { text: ['Bez zdjęcia'], links: [] },
+      ],
+      style: { backgroundImage: 'https://falcodent.pl/ortheo.jpg', textColor: '#4a4a4a' } });
+    const plan = planRebuild(input([header, slides, team]));
+    const hero = plan.sections[0]!;
+    expect(hero.photoSlides).toBe(true);
+    expect(hero.items.map((i) => [i.backgroundImage, i.image?.src])).toEqual([
+      ['https://falcodent.pl/ortheo.jpg', undefined],
+      ['https://falcodent.pl/o-6.jpg', undefined],
+      ['https://falcodent.pl/team.jpg', undefined],
+      [undefined, undefined],
+    ]);
+    // Each slide carries its photo; the section keeps none of its own, and captions are white over the overlay
+    expect(hero.style.backgroundImage).toBeUndefined();
+    expect(hero.style.text).toBe('#ffffff');
+    expect(hero.style.overlay).toBeGreaterThan(0);
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+    // A slider of reviews further down stays a slider of cards
+    const reviews = section(2, { arrangement: 'slider', items: [{ title: 'Anna', text: ['Polecam'], image: { src: 'https://falcodent.pl/a.jpg' }, links: [] }] });
+    expect(planRebuild(input([header, slides, reviews])).sections[1]!.photoSlides).toBeUndefined();
+  });
+
   it('gives the hero heading the only h1', () => {
     const plan = planRebuild(input([header, hero, team]));
     expect(plan.sections.map((s) => s.headingLevel)).toEqual([1, 2]);

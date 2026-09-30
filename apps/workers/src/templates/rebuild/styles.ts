@@ -143,6 +143,19 @@ h4 { font-size: 1.1em; }
 .rb-slider-controls button { width: 44px; height: 44px; border-radius: 50%; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); background: transparent; color: inherit; font-size: 24px; line-height: 1; cursor: pointer; }
 .rb-slider-controls button:hover { background: var(--rb-primary); color: var(--rb-on-primary); border-color: var(--rb-primary); }
 
+/* Photo slides: a hero slider of photos, one full-width slide at a time, each caption over its photo and the overlay */
+[data-photo-slides] { padding: 0; }
+[data-photo-slides] > .rb-container { max-width: none; padding: 0; }
+[data-photo-slides] .rb-track { grid-auto-columns: 100%; gap: 0; padding-bottom: 0; }
+.rb-photo-slide { display: flex; align-items: center; min-height: min(75vh, 600px); color: #ffffff; background-color: #333333; background-image: linear-gradient(rgba(0,0,0,var(--rb-overlay,.55)), rgba(0,0,0,var(--rb-overlay,.55))), var(--rb-slide-image, none); background-size: cover; background-position: center; }
+.rb-photo-slide > .rb-container { width: 100%; padding: 48px 16px 72px; }
+.rb-photo-slide .rb-item { max-width: 680px; background: none; color: inherit; }
+.rb-photo-slide .rb-item-title { font-size: var(--rb-h2); }
+[data-photo-slides] .rb-slider-controls { position: absolute; right: 16px; bottom: 16px; margin: 0; }
+[data-photo-slides] .rb-slider-controls button { color: #ffffff; border-color: rgba(255,255,255,.7); background: rgba(0,0,0,.3); }
+[data-photo-slides] .rb-media { padding: 24px 16px 0; }
+[data-photo-slides] .rb-media img { margin-inline: auto; }
+
 /* Gallery */
 .rb-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 24px; }
 .rb-copy > .rb-gallery:first-child { margin-top: 0; }

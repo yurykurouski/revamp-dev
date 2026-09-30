@@ -137,16 +137,23 @@ function planImage(image: ISiteImage | undefined, fallbackAlt: string | undefine
   };
 }
 
-function planItem(item: ISiteSectionItem, rec: Recorder, eager: boolean): IRebuildItem {
+function planItem(item: ISiteSectionItem, rec: Recorder, eager: boolean, photo = false): IRebuildItem {
   const title = label(item.title);
   const subtitle = label(item.subtitle);
   const price = label(item.price);
-  const image = item.image ? planImage(item.image, title, rec, eager) : undefined;
+  let image = item.image ? planImage(item.image, title, rec, eager) : undefined;
+  // A photo slide shows its background photo, else its picture, behind the caption
+  let backgroundImage: string | undefined;
+  if (photo) {
+    backgroundImage = isHttp(item.backgroundImage) ? item.backgroundImage : image?.src;
+    if (backgroundImage === image?.src) image = undefined;
+  }
   return {
     ...(title ? { title } : {}),
     ...(subtitle ? { subtitle } : {}),
     text: texts(item.text),
     ...(image ? { image } : {}),
+    ...(backgroundImage ? { backgroundImage } : {}),
     ...(price ? { price } : {}),
     ...(item.rating !== undefined ? { rating: Math.min(5, Math.max(0, item.rating)) } : {}),
     links: planLinks(item.links, rec),
@@ -155,13 +162,27 @@ function planItem(item: ISiteSectionItem, rec: Recorder, eager: boolean): IRebui
 
 /** An item with nothing left to show, e.g. a menu of links to other pages once those are dropped */
 const isEmptyItem = (item: IRebuildItem) =>
-  !item.title && !item.subtitle && !item.text.length && !item.image && !item.price && item.rating === undefined && !item.links.length;
+  !item.title &&
+  !item.subtitle &&
+  !item.text.length &&
+  !item.image &&
+  !item.backgroundImage &&
+  !item.price &&
+  item.rating === undefined &&
+  !item.links.length;
 
-const planItems = (items: ISiteSectionItem[], rec: Recorder, eagerFirst: boolean) =>
+const planItems = (items: ISiteSectionItem[], rec: Recorder, eagerFirst: boolean, photo = false) =>
   items
     .slice(0, LIMITS.items)
-    .map((item, i) => planItem(item, rec, eagerFirst && i === 0))
+    .map((item, i) => planItem(item, rec, eagerFirst && i === 0, photo))
     .filter((item) => !isEmptyItem(item));
+
+/** A hero slider whose slides mostly carry a photo is shown as photo slides, one at a time */
+const isPhotoSlider = (section: ISiteSection) =>
+  section.role === 'hero' &&
+  section.arrangement === 'slider' &&
+  section.items.length > 0 &&
+  section.items.filter((item) => isHttp(item.backgroundImage) || isHttp(item.image?.src)).length * 2 >= section.items.length;
 
 /** A planned section with nothing to render: no heading, copy, items, images, photo, embeds or booking form */
 const isEmptySection = (s: IRebuildSection) =>
@@ -200,12 +221,14 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
     }
   }
 
-  const photo = isHttp(section.style.backgroundImage) ? section.style.backgroundImage : undefined;
+  const photoSlides = isPhotoSlider(section);
+  // Photo slides carry their own photos; the section's (the first slide's) would only sit behind them
+  const photo = !photoSlides && isHttp(section.style.backgroundImage) ? section.style.backgroundImage : undefined;
   const background = section.style.background && HEX.test(section.style.background) ? section.style.background : undefined;
   const textColor = section.style.textColor && HEX.test(section.style.textColor) ? section.style.textColor : undefined;
   let text: string;
   let overlay: number | undefined;
-  if (photo) {
+  if (photo || photoSlides) {
     overlay = BANNER_OVERLAY;
     text = '#ffffff';
     rec.fix(`overlay:${section.index}`);
@@ -245,13 +268,14 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
     ...(section.mediaSide ? { mediaSide: section.mediaSide } : {}),
     ...(section.style.split !== undefined ? { split: Math.min(0.9, Math.max(0.1, section.style.split)) } : {}),
     headingLevel,
+    ...(photoSlides ? { photoSlides } : {}),
     intro: {
       ...(label(section.intro.eyebrow) ? { eyebrow: label(section.intro.eyebrow) } : {}),
       ...(heading ? { heading } : {}),
       text: texts(section.intro.text),
       links: planLinks(section.intro.links, rec),
     },
-    items: planItems(section.items, rec, eager),
+    items: planItems(section.items, rec, eager, photoSlides),
     ...(itemStyle ? { itemStyle } : {}),
     extra,
     images: section.images

@@ -100,6 +100,17 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toMatch(/\[data-align=center\] \.rb-item-image[^{]*\{ margin-inline: auto; \}/);
   });
 
+  it('renders photo slides one at a time with each slide\'s photo under the overlay', () => {
+    const html = renderRebuild(plan([section(1, { arrangement: 'slider', photoSlides: true, intro: { text: [], links: [] },
+      items: [{ title: 'Nakładki', text: ['Przejrzysta droga'], backgroundImage: "https://x.pl/a b'(1).jpg", links: [] }, { text: ['Druga'], links: [] }],
+      style: { text: '#ffffff', overlay: 0.55, align: 'left', paddingY: 64, fullBleed: true } })]));
+    expect(html).toContain('data-photo-slides');
+    expect(html).toContain(`<div class="rb-slide rb-photo-slide" style="--rb-slide-image: url('https://x.pl/a%20b%27%281%29.jpg')">`);
+    expect(html).toContain('<div class="rb-slide rb-photo-slide">');
+    expect(html).toContain('[data-photo-slides] .rb-track { grid-auto-columns: 100%;');
+    expect(html).toMatch(/\.rb-photo-slide \{[^}]*var\(--rb-slide-image, none\)/);
+  });
+
   it('renders the header nav, CTA and phone, and the footer contacts', () => {
     const html = renderRebuild(plan([section(1)]));
     expect(html).toContain('<a class="rb-nav-link" href="#s-2">Zespół</a>');

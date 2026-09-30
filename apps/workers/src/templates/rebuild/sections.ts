@@ -44,13 +44,21 @@ export function renderItem(item: IRebuildItem, level: 3 | 4 = 3): string {
   }${item.price ? `<p class="rb-price">${escapeHtml(item.price)}</p>` : ''}${item.rating !== undefined ? stars(item.rating) : ''}${paragraphs(item.text)}${links(item.links)}</div></article>`;
 }
 
-function renderSlider(items: IRebuildItem[], ctx: RenderCtx, label: string): string {
+/** A photo slide: the caption in the page's container, over the slide's own photo and the overlay */
+const photoSlide = (i: IRebuildItem) => {
+  const { backgroundImage, ...caption } = i;
+  const style = backgroundImage ? ` style="--rb-slide-image: url('${cssUrl(backgroundImage).replace(/&/g, '&amp;')}')"` : '';
+  return `<div class="rb-slide rb-photo-slide"${style}><div class="rb-container">${renderItem(caption)}</div></div>`;
+};
+
+function renderSlider(items: IRebuildItem[], ctx: RenderCtx, label: string, photo = false): string {
   // The buttons only work with the page script, which un-hides them; without it the track is a plain scroller
   const controls =
     items.length > 1
       ? `<div class="rb-slider-controls" hidden><button type="button" data-slide-step="-1" aria-label="${escapeHtml(ctx.t.previousSlide)}">‹</button><button type="button" data-slide-step="1" aria-label="${escapeHtml(ctx.t.nextSlide)}">›</button></div>`
       : '';
-  return `<div class="rb-slider"><div class="rb-track" tabindex="0" role="region" aria-label="${escapeHtml(label)}">${items.map((i) => `<div class="rb-slide">${renderItem(i)}</div>`).join('')}</div>${controls}</div>`;
+  const slides = items.map((i) => (photo ? photoSlide(i) : `<div class="rb-slide">${renderItem(i)}</div>`)).join('');
+  return `<div class="rb-slider"><div class="rb-track" tabindex="0" role="region" aria-label="${escapeHtml(label)}">${slides}</div>${controls}</div>`;
 }
 
 /** A gallery keeps each item's caption; an item without a picture is rendered whole so no copy is lost */
@@ -67,6 +75,8 @@ interface ItemGroup {
   /** Accessible name of a group that needs one (the slider track): the section heading, else a generic label */
   label: string;
   columns?: number;
+  /** Photo slides (a hero slider of photos) */
+  photo?: boolean;
 }
 
 function renderItems(arrangement: IRebuildSection['arrangement'], items: IRebuildItem[], ctx: RenderCtx, group: ItemGroup): string {
@@ -95,7 +105,7 @@ function renderItems(arrangement: IRebuildSection['arrangement'], items: IRebuil
         )
         .join('')}</div>`;
     case 'slider':
-      return renderSlider(items, ctx, group.label);
+      return renderSlider(items, ctx, group.label, group.photo);
     case 'gallery':
       return `<div class="rb-gallery">${items.map(galleryItem).join('')}</div>`;
     case 'card-grid':
@@ -113,7 +123,7 @@ function renderCopy(section: IRebuildSection, ctx: RenderCtx, extraImages: strin
   const eyebrowHtml = eyebrow ? `<p class="rb-eyebrow">${escapeHtml(eyebrow)}</p>` : '';
   const label = heading ?? ctx.t.sliderLabel;
   const content =
-    renderItems(section.arrangement, section.items, ctx, { id: section.id, label, columns: section.columns }) +
+    renderItems(section.arrangement, section.items, ctx, { id: section.id, label, columns: section.columns, photo: section.photoSlides }) +
     section.extra.map((block, n) => renderExtra(block, ctx, { id: `${section.id}-x${n}`, label })).join('') +
     extraImages;
   const tag = `h${section.headingLevel}`;
@@ -162,6 +172,7 @@ export function renderSection(section: IRebuildSection, ctx: RenderCtx, tag: 'se
     section.mediaSide ? `data-media-side="${section.mediaSide}"` : '',
     `data-align="${s.align}"`,
     s.fullBleed ? 'data-full-bleed' : '',
+    section.photoSlides ? 'data-photo-slides' : '',
     s.backgroundImage ? 'data-bg-image' : '',
     itemStyle?.imageShape ? `data-image-shape="${itemStyle.imageShape}"` : '',
     itemStyle?.border ? 'data-item-border' : '',

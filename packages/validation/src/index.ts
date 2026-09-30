@@ -1285,6 +1285,7 @@ const RebuildItemSchema = z.object({
   subtitle: rebuildShort.optional(),
   text: z.array(rebuildText).max(SITE_SECTIONS_LIMITS.textsPerArray),
   image: RebuildImageSchema.optional(),
+  backgroundImage: rebuildHttp.optional(),
   price: rebuildShort.optional(),
   rating: z.number().min(0).max(5).optional(),
   links: z.array(RebuildLinkSchema).max(SITE_SECTIONS_LIMITS.links),
@@ -1298,6 +1299,7 @@ const RebuildSectionSchema = z.object({
   mediaSide: z.enum(['left', 'right']).optional(),
   split: z.number().min(0.1).max(0.9).optional(),
   headingLevel: z.union([z.literal(1), z.literal(2)]),
+  photoSlides: z.boolean().optional(),
   intro: z.object({
     eyebrow: rebuildShort.optional(),
     heading: rebuildShort.optional(),
