@@ -339,6 +339,21 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expectCovered(result);
   });
 
+  it('takes a small label above a larger heading for the eyebrow, and the larger one for the heading (Falco-Dent)', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div><div class="title-container"><h2 style="font-size:20px"><span>O</span><span> </span><span>NAS</span></h2></div></div>
+        <div><h2 style="font-size:36px">Poznaj gabinet stomatologiczny Falco-Dent</h2></div>
+        <p>Gabinet stomatologiczny Falco-Dent powstał w 1995 roku z pasji do stomatologii.</p></section>
+      <section><h2 style="font-size:32px">Kontakt</h2><h3 style="font-size:20px">Zapraszamy od poniedziałku do piątku</h3><p>Dzwoń lub pisz.</p></section>`));
+    const about = result.sections.find((x) => x.intro.heading === 'Poznaj gabinet stomatologiczny Falco-Dent')!;
+    expect(about.intro.eyebrow).toBe('O NAS');
+    expect(about.intro.text).toEqual(['Gabinet stomatologiczny Falco-Dent powstał w 1995 roku z pasji do stomatologii.']);
+    // A smaller line under the heading stays copy
+    const contact = result.sections.find((x) => x.intro.heading === 'Kontakt')!;
+    expect(contact.intro.eyebrow).toBeUndefined();
+    expect(contact.intro.text).toEqual(['Zapraszamy od poniedziałku do piątku', 'Dzwoń lub pisz.']);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

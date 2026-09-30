@@ -617,20 +617,40 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const { links, standalone } = linksIn(root, hidden);
     const firstMember = main?.members[0];
     const precedes = (el: Element) => !firstMember || Boolean(el.compareDocumentPosition(firstMember) & Node.DOCUMENT_POSITION_FOLLOWING);
-    const headingEl =
+    const headings =
       role === 'content'
-        ? Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6')).find(
-            (h) => !hidden.some((el) => el.contains(h)) && !excluded(h) && precedes(h) && clean(h.textContent),
-          )
-        : undefined;
-    const runs = runsOf(root, [...hidden, ...standalone, ...(headingEl ? [headingEl] : [])]);
+        ? Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+            .filter((h) => !hidden.some((el) => el.contains(h)) && !excluded(h) && precedes(h) && clean(h.textContent))
+            .slice(0, 2)
+        : [];
+    let headingEl: Element | undefined = headings[0];
+    // A short label right above a clearly larger heading is the eyebrow ("O NAS" over "Poznaj gabinet…")
+    let eyebrowEl: Element | undefined;
+    const larger = headings[1];
+    if (headingEl && larger && !headingEl.contains(larger) && clean(headingEl.textContent).length <= 40) {
+      const between = document.createRange();
+      between.setStartAfter(headingEl);
+      between.setEndBefore(larger);
+      const sizeOf = (el: Element) => parseFloat(window.getComputedStyle(el).fontSize) || 0;
+      if (!clean(between.toString()) && sizeOf(larger) >= sizeOf(headingEl) * 1.25) {
+        eyebrowEl = headingEl;
+        headingEl = larger;
+      }
+    }
+    const runs = runsOf(root, [...hidden, ...standalone, ...(headingEl ? [headingEl] : []), ...(eyebrowEl ? [eyebrowEl] : [])]);
 
     // Intro: what comes before the items; header and footer keep all their text as extra
     const introRuns = role === 'content' ? runs.filter((run) => precedes(run.el)) : [];
-    let eyebrow: string | undefined;
+    let eyebrow: string | undefined = eyebrowEl ? clean(eyebrowEl.textContent) : undefined;
     let eyebrowRun: (typeof runs)[number] | undefined;
     const firstRun = introRuns[0];
-    if (headingEl && firstRun && firstRun.text.length <= 60 && firstRun.el.compareDocumentPosition(headingEl) & Node.DOCUMENT_POSITION_FOLLOWING) {
+    if (
+      !eyebrowEl &&
+      headingEl &&
+      firstRun &&
+      firstRun.text.length <= 60 &&
+      firstRun.el.compareDocumentPosition(headingEl) & Node.DOCUMENT_POSITION_FOLLOWING
+    ) {
       eyebrow = firstRun.text;
       eyebrowRun = firstRun;
       introRuns.shift();
@@ -661,7 +681,11 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const headingLevel = headingEl ? Number(headingEl.tagName.slice(1)) : undefined;
     const backgroundImage = backgroundImageOf(root);
     const itemStyle = firstMember ? cardStyle(firstMember) : undefined;
-    const introBox = unionOf([...(headingEl ? [boxOf(headingEl)] : []), ...introRuns.map((run) => boxOf(run.el))]);
+    const introBox = unionOf([
+      ...(eyebrowEl ? [boxOf(eyebrowEl)] : []),
+      ...(headingEl ? [boxOf(headingEl)] : []),
+      ...introRuns.map((run) => boxOf(run.el)),
+    ]);
 
     return {
       role,
