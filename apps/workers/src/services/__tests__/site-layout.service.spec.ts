@@ -89,7 +89,7 @@ describe('classifyBlock (REV-104)', () => {
 
   it('prefers the heading over ids and classes, and falls back to them', () => {
     expect(classifyBlock(block({ heading: 'Opinie', hint: 'section-services' }))).toBe('reviews');
-    expect(classifyBlock(block({ heading: 'Why choose us', hint: 'about-us elementor-section' }))).toBe('about');
+    expect(classifyBlock(block({ heading: 'Witamy w gabinecie', hint: 'about-us elementor-section' }))).toBe('about');
     expect(classifyBlock(block({ heading: '', hint: 'testimonials-slider' }))).toBe('reviews');
     expect(classifyBlock(block({ heading: 'Kim jesteśmy?', hint: 'o-nas' }))).toBe('about');
   });
@@ -103,6 +103,17 @@ describe('classifyBlock (REV-104)', () => {
     expect(classifyBlock(block({ imageCount: 8, textLength: 100 }))).toBe('gallery');
     expect(classifyBlock(block({ imageCount: 4, textLength: 2000 }))).toBe('other');
     expect(classifyBlock(block())).toBe('other');
+  });
+
+  it('names a "why us" section features (REV-109)', () => {
+    expect(classifyBlock(block({ heading: 'Co nas wyróżnia' }))).toBe('features');
+    expect(classifyBlock(block({ heading: 'Dlaczego my?' }))).toBe('features');
+    expect(classifyBlock(block({ heading: 'Why choose us' }))).toBe('features');
+    expect(classifyBlock(block({ heading: 'Почему мы' }))).toBe('features');
+    expect(classifyBlock(block({ heading: 'Nasze atuty' }))).toBe('features');
+    // Existing kinds keep their words
+    expect(classifyBlock(block({ heading: 'O nas' }))).toBe('about');
+    expect(classifyBlock(block({ heading: 'Nasz zespół' }))).toBe('team');
   });
 });
 
@@ -317,5 +328,17 @@ describe.skipIf(!browser)('collectSiteLayoutInPage (real Chromium, REV-104)', ()
     const { layout, error } = await layoutOf('<!doctype html><body><p>Coming soon</p></body>');
     expect(layout).toBeUndefined();
     expect(error).toMatch(/no sections to read/);
+  });
+
+  it('tags each block it reads with its index, for the section reader (REV-109)', async () => {
+    await page.setContent(PHOTO_SITE);
+    const layout = await page.evaluate(collectSiteLayoutInPage);
+    const tags = await page.evaluate(() =>
+      Array.from(document.querySelectorAll('[data-revamp-block]')).map((el) => el.getAttribute('data-revamp-block')),
+    );
+    expect(tags).toEqual(layout.blocks.map((_, index) => String(index)));
+    // A second walk replaces the tags instead of adding to them
+    await page.evaluate(collectSiteLayoutInPage);
+    expect(await page.evaluate(() => document.querySelectorAll('[data-revamp-block]').length)).toBe(layout.blocks.length);
   });
 });

@@ -122,6 +122,9 @@ export function collectSiteLayoutInPage(): RawSiteLayout {
     if (!split) break;
   }
   blocks = blocks.slice(0, MAX_BLOCKS);
+  // The section reader (REV-109) reads the same blocks, so both agree on where sections begin
+  document.querySelectorAll('[data-revamp-block]').forEach((el) => el.removeAttribute('data-revamp-block'));
+  blocks.forEach((el, index) => el.setAttribute('data-revamp-block', String(index)));
 
   const textOf = (el: Element | null): string => ((el as HTMLElement | null)?.innerText || el?.textContent || '').replace(/\s+/g, ' ').trim();
   const classOf = (el: Element): string => (typeof el.className === 'string' ? el.className : el.getAttribute('class') || '');
@@ -277,10 +280,15 @@ export function collectSiteLayoutInPage(): RawSiteLayout {
  * Words that name a section, in the languages of the audited sites (en, pl, ru, be, uk, lt, de).
  * Checked in this order, first against the heading and then against the block's ids and classes.
  */
+/** "Why us" headings, in the languages of the audited sites (REV-109) */
+export const WHY_US_WORDS =
+  /why (us|choose)|dlaczego (my|warto|nas)|co nas wyróżnia|nasze (atuty|zalety)|\bzalety\b|advantages|преимуществ|почему (мы|выбирают)|чаму (мы|выбіраюць)|перавагі|переваги|чому (ми|обирають)|kodėl (mes|verta)|privalum|warum wir|vorteile/;
+
 const SECTION_WORDS: Array<[SiteSectionKind, RegExp]> = [
   ['reviews', /review|testimonial|opini|recenzj|отзыв|водгук|відгук|atsiliepim|bewertung|kundenstimmen|(mówią|piszą|pacjenci|klienci) o nas|говорят о нас|what (our )?(clients|customers) say/],
   ['faq', /\bfaq\b|pytania|вопрос|пытанн|питанн|dažniausi|klausim|frequently asked|häufige fragen/],
   ['pricing', /pric|cennik|\bceny\b|цены|цена|прайс|стоимост|кошт|вартіст|kainos|kainoraš|preise|tarif|тариф/],
+  ['features', WHY_US_WORDS],
   ['team', /\bteam\b|zesp[oó][lł]|kadra|lekarz|специалист|спецыяліст|команд|каманд|врач|doctors|our (staff|specialists)|personel|komanda|gydytoj/],
   ['gallery', /galler|galeri|галере|галерэ|portfolio|портфолио|realizacj|наши работы|нашы працы|our work|zdj[eę]cia|фото|photos|darbai/],
   ['about', /about|\bo (nas|firmie|mnie|kancelarii|klinice|gabinecie|salonie|restauracji|studiu)\b|о нас|о компании|пра нас|про нас|apie (mus|mane|įmonę)|über uns|who we are|our story|historia|история|гісторыя|кто мы/],

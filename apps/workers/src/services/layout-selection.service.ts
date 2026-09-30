@@ -198,7 +198,8 @@ export function deriveMvpLayout(site: ISiteLayout | undefined, signals: LayoutSi
   if (site.nav.itemCount >= NAV_LINKS_MIN) header.links = true;
   if (Object.keys(header).length) design.header = header;
 
-  const kinds = site.sections.map((section) => section.kind).filter((kind) => kind !== 'other');
+  // `features` has no MVP counterpart yet (REV-109); like `other`, it does not name the order
+  const kinds = site.sections.map((section) => section.kind).filter((kind) => kind !== 'other' && kind !== 'features');
   const reasons = [
     MVP_LAYOUT_DERIVED_REASON,
     `hero:${site.hero.media}${site.hero.mediaSide ? `-${site.hero.mediaSide}` : ''}`,

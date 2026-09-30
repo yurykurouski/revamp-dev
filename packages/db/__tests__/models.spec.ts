@@ -143,6 +143,32 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(unread.toObject().siteLayout).toBeUndefined();
     });
 
+    it('keeps the original site sections and the reason they could not be read (REV-109)', () => {
+      const siteSections = {
+        sections: [
+          {
+            index: 1,
+            role: 'hero',
+            kind: 'other',
+            arrangement: 'banner',
+            intro: { heading: 'Gabinet', headingLevel: 1, text: ['Witamy.'], links: [] },
+            items: [],
+            extra: [],
+            images: [],
+            embeds: [],
+            style: { background: '#112233' },
+          },
+        ],
+        skipped: [{ index: 3, reason: 'noise', sample: 'Wszelkie prawa zastrzeżone' }],
+        coverage: { pageChars: 100, capturedChars: 97, ratio: 0.97, uncaptured: [] },
+      };
+      const read = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSections });
+      expect(read.toObject().siteSections).toEqual(siteSections);
+      const unread = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsError: 'layout walk failed: timeout' });
+      expect(unread.toObject().siteSectionsError).toBe('layout walk failed: timeout');
+      expect(unread.toObject().siteSections).toBeUndefined();
+    });
+
     it('should fail validation if leadId is missing', () => {
       const audit = new Audit({});
       const err = audit.validateSync();

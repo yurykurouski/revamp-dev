@@ -127,6 +127,9 @@ const AuditSchema = new Schema<IAuditDocument>(
     // REV-104: the original home page's layout (validated by SiteLayoutSchema), or why it could not be read
     siteLayout: { type: Schema.Types.Mixed },
     siteLayoutError: { type: String },
+    // REV-109: the original home page read section by section (validated by SiteSectionsSchema), or why it could not be read
+    siteSections: { type: Schema.Types.Mixed },
+    siteSectionsError: { type: String },
     // REV-33: how each capture context handled the cookie banner (e.g. dismissed:cmp:onetrust, not_found)
     cookieBannerHandled: {
       desktop: { type: String },

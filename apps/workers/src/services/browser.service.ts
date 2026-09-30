@@ -6,6 +6,7 @@ import { extractSiteContentInPage, RawSiteContent } from './site-content.extract
 import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.service.js';
 import { collectComplexitySignalsInPage, RawComplexitySignals } from './site-complexity.service.js';
 import { collectSiteLayoutInPage, RawSiteLayout } from './site-layout.service.js';
+import { collectSiteSectionsInPage, RawSiteSections } from './site-sections.page.js';
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -21,6 +22,9 @@ export interface ScreenshotResult {
  * Playwright memory thresholds and below the WebP 16383px dimension limit
  * (mobile is rendered at deviceScaleFactor 2).
  */
+/** How long the section reader may run in the page before the audit goes on without it (REV-109) */
+export const SITE_SECTIONS_TIMEOUT_MS = 15000;
+
 export const FULL_PAGE_MAX_HEIGHT = {
   desktop: 12000,
   mobile: 8000,
@@ -36,6 +40,8 @@ export interface FullAuditCrawlingResult extends ScreenshotResult {
   complexitySignals?: RawComplexitySignals;
   /** Raw DOM facts of the home page's layout (REV-104); absent with the reason when collection failed */
   siteLayout: { raw?: RawSiteLayout; error?: string };
+  /** Raw DOM facts of the home page's sections (REV-109); absent with the reason when collection failed */
+  siteSections: { raw?: RawSiteSections; error?: string };
 }
 
 /**
@@ -269,6 +275,27 @@ export class BrowserService {
   }
 
   /**
+   * Collects the DOM facts the page's sections are read from (REV-109), from the blocks the layout
+   * walk tagged, so it must run after `extractSiteLayout` on the same page. Never throws, and gives
+   * up after SITE_SECTIONS_TIMEOUT_MS: the audit goes on with the reason instead.
+   */
+  async extractSiteSections(page: Page): Promise<{ raw?: RawSiteSections; error?: string }> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`timed out after ${SITE_SECTIONS_TIMEOUT_MS / 1000} s`)), SITE_SECTIONS_TIMEOUT_MS);
+      });
+      const raw = await Promise.race([page.evaluate(collectSiteSectionsInPage), timeout]);
+      return raw && typeof raw === 'object' && Array.isArray(raw.blocks) ? { raw } : { error: 'The page returned no section facts' };
+    } catch (err) {
+      console.warn('[BrowserService] Site section collection failed:', err);
+      return { error: `Section collection failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
    * Extracts raw brand colors, fonts, logo candidates, and contacts directly from page DOM
    */
   async extractRawBrandData(page: Page): Promise<RawBrandExtractionData> {
@@ -476,6 +503,7 @@ export class BrowserService {
     let mobileConsent: CookieConsentOutcome;
     let complexitySignals: RawComplexitySignals | undefined;
     let siteLayout: { raw?: RawSiteLayout; error?: string };
+    let siteSections: { raw?: RawSiteSections; error?: string };
 
     // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
@@ -504,6 +532,10 @@ export class BrowserService {
       if (content) rawBrandData.content = content;
       complexitySignals = await this.extractComplexitySignals(page);
       siteLayout = await this.extractSiteLayout(page);
+      // Reads the blocks the layout walk just tagged; without that walk there is nothing to read (REV-109)
+      siteSections = siteLayout.raw
+        ? await this.extractSiteSections(page)
+        : { error: `layout walk failed: ${siteLayout.error ?? 'no layout facts'}`.slice(0, 300) };
     } finally {
       await desktopContext.close();
     }
@@ -556,6 +588,7 @@ export class BrowserService {
       cookieConsent: { desktop: desktopConsent, mobile: mobileConsent },
       complexitySignals,
       siteLayout,
+      siteSections,
     };
   }
 

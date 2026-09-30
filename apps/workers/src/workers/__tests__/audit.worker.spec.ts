@@ -101,6 +101,23 @@ describe('AuditWorker (@revamp/workers)', () => {
           header: { navLinkCount: 4, logoCenterX: 100, sticky: false, hasCta: false },
         },
       },
+      siteSections: {
+        raw: {
+          viewportWidth: 1440,
+          viewportHeight: 900,
+          blocks: [
+            {
+              role: 'content', block: 0, box: { top: 80, left: 0, width: 1440, height: 700 },
+              intro: { heading: 'Test Dental', headingLevel: 1, text: ['Smiles for everyone.'], links: [] },
+              extra: [], images: [], embeds: [],
+              style: { background: 'rgb(255, 255, 255)', color: 'rgb(0, 0, 0)', textAlign: 'center', paddingTop: 100, paddingBottom: 100 },
+            },
+          ],
+          typography: {},
+          pageChars: 31,
+          uncaptured: [],
+        },
+      },
       mobileBuffer: Buffer.from('raw-mobile-png'),
       desktopFullBuffer: Buffer.from('raw-desktop-full-png'),
       mobileFullBuffer: Buffer.from('raw-mobile-full-png'),
@@ -290,7 +307,12 @@ describe('AuditWorker (@revamp/workers)', () => {
           nav: { itemCount: 4, centeredLogo: false, sticky: false, hasCta: false },
           density: 'comfortable',
         },
-        $unset: { siteLayoutError: '' },
+        // The original sections, read from the page and validated (REV-109); no stale error kept
+        siteSections: expect.objectContaining({
+          sections: [expect.objectContaining({ index: 0, role: 'hero', arrangement: 'text', intro: expect.objectContaining({ heading: 'Test Dental' }) })],
+          coverage: { pageChars: 31, capturedChars: 31, ratio: 1, uncaptured: [] },
+        }),
+        $unset: { siteLayoutError: '', siteSectionsError: '' },
         designCritique: expect.objectContaining({
           visualHierarchyRating: 70,
           mobileFriendlinessRating: 80,
@@ -372,6 +394,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
       siteLayout: { error: 'Layout not collected in this test' },
+      siteSections: { error: 'Sections not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -428,8 +451,12 @@ describe('AuditWorker (@revamp/workers)', () => {
       standardsChecks: '',
       // The original layout was not read either: its reason is stored instead (REV-104)
       siteLayout: '',
+      siteSections: '',
     });
     expect(completed.siteLayoutError).toBe('Layout not collected in this test');
+    // The sections were not read either: the reason is stored and an earlier audit's sections are cleared (REV-109, Review Focus 5)
+    expect(completed.siteSectionsError).toBe('Sections not collected in this test');
+    expect(completed).not.toHaveProperty('siteSections');
     expect(completed).not.toHaveProperty('axeViolations');
     expect(completed).not.toHaveProperty('standardsChecks');
     expect(completed).not.toHaveProperty('a11yScore');
@@ -465,6 +492,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
         siteLayout: { error: 'Layout not collected in this test' },
+        siteSections: { error: 'Sections not collected in this test' },
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
@@ -566,6 +594,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
       siteLayout: { error: 'Layout not collected in this test' },
+      siteSections: { error: 'Sections not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -637,6 +666,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
       siteLayout: { error: 'Layout not collected in this test' },
+      siteSections: { error: 'Sections not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -706,6 +736,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
       siteLayout: { error: 'Layout not collected in this test' },
+      siteSections: { error: 'Sections not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -929,6 +960,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
         siteLayout: { error: 'Layout not collected in this test' },
+        siteSections: { error: 'Sections not collected in this test' },
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
