@@ -78,6 +78,10 @@ describe('planRebuild (REV-110)', () => {
     expect(plan.sections[1]!.items).toEqual([{ title: 'Laser', text: [], links: [] }]);
     expect(plan.summary.sections).toBe(2);
     expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'empty', sample: 'Implanty' });
+    // Fixes are recorded only for sections that are rendered
+    const pale = planRebuild(input([header, hero, { ...marquee, style: { background: '#ffffff', textColor: '#eeeeee' } }]));
+    expect(pale.sections.map((s) => s.id)).toEqual(['s-1']);
+    expect(pale.summary.tuning).not.toContain('contrast:2');
     // A photo banner without copy is still something to show
     const photo = section(4, { arrangement: 'banner', intro: { text: [], links: [] }, style: { backgroundImage: 'https://falcodent.pl/b.jpg' } });
     expect(planRebuild(input([header, hero, photo])).sections.map((s) => s.id)).toEqual(['s-1', 's-4']);

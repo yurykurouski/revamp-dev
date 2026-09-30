@@ -214,7 +214,15 @@ const isEmptySection = (s: IRebuildSection) =>
 const textLength = (section: ISiteSection) =>
   [...section.intro.text, ...section.extra.flatMap((e) => (e.type === 'text' ? e.text : []))].join('').length;
 
-function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<typeof getMvpStrings>; booking: { placed: boolean }; h1: { used: boolean } }): IRebuildSection {
+/**
+ * One section's plan. Its section-level fixes (overlay, contrast, collapse) go into `fixes`, recorded by the caller
+ * only when the section is rendered.
+ */
+function planSection(
+  section: ISiteSection,
+  ctx: { rec: Recorder; t: ReturnType<typeof getMvpStrings>; booking: { placed: boolean }; h1: { used: boolean } },
+  fixes: string[],
+): IRebuildSection {
   const { rec, t } = ctx;
   const eager = section.role === 'hero';
   const heading = label(section.intro.heading);
@@ -245,11 +253,11 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
   if (photo || photoSlides) {
     overlay = BANNER_OVERLAY;
     text = '#ffffff';
-    rec.fix(`overlay:${section.index}`);
+    fixes.push(`overlay:${section.index}`);
   } else {
     const fixed = readableText(textColor, background ?? PAGE_BACKGROUND);
     text = fixed.color;
-    if (fixed.changed) rec.fix(`contrast:${section.index}`);
+    if (fixed.changed) fixes.push(`contrast:${section.index}`);
   }
 
   // Items on their own background get a text color readable there, not the section's (white over a photo)
@@ -257,7 +265,7 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
   if (section.itemStyle) {
     const { radius, background: itemBackground } = section.itemStyle;
     const itemText = itemBackground && HEX.test(itemBackground) ? readableText(textColor, itemBackground) : undefined;
-    if (itemText?.changed) rec.fix(`contrast:${section.index}`);
+    if (itemText?.changed) fixes.push(`contrast:${section.index}`);
     itemStyle = {
       ...section.itemStyle,
       // The reader keeps radii up to 1000 px; the plan caps them at 999 (a pill either way)
@@ -267,7 +275,7 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
   }
 
   const collapsed = section.arrangement === 'text' && textLength(section) > COLLAPSE_CHARS;
-  if (collapsed) rec.fix(`collapse:${section.index}`);
+  if (collapsed) fixes.push(`collapse:${section.index}`);
 
   const extra: IRebuildBlock[] = section.extra
     .slice(0, LIMITS.extra)
@@ -325,9 +333,15 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
   for (const dropped of mainSections.slice(LIMITS.sections)) rec.omit('section', 'over_cap', dropped.intro.heading);
   const sections = mainSections
     .slice(0, LIMITS.sections)
-    .map((s) => ({ read: s, planned: planSection(s, ctx) }))
-    .filter(({ read: s, planned }) => {
-      if (!isEmptySection(planned)) return true;
+    .map((s) => {
+      const fixes: string[] = [];
+      return { read: s, planned: planSection(s, ctx, fixes), fixes };
+    })
+    .filter(({ read: s, planned, fixes }) => {
+      if (!isEmptySection(planned)) {
+        fixes.forEach((code) => rec.fix(code));
+        return true;
+      }
       // Recorded with what it held, e.g. the first of its dropped links
       const held = [...s.intro.links, ...s.items.flatMap((item) => item.links)][0]?.label;
       rec.omit('section', 'empty', held);
@@ -340,9 +354,11 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
 
   const businessName = label(input.businessName) ?? 'Business';
   // The footer never claims the booking slot (R2): a form there is an omitted second form
-  const plannedFooter = footer ? planSection(footer, { ...ctx, booking: { placed: true }, h1: { used: true } }) : undefined;
+  const footerFixes: string[] = [];
+  const plannedFooter = footer ? planSection(footer, { ...ctx, booking: { placed: true }, h1: { used: true } }, footerFixes) : undefined;
   // A footer of links to other pages alone is empty once they are dropped; the page's own footer takes its place
   const footerSection = plannedFooter && !isEmptySection(plannedFooter) ? plannedFooter : undefined;
+  if (footerSection) footerFixes.forEach((code) => rec.fix(code));
   if (footer && plannedFooter && !footerSection) {
     rec.omit('section', 'empty', [...footer.intro.links, ...footer.items.flatMap((item) => item.links)][0]?.label);
   }
