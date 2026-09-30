@@ -300,6 +300,32 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined]);
   });
 
+  it('reads cards laid out in rows under an intro row as one grid, with the intro as the heading (Dentalux offer)', async () => {
+    const card = (title: string, text: string) =>
+      `<div class="col" style="flex:1;background:#f3f4f6;padding:20px"><div class="icon"><span class="et-pb-icon">\ue900</span></div><div><h4><a href="/oferta">${title}</a></h4></div><div><p>${text}</p></div></div>`;
+    const row = (a: string, b: string) => `<div class="row" style="display:flex;gap:40px;margin:20px 0">${a}${b}</div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div class="row"><div class="col"><div><h2 style="font-size:52px">Dowiedz się, jak możemy zadbać o Twój uśmiech</h2></div><div><p>Odkryj pełną ofertę zabiegów w naszych placówkach</p></div></div></div>
+        ${row(card('Implanty', 'Zabiegi implantologiczne od 1994 roku.'), card('Stomatologia zachowawcza', 'Nowoczesne leczenie próchnicy.'))}
+        ${row(card('Profilaktyka', 'Skaling, piaskowanie i fluoryzacja.'), card('Endodoncja', 'Leczenie kanałowe pod mikroskopem.'))}
+        ${row(card('Ortodoncja', 'Aparaty stałe i nakładkowe.'), card('Stomatologia dziecięca', 'Wizyty adaptacyjne dla najmłodszych.'))}
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading?.startsWith('Dowiedz się'))!;
+    expect(s.intro.text).toEqual(['Odkryj pełną ofertę zabiegów w naszych placówkach']);
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.columns).toBe(2);
+    expect(s.items.map((i) => [i.title, i.text])).toEqual([
+      ['Implanty', ['Zabiegi implantologiczne od 1994 roku.']],
+      ['Stomatologia zachowawcza', ['Nowoczesne leczenie próchnicy.']],
+      ['Profilaktyka', ['Skaling, piaskowanie i fluoryzacja.']],
+      ['Endodoncja', ['Leczenie kanałowe pod mikroskopem.']],
+      ['Ortodoncja', ['Aparaty stałe i nakładkowe.']],
+      ['Stomatologia dziecięca', ['Wizyty adaptacyjne dla najmłodszych.']],
+    ]);
+    expect(s.itemStyle?.background).toBe('#f3f4f6');
+    expectCovered(result);
+  });
+
   it('leaves out a hidden responsive copy of content shown elsewhere on the page (Dentalux)', async () => {
     const box = (heading: string) => `<div class="promo" style="background:#fbcfe8;padding:30px"><h4>30 lat dbamy o uśmiech Warszawy</h4>
       <h3>${heading}</h3><h2>Cieszymy się, że jesteś!</h2><h5>Centrum przy ul. Racławickiej 131 zapewnia pełną opiekę stomatologiczną.</h5></div>`;

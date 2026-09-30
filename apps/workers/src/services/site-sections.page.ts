@@ -435,8 +435,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       }
     }
 
-    // Cards laid out in rows (Elementor inner sections, Bootstrap rows): a group whose every member is a
-    // row holding a group of the same cards is those cards, in page order
+    // Cards laid out in rows (Elementor inner sections, Bootstrap rows, Divi rows): a group whose every member is
+    // a row holding a group of the same cards is those cards, in page order. Rows before or after the card rows
+    // that hold no cards (the section's heading row, a button row) stay outside, as intro or extra text.
     const rowsFlattened = found.map((group): Found => {
       if (group.markup) return group;
       const inner = group.members.map((row) =>
@@ -444,12 +445,18 @@ export function collectSiteSectionsInPage(): RawSiteSections {
           .filter((other) => other !== group && other.members.every((member) => member !== row && row.contains(member)))
           .sort((a, b) => b.weight - a.weight)[0],
       );
-      if (inner.some((g) => g === undefined)) return group;
-      const cards = inner as Found[];
-      const cardSignature = signature(cards[0]!.members[0]!);
-      if (!cards.every((g) => g.members.every((member) => signature(member) === cardSignature))) return group;
-      if (cards.reduce((sum, g) => sum + g.weight, 0) < group.weight * 0.75) return group;
-      return { members: cards.flatMap((g) => g.members), covers: group.covers, weight: group.weight };
+      const first = inner.findIndex((g) => g !== undefined);
+      const last = inner.length - 1 - [...inner].reverse().findIndex((g) => g !== undefined);
+      if (first < 0 || last - first + 1 < 2) return group;
+      const cards = inner.slice(first, last + 1);
+      if (cards.some((g) => g === undefined)) return group;
+      const rows = group.members.slice(first, last + 1);
+      const rowsWeight = rows.reduce((sum, m) => sum + clean(m.textContent).length + (hasImage(m) ? 50 : 0), 0);
+      const cardGroups = cards as Found[];
+      const cardSignature = signature(cardGroups[0]!.members[0]!);
+      if (!cardGroups.every((g) => g.members.every((member) => signature(member) === cardSignature))) return group;
+      if (cardGroups.reduce((sum, g) => sum + g.weight, 0) < rowsWeight * 0.75) return group;
+      return { members: cardGroups.flatMap((g) => g.members), covers: rows, weight: group.weight };
     });
     const ranked = rowsFlattened.sort((a, b) => b.weight - a.weight);
     const top = ranked[0];
