@@ -218,7 +218,10 @@ function planSection(section: ISiteSection, ctx: { rec: Recorder; t: ReturnType<
       links: planLinks(section.intro.links, rec),
     },
     items: planItems(section.items, rec, eager),
-    ...(section.itemStyle ? { itemStyle: section.itemStyle } : {}),
+    // The reader keeps radii up to 1000 px; the plan caps them at 999 (a pill either way)
+    ...(section.itemStyle
+      ? { itemStyle: { ...section.itemStyle, ...(section.itemStyle.radius !== undefined ? { radius: Math.min(999, section.itemStyle.radius) } : {}) } }
+      : {}),
     extra,
     images: section.images
       .slice(0, LIMITS.images)

@@ -47,6 +47,14 @@ describe('planRebuild (REV-110)', () => {
     expect(plan.summary).toMatchObject({ coverage: 0.98, sections: 2 });
   });
 
+  it('caps a pill item radius the reader keeps at 1000 px so the plan still validates', () => {
+    const pills = section(1, { arrangement: 'card-grid', items: [{ title: 'A', text: [], links: [] }],
+      itemStyle: { radius: 1000, border: false, shadow: false } });
+    const plan = planRebuild(input([header, pills]));
+    expect(plan.sections[0]!.itemStyle?.radius).toBe(999);
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+
   it('gives the hero heading the only h1', () => {
     const plan = planRebuild(input([header, hero, team]));
     expect(plan.sections.map((s) => s.headingLevel)).toEqual([1, 2]);
