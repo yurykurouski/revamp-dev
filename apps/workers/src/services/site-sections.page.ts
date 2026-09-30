@@ -119,7 +119,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const SLIDER = '.swiper, .swiper-container, .slick-slider, .owl-carousel, .carousel, .splide, .flickity-enabled, .glide, rs-module, .rev_slider';
   const PRICE = /(?:(?:od|from|от|ад|nuo|ab)\s+)?\d[\d\s.,]*\s?(?:zł|pln|€|eur|\$|usd|₽|руб|byn|br\b|£|gbp|kč|czk)/i;
 
-  const clean = (value: string | null | undefined): string => (value || '').replace(/­/g, '').replace(/\s+/g, ' ').trim();
+  // Soft hyphens and icon-font glyphs (private-use characters) are not copy
+  const clean = (value: string | null | undefined): string =>
+    (value || '').replace(/­/g, '').replace(/\p{Co}/gu, '').replace(/\s+/g, ' ').trim();
   const classOf = (el: Element): string => (typeof el.className === 'string' ? el.className : el.getAttribute('class') || '');
   const boxOf = (el: Element): RawBox => {
     const r = el.getBoundingClientRect();

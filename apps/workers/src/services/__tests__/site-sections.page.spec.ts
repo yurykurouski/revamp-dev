@@ -248,6 +248,22 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined, undefined, undefined]);
   });
 
+  it('leaves out icon-font glyphs (private-use characters) from the copy (Dentalux)', async () => {
+    const card = (title: string, text: string) =>
+      `<div style="flex:1"><span class="et-pb-icon">\ue900</span><h4>${title}</h4><p>${text}</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Udogodnienia</h2><div style="display:flex;gap:20px">
+        ${card('Elastyczne godziny', 'Wydłużyliśmy godziny pracy.')}${card('Dogodna lokalizacja', 'Blisko stacji metra.')}${card('Leczenie na raty', 'Raty z MediRaty.')}
+      </div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Udogodnienia')!;
+    expect(s.items.map((i) => [i.title, i.text])).toEqual([
+      ['Elastyczne godziny', ['Wydłużyliśmy godziny pracy.']],
+      ['Dogodna lokalizacja', ['Blisko stacji metra.']],
+      ['Leczenie na raty', ['Raty z MediRaty.']],
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/\p{Co}/u);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}
