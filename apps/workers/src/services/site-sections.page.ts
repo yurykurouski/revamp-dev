@@ -288,7 +288,24 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const linksIn = (root: Element, skip: Element[]): { links: RawSiteLink[]; standalone: Element[] } => {
     const anchors = Array.from(root.querySelectorAll('a[href]')).filter((a) => !excluded(a) && !skip.some((el) => el.contains(a)));
     const links = anchors.map(linkOf).filter((link): link is RawSiteLink => link !== undefined);
-    const standalone = anchors.filter((a) => !a.querySelector('p, h1, h2, h3, h4, h5, h6, li, img') && onlyLinks(blockOf(a, root), root));
+    // A button whose short label sits in one block inside the link (<a><span style="display:block">) is standalone
+    // too; a linked card with several blocks of copy is not
+    const labelInside = (a: Element): boolean => {
+      if (clean(a.textContent).length > 60) return false;
+      const walker = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
+      const labelBlocks = new Set<Element>();
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (!parent || !node.nodeValue?.trim() || excluded(parent)) continue;
+        const block = blockOf(parent, root);
+        if (!a.contains(block)) return false;
+        labelBlocks.add(block);
+      }
+      return labelBlocks.size === 1;
+    };
+    const standalone = anchors.filter(
+      (a) => !a.querySelector('p, h1, h2, h3, h4, h5, h6, li, img') && (onlyLinks(blockOf(a, root), root) || labelInside(a)),
+    );
     return { links, standalone };
   };
 

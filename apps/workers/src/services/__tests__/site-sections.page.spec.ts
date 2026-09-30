@@ -354,6 +354,18 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(contact.intro.text).toEqual(['Zapraszamy od poniedziałku do piątku', 'Dzwoń lub pisz.']);
   });
 
+  it('keeps a button whose label sits in a block inside it as a link, not also as text (Falco-Dent)', async () => {
+    const button = (label: string) => `<div class="btn-wrap" style="display:inline-block"><a href="https://g.page/r/falco/review"
+      style="display:inline-block;padding:20px 60px;background:#173784;color:#fff"><span style="display:block">${label}</span></a></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Opinie</h2><p>Zobacz, co mówią o nas pacjenci po wizycie.</p>
+        <div>${button('Zobacz więcej opinii')}</div><div>${button('Dodaj nową opinię')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Opinie')!;
+    expect(s.intro.links.map((l) => l.label)).toEqual(['Zobacz więcej opinii', 'Dodaj nową opinię']);
+    expect(JSON.stringify({ text: s.intro.text, extra: s.extra })).not.toContain('Zobacz więcej opinii');
+    expect(JSON.stringify({ text: s.intro.text, extra: s.extra })).not.toContain('Dodaj nową opinię');
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}
