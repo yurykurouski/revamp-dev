@@ -264,6 +264,22 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(JSON.stringify(result)).not.toMatch(/\p{Co}/u);
   });
 
+  it('leaves slider arrows and their hidden labels out of the copy (Falco-Dent, Dentalux)', async () => {
+    const quote = (text: string, name: string) => `<div class="slick-slide" style="width:400px;flex-shrink:0"><p>${text}</p><h4>${name}</h4></div>`;
+    const result = await sectionsOf(pageOf(`<a class="skip-link screen-reader-text" href="#content"
+        style="position:absolute;clip:rect(0,0,0,0);clip-path:inset(50%);width:1px;height:1px;overflow:hidden">Skip to content</a>${HERO}
+      <section style="overflow:hidden"><h2>Opinie</h2><div class="slick-slider">
+        <button class="slick-prev slick-arrow" style="width:28px;height:28px;overflow:hidden;text-indent:-999px">Previous</button>
+        <div class="slick-track" style="display:flex">${quote('Świetny gabinet i miła obsługa.', 'Anna K.')}${quote('Bezbolesne leczenie kanałowe.', 'Marta B.')}</div>
+        <button class="slick-next slick-arrow" style="width:28px;height:28px;overflow:hidden;text-indent:-999px">Next</button>
+      </div></section>
+      <section><h2>Aktualności</h2><p>Kolejne wyróżnienie dla naszego gabinetu w tym roku.</p>
+        <a class="et-pb-arrow-prev" href="#"><span style="display:none">Poprzedni</span></a><a class="et-pb-arrow-next" href="#"><span style="display:none">Dalej</span></a></section>`));
+    const text = JSON.stringify(result.sections);
+    for (const word of ['Skip to content', 'Previous', 'Next', 'Poprzedni', 'Dalej']) expect(text).not.toContain(word);
+    expect(result.sections.find((x) => x.intro.heading === 'Opinie')!.items.map((i) => i.title)).toEqual(['Anna K.', 'Marta B.']);
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

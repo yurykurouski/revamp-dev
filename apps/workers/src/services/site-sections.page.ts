@@ -110,7 +110,12 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const vh = window.innerHeight;
   const MAX_ITEMS = 80;
   const MAX_RUNS = 200;
-  const EXCLUDED = 'script, style, noscript, template, svg, .swiper-slide-duplicate, .slick-cloned';
+  // Slider controls (arrows, dots) of the common libraries: their "Previous" / "Next" labels are not copy
+  const SLIDER_CONTROLS =
+    '.slick-arrow, .slick-dots, .swiper-button-prev, .swiper-button-next, .swiper-pagination, .elementor-swiper-button, .owl-nav, .owl-dots, ' +
+    '.carousel-control-prev, .carousel-control-next, .carousel-indicators, .flickity-button, .flickity-page-dots, .splide__arrows, .splide__pagination, ' +
+    '.glide__arrows, .glide__bullets, .et-pb-arrow-prev, .et-pb-arrow-next, .et-pb-controllers';
+  const EXCLUDED = `script, style, noscript, template, svg, .swiper-slide-duplicate, .slick-cloned, ${SLIDER_CONTROLS}`;
   const CONTENT = 'h1, h2, h3, h4, h5, h6, p, img, video, li, a, button, blockquote, iframe, figure, input, textarea';
   const MAP_SRC = /google\.[a-z.]+\/maps|maps\.google|openstreetmap|mapy\.|yandex\.[a-z]+\/(map-widget|maps)/i;
   const VIDEO_SRC = /youtube\.com|youtu\.be|youtube-nocookie|vimeo\.com|wistia/i;
