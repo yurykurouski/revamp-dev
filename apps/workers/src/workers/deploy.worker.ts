@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit, IMvpDesign, MVP_LAYOUT_MANUAL_REASON, MvpLayoutVariant } from '@revamp/shared-types';
+import { IDeployJobData, ILead, IAudit, IMvpDesign, MVP_LAYOUT_MANUAL_REASON, MvpLayoutVariant, BentoLayoutVariant, BENTO_LAYOUT_VARIANTS } from '@revamp/shared-types';
 import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -82,6 +82,10 @@ async function publishMvp(
 /** How many times a relayout re-renders when the operator keeps changing the MVP while it publishes */
 const MAX_RELAYOUT_PASSES = 3;
 
+/** Bento renders only its own variants until the rebuilt original is wired in (REV-110) */
+const toBentoVariant = (variant?: MvpLayoutVariant): BentoLayoutVariant =>
+  variant && (BENTO_LAYOUT_VARIANTS as readonly string[]).includes(variant) ? (variant as BentoLayoutVariant) : 'bento';
+
 type SavedMvpDesign = {
   layout?: { variant?: MvpLayoutVariant; design?: IMvpDesign | null } | null;
   colorPalette?: MvpPaletteOverride | null;
@@ -93,7 +97,7 @@ type SavedMvpDesign = {
  * without a layout); the custom design applies over the one derived from the original site (REV-104)
  */
 const savedDesign = (project: SavedMvpDesign) => ({
-  variant: (project.layout?.variant ?? 'bento') as MvpLayoutVariant,
+  variant: toBentoVariant(project.layout?.variant),
   palette: {
     primary: project.colorPalette?.primary || undefined,
     secondary: project.colorPalette?.secondary || undefined,
@@ -217,7 +221,7 @@ export const createDeployWorker = (): Worker => {
         leadData,
         auditData,
         audit.generatedContent,
-        layout.variant,
+        toBentoVariant(layout.variant),
         undefined,
         mergeDesigns(layout.design, existingProject?.design),
       );

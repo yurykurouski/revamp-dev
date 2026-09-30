@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
-import { IBentoTemplateData, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
+import { IBentoTemplateData, BENTO_LAYOUT_VARIANTS, BentoLayoutVariant } from '@revamp/shared-types';
 import { BentoTemplateService, bentoTemplateService } from '../../services/template.service.js';
 import { LAYOUT_SECTION_ORDER } from '../bento.template.js';
 
@@ -29,7 +29,7 @@ const windows: Window[] = [];
 
 /** Opens the rendered MVP in happy-dom with its inline scripts running, as the preview iframe does */
 async function openPage(
-  layout: MvpLayoutVariant,
+  layout: BentoLayoutVariant,
   overrides: Partial<IBentoTemplateData> = {},
   options: { reducedMotion?: boolean } = {},
 ): Promise<Window> {
@@ -74,8 +74,8 @@ afterEach(async () => {
 });
 
 describe('live MVP layout switch (REV-84)', () => {
-  const pairs = MVP_LAYOUT_VARIANTS.flatMap((from) =>
-    MVP_LAYOUT_VARIANTS.filter((to) => to !== from).map((to) => [from, to] as const),
+  const pairs = BENTO_LAYOUT_VARIANTS.flatMap((from) =>
+    BENTO_LAYOUT_VARIANTS.filter((to) => to !== from).map((to) => [from, to] as const),
   );
 
   it.each(pairs)('switches from %s to %s into the page a fresh render of that layout shows', async (from, to) => {
@@ -166,7 +166,7 @@ describe('live MVP layout switch (REV-84)', () => {
     expect(html).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*::view-transition-group/);
   });
 
-  it.each(MVP_LAYOUT_VARIANTS)('stays within the bundle size limit with every layout embedded (%s)', (layout) => {
+  it.each(BENTO_LAYOUT_VARIANTS)('stays within the bundle size limit with every layout embedded (%s)', (layout) => {
     const long = (length: number) => '&<>"'.repeat(Math.ceil(length / 4)).slice(0, length);
     const heavy: IBentoTemplateData = {
       ...data,
@@ -195,7 +195,7 @@ describe('live MVP layout switch (REV-84)', () => {
     // render() throws above the limit; the size is asserted too so a regression shows the number
     const html = bentoTemplateService.render({ ...heavy, layout });
     expect(Buffer.byteLength(html, 'utf8')).toBeLessThan(BentoTemplateService.MAX_BUNDLE_SIZE_BYTES);
-    for (const other of MVP_LAYOUT_VARIANTS.filter((variant) => variant !== layout)) {
+    for (const other of BENTO_LAYOUT_VARIANTS.filter((variant) => variant !== layout)) {
       expect(html).toContain(`<template data-revamp-layout="${other}">`);
     }
     expect(html).not.toContain(`<template data-revamp-layout="${layout}">`);

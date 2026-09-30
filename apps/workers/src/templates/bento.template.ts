@@ -1,4 +1,4 @@
-import { IBentoTemplateData, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
+import { IBentoTemplateData, BENTO_LAYOUT_VARIANTS, BentoLayoutVariant } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
 import { getMvpStrings } from './mvp-locale.js';
 import { escapeHtml } from './html.js';
@@ -68,7 +68,7 @@ export function resolveTrackerUrls(
  * block is applied; the others wait in the layout <template>s for a live switch (REV-84). Bento
  * needs nothing extra.
  */
-const LAYOUT_CSS: Record<MvpLayoutVariant, string> = {
+const LAYOUT_CSS: Record<BentoLayoutVariant, string> = {
   bento: '',
   split: `
     /* LAYOUT: SPLIT (image-led) */
@@ -208,7 +208,7 @@ type MvpSection = 'about' | 'services' | 'gallery' | 'reviews';
  * Section order per layout: image-led layouts show the gallery early, text-led ones the About block.
  * Also sent to the page script, which reorders the sections on a live layout switch (REV-84).
  */
-export const LAYOUT_SECTION_ORDER: Record<MvpLayoutVariant, MvpSection[]> = {
+export const LAYOUT_SECTION_ORDER: Record<BentoLayoutVariant, MvpSection[]> = {
   bento: ['about', 'services', 'gallery', 'reviews'],
   split: ['gallery', 'services', 'about', 'reviews'],
   editorial: ['about', 'services', 'reviews', 'gallery'],
@@ -254,7 +254,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const accentRgb = hexToRgb(accentColor);
   const tracker = resolveTrackerUrls(data.publicApiUrl);
   // The layout only arranges the same grounded content differently (REV-54)
-  const layout: MvpLayoutVariant = data.layout ?? 'bento';
+  const layout: BentoLayoutVariant = data.layout ?? 'bento';
   // The operator's custom design (REV-92); without one the page renders exactly as before
   const design = hasDesign(data.design) ? data.design : undefined;
   const customCss = designCss(design);
@@ -494,7 +494,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     workingHours ? `<li class="quick-fact">${getLucideIconSvg('clock', { size: 18 })}<span>${escapeHtml(workingHours)}</span></li>` : '',
   ].join('');
 
-  const heroByLayout: Record<MvpLayoutVariant, string> = {
+  const heroByLayout: Record<BentoLayoutVariant, string> = {
     bento: `
     <!-- MODULE 2: HERO SECTION -->
     <section class="hero-section" data-revamp-part="hero">
@@ -559,7 +559,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     </section>`,
   };
 
-  const servicesBodyByLayout: Record<MvpLayoutVariant, string> = {
+  const servicesBodyByLayout: Record<BentoLayoutVariant, string> = {
     bento: `<div class="bento-grid" data-revamp-part="services">
           ${bentoCardsHtml}
         </div>`,
@@ -695,8 +695,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   };
   // Section order per layout with the design's order applied; the page script reorders by it too
   const sectionOrder = Object.fromEntries(
-    MVP_LAYOUT_VARIANTS.map((variant) => [variant, resolveSectionOrder(LAYOUT_SECTION_ORDER[variant], design)]),
-  ) as Record<MvpLayoutVariant, string[]>;
+    BENTO_LAYOUT_VARIANTS.map((variant) => [variant, resolveSectionOrder(LAYOUT_SECTION_ORDER[variant], design)]),
+  ) as Record<BentoLayoutVariant, string[]>;
   // Header links to the sections the page shows, in page order, when the design asks (REV-104)
   const sectionLinkLabel: Record<string, string> = {
     about: t.aboutTag,
@@ -716,7 +716,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
 
   // The other layouts' styles, hero and services markup, inert until the dashboard preview switches
   // to one of them (REV-84). Same grounded content, only arranged differently.
-  const layoutTemplatesHtml = MVP_LAYOUT_VARIANTS.filter((variant) => variant !== layout)
+  const layoutTemplatesHtml = BENTO_LAYOUT_VARIANTS.filter((variant) => variant !== layout)
     .map(
       (variant) => `
   <template data-revamp-layout="${variant}">
