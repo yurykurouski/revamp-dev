@@ -107,14 +107,29 @@ describe('planRebuild (REV-110)', () => {
     ]);
     // A picture moved behind the caption keeps its original alt as the slide's text alternative; nothing is made up
     expect(hero.items.map((i) => i.backgroundAlt)).toEqual([undefined, 'Licówki porcelanowe', undefined, undefined]);
-    // Each slide carries its photo; the section keeps none of its own, and captions are white over the overlay
+    // Each slide carries its photo; the section keeps none of its own, and the overlay is for the slides' photos
     expect(hero.style.backgroundImage).toBeUndefined();
-    expect(hero.style.text).toBe('#ffffff');
     expect(hero.style.overlay).toBeGreaterThan(0);
+    expect(plan.summary.tuning).toContain('overlay:1');
     expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
     // A slider of reviews further down stays a slider of cards
     const reviews = section(2, { arrangement: 'slider', items: [{ title: 'Anna', text: ['Polecam'], image: { src: 'https://falcodent.pl/a.jpg' }, links: [] }] });
     expect(planRebuild(input([header, slides, reviews])).sections[1]!.photoSlides).toBeUndefined();
+  });
+
+  it('keeps a photo slider\'s own intro copy readable on the section background, not white on white', () => {
+    const slides = section(1, { role: 'hero', arrangement: 'slider', intro: { eyebrow: 'Witamy', heading: 'Stomatologia Falco-Dent', text: ['Nowoczesne leczenie'], links: [] },
+      items: [{ title: 'Implanty', text: [], backgroundImage: 'https://falcodent.pl/i.jpg', links: [] }],
+      style: { background: '#ffffff', textColor: '#ffffff' } });
+    const plan = planRebuild(input([header, slides]));
+    const hero = plan.sections[0]!;
+    expect(hero.photoSlides).toBe(true);
+    expect(hero.headingLevel).toBe(1);
+    expect(contrastRatio(hero.style.text, '#ffffff')).toBeGreaterThanOrEqual(4.5);
+    expect(plan.summary.tuning).toEqual(expect.arrayContaining(['overlay:1', 'contrast:1']));
+    // On a transparent section the copy is read against the page background
+    const bare = planRebuild(input([header, { ...slides, style: { textColor: '#ffffff' } }])).sections[0]!;
+    expect(contrastRatio(bare.style.text, '#ffffff')).toBeGreaterThanOrEqual(4.5);
   });
 
   it('puts the largest picture in the media slot beside the text, not a small icon before it (Elefant)', () => {

@@ -112,6 +112,19 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toMatch(/\.rb-photo-slide \{[^}]*var\(--rb-slide-image, none\)/);
   });
 
+  it('keeps a photo slider\'s intro copy in the section\'s own readable color and inside the side padding', () => {
+    const html = renderRebuild(plan([section(1, { arrangement: 'slider', photoSlides: true, headingLevel: 1,
+      intro: { eyebrow: 'Witamy', heading: 'Stomatologia Falco-Dent', text: ['Nowoczesne leczenie'], links: [] },
+      items: [{ title: 'Implanty', text: [], backgroundImage: 'https://x.pl/i.jpg', links: [] }, { title: 'Bez zdjęcia', text: [], links: [] }],
+      style: { background: '#ffffff', text: '#111111', overlay: 0.55, align: 'left', paddingY: 64, fullBleed: true } })]));
+    expect(html).toContain('--rb-section-text: #111111');
+    expect(html.indexOf('<h1 class="rb-heading">Stomatologia Falco-Dent</h1>')).toBeLessThan(html.indexOf('<div class="rb-slide rb-photo-slide"'));
+    // The copy around the slider keeps the container's side padding; only the slider runs edge to edge
+    expect(html).toMatch(/\[data-photo-slides\] \.rb-copy > :not\(\.rb-slider\)[^{]*\{[^}]*padding-inline: 16px;/);
+    // Slides keep their own white caption over the photo and overlay, on a dark fallback when there is no photo
+    expect(html).toMatch(/\.rb-photo-slide \{[^}]*color: #ffffff; background-color: #333333;/);
+  });
+
   it('puts a photo banner on a dark fallback so its white text stays readable when the photo fails to load', () => {
     const html = renderRebuild(plan([section(1, { arrangement: 'banner', style: { background: '#f5f5f5', backgroundImage: 'https://x.pl/h.jpg', overlay: 0.55, text: '#ffffff', align: 'center', paddingY: 96, fullBleed: true } })]));
     expect(html).toMatch(/\[data-bg-image\] \{[^}]*background-color: #333333;/);

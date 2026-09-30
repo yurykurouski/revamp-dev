@@ -146,6 +146,8 @@ h4 { font-size: 1.1em; }
 /* Photo slides: a hero slider of photos, one full-width slide at a time, each caption over its photo and the overlay */
 [data-photo-slides] { padding: 0; }
 [data-photo-slides] > .rb-container { max-width: none; padding: 0; }
+/* Only the slider runs edge to edge; the intro, extra copy and embeds keep the container's side padding */
+[data-photo-slides] .rb-copy > :not(.rb-slider), [data-photo-slides] > .rb-container > .rb-embed { padding-inline: 16px; }
 [data-photo-slides] .rb-track { grid-auto-columns: 100%; gap: 0; padding-bottom: 0; }
 .rb-photo-slide { display: flex; align-items: center; min-height: min(75vh, 600px); color: #ffffff; background-color: #333333; background-image: linear-gradient(rgba(0,0,0,var(--rb-overlay,.55)), rgba(0,0,0,var(--rb-overlay,.55))), var(--rb-slide-image, none); background-size: cover; background-position: center; }
 .rb-photo-slide > .rb-container { width: 100%; padding: 48px 16px 72px; }

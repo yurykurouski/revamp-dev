@@ -251,10 +251,14 @@ function planSection(
   let text: string;
   let overlay: number | undefined;
   if (photo || photoSlides) {
+    // The overlay darkens the section's photo, or each slide's; slides keep their own white caption
     overlay = BANNER_OVERLAY;
-    text = '#ffffff';
     fixes.push(`overlay:${section.index}`);
+  }
+  if (photo) {
+    text = '#ffffff';
   } else {
+    // A photo slider's own intro (heading, text, links) sits on the section background, not on a photo
     const fixed = readableText(textColor, background ?? PAGE_BACKGROUND);
     text = fixed.color;
     if (fixed.changed) fixes.push(`contrast:${section.index}`);
