@@ -437,7 +437,8 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
       ${slide('ortheo', 'Estetyczne nakładki ortodontyczne', 'Najbardziej przejrzysta droga do zmiany uśmiechu')}${slide('o-6', 'Stomatologia estetyczna', 'Licówki, korony pełnoceramiczne, wybielanie')}
       </div></div></section><section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section>`));
     const hero = result.sections.find((x) => x.arrangement === 'slider')!;
-    expect(hero.items.map((i) => [i.title ?? i.text[0], i.backgroundImage])).toEqual([
+    // The slide's heading is named by its class, not a heading tag
+    expect(hero.items.map((i) => [i.title, i.backgroundImage])).toEqual([
       ['Estetyczne nakładki ortodontyczne', 'https://img.test/ortheo.jpg'],
       ['Stomatologia estetyczna', 'https://img.test/o-6.jpg'],
     ]);
