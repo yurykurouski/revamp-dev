@@ -12,6 +12,7 @@ import type {
   ISiteSectionItem,
   ISiteSections,
 } from '@revamp/shared-types';
+import { z } from 'zod';
 import { REBUILD_IFRAME_HOSTS, REBUILD_SUMMARY_LIMITS, SITE_SECTIONS_LIMITS } from '@revamp/validation';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { BANNER_OVERLAY, clampPadding, fontStack, onColor, readableText, typeScale } from './rebuild-tuning.js';
@@ -37,6 +38,7 @@ export const BOOKING_HOSTS = /(^|\.)(booksy\.com|znanylekarz\.pl|docplanner\.[a-
 const PAGE_BACKGROUND = '#ffffff';
 
 const LIMITS = SITE_SECTIONS_LIMITS;
+const EmailSchema = z.string().email().max(254);
 const HEX = /^#[0-9a-f]{6}$/i;
 const isHttp = (url: string | undefined): url is string => Boolean(url && url.length <= LIMITS.urlChars && /^https?:\/\//i.test(url));
 const hostOf = (url: string) => {
@@ -49,6 +51,14 @@ const hostOf = (url: string) => {
 const fold = (text: string) =>
   text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().replace(/\s+/g, ' ').trim();
 const cut = (text: string, max: number) => (text.length > max ? text.slice(0, max) : text);
+/** A nav label names a section when it equals its heading or opens it, followed by a non-letter */
+function namesSection(heading: string | undefined, text: string): boolean {
+  if (!heading) return false;
+  const h = fold(heading);
+  const l = fold(text);
+  if (!l) return false;
+  return h === l || (h.startsWith(l) && /[^\p{L}\p{N}]/u.test(h.charAt(l.length)));
+}
 /** A label the schema accepts (1..300 chars), or undefined when nothing is left */
 const label = (text: string | undefined) => cut((text ?? '').trim(), LIMITS.labelChars) || undefined;
 /** Non-empty strings only, each within the text cap, at most `textsPerArray` of them */
@@ -85,11 +95,18 @@ function planLink(link: ISiteLink, rec: Recorder): IRebuildLink | null {
     return null;
   }
   if (link.kind === 'phone' && /^tel:/i.test(href)) {
-    const digits = href.slice(4).replace(/[^+\d]/g, '');
+    let decoded: string | undefined;
+    try {
+      decoded = decodeURIComponent(href.slice(4));
+    } catch {
+      rec.omit('link', 'unsafe_url', text);
+      return null;
+    }
+    const digits = decoded.replace(/[^+\d]/g, '');
     if (/^\+?\d{3,20}$/.test(digits)) return { label: text, href: `tel:${digits}`, kind: 'phone' };
   }
   if (link.kind === 'email' && href.length <= LIMITS.urlChars && /^mailto:[^\s@<>"]+@[^\s@<>"]+$/i.test(href.split('?')[0]!)) {
-    return { label: text, href: href.split('?')[0]!, kind: 'email' };
+    return { label: text, href: `mailto:${href.split('?')[0]!.slice(7)}`, kind: 'email' };
   }
   if (isHttp(href) && (link.kind === 'cta' || BOOKING_HOSTS.test(hostOf(href)))) {
     return { label: text, href: '#booking', kind: 'booking' };
@@ -239,34 +256,40 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
   if (!ctx.h1.used) rec.fix('h1:hidden');
   if (!ctx.booking.placed) rec.fix('booking:appended');
 
-  // Header: logo, nav links that name a section on this page, and the CTA label
-  const logo = planImage(header?.images[0], input.businessName, rec, true) ?? (isHttp(input.logoUrl) ? { src: input.logoUrl, alt: input.businessName, eager: true } : undefined);
-  const nav: IRebuildPlan['header']['nav'] = [];
-  let ctaLabel: string | undefined;
-  for (const link of header?.intro.links ?? []) {
-    if (link.kind === 'cta' || (isHttp(link.href) && BOOKING_HOSTS.test(hostOf(link.href)))) {
-      ctaLabel ??= link.label;
-      continue;
-    }
-    if (link.kind !== 'link') continue;
-    const text = label(link.label);
-    if (!text) continue;
-    const target = sections.find((s) => s.intro.heading && fold(s.intro.heading).startsWith(fold(text)));
-    if (target && !nav.some((n) => n.href === `#${target.id}`) && nav.length < LIMITS.links) nav.push({ label: text, href: `#${target.id}` });
-    else rec.omit('nav_link', 'other_page', text);
-  }
-
+  const businessName = label(input.businessName) ?? 'Business';
   // The footer never claims the booking slot (R2): a form there is an omitted second form
   const footerSection = footer ? planSection(footer, { ...ctx, booking: { placed: true }, h1: { used: true } }) : undefined;
   if (!footerSection) rec.fix('footer:added');
+
+  // Header: logo, nav links that name a section on this page (the footer included), and the CTA label
+  const logo =
+    planImage(header?.images[0], businessName, rec, true) ??
+    (isHttp(input.logoUrl) ? { src: input.logoUrl, alt: cut(businessName, 300), eager: true } : undefined);
+  const nav: IRebuildPlan['header']['nav'] = [];
+  const anchors = footerSection ? [...sections, footerSection] : sections;
+  let ctaLabel: string | undefined;
+  for (const link of header?.intro.links ?? []) {
+    if (link.kind === 'cta' || (isHttp(link.href) && BOOKING_HOSTS.test(hostOf(link.href)))) {
+      ctaLabel ??= label(link.label);
+      continue;
+    }
+    const text = label(link.label);
+    if (link.kind === 'phone' || link.kind === 'email' || link.kind === 'map') {
+      rec.omit('nav_link', 'contact_link', text);
+      continue;
+    }
+    if (link.kind !== 'link' || !text) continue;
+    const target = anchors.find((s) => namesSection(s.intro.heading, text));
+    if (target && !nav.some((n) => n.href === `#${target.id}`) && nav.length < LIMITS.links) nav.push({ label: text, href: `#${target.id}` });
+    else rec.omit('nav_link', 'other_page', text);
+  }
 
   const scale = typeScale(read.typography);
   scale.tuning.forEach((code) => rec.fix(code));
   const button = read.typography?.button;
   const phone = input.contacts.phone?.trim().slice(0, 30) || undefined;
   const email = input.contacts.email?.trim();
-  const validEmail = email && email.length <= 254 && /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(email) ? email : undefined;
-  const businessName = label(input.businessName) ?? '';
+  const validEmail = email && EmailSchema.safeParse(email).success ? email : undefined;
 
   return {
     language,

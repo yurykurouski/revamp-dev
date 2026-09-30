@@ -206,4 +206,69 @@ describe('planRebuild guards and footer booking (REV-110)', () => {
     const h = section(0, { role: 'header', intro: { text: [], links: [{ label: 'Zabka', href: 'https://falcodent.pl/#z', kind: 'link' }] } });
     expect(planRebuild(input([h, hero, section(2, { intro: { heading: 'Żabka', text: ['t'], links: [] } })])).header.nav).toEqual([{ label: 'Zabka', href: '#s-2' }]);
   });
+
+  const plainHeader = (links: ISiteSection['intro']['links']) => section(0, { role: 'header', intro: { text: [], links } });
+  const linked = (href: string, kind: 'phone' | 'email') =>
+    planRebuild(input([hero, section(2, { intro: { heading: 'H', text: [], links: [{ label: 'L', href, kind }] } })])).sections[1]!.intro.links;
+
+  it('decodes a percent-encoded tel: href before reading its digits', () => {
+    expect(linked('tel:+48%20510%20510%20706', 'phone')).toEqual([{ label: 'L', href: 'tel:+48510510706', kind: 'phone' }]);
+    const bad = planRebuild(input([hero, section(2, { intro: { heading: 'H', text: [], links: [{ label: 'L', href: 'tel:%E0%A4%A', kind: 'phone' }] } })]));
+    expect(bad.sections[1]!.intro.links).toEqual([]);
+    expect(bad.summary.omitted).toContainEqual({ what: 'link', reason: 'unsafe_url', sample: 'L' });
+  });
+
+  it('drops a footer email the schema would reject, keeping the plan valid', () => {
+    for (const email of ['biuro@klinika-ząb.pl', 'info@firma.pl.', 'a..b@x.pl', 'a@b.c']) {
+      const plan = planRebuild(input([hero], { contacts: { email, phone: '+48 510 510 706' } }));
+      expect(plan.footer.contacts.email).toBeUndefined();
+      valid(plan);
+    }
+  });
+
+  it('anchors a nav label only on an equal or word-leading heading', () => {
+    const plan = planRebuild(input([plainHeader([
+      { label: 'O', href: 'https://falcodent.pl/o', kind: 'link' },
+      { label: 'Zespół', href: 'https://falcodent.pl/z', kind: 'link' },
+    ]), hero, section(2, { intro: { heading: 'Oferta', text: ['t'], links: [] } }), section(3, { intro: { heading: 'Zespół lekarzy', text: ['t'], links: [] } })]));
+    expect(plan.header.nav).toEqual([{ label: 'Zespół', href: '#s-3' }]);
+    expect(plan.summary.omitted).toContainEqual({ what: 'nav_link', reason: 'other_page', sample: 'O' });
+  });
+
+  it('records phone, email and map header links as contact_link omissions', () => {
+    const plan = planRebuild(input([plainHeader([
+      { label: '510 510 706', href: 'tel:+48510510706', kind: 'phone' },
+      { label: 'Mail', href: 'mailto:a@b.pl', kind: 'email' },
+      { label: 'Mapa', href: 'https://maps.google.com/x', kind: 'map' },
+    ]), hero]));
+    expect(plan.summary.omitted.filter((o) => o.what === 'nav_link' && o.reason === 'contact_link').map((o) => o.sample)).toEqual(['510 510 706', 'Mail', 'Mapa']);
+  });
+
+  it('lets the nav anchor to the footer section', () => {
+    const footer = section(9, { role: 'footer', kind: 'contact', intro: { heading: 'Kontakt', text: ['t'], links: [] } });
+    const plan = planRebuild(input([plainHeader([{ label: 'Kontakt', href: 'https://falcodent.pl/k', kind: 'link' }]), hero, footer]));
+    expect(plan.header.nav).toEqual([{ label: 'Kontakt', href: '#s-9' }]);
+  });
+
+  it('emits a lowercase mailto:', () => {
+    expect(linked('MAILTO:a@b.pl', 'email')).toEqual([{ label: 'L', href: 'mailto:a@b.pl', kind: 'email' }]);
+  });
+
+  it('cuts the alt of the brand logo and falls back for an empty business name', () => {
+    const long = planRebuild(input([hero], { businessName: 'x'.repeat(400), logoUrl: 'https://x.pl/l.svg' }));
+    expect(long.header.logo?.alt).toHaveLength(300);
+    valid(long);
+    const empty = planRebuild(input([team], { businessName: '   ' }));
+    expect(empty.businessName).toBe('Business');
+    expect(empty.hiddenH1).toBe('Business');
+    valid(empty);
+  });
+
+  it('lets a later CTA label win over an empty first one', () => {
+    const plan = planRebuild(input([plainHeader([
+      { label: ' ', href: 'https://x.pl/a', kind: 'cta' },
+      { label: 'Zapisz się', href: 'https://x.pl/b', kind: 'cta' },
+    ]), hero]));
+    expect(plan.header.cta.label).toBe('Zapisz się');
+  });
 });
