@@ -111,6 +111,13 @@ describe('renderRebuild (REV-110)', () => {
     expect(html).toMatch(/\.rb-photo-slide \{[^}]*var\(--rb-slide-image, none\)/);
   });
 
+  it('never crops a gallery picture to a fixed shape, so partner logos stay whole (Elefant)', () => {
+    const html = renderRebuild(plan([section(1, { arrangement: 'gallery', items: [{ text: [], image: { src: 'https://x.pl/logo.webp', alt: 'The Palms', width: 171, height: 80 }, links: [] }] })]));
+    expect(html).toContain('width="171" height="80"');
+    expect(html).not.toMatch(/\.rb-gallery img \{[^}]*aspect-ratio: 4\/3/);
+    expect(html).toMatch(/\.rb-gallery img \{[^}]*height: auto; object-fit: contain;/);
+  });
+
   it('renders the header nav, CTA and phone, and the footer contacts', () => {
     const html = renderRebuild(plan([section(1)]));
     expect(html).toContain('<a class="rb-nav-link" href="#s-2">Zespół</a>');

@@ -159,7 +159,8 @@ h4 { font-size: 1.1em; }
 /* Gallery */
 .rb-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-top: 24px; }
 .rb-copy > .rb-gallery:first-child { margin-top: 0; }
-.rb-gallery img { width: 100%; aspect-ratio: 4/3; object-fit: cover; border-radius: var(--rb-item-radius, 6px); }
+/* Each picture keeps its own shape (its width and height attributes); a logo is never cropped */
+.rb-gallery img { width: 100%; height: auto; object-fit: contain; border-radius: var(--rb-item-radius, 6px); }
 .rb-figure { margin: 0; }
 .rb-figure figcaption { margin-top: 8px; font-weight: 600; }
 
