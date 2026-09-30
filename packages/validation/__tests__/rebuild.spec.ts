@@ -116,6 +116,40 @@ describe('RebuildPlanSchema', () => {
   });
 });
 
+describe('RebuildPlanSchema photo slides and item text (REV-110 review)', () => {
+  const withItem = (patch: Record<string, unknown>) => {
+    const plan = minimalPlan();
+    plan.sections[0]!.items = [{ text: ['Slajd'], links: [], ...patch }];
+    return plan;
+  };
+  it('accepts an http(s) slide photo with its alt, and rejects javascript: or data: photos', () => {
+    expect(RebuildPlanSchema.safeParse(withItem({ backgroundImage: 'https://falcodent.pl/ortheo.jpg', backgroundAlt: 'Nakładki' })).success).toBe(true);
+    expect(RebuildPlanSchema.safeParse(withItem({ backgroundImage: 'javascript:alert(1)' })).success).toBe(false);
+    expect(RebuildPlanSchema.safeParse(withItem({ backgroundImage: 'data:image/png;base64,AA' })).success).toBe(false);
+    expect(RebuildPlanSchema.safeParse(withItem({ backgroundAlt: '' })).success).toBe(false);
+    expect(RebuildPlanSchema.safeParse(withItem({ backgroundAlt: 'x'.repeat(301) })).success).toBe(false);
+  });
+  it('accepts a #rrggbb item text color and rejects any other', () => {
+    const plan = (text: unknown) => {
+      const p = minimalPlan();
+      p.sections[0]!.itemStyle = { background: '#ffffff', text } as never;
+      return p;
+    };
+    expect(RebuildPlanSchema.safeParse(plan('#4a4a4a')).success).toBe(true);
+    for (const bad of ['white', '#fff', 'rgb(0,0,0)', '#4a4a4a; background:url(x)']) expect(RebuildPlanSchema.safeParse(plan(bad)).success).toBe(false);
+  });
+  it('takes photoSlides as a boolean only', () => {
+    const plan = (photoSlides: unknown) => {
+      const p = minimalPlan();
+      (p.sections[0] as unknown as Record<string, unknown>).photoSlides = photoSlides;
+      return p;
+    };
+    expect(RebuildPlanSchema.safeParse(plan(true)).success).toBe(true);
+    expect(RebuildPlanSchema.safeParse(plan(undefined)).success).toBe(true);
+    for (const bad of ['true', 1, null]) expect(RebuildPlanSchema.safeParse(plan(bad)).success).toBe(false);
+  });
+});
+
 describe('RebuildPlanSchema embeds and links (REV-110 fix)', () => {
   const withEmbed = (src: string) => {
     const plan = minimalPlan();
