@@ -14,7 +14,8 @@ export const REBUILD_SCRIPT = `<script>
         var slide = track.querySelector('.rb-slide');
         if (!slide) return;
         var gap = parseFloat(getComputedStyle(track).columnGap) || 0;
-        track.scrollBy({ left: Number(button.getAttribute('data-slide-step')) * (slide.getBoundingClientRect().width + gap), behavior: 'smooth' });
+        var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+        track.scrollBy({ left: Number(button.getAttribute('data-slide-step')) * (slide.getBoundingClientRect().width + gap), behavior: still ? 'auto' : 'smooth' });
       });
     });
   });

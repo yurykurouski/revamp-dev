@@ -47,6 +47,16 @@ describe('rebuild page script (REV-110)', () => {
     expect(calls).toHaveLength(1);
   });
 
+  it('steps without smooth scrolling when the visitor prefers reduced motion', () => {
+    const window = open(slider(3));
+    (window as unknown as { matchMedia: (q: string) => { matches: boolean } }).matchMedia = (q) => ({ matches: q.includes('reduce') });
+    const track = window.document.querySelector('.rb-track') as unknown as { scrollBy: (o: { behavior: string }) => void };
+    const calls: { behavior: string }[] = [];
+    track.scrollBy = (o) => calls.push(o);
+    (window.document.querySelector('[data-slide-step="1"]') as unknown as { click: () => void }).click();
+    expect(calls[0]?.behavior).toBe('auto');
+  });
+
   it('applies a live palette from the dashboard', async () => {
     const window = open(slider(1));
     window.postMessage({ type: 'REVAMP_UPDATE_THEME', palette: { primary: '#ff0000' } }, '*');

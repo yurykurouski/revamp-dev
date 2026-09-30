@@ -9,6 +9,8 @@ import { REBUILD_SCRIPT } from './script.js';
 import { rebuildCss } from './styles.js';
 
 /** The rebuilt original home page (REV-110), from a validated plan; no markup from the site or a model */
+// The form goes where the plan places it; when no section took it (bookingAppended, or an inconsistent plan) it is
+// appended before the footer, so the header CTA always has its target and `id="booking"` appears exactly once
 export function renderRebuild(plan: IRebuildPlan, opts: { publicApiUrl?: string; trackingToken?: string } = {}): string {
   const t = getMvpStrings(plan.language);
   const tracker = resolveTrackerUrls(opts.publicApiUrl);
@@ -16,7 +18,7 @@ export function renderRebuild(plan: IRebuildPlan, opts: { publicApiUrl?: string;
   const bookingHtml = `<section class="booking-section rb-section" id="booking" data-arrangement="booking">
   <div class="rb-container">${bookingFormHtml({ t, businessName: plan.businessName, heading: escapeHtml(plan.header.cta.label), serviceOptionsHtml: options })}</div>
 </section>`;
-  const ctx: RenderCtx = { t, bookingHtml };
+  const ctx: RenderCtx = { t, bookingHtml, booking: { placed: false } };
   const favicon = plan.header.logo?.src ?? svgDataUri(monogramSvg(plan.businessName, plan.theme.primary));
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(plan.language)}">
@@ -32,7 +34,7 @@ ${renderHeader(plan)}
 <main>
 ${plan.hiddenH1 ? `<h1 class="rb-visually-hidden">${escapeHtml(plan.hiddenH1)}</h1>` : ''}
 ${plan.sections.map((section) => renderSection(section, ctx)).join('\n')}
-${plan.bookingAppended ? bookingHtml : ''}
+${ctx.booking.placed ? '' : bookingHtml}
 </main>
 ${renderFooter(plan, t, ctx)}
 ${bookingScript({ t, tracker, trackingToken: opts.trackingToken, themeVars: { primary: '--rb-primary' } })}

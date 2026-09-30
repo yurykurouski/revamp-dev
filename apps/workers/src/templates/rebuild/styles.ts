@@ -1,7 +1,14 @@
 import type { IRebuildPlan } from '@revamp/shared-types';
 
-/** A font stack for a CSS declaration: only names, spaces, commas, quotes, dots, hyphens and underscores */
-const fontStack = (stack: string): string => stack.replace(/[^\p{L}\p{N}\s,'"_.-]/gu, '').trim() || 'sans-serif';
+/**
+ * A font stack for a CSS declaration: only names, spaces, commas, quotes, dots, hyphens and underscores, and a quote
+ * character that is not balanced is dropped, so a bad stack cannot run into the next declaration
+ */
+export const fontStack = (stack: string): string => {
+  let clean = stack.replace(/[^\p{L}\p{N}\s,'"_.-]/gu, '');
+  for (const quote of ['"', "'"]) if (clean.split(quote).length % 2 === 0) clean = clean.split(quote).join('');
+  return clean.trim() || 'sans-serif';
+};
 
 /** The rebuild's CSS (REV-110): the tuned theme as custom properties, then rules shared by every rebuilt page */
 export function rebuildCss(plan: IRebuildPlan): string {
@@ -9,7 +16,8 @@ export function rebuildCss(plan: IRebuildPlan): string {
   return `:root {
   --rb-primary: ${t.primary}; --rb-on-primary: ${t.onPrimary};
   --rb-page-bg: ${t.pageBackground}; --rb-page-text: ${t.pageText};
-  --rb-heading-font: ${fontStack(t.headingFont)}; --rb-body-font: ${fontStack(t.bodyFont)};
+  --rb-heading-font: ${fontStack(t.headingFont)};
+  --rb-body-font: ${fontStack(t.bodyFont)};
   --rb-heading-weight: ${t.headingWeight}; --rb-heading-case: ${t.headingUppercase ? 'uppercase' : 'none'};
   --rb-h1: clamp(${Math.round(t.h1Size * 0.6)}px, 6vw, ${t.h1Size}px); --rb-h2: clamp(${Math.round(t.h2Size * 0.7)}px, 4vw, ${t.h2Size}px);
   --rb-body-size: ${t.bodySize}px; --rb-line: ${t.lineHeight};
@@ -75,8 +83,8 @@ h4 { font-size: 1.1em; }
 [data-arrangement=banner][data-align=center] .rb-copy { margin: 0 auto; }
 
 /* Media beside text; --rb-split is the media column's share */
-[data-arrangement=media-beside-text] .rb-container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--rb-split, 50%)); gap: 48px; align-items: center; }
-[data-arrangement=media-beside-text][data-media-side=left] .rb-container { grid-template-columns: minmax(0, var(--rb-split, 50%)) minmax(0, 1fr); }
+[data-arrangement=media-beside-text][data-has-media] .rb-container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--rb-split, 50%)); gap: 48px; align-items: center; }
+[data-arrangement=media-beside-text][data-has-media][data-media-side=left] .rb-container { grid-template-columns: minmax(0, var(--rb-split, 50%)) minmax(0, 1fr); }
 [data-media-side=left] .rb-media { order: -1; }
 [data-arrangement=media-beside-text] .rb-embed { grid-column: 1 / -1; }
 [data-arrangement=media-beside-text] .rb-media .rb-embed { margin-top: 0; }
@@ -177,7 +185,7 @@ h4 { font-size: 1.1em; }
 @media (max-width: 900px) {
   .rb-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rb-grid[style="--rb-columns: 1"] { grid-template-columns: minmax(0, 1fr); }
-  [data-arrangement=media-beside-text] .rb-container, [data-arrangement=media-beside-text][data-media-side=left] .rb-container { grid-template-columns: minmax(0, 1fr); gap: 32px; }
+  [data-arrangement=media-beside-text][data-has-media] .rb-container, [data-arrangement=media-beside-text][data-has-media][data-media-side=left] .rb-container { grid-template-columns: minmax(0, 1fr); gap: 32px; }
   .rb-nav { display: none; }
 }
 @media (max-width: 700px) {

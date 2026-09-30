@@ -73,7 +73,7 @@ describe('renderRebuild (REV-110)', () => {
 
   it('collapses a long section into details and renders an accordion natively', () => {
     const html = renderRebuild(plan([section(1, { collapsed: true }), section(2, { arrangement: 'accordion', items: [{ title: 'Pytanie?', text: ['Odpowiedź'], links: [] }] })]));
-    expect(html).toContain('<details class="rb-collapsed"><summary>Sekcja 1</summary>');
+    expect(html).toContain('<h2 class="rb-heading">Sekcja 1</h2><details class="rb-collapsed"><summary>Czytaj więcej</summary><p>Tekst 1</p>');
     expect(html).toContain('<summary class="rb-item-title">Pytanie?</summary>');
   });
 
@@ -220,6 +220,67 @@ describe('renderRebuild (REV-110)', () => {
     expect(details).toContain('Anna');
     expect(details).toContain('Reszta');
     expect(details).toContain('<summary>Czytaj więcej</summary>');
+  });
+
+  it('keeps the heading of a collapsed section in the outline', () => {
+    const html = renderRebuild(plan([section(1, { collapsed: true, headingLevel: 1, intro: { heading: 'Regulamin', text: ['x'.repeat(1500)], links: [] } }), section(2, { collapsed: true })]));
+    expect(html.match(/<h1[\s>]/g)).toHaveLength(1);
+    expect(html).toContain('<h1 class="rb-heading">Regulamin</h1><details class="rb-collapsed">');
+    expect(html).toContain('<h2 class="rb-heading">Sekcja 2</h2><details class="rb-collapsed">');
+  });
+
+  it('emits the booking form once however many sections ask for it', () => {
+    const html = renderRebuild(plan([section(1, { booking: true }), section(2, { booking: true })], { bookingAppended: true }));
+    expect(html.match(/id="booking"/g)).toHaveLength(1);
+    expect(html.indexOf('id="booking"')).toBeLessThan(html.indexOf('id="s-2"'));
+    const none = renderRebuild(plan([section(1)], { bookingAppended: false }));
+    expect(none.match(/id="booking"/g)).toHaveLength(1);
+  });
+
+  it('lays out media beside text in two columns only when there is media', () => {
+    const empty = renderRebuild(plan([section(1, { arrangement: 'media-beside-text' })]));
+    expect(empty).not.toMatch(/<section [^>]*data-has-media/);
+    expect(empty).toContain('[data-arrangement=media-beside-text][data-has-media] .rb-container { display: grid;');
+    const map = renderRebuild(plan([section(1, { arrangement: 'media-beside-text', embeds: [{ kind: 'map', src: 'https://www.google.com/maps/embed?pb=1', title: 'Mapa' }] })]));
+    expect(map).toMatch(/<section [^>]*data-has-media/);
+    expect(map).toContain('<div class="rb-media"><div class="rb-embed">');
+  });
+
+  it('names the slider track after the heading, else a generic label', () => {
+    const named = renderRebuild(plan([section(1, { arrangement: 'slider', items: [item('Anna')] })]));
+    expect(named).toContain('<div class="rb-track" tabindex="0" role="region" aria-label="Sekcja 1">');
+    const unnamed = renderRebuild(plan([section(1, { arrangement: 'slider', intro: { text: [], links: [] }, items: [item('Anna')] })]));
+    expect(unnamed).toContain('role="region" aria-label="Slajdy"');
+  });
+
+  it('never renders an empty accordion summary', () => {
+    const html = renderRebuild(
+      plan([
+        section(1, {
+          arrangement: 'accordion',
+          items: [
+            { text: [], image: { src: 'https://x.pl/a.jpg', alt: 'Gabinet' }, links: [] },
+            { text: [], image: { src: 'https://x.pl/b.jpg', alt: '' }, links: [] },
+          ],
+        }),
+      ]),
+    );
+    expect(html).toContain('<summary class="rb-item-title">Gabinet</summary>');
+    expect(html).not.toMatch(/<summary[^>]*><\/summary>/);
+    expect(html).toContain('<img src="https://x.pl/b.jpg"');
+  });
+
+  it('shows a phone without enough digits as text, not a tel: link', () => {
+    const html = renderRebuild(plan([section(1)], { header: { nav: [], cta: { label: 'CTA' }, phone: 'tel. 12' }, footer: { contacts: { phone: 'tel. 12' }, social: [] } }));
+    expect(html).not.toContain('href="tel:');
+    expect(html).toContain('<span class="rb-phone">tel. 12</span>');
+    expect(html).toContain('<li><span>tel. 12</span></li>');
+  });
+
+  it('drops an unbalanced quote from a font stack and keeps each font on its own line', () => {
+    const html = renderRebuild(plan([section(1)], { theme: { ...plan([]).theme, headingFont: '"Open Sans, serif', bodyFont: "'Lato', sans-serif" } }));
+    expect(html).toContain('--rb-heading-font: Open Sans, serif;\n');
+    expect(html).toContain("--rb-body-font: 'Lato', sans-serif;\n");
   });
 
   it('renders a slider with one slide without controls and the rest hidden until the script runs', () => {

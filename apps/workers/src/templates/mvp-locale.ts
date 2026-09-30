@@ -72,6 +72,8 @@ export interface MvpStrings {
   previousSlide: string;
   nextSlide: string;
   readMore: string;
+  /** Accessible name of a slider without a heading (REV-110) */
+  sliderLabel: string;
 }
 
 const en: MvpStrings = {
@@ -148,6 +150,7 @@ const en: MvpStrings = {
   previousSlide: 'Previous',
   nextSlide: 'Next',
   readMore: 'Read more',
+  sliderLabel: 'Slides',
 };
 
 const ru: MvpStrings = {
@@ -224,6 +227,7 @@ const ru: MvpStrings = {
   previousSlide: 'Назад',
   nextSlide: 'Далее',
   readMore: 'Подробнее',
+  sliderLabel: 'Слайды',
 };
 
 const be: MvpStrings = {
@@ -300,6 +304,7 @@ const be: MvpStrings = {
   previousSlide: 'Назад',
   nextSlide: 'Далей',
   readMore: 'Падрабязней',
+  sliderLabel: 'Слайды',
 };
 
 const pl: MvpStrings = {
@@ -376,6 +381,7 @@ const pl: MvpStrings = {
   previousSlide: 'Poprzedni',
   nextSlide: 'Następny',
   readMore: 'Czytaj więcej',
+  sliderLabel: 'Slajdy',
 };
 
 const lt: MvpStrings = {
@@ -452,6 +458,7 @@ const lt: MvpStrings = {
   previousSlide: 'Ankstesnis',
   nextSlide: 'Kitas',
   readMore: 'Skaityti daugiau',
+  sliderLabel: 'Skaidrės',
 };
 
 const DICTIONARIES: Record<MvpUiLanguage, MvpStrings> = { en, ru, be, pl, lt };
