@@ -2,7 +2,7 @@
 
 Ticket: [REV-110](https://linear.app/revamp-proect/issue/REV-110) (sub-project 2 of [REV-108](https://linear.app/revamp-proect/issue/REV-108))
 Builds on: [REV-109](https://linear.app/revamp-proect/issue/REV-109) (`Audit.siteSections`, PR #88)
-Status: agreed in chat on 2026-09-30. Planning added three refinements, listed in the plan under "Spec additions made while planning" (`MVP_REBUILD_UNAVAILABLE`, the preview reload on a renderer switch, `manual:original`).
+Status: implemented (Tasks 1-11; gates, PR and merge in Task 12). Planning added three refinements, folded in below (`MVP_REBUILD_UNAVAILABLE` in 2.2, the preview reload on a renderer switch in 2.3, `manual:original` in 2.1). The live check on the reference sites also added reader rules and plan fields, listed in section 8.
 
 ## 1. Purpose
 
@@ -31,11 +31,11 @@ Revamp tunes the business's own site; it does not generate a templated one (REV-
 `MVP_LAYOUT_VARIANTS` becomes `['original', 'bento', 'split', 'editorial', 'compact']`. `layout.variant === 'original'` means the MVP is the rebuild. Bento-only tables typed by the variant (`LAYOUT_CSS`, `LAYOUT_SECTION_ORDER`, the layout `<template>`s) are keyed by `BentoLayoutVariant = Exclude<MvpLayoutVariant, 'original'>`.
 
 - The layout picker (REV-88) lists "Original site" first. Picking a Bento variant switches to the template on purpose; picking "Original site" switches back.
-- A manual pick survives regeneration through the existing `manual` reason (`manualMvpLayout`).
+- A manual pick survives regeneration through the existing `manual` reason (`manualMvpLayout`). `manualMvpLayout` drops `rebuild:*` and `coverage:*` codes (they describe one render, not the audit), and a manual `original` pick that had to fall back keeps the marker `manual:original`, so a later regeneration tries the rebuild again.
 
 ### 2.2. Choosing the renderer (deploy worker)
 
-A pure `rebuildEligibility(audit)` (`rebuild-plan.service.ts`) returns `{ ok: true }` or `{ ok: false, reason }`:
+A pure `rebuildEligibility(audit)` (in `@revamp/validation`, so the API can use it too) returns `{ ok: true }` or `{ ok: false, reason }`:
 
 | Reason code | When |
 |---|---|
@@ -49,12 +49,14 @@ The first two and the coverage check come from `rebuildEligibility`; the last tw
 
 - New MVP: the variant is `original` with reason `rule:rebuild` when the rebuild succeeds. Otherwise the worker uses today's `deriveMvpLayout` Bento choice and adds the fallback reason codes to `layout.reasons` (codes are capped at 12 as today; the fallback codes go first).
 - A manual `original` pick on a lead that cannot be rebuilt falls back the same way, keeping `manual` and adding the reason.
+- `PATCH /mvp/:id/layout` with `original` on a lead whose audit cannot be rebuilt (including one from before REV-109) answers 409 `MVP_REBUILD_UNAVAILABLE` with `details.reason` (and `details.facts`, e.g. `coverage:<ratio>`), saves nothing and queues no relayout. Without this the picker would show a pick the worker silently undid.
 - The live coverage of the reference sites is 0.978 (Falco-Dent), 0.999 (Dentalux) and 0.997 (Elefant), well above the threshold.
 
 ### 2.3. Data flow
 
 - The AI worker is unchanged: it still writes Bento copy (`generatedContent`), which the fallback and a later switch to a Bento variant need.
 - The deploy worker renders the rebuild when the variant is `original`, else Bento. `republishSavedMvp` (relayout, palette, free-text re-publish) does the same, so a palette change re-renders the rebuild.
+- A re-publish that changes the renderer (rebuild to Bento or back) sets `MvpProject.editedAt`, so the preview reloads; the dashboard polls the MVP while such a switch re-renders and shows "Re-rendering..." until a new `editedAt` arrives or the renderer settles. Bento variants still switch in place.
 - The completeness check (REV-36) and the Before/After banner run on the final HTML, as now.
 
 ### 2.4. What is recorded
@@ -68,11 +70,12 @@ interface IMvpRebuildSummary {
   omitted: { what: RebuildOmission; reason: string; sample?: string }[]; // capped at 80
   tuning: string[];                       // fix codes, capped at 120
 }
-type RebuildOmission = 'section' | 'nav_link' | 'link' | 'embed' | 'image';
+type RebuildOmission = 'section' | 'nav_link' | 'link' | 'embed' | 'image'; // a section the plan leaves empty: what 'section', reason 'empty'
 ```
 
 - `omitted` holds the reader's `skipped` entries (`what: 'section'`, the reader's reason) plus what the planner left out (a nav link to another page, a replaced widget, a dropped embed).
 - `tuning` holds codes such as `contrast:3`, `overlay:1`, `alt:12`, `font:body-16`, `collapse:11`, `h1:hidden`.
+- `tuning` also holds `line-height:1.5`, `booking:replaced|appended` and `footer:added`.
 - The field is set on a rebuild and unset (`$unset`) on a Bento render.
 
 ### 2.5. What the operator sees
@@ -84,7 +87,7 @@ type RebuildOmission = 'section' | 'nav_link' | 'link' | 'embed' | 'image';
 
 - Palette: applies to the CTAs and accents of the rebuild.
 - Layout picker: works as described in 2.1.
-- Free-text change and custom design spec: disabled in the Design tools panel (`MvpDesignTools`) with a note. The API refuses them for an `original` MVP with a new code `MVP_EDIT_UNSUPPORTED` (409) in `API_ERROR_CODES` (and blueprint.md §5), so a stale client cannot apply a change that would have no effect.
+- Free-text change and custom design spec: disabled in the Design tools panel (`MvpDesignTools`) with a note. The API refuses them (`POST /mvp/:id/edit`, `DELETE /mvp/:id/design`) for an `original` MVP with a new code `MVP_EDIT_UNSUPPORTED` (409) in `API_ERROR_CODES` (and blueprint.md §5), so a stale client cannot apply a change that would have no effect. A palette change and switching away stay allowed.
 
 ## 3. Planner: `planRebuild` and tuning
 
@@ -115,7 +118,8 @@ A `javascript:` or other non-http(s) URL is never rendered.
 - Kept: `https` iframes on an allowlist (Google Maps, OpenStreetMap, YouTube, youtube-nocookie, Vimeo), lazy-loaded, with a `title`.
 - The first `form` or `widget` embed is replaced by the booking form, in its place (`booking:replaced`).
 - Other embeds are dropped and recorded (`embed`).
-- With no replacement, the booking form goes just before the footer (`booking:appended`).
+- With no replacement, the booking form goes just before the footer (`booking:appended`); the renderer appends it whenever no section placed it.
+- The footer section is planned with the booking slot already taken, so a footer form never claims it and is recorded as an omitted embed (`second_form`); `bookingAppended` is decided by the main sections only.
 
 ### 3.4. Contacts and footer
 
@@ -143,19 +147,20 @@ A `javascript:` or other non-http(s) URL is never rendered.
 |---|---|
 | `index.ts` | `renderRebuild(plan): string` — the document shell, CSS custom properties from the plan (colors, font stacks, sizes), sections in order |
 | `sections.ts` | One renderer per arrangement `(section, ctx) → string`; a shared `renderItem` renders only the fields present (image, subtitle, title, price, rating, text, links), so team cards, FAQ entries, reviews and price rows come from the same data |
-| `header.ts`, `footer.ts` | Header (logo, anchor nav, sticky CTA, verified phone); footer (original columns, then the verified contacts) |
-| `styles.ts` | The CSS, driven by `data-arrangement` / `data-columns` attributes and plan variables, never per-site CSS |
+| `chrome.ts` | Header (logo, anchor nav, sticky CTA, verified phone) and footer (original columns, then the verified contacts, social links and copyright) |
+| `script.ts` | The slider script (prev/next buttons render `hidden`; the script reveals them) |
+| `styles.ts` | The CSS, driven by `data-arrangement` attributes and plan variables (`--rb-columns`, `--rb-split`, `--rb-item-*`), never per-site CSS |
 
 | Arrangement | Rendered as |
 |---|---|
 | `banner` | Copy over the background photo or color, with the tuning overlay |
 | `media-beside-text` | CSS grid using `split` and `mediaSide`; stacks on mobile |
-| `text` | Intro and paragraphs; `<details>` when collapsed |
+| `text` | Intro and paragraphs; when collapsed the section keeps its heading and puts the body, items, extra blocks and images in `<details>` with a "Read more" summary (the locale's `readMore` when there is no heading) |
 | `card-grid` | `repeat(columns)` on desktop, 2 on tablet, 1 on mobile; `itemStyle` (radius, border, shadow, image shape, align) |
 | `list` | Stacked items |
 | `accordion` | Native `<details>`/`<summary>`, no JS |
 | `tabs` | Radio-driven CSS tabs with labels; all panels readable without CSS |
-| `slider` | Horizontal scroll-snap track with previous/next buttons (a small inline script; without JS it is a scroller); the first slide eager, the rest lazy |
+| `slider` | Horizontal scroll-snap track with previous/next buttons (a small inline script; without JS it is a scroller); the first slide eager, the rest lazy. A hero slider with `photoSlides` shows one full-width photo slide at a time under the overlay, the caption in the page container |
 | `gallery` | Responsive image grid |
 | `embed` | The allowlisted iframe, or the booking form |
 
@@ -165,7 +170,7 @@ A `javascript:` or other non-http(s) URL is never rendered.
 
 **Safety.** Every string is escaped; URLs are http(s) only; `tel:`/`mailto:` only from original or verified values; iframes only from the allowlist; no markup from the site or a model is copied through (REV-92).
 
-**Service.** `rebuildTemplateService.renderFromAudit(lead, audit, palette)` in `apps/workers/src/services/rebuild-template.service.ts`: plan → `RebuildPlanSchema.parse` → render → size check. It returns `{ html, summary }` or throws `RebuildUnavailable(reason)`.
+**Service.** `rebuildTemplateService.renderFromAudit(lead, audit, palette)` in `apps/workers/src/services/rebuild-template.service.ts`: plan → `RebuildPlanSchema` check → render → size check. `renderMvp` (`services/mvp-render.ts`) is the one entry the deploy worker and re-publish use; a fresh deploy passes no palette, so a Bento fallback keeps today's brand-token colors. It returns `{ html, summary }` or throws `RebuildUnavailable(reason)`.
 
 ## 5. Deferred minors from REV-109
 
@@ -183,7 +188,7 @@ Fix only those that visibly harm the rebuild on the three reference sites, found
 - **API:** free-text change and custom design on an `original` MVP → 409 `MVP_EDIT_UNSUPPORTED`; the layout PATCH accepts `original`.
 - **Dashboard:** chip label and fallback tooltip; the Design tools panel disables free-text and design for `original`; picker entry; strings in all five locales.
 
-**Real sites.** A read-only `scripts/render_rebuild.ts <url>` reads the sections and writes the rebuilt HTML to a local file (no DB or MinIO writes). Falco-Dent, Dentalux and Elefant are opened side by side with their originals in Chrome, at desktop and 375 px, with no console errors. The PR records section counts, omissions, tuning codes and screenshots.
+**Real sites.** A read-only `npx tsx scripts/render_rebuild.ts <out-dir> <url...>` reads the sections, plans with `RebuildPlanSchema.safeParse` (printing `FALLBACK rebuild:invalid ...` as the deploy worker would fall back) and writes the rebuilt HTML to local files (no DB or MinIO writes). Falco-Dent, Dentalux and Elefant are opened side by side with their originals in Chrome, at desktop and 375 px, with no console errors. The PR records section counts, omissions, tuning codes and screenshots.
 
 **Chrome gate.** On the running dashboard, regenerate a test lead added through Add lead (never a real lead; never approved): the chip and tooltip, the preview, a palette change, the disabled free-text change, and a switch to a Bento variant and back.
 
@@ -193,3 +198,11 @@ Fix only those that visibly harm the rebuild on the three reference sites, found
 - `README.md` feature list.
 - `../Revamp-docs`: `spec.md` (variant, fallback, `MVP_EDIT_UNSUPPORTED`), `blueprint.md` (`MvpProject.rebuild`, the rebuild step in the deploy flow, the error code), `milestones.md` (REV-110).
 - All gates pass (`build:packages`, `typecheck`, `lint`, `test`, `build`), then PR, merge, docs, and REV-110 moved to Done.
+
+## 8. Added by the live check on the reference sites
+
+Reader rules (REV-109's reader, fixed where they visibly harmed the rebuild; each has a fixture test): a short label right above a clearly larger heading is the eyebrow (1.25x font size, up to 60 characters); a form's own labels and button are left out of the section copy; a hidden block whose text the page shows elsewhere is a screen-size variant and is left out; icon-font glyphs, slider arrows and dots, and screen-reader-only text are dropped; a top bar right above the header is read with the header; buttons whose label sits in a block are links only; card rows under a heading row form one grid, and a carousel beside an intro column yields the cards; cards on one row running past a clipping box are a slider; the largest picture takes the media slot beside the text; `<br>` counts as a space.
+
+New fields: `ISiteSectionItem.backgroundImage`; in the plan `IRebuildItem.backgroundImage` / `backgroundAlt`, `IRebuildSection.photoSlides` and `itemStyle.text` (readable text on an item's own background, rendered as `--rb-item-text`, recorded as `contrast:<index>`); omission reason `empty` for items and sections left with nothing once their links are dropped (a footer emptied this way is left out too). Item radius is capped at 999. Images are never stretched past their original width. Gallery pictures keep their own shape.
+
+Known differences left for a follow-up: a slider flattened into one item, an item style taken from a group's first member, every `cta` link pointing to `#booking` with its original label, and `fullBleed` copy sitting 16 px from the edge.
