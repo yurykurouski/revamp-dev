@@ -87,12 +87,15 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   // (a rebuild summary exactly when the layout is `original`) on an MVP that changed since the pick.
   // The save's own answer never matches, as the page is re-rendered after it; the worker's pass does,
   // whether the page switched (a new `editedAt`), the rebuild fell back to a template, or a later pick
-  // made the switch unnecessary.
+  // made the switch unnecessary. The MVP from before the pick can still be shown for a render after the
+  // save answers, so a settled MVP equal to it ends the wait only once the unsettled save echo was seen:
+  // a repeated pick of the original can fall back to the very same template layout.
   const watched = `${version}:${mvp?.editedAt ?? ''}`;
   const shown = `${saved ?? ''}|${mvp?.layout?.reasons?.join(',') ?? ''}|${Boolean(mvp?.rebuild)}`;
   const settled = Boolean(mvp) && Boolean(mvp?.rebuild) === (saved === 'original');
-  const [rerender, setRerender] = useState<{ version: string; before: string; since: number } | null>(null);
-  if (rerender && (rerender.version !== watched || (settled && shown !== rerender.before))) setRerender(null);
+  const [rerender, setRerender] = useState<{ version: string; before: string; since: number; echoSeen: boolean } | null>(null);
+  if (rerender && (rerender.version !== watched || (settled && (shown !== rerender.before || rerender.echoSeen)))) setRerender(null);
+  else if (rerender && !rerender.echoSeen && mvp && !settled) setRerender({ ...rerender, echoSeen: true });
   const isSaving = useIsMutating({ mutationKey: UPDATE_MVP_LAYOUT_MUTATION_KEY }) > 0;
   const pending = pick?.version === version ? pick.variant : null;
   // The pick is shown until the MVP comes back saved with it; clearing it on the save's success
@@ -141,7 +144,7 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
       { mvpId, leadId: lead.id, variant },
       {
         onSuccess: () => {
-          if (crossing) setRerender({ version: watched, before, since: Date.now() });
+          if (crossing) setRerender({ version: watched, before, since: Date.now(), echoSeen: false });
         },
         // Only the latest pick reports back; its failure puts the saved layout back
         onError: (err) => {

@@ -514,6 +514,26 @@ describe('Prototype step layout picker (REV-84)', () => {
       expect(setLayoutMessages().at(-1)).toEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
     });
 
+    it('stops waiting when a repeated pick of the original falls back to the same template again', async () => {
+      const fallback = ['rebuild:invalid', 'manual:original', 'rule:derived'];
+      render(mvpWith('bento', fallback));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', ['rule:manual']));
+      click('original');
+      await vi.waitFor(() => expect(rerendering()).toBe(true));
+
+      // The worker writes back the very same fallback layout, with no new editedAt
+      vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('bento', fallback));
+      await tick(2000);
+      await vi.waitFor(() => expect(rerendering()).toBe(false));
+      expect(pressed()).toEqual(['bento']);
+
+      // Polling stops with the wait
+      const getMvp = vi.mocked(apiClient.getMvp);
+      getMvp.mockClear();
+      await tick(6000);
+      expect(getMvp).not.toHaveBeenCalled();
+    });
+
     it('stops waiting when a quick pick back to a template makes the re-render unnecessary', async () => {
       render(mvpWith('bento'));
       const save = vi
