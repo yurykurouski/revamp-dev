@@ -1,8 +1,11 @@
 import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
-import { useIsMutating } from '@tanstack/react-query';
+import { useIsMutating, useQueryClient } from '@tanstack/react-query';
+import type { TFunction } from 'i18next';
+import { useTranslation } from 'react-i18next';
 import { MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
 import { canChangeMvpLayout } from '@revamp/validation';
-import type { ILeadItem, IMvpProjectDetail } from '../api/client.js';
+import { ApiError, type ILeadItem, type IMvpProjectDetail } from '../api/client.js';
+import { rebuildFallbackOf } from '../components/MvpLayoutChip.js';
 import { UPDATE_MVP_LAYOUT_MUTATION_KEY, mvpRecordId, useUpdateMvpLayoutMutation } from './useLeads.js';
 
 /** The message the MVP page's own script handles to switch layouts in place (REV-84) */
@@ -20,6 +23,41 @@ export const savedMvpLayout = (mvp: IMvpProjectDetail | null | undefined): MvpLa
   return variant && MVP_LAYOUT_VARIANTS.includes(variant) ? variant : 'bento';
 };
 
+/**
+ * A pick between the rebuilt original (REV-110) and a template changes the renderer: the published page
+ * cannot switch in place, so the server re-renders it and the preview reloads
+ */
+const crossesRenderer = (a: MvpLayoutVariant | undefined, b: MvpLayoutVariant) => (a === 'original') !== (b === 'original');
+/** How long the picker waits for a re-render across renderers before it stops polling */
+const RERENDER_WAIT_MS = 90_000;
+/** How often the MVP is fetched while the page is re-rendered */
+const RERENDER_POLL_MS = 2000;
+
+/** The reasons the API gives for refusing a switch to the original site (`rebuildEligibility`) */
+const REFUSAL_REASONS = ['rebuild:unread', 'rebuild:no_content', 'rebuild:low_coverage'] as const;
+type RefusalReason = (typeof REFUSAL_REASONS)[number];
+const isRefusalReason = (reason: string): reason is RefusalReason => (REFUSAL_REASONS as readonly string[]).includes(reason);
+const refusalKind = (reason: RefusalReason) =>
+  reason.slice('rebuild:'.length) as RefusalReason extends `rebuild:${infer Kind}` ? Kind : never;
+
+/**
+ * The message shown for a failed layout save. A refused switch to the original site says why it cannot
+ * be rebuilt (REV-110), in the interface language; any other failure shows the server's message.
+ */
+function layoutSaveError(err: unknown, t: TFunction): string {
+  if (err instanceof ApiError && err.code === 'MVP_REBUILD_UNAVAILABLE') {
+    const details = (err.details ?? {}) as { reason?: unknown; facts?: unknown };
+    const codes = [details.reason, ...(Array.isArray(details.facts) ? details.facts : [])].filter(
+      (code): code is string => typeof code === 'string',
+    );
+    const fallback = rebuildFallbackOf(codes);
+    if (fallback && isRefusalReason(fallback.reason)) {
+      return t(`mvpLayout.rebuildRefused.${refusalKind(fallback.reason)}`, { percent: fallback.percent });
+    }
+  }
+  return err instanceof Error ? err.message : String(err);
+}
+
 interface UseLiveMvpLayoutOptions {
   lead: Pick<ILeadItem, 'id' | 'status'>;
   mvp: IMvpProjectDetail | null | undefined;
@@ -30,9 +68,13 @@ interface UseLiveMvpLayoutOptions {
  * The operator's layout for the MVP in the Prototype step (REV-84). A pick shows in the sandboxed
  * preview at once, animated by the page itself, and is saved on the MVP record; a failed save puts the
  * saved layout back. The preview always follows the layout shown in the picker, including right after
- * the iframe (re)loads, while the server is still re-rendering the published page.
+ * the iframe (re)loads, while the server is still re-rendering the published page. A pick across
+ * renderers (the rebuilt original and a template, REV-110) is not switched in place: the MVP is polled
+ * until the re-published page arrives (`rerendering`), and the preview reloads with it.
  */
 export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptions) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
   const mutation = useUpdateMvpLayoutMutation();
   // A pick belongs to one version of one MVP: another lead or a regeneration drops it
   const [pick, setPick] = useState<{ version: string; variant: MvpLayoutVariant } | null>(null);
@@ -41,6 +83,19 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   const mvpId = mvpRecordId(mvp);
   const version = `${mvpId}:${mvp?.generatedAt ?? ''}`;
   const saved = savedMvpLayout(mvp);
+  // A re-render across renderers is waited for until the published renderer matches the saved layout
+  // (a rebuild summary exactly when the layout is `original`) on an MVP that changed since the pick.
+  // The save's own answer never matches, as the page is re-rendered after it; the worker's pass does,
+  // whether the page switched (a new `editedAt`), the rebuild fell back to a template, or a later pick
+  // made the switch unnecessary. The MVP from before the pick can still be shown for a render after the
+  // save answers, so a settled MVP equal to it ends the wait only once the unsettled save echo was seen:
+  // a repeated pick of the original can fall back to the very same template layout.
+  const watched = `${version}:${mvp?.editedAt ?? ''}`;
+  const shown = `${saved ?? ''}|${mvp?.layout?.reasons?.join(',') ?? ''}|${Boolean(mvp?.rebuild)}`;
+  const settled = Boolean(mvp) && Boolean(mvp?.rebuild) === (saved === 'original');
+  const [rerender, setRerender] = useState<{ version: string; before: string; since: number; echoSeen: boolean } | null>(null);
+  if (rerender && (rerender.version !== watched || (settled && (shown !== rerender.before || rerender.echoSeen)))) setRerender(null);
+  else if (rerender && !rerender.echoSeen && mvp && !settled) setRerender({ ...rerender, echoSeen: true });
   const isSaving = useIsMutating({ mutationKey: UPDATE_MVP_LAYOUT_MUTATION_KEY }) > 0;
   const pending = pick?.version === version ? pick.variant : null;
   // The pick is shown until the MVP comes back saved with it; clearing it on the save's success
@@ -57,10 +112,23 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   const layoutRef = useRef(layout);
   layoutRef.current = layout;
 
-  // The page ignores a switch to the layout it already shows, so this is safe on every change
+  // The page ignores a switch to the layout it already shows, so this is safe on every change; a pick
+  // across renderers waits for the re-rendered page instead
+  const inPlace = Boolean(layout) && !crossesRenderer(saved, layout!);
   useEffect(() => {
-    if (layout) post({ type: 'REVAMP_SET_LAYOUT', layout, animate: true });
-  }, [layout, post]);
+    if (layout && inPlace) post({ type: 'REVAMP_SET_LAYOUT', layout, animate: true });
+  }, [layout, inPlace, post]);
+
+  // Polls the MVP while its page is re-rendered, and gives up after a while
+  const leadId = lead.id;
+  useEffect(() => {
+    if (!rerender) return;
+    const id = setInterval(() => {
+      if (Date.now() - rerender.since > RERENDER_WAIT_MS) setRerender(null);
+      else void queryClient.invalidateQueries({ queryKey: ['mvp', leadId] });
+    }, RERENDER_POLL_MS);
+    return () => clearInterval(id);
+  }, [rerender, queryClient, leadId]);
 
   /** Brings a freshly loaded preview to the shown layout, without the transition */
   const onFrameLoad = useCallback(() => {
@@ -70,17 +138,30 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   const changeLayout = (variant: MvpLayoutVariant) => {
     if (!mvpId || !canChange || variant === layout) return;
     setPick({ version, variant });
+    const crossing = crossesRenderer(layout, variant);
+    const before = shown;
     mutation.mutate(
       { mvpId, leadId: lead.id, variant },
       {
+        onSuccess: () => {
+          if (crossing) setRerender({ version: watched, before, since: Date.now(), echoSeen: false });
+        },
         // Only the latest pick reports back; its failure puts the saved layout back
         onError: (err) => {
           setPick(null);
-          setError(err instanceof Error ? err.message : String(err));
+          setError(layoutSaveError(err, t));
         },
       },
     );
   };
 
-  return { layout, canChange, changeLayout, onFrameLoad, error, clearError: () => setError(null) };
+  return {
+    layout,
+    canChange,
+    changeLayout,
+    onFrameLoad,
+    rerendering: Boolean(rerender),
+    error,
+    clearError: () => setError(null),
+  };
 }

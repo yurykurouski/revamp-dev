@@ -226,6 +226,7 @@ export const pl: Translation = {
     tooltip: 'Układ: {{name}} — {{reason}}',
     unread: 'Nie udało się odczytać układu oryginalnej strony, więc układ wybrały reguły.',
     variants: {
+      original: 'Oryginalna strona',
       bento: 'Bento',
       split: 'Dzielony',
       editorial: 'Redakcyjny',
@@ -240,8 +241,10 @@ export const pl: Translation = {
       default: 'układ domyślny',
       manual: 'wybrany przez operatora',
       derived: 'odwzorowuje układ oryginalnej strony',
+      rebuild: 'odtworzona z oryginalnej strony',
     },
     descriptions: {
+      original: 'Ich własna strona, odtworzona sekcja po sekcji',
       bento: 'Siatka kart usług',
       split: 'Tekst obok dużego zdjęcia',
       editorial: 'Strona typograficzna, oparta na tekście',
@@ -250,6 +253,20 @@ export const pl: Translation = {
     picker: 'Układ:',
     saveFailed: 'Nie udało się zapisać układu: {{message}}',
     locked: 'Układ można zmienić tylko wtedy, gdy MVP czeka na przegląd',
+    rebuildSummary: 'Odtworzono sekcje: {{sections}}, pominięto: {{omitted}}, poprawki: {{fixes}}',
+    rebuildRefused: {
+      unread: 'Nie można odtworzyć oryginalnej strony, ponieważ nie udało się jej odczytać sekcja po sekcji.',
+      no_content: 'Nie można odtworzyć oryginalnej strony, ponieważ nie znaleziono na niej sekcji z treścią.',
+      low_coverage: 'Nie można odtworzyć oryginalnej strony, ponieważ udało się odczytać tylko {{percent}}% jej treści.',
+    },
+    rerendering: 'Ponowne renderowanie strony…',
+    fallback: {
+      unread: 'Nie udało się odczytać oryginalnej strony sekcja po sekcji, więc użyto szablonu.',
+      no_content: 'Na oryginalnej stronie nie znaleziono sekcji z treścią, więc użyto szablonu.',
+      low_coverage: 'Udało się odczytać tylko {{percent}}% oryginalnej strony, więc użyto szablonu.',
+      invalid: 'Odtworzona strona nie przeszła walidacji, więc użyto szablonu.',
+      too_large: 'Odtworzona strona była za duża, więc użyto szablonu.',
+    },
   },
   llm: {
     provider: 'Dostawca LLM',
@@ -636,6 +653,7 @@ export const pl: Translation = {
     resetDesign: 'Resetuj własny projekt',
     designReset: 'Własny projekt usunięto: strona znów wygląda jak w wybranym układzie.',
     noDesign: 'MVP nie ma własnego projektu do zresetowania.',
+    unsupported: 'Zmiany opisowe nie są jeszcze dostępne dla odtworzonej strony. Przełącz na układ szablonu, aby z nich skorzystać.',
   },
   colorPicker: {
     brandPalette: 'Paleta marki:',

@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BentoTemplateService, bentoTemplateService } from '../template.service.js';
 import { resolveTrackerUrls } from '../../templates/bento.template.js';
 import { env } from '../../config/env.js';
-import { IBentoTemplateData, ILead, IAudit, MVP_LAYOUT_VARIANTS } from '@revamp/shared-types';
+import { IBentoTemplateData, ILead, IAudit, BENTO_LAYOUT_VARIANTS } from '@revamp/shared-types';
 
 describe('BentoTemplateService (@revamp/workers)', () => {
   const sampleTemplateData: IBentoTemplateData = {
@@ -227,7 +227,7 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     });
 
     it('declares exactly one icon inside <head> in every layout', () => {
-      for (const layout of MVP_LAYOUT_VARIANTS) {
+      for (const layout of BENTO_LAYOUT_VARIANTS) {
         const html = bentoTemplateService.render({ ...sampleTemplateData, layout });
         const head = html.slice(html.indexOf('<head>'), html.indexOf('</head>'));
         expect(iconHrefs(head)).toHaveLength(1);

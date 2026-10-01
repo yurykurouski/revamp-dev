@@ -234,6 +234,271 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expectCovered(result);
   });
 
+  it('does not take a slide position label ("1 / 5") for a rating (Falco-Dent)', async () => {
+    const slide = (n: number, text: string) =>
+      `<div class="swiper-slide" role="group" aria-label="${n} / 5" style="width:400px;flex-shrink:0"><p>${text}</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="overflow:hidden"><h2>Nasze zabiegi</h2><div class="swiper"><div class="swiper-wrapper" style="display:flex">
+        ${slide(1, 'Estetyczne nakładki ortodontyczne')}${slide(2, 'Stomatologia estetyczna i licówki')}${slide(3, 'Zabiegi laserowe i profilaktyka')}
+        ${slide(4, 'Implanty i protetyka na miejscu')}${slide(5, 'NOWOŚĆ! Medycyna estetyczna')}
+      </div></div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasze zabiegi')!;
+    expect(s.arrangement).toBe('slider');
+    expect(s.items).toHaveLength(5);
+    expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined, undefined, undefined]);
+  });
+
+  it('leaves out icon-font glyphs (private-use characters) from the copy (Dentalux)', async () => {
+    const card = (title: string, text: string) =>
+      `<div style="flex:1"><span class="et-pb-icon">\ue900</span><h4>${title}</h4><p>${text}</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Udogodnienia</h2><div style="display:flex;gap:20px">
+        ${card('Elastyczne godziny', 'Wydłużyliśmy godziny pracy.')}${card('Dogodna lokalizacja', 'Blisko stacji metra.')}${card('Leczenie na raty', 'Raty z MediRaty.')}
+      </div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Udogodnienia')!;
+    expect(s.items.map((i) => [i.title, i.text])).toEqual([
+      ['Elastyczne godziny', ['Wydłużyliśmy godziny pracy.']],
+      ['Dogodna lokalizacja', ['Blisko stacji metra.']],
+      ['Leczenie na raty', ['Raty z MediRaty.']],
+    ]);
+    expect(JSON.stringify(result)).not.toMatch(/\p{Co}/u);
+  });
+
+  it('leaves slider arrows and their hidden labels out of the copy (Falco-Dent, Dentalux)', async () => {
+    const quote = (text: string, name: string) => `<div class="slick-slide" style="width:400px;flex-shrink:0"><p>${text}</p><h4>${name}</h4></div>`;
+    const result = await sectionsOf(pageOf(`<a class="skip-link screen-reader-text" href="#content"
+        style="position:absolute;clip:rect(0,0,0,0);clip-path:inset(50%);width:1px;height:1px;overflow:hidden">Skip to content</a>${HERO}
+      <section style="overflow:hidden"><h2>Opinie</h2><div class="slick-slider">
+        <button class="slick-prev slick-arrow" style="width:28px;height:28px;overflow:hidden;text-indent:-999px">Previous</button>
+        <div class="slick-track" style="display:flex">${quote('Świetny gabinet i miła obsługa.', 'Anna K.')}${quote('Bezbolesne leczenie kanałowe.', 'Marta B.')}</div>
+        <button class="slick-next slick-arrow" style="width:28px;height:28px;overflow:hidden;text-indent:-999px">Next</button>
+      </div></section>
+      <section><h2>Aktualności</h2><p>Kolejne wyróżnienie dla naszego gabinetu w tym roku.</p>
+        <a class="et-pb-arrow-prev" href="#"><span style="display:none">Poprzedni</span></a><a class="et-pb-arrow-next" href="#"><span style="display:none">Dalej</span></a></section>`));
+    const text = JSON.stringify(result.sections);
+    for (const word of ['Skip to content', 'Previous', 'Next', 'Poprzedni', 'Dalej']) expect(text).not.toContain(word);
+    expect(result.sections.find((x) => x.intro.heading === 'Opinie')!.items.map((i) => i.title)).toEqual(['Anna K.', 'Marta B.']);
+  });
+
+  it('leaves screen-reader-only text such as a skip link out of the copy (Falco-Dent)', async () => {
+    const result = await sectionsOf(pageOf(`<div class="site"><a class="skip-link screen-reader-text" href="#content"
+        style="position:absolute;clip:rect(1px,1px,1px,1px);clip-path:inset(50%);width:1px;height:1px;overflow:hidden">Skip to content</a>
+      <div id="wrap">${HEADER}${HERO}<section><h2>O nas</h2><p>Gabinet działa od 1995 roku na Bielanach.</p></section></div></div>`));
+    expect(JSON.stringify(result.sections)).not.toContain('Skip to content');
+    expect(result.coverage.uncaptured).toEqual([]);
+  });
+
+  it('does not count Tailwind "start" classes as rating stars (Elefant)', async () => {
+    const post = (title: string) => `<div class="group flex flex-col items-start justify-between" style="flex:1">
+      <div class="mt-8 flex items-center sm:justify-start text-xs"><time>07 sierpnia 2025</time></div>
+      <h3 class="mt-4 flex sm:justify-start sm:text-start">${title}</h3><p class="mt-5 sm:text-start">Zapraszamy wszystkich pacjentów.</p>
+      <div class="mt-4 relative flex items-center sm:justify-start"></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Wydarzenia</h2><div style="display:flex;gap:20px">${post('Turniej ElefantCup')}${post('Dzień Dziecka')}${post('Walentynki')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Wydarzenia')!;
+    expect(s.items.map((i) => i.title)).toEqual(['Turniej ElefantCup', 'Dzień Dziecka', 'Walentynki']);
+    expect(s.items.map((i) => i.rating)).toEqual([undefined, undefined, undefined]);
+  });
+
+  it('reads cards laid out in rows under an intro row as one grid, with the intro as the heading (Dentalux offer)', async () => {
+    const card = (title: string, text: string) =>
+      `<div class="col" style="flex:1;background:#f3f4f6;padding:20px"><div class="icon"><span class="et-pb-icon">\ue900</span></div><div><h4><a href="/oferta">${title}</a></h4></div><div><p>${text}</p></div></div>`;
+    const row = (a: string, b: string) => `<div class="row" style="display:flex;gap:40px;margin:20px 0">${a}${b}</div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div class="row"><div class="col"><div><h2 style="font-size:52px">Dowiedz się, jak możemy zadbać o Twój uśmiech</h2></div><div><p>Odkryj pełną ofertę zabiegów w naszych placówkach</p></div></div></div>
+        ${row(card('Implanty', 'Zabiegi implantologiczne od 1994 roku.'), card('Stomatologia zachowawcza', 'Nowoczesne leczenie próchnicy.'))}
+        ${row(card('Profilaktyka', 'Skaling, piaskowanie i fluoryzacja.'), card('Endodoncja', 'Leczenie kanałowe pod mikroskopem.'))}
+        ${row(card('Ortodoncja', 'Aparaty stałe i nakładkowe.'), card('Stomatologia dziecięca', 'Wizyty adaptacyjne dla najmłodszych.'))}
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading?.startsWith('Dowiedz się'))!;
+    expect(s.intro.text).toEqual(['Odkryj pełną ofertę zabiegów w naszych placówkach']);
+    expect(s.arrangement).toBe('card-grid');
+    expect(s.columns).toBe(2);
+    expect(s.items.map((i) => [i.title, i.text])).toEqual([
+      ['Implanty', ['Zabiegi implantologiczne od 1994 roku.']],
+      ['Stomatologia zachowawcza', ['Nowoczesne leczenie próchnicy.']],
+      ['Profilaktyka', ['Skaling, piaskowanie i fluoryzacja.']],
+      ['Endodoncja', ['Leczenie kanałowe pod mikroskopem.']],
+      ['Ortodoncja', ['Aparaty stałe i nakładkowe.']],
+      ['Stomatologia dziecięca', ['Wizyty adaptacyjne dla najmłodszych.']],
+    ]);
+    expect(s.itemStyle?.background).toBe('#f3f4f6');
+    expectCovered(result);
+  });
+
+  it('leaves out a hidden responsive copy of content shown elsewhere on the page (Dentalux)', async () => {
+    const box = (heading: string) => `<div class="promo" style="background:#fbcfe8;padding:30px"><h4>30 lat dbamy o uśmiech Warszawy</h4>
+      <h3>${heading}</h3><h2>Cieszymy się, że jesteś!</h2><h5>Centrum przy ul. Racławickiej 131 zapewnia pełną opiekę stomatologiczną.</h5></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div style="display:none">${box('Dentysta Warszawa Mokotów – Centrum Dentalux')}</div>
+        <h2>Nasza oferta</h2><p>Leczenie zachowawcze, protetyka i implanty w jednym miejscu.</p></section>
+      <section>${box('Dentysta Warszawa Mokotów Centrum Dentalux')}</section>`));
+    const offer = result.sections.find((x) => x.intro.heading === 'Nasza oferta')!;
+    expect(JSON.stringify(offer)).not.toContain('Cieszymy');
+    expect(JSON.stringify(result.sections).match(/Cieszymy się/g)).toHaveLength(1);
+    expectCovered(result);
+  });
+
+  it('takes a small label above a larger heading for the eyebrow, and the larger one for the heading (Falco-Dent)', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div><div class="title-container"><h2 style="font-size:20px"><span>O</span><span> </span><span>NAS</span></h2></div></div>
+        <div><h2 style="font-size:36px">Poznaj gabinet stomatologiczny Falco-Dent</h2></div>
+        <p>Gabinet stomatologiczny Falco-Dent powstał w 1995 roku z pasji do stomatologii.</p></section>
+      <section><h2 style="font-size:32px">Kontakt</h2><h3 style="font-size:20px">Zapraszamy od poniedziałku do piątku</h3><p>Dzwoń lub pisz.</p></section>`));
+    const about = result.sections.find((x) => x.intro.heading === 'Poznaj gabinet stomatologiczny Falco-Dent')!;
+    expect(about.intro.eyebrow).toBe('O NAS');
+    expect(about.intro.text).toEqual(['Gabinet stomatologiczny Falco-Dent powstał w 1995 roku z pasji do stomatologii.']);
+    // A smaller line under the heading stays copy
+    const contact = result.sections.find((x) => x.intro.heading === 'Kontakt')!;
+    expect(contact.intro.eyebrow).toBeUndefined();
+    expect(contact.intro.text).toEqual(['Zapraszamy od poniedziałku do piątku', 'Dzwoń lub pisz.']);
+  });
+
+  it('keeps a button whose label sits in a block inside it as a link, not also as text (Falco-Dent)', async () => {
+    const button = (label: string) => `<div class="btn-wrap" style="display:inline-block"><a href="https://g.page/r/falco/review"
+      style="display:inline-block;padding:20px 60px;background:#173784;color:#fff"><span style="display:block">${label}</span></a></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Opinie</h2><p>Zobacz, co mówią o nas pacjenci po wizycie.</p>
+        <div>${button('Zobacz więcej opinii')}</div><div>${button('Dodaj nową opinię')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Opinie')!;
+    expect(s.intro.links.map((l) => l.label)).toEqual(['Zobacz więcej opinii', 'Dodaj nową opinię']);
+    expect(JSON.stringify({ text: s.intro.text, extra: s.extra })).not.toContain('Zobacz więcej opinii');
+    expect(JSON.stringify({ text: s.intro.text, extra: s.extra })).not.toContain('Dodaj nową opinię');
+  });
+
+  it('reads two rows of three cards under a heading row as one grid of six (Dentalux amenities)', async () => {
+    const card = (title: string, text: string) =>
+      `<div class="col" style="flex:1"><div class="icon"><span>\ue900</span></div><div><h3><strong>${title}</strong></h3><p>${text}</p></div></div>`;
+    const row = (cards: string) => `<div class="row" style="display:flex;gap:40px;margin:20px 0">${cards}</div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div class="row"><div class="col"><div><h2>Zadbaliśmy o udogodnienia</h2></div></div></div>
+        ${row(card('Elastyczne godziny', 'Wydłużyliśmy godziny pracy.') + card('Dogodna lokalizacja', 'Blisko stacji metra.') + card('Raty', 'Leczenie na raty.'))}
+        ${row(card('Klimatyzacja', 'Klimatyzowane gabinety.') + card('Internet', 'Bezpłatne Wi-Fi.') + card('Dostępność', 'Wygodne podjazdy.'))}
+      </section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Zadbaliśmy o udogodnienia')!;
+    expect(s.columns).toBe(3);
+    expect(s.items.map((i) => i.title)).toEqual(['Elastyczne godziny', 'Dogodna lokalizacja', 'Raty', 'Klimatyzacja', 'Internet', 'Dostępność']);
+    expect(s.extra).toEqual([]);
+  });
+
+  it('does not make items of a button, a contact box and a form that share their widget markup (Falco-Dent)', async () => {
+    const widget = (inner: string) => `<div class="widget"><div class="widget-container"><div class="widget-inner">${inner}</div></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section style="display:flex;gap:40px"><div style="flex:1"><img src="https://img.test/team.jpg" alt="" width="600" height="400"></div>
+        <div style="flex:1">${widget('<a href="/kontakt" style="display:inline-block;padding:20px 60px;background:#173784;color:#fff">Umów wizytę</a>')}
+          ${widget('<h3>Masz pytania? Napisz do nas!</h3><p><strong>recepcja@falcodent.pl</strong> Lub zostaw swój email - odpiszemy!</p>')}
+          ${widget('<form action="/wyslij"><div><label>Adres e-mail</label><input type="email"></div><div><button>Wyślij</button></div></form>')}</div></section>`));
+    const s = result.sections.find((x) => JSON.stringify(x).includes('Masz pytania'))!;
+    expect(s.items).toEqual([]);
+    expect(s.intro.heading).toBe('Masz pytania? Napisz do nas!');
+    // The form's own labels and button belong to the form embed, not the section's copy
+    expect(s.embeds.map((e) => e.kind)).toEqual(['form']);
+    const copy = JSON.stringify({ text: s.intro.text, extra: s.extra });
+    expect(copy).not.toContain('Adres e-mail');
+    expect(copy).not.toContain('Wyślij');
+    expect(result.coverage.uncaptured).toEqual([]);
+  });
+
+  it('takes a label of up to 60 characters above a larger heading for the eyebrow (Dentalux)', async () => {
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h4 style="font-size:14px">30 lat dbamy o uśmiech Warszawy – a teraz Twój</h4>
+        <h1 style="font-size:48px">Dentysta Warszawa Mokotów</h1><h2 style="font-size:32px">Cieszymy się, że jesteś!</h2><p>Zapewniamy pełną opiekę.</p></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Dentysta Warszawa Mokotów')!;
+    expect(s.intro.eyebrow).toBe('30 lat dbamy o uśmiech Warszawy – a teraz Twój');
+    expect(s.intro.text).toEqual(['Cieszymy się, że jesteś!', 'Zapewniamy pełną opiekę.']);
+  });
+
+  it('reads the cards of a carousel beside an intro column as the items (Elefant offer)', async () => {
+    const card = (title: string, text: string) => `<div class="px-2 group flex flex-col" style="width:268px;flex-shrink:0">
+      <div><div style="overflow:hidden"><img src="https://img.test/${title.length}.jpg" alt="" style="width:252px;height:168px"></div>
+        <div><h3><a href="/oferta/${title.length}"><span>${title}</span></a></h3></div></div>
+      <div><p>${text}</p><div><a href="/oferta/${title.length}" style="display:inline-flex;padding:8px 16px;border:1px solid #c0c"><span><img src="https://img.test/icon.png" alt="" style="width:20px;height:20px"></span> Więcej</a></div></div></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:24px">
+        <div><div><h2 style="font-size:48px">OFERTA</h2><h3 style="font-size:30px">Usługi skierowane do dzieci, młodzieży i dorosłych.</h3>
+          <p>Każdego dnia mali i więksi pacjenci otrzymują profesjonalne wsparcie.</p>
+          <div><a href="/oferta" style="display:inline-flex;padding:8px 16px;background:#c0c;color:#fff"><span><img src="https://img.test/icon.png" alt="" style="width:20px;height:20px"></span> Zobacz nasze usługi</a></div></div></div>
+        <div><div style="overflow:hidden"><div><button aria-label="Poprzedni"><svg width="20" height="20"></svg></button><button aria-label="Następny"><svg width="20" height="20"></svg></button></div>
+          <div style="display:flex">${card('Leczenie zachowawcze', 'Zapobieganie i leczenie próchnicy u dzieci.')}${card('Profilaktyka', 'Lakowanie bruzd i lakierowanie zębów.')}
+            ${card('Narkoza i sedacja wziewna', 'Gaz rozweselający, bezpieczny i skuteczny.')}${card('Chirurgia', 'Bezpieczne zabiegi chirurgiczne dla dzieci.')}${card('Ortodoncja', 'Aparaty dla dzieci i młodzieży.')}</div></div></div>
+      </div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'OFERTA')!;
+    expect(s.intro.text).toEqual(['Usługi skierowane do dzieci, młodzieży i dorosłych.', 'Każdego dnia mali i więksi pacjenci otrzymują profesjonalne wsparcie.']);
+    expect(s.intro.links.map((l) => l.label)).toEqual(['Zobacz nasze usługi']);
+    // Cards running past the edge of a clipping box, on one row, are a carousel
+    expect(s.arrangement).toBe('slider');
+    expect(s.items.map((i) => [i.title, i.text, i.links.map((l) => l.label)])).toEqual([
+      ['Leczenie zachowawcze', ['Zapobieganie i leczenie próchnicy u dzieci.'], ['Leczenie zachowawcze', 'Więcej']],
+      ['Profilaktyka', ['Lakowanie bruzd i lakierowanie zębów.'], ['Profilaktyka', 'Więcej']],
+      ['Narkoza i sedacja wziewna', ['Gaz rozweselający, bezpieczny i skuteczny.'], ['Narkoza i sedacja wziewna', 'Więcej']],
+      ['Chirurgia', ['Bezpieczne zabiegi chirurgiczne dla dzieci.'], ['Chirurgia', 'Więcej']],
+      ['Ortodoncja', ['Aparaty dla dzieci i młodzieży.'], ['Ortodoncja', 'Więcej']],
+    ]);
+  });
+
+  it('reads each slide\'s background photo in a photo slider hero (Falco-Dent)', async () => {
+    const slide = (photo: string, heading: string, text: string) => `<div class="swiper-slide" style="width:1360px;height:550px;flex-shrink:0;background-image:url(https://img.test/${photo}.jpg);background-size:cover">
+      <div class="slide-inner"><div class="slide-content"><div class="slide-heading" style="font-size:36px">${heading}</div><div class="slide-text">${text}</div></div></div></div>`;
+    const result = await sectionsOf(pageOf(`<section style="overflow:hidden;padding:0"><div class="swiper"><div class="swiper-wrapper" style="display:flex">
+      ${slide('ortheo', 'Estetyczne nakładki ortodontyczne', 'Najbardziej przejrzysta droga do zmiany uśmiechu')}${slide('o-6', 'Stomatologia estetyczna', 'Licówki, korony pełnoceramiczne, wybielanie')}
+      </div></div></section><section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section>`));
+    const hero = result.sections.find((x) => x.arrangement === 'slider')!;
+    // The slide's heading is named by its class, not a heading tag
+    expect(hero.items.map((i) => [i.title, i.backgroundImage])).toEqual([
+      ['Estetyczne nakładki ortodontyczne', 'https://img.test/ortheo.jpg'],
+      ['Stomatologia estetyczna', 'https://img.test/o-6.jpg'],
+    ]);
+  });
+
+  it('leaves out a hidden image-only variant of a block, such as a mobile-only carousel (Falco-Dent hero)', async () => {
+    const result = await sectionsOf(pageOf(`<section style="min-height:500px;background:#123;color:#fff"><h1>Gabinet Falco-Dent</h1>
+        <p>Nowoczesna stomatologia na Bielanach od ponad dwudziestu lat.</p>
+        <div class="elementor-element elementor-hidden-desktop" style="display:none"><div class="swiper"><div class="swiper-wrapper">
+          ${[1, 2, 3, 4, 5].map((n) => `<div class="swiper-slide"><figure><img src="https://img.test/m${n}.jpg" alt="${n}" width="400" height="300"></figure></div>`).join('')}
+        </div></div></div></section><section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section>`));
+    expect(JSON.stringify(result.sections)).not.toContain('img.test/m');
+  });
+
+  it('reads a top bar right above the header as part of the header, not as hero text (Falco-Dent)', async () => {
+    const result = await sectionsOf(pageOf(`<div id="wrap"><div id="top-bar-wrap" style="background:#173784;color:#fff;padding:6px 40px;font-size:12px">
+        <div id="top-bar-content">Aleja Zjednoczenia 21/23, 01-829 Warszawa | <a href="tel:+48510510706">+48 510-510-706</a></div></div>
+      ${HEADER}<main>${HERO}<section><h2>O nas</h2><p>Gabinet działa od 1995 roku.</p></section></main></div>`));
+    const header = result.sections.find((x) => x.role === 'header')!;
+    expect(header.intro.links.map((l) => [l.label, l.kind])).toContainEqual(['+48 510-510-706', 'phone']);
+    expect(JSON.stringify(header)).toContain('Aleja Zjednoczenia 21/23');
+    const hero = result.sections.find((x) => x.role === 'hero')!;
+    expect(JSON.stringify(hero)).not.toContain('Aleja');
+    expect(result.coverage.uncaptured).toEqual([]);
+  });
+
+  it('keeps the words apart where a heading or title breaks its line with <br> (Dentalux, Falco-Dent)', async () => {
+    const card = (title: string) => `<div style="flex:1"><h4><a href="/oferta">${title}</a></h4><p>Opis zabiegu i jego przebiegu.</p></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Bezpieczeństwo w gabinecie<br>stomatologicznym Falco-Dent</h2><div style="display:flex;gap:20px">
+        ${card('Stomatologia zachowawcza<br>i estetyczna')}${card('Endodoncja')}${card('Implanty')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading?.startsWith('Bezpieczeństwo'))!;
+    expect(s.intro.heading).toBe('Bezpieczeństwo w gabinecie stomatologicznym Falco-Dent');
+    expect(s.items[0]!.title).toBe('Stomatologia zachowawcza i estetyczna');
+  });
+
+  it('still reads the hidden image-only slides of a fade slider (review fix)', async () => {
+    const slide = (n: number, shown: boolean) =>
+      `<div class="fade-slide" style="${shown ? '' : 'display:none;'}width:600px"><img src="https://img.test/slide-${n}.jpg" alt="Gabinet ${n}" width="600" height="400"></div>`;
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Nasz gabinet</h2><div class="slider">${slide(1, true)}${slide(2, false)}${slide(3, false)}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Nasz gabinet')!;
+    const srcs = JSON.stringify(s);
+    for (const n of [1, 2, 3]) expect(srcs).toContain(`img.test/slide-${n}.jpg`);
+  });
+
+  it('leaves out a hidden block of the same pictures the page shows elsewhere (review fix)', async () => {
+    const pics = (size: string) => [1, 2, 3].map((n) => `<img src="https://img.test/gab-${n}${size}.jpg" alt="" width="300" height="200">`).join('');
+    const result = await sectionsOf(pageOf(`${HERO}
+      <section><h2>Galeria</h2><div style="display:flex;gap:10px">${pics('')}</div><div style="display:none">${pics('-150x150')}</div></section>`));
+    const s = result.sections.find((x) => x.intro.heading === 'Galeria')!;
+    expect(JSON.stringify(s)).not.toContain('-150x150');
+  });
+
   it('reads a "why us" icon list as features', async () => {
     const point = (title: string, text: string) => `<li><svg width="32" height="32"><circle cx="16" cy="16" r="16"/></svg><h3>${title}</h3><p>${text}</p></li>`;
     const result = await sectionsOf(pageOf(`${HERO}

@@ -3,8 +3,8 @@ import {
   IMvpEditJobData,
   IMvpEditJobResult,
   MVP_COLOR_PRESETS,
-  MVP_LAYOUT_VARIANTS,
-  MvpLayoutVariant,
+  BENTO_LAYOUT_VARIANTS,
+  BentoLayoutVariant,
 } from '@revamp/shared-types';
 import { MvpContentOutput, canChangeMvpLayout, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
@@ -83,8 +83,9 @@ export async function processMvpEditJob(
   if (!audit) throw new Error(`No completed audit found for lead ${leadId}.`);
 
   const savedVariant = project.layout?.variant;
-  const layout: MvpLayoutVariant =
-    savedVariant && (MVP_LAYOUT_VARIANTS as readonly string[]).includes(savedVariant) ? savedVariant : 'bento';
+  // The rebuilt original (REV-110) is not edited by the free-text change until REV-111; the API refuses it
+  const layout: BentoLayoutVariant =
+    savedVariant && (BENTO_LAYOUT_VARIANTS as readonly string[]).includes(savedVariant) ? (savedVariant as BentoLayoutVariant) : 'bento';
 
   const plan = await service.interpret({
     instruction: data.instruction,

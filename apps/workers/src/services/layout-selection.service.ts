@@ -15,7 +15,7 @@ import {
   type IMvpLayoutSelection,
   type ISiteLayout,
   type MvpDesignSection,
-  type MvpLayoutVariant,
+  type BentoLayoutVariant,
   type NicheType,
   type SiteComplexityClass,
   type SiteSectionKind,
@@ -83,7 +83,7 @@ export function selectMvpLayout(signals: LayoutSignals): IMvpLayoutSelection {
     `images:${signals.imageCount}`,
     `services:${signals.serviceCount}`,
   ];
-  const pick = (variant: MvpLayoutVariant, rule: string): IMvpLayoutSelection =>
+  const pick = (variant: BentoLayoutVariant, rule: string): IMvpLayoutSelection =>
     MvpLayoutSelectionSchema.parse({ variant, reasons: [`rule:${rule}`, ...facts] });
 
   const isVisualNiche = signals.niche !== undefined && VISUAL_NICHES.has(signals.niche);
@@ -167,7 +167,7 @@ export function deriveMvpLayout(site: ISiteLayout | undefined, signals: LayoutSi
 
   const photoHero = site.hero.media !== 'none' && signals.hasHeroImage;
   const isProfessionalNiche = signals.niche !== undefined && PROFESSIONAL_NICHES.has(signals.niche);
-  let variant: MvpLayoutVariant;
+  let variant: BentoLayoutVariant;
   if (isSmallBrochure(signals)) variant = 'compact';
   else if (photoHero) variant = 'split';
   else if (site.hero.align === 'left' && (isProfessionalNiche || signals.paragraphCount >= 6)) variant = 'editorial';

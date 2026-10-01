@@ -6,7 +6,7 @@ import {
   IBentoServiceCard,
   IBentoReviewItem,
   IMvpDesign,
-  MvpLayoutVariant,
+  BentoLayoutVariant,
 } from '@revamp/shared-types';
 import { BentoTemplateDataSchema } from '@revamp/validation';
 import { generateBentoHtml } from '../templates/bento.template.js';
@@ -59,7 +59,7 @@ export class BentoTemplateService {
     lead: Partial<ILead>,
     audit?: Partial<IAudit>,
     generatedContent?: Partial<IMvpGeneratedContent>,
-    layout?: MvpLayoutVariant,
+    layout?: BentoLayoutVariant,
     savedPalette?: MvpPaletteOverride,
     design?: IMvpDesign | null,
   ): string {

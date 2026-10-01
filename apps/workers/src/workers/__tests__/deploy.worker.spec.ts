@@ -216,8 +216,9 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect.objectContaining({
         layout: {
           variant: 'compact',
-          // No original layout on this audit: the rules chose, and the fallback is marked (REV-104)
-          reasons: ['rule:small_brochure', 'complexity:UNKNOWN', 'niche:dental', 'images:0', 'services:0', 'site_layout:unread'],
+          // No sections read on this audit, so no rebuild (REV-110); no original layout either: the rules
+          // chose, and the fallback is marked (REV-104)
+          reasons: ['rebuild:unread', 'rule:small_brochure', 'complexity:UNKNOWN', 'niche:dental', 'images:0', 'services:0', 'site_layout:unread'],
         },
       }),
       { upsert: true, new: true },
@@ -329,7 +330,8 @@ describe('DeployWorker (@revamp/workers)', () => {
     it('derives the layout from the audit, saves it with its design and renders it', async () => {
       const { saved, rendered } = await regenerate(null);
       expect(saved.layout.variant).toBe('split');
-      expect(saved.layout.reasons[0]).toBe('rule:derived');
+      // No sections read on this audit: Bento, with the rebuild's fallback reason first (REV-110)
+      expect(saved.layout.reasons.slice(0, 2)).toEqual(['rebuild:unread', 'rule:derived']);
       expect(saved.layout.design).toEqual(derivedDesign);
       expect(rendered[3]).toBe('split');
       expect(rendered[5]).toEqual(derivedDesign);
@@ -351,6 +353,19 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect(saved.layout.reasons).toContain('hero:side-left');
       expect(saved.layout.design).toEqual(derivedDesign);
       expect(rendered[3]).toBe('editorial');
+    });
+
+    it("renders Bento for a manual original pick that cannot be rebuilt, keeping the pick and the operator's design (REV-110)", async () => {
+      const { saved, rendered } = await regenerate({
+        previewSlug: 'pod-lipa-1',
+        layout: { variant: 'original', reasons: ['rule:manual'] },
+        design: { theme: { corners: 'sharp' } },
+      });
+      expect(saved.layout.variant).toBe('split');
+      expect(saved.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:unread']);
+      expect(saved.$unset).toEqual({ rebuild: '' });
+      expect(rendered[3]).toBe('split');
+      expect(rendered[5]).toEqual({ ...derivedDesign, theme: { density: 'airy', corners: 'sharp' } });
     });
 
     it('replaces an automatic layout with the new derivation', async () => {
@@ -496,7 +511,8 @@ describe('DeployWorker (@revamp/workers)', () => {
         requestedProvider: 'openai',
         requestedModel: 'gpt-4o',
       });
-      expect(savedUpdate().$unset).toBeUndefined();
+      // Only the rebuild summary of this Bento render is cleared (REV-110)
+      expect(savedUpdate().$unset).toEqual({ rebuild: '' });
     });
 
     it('clears an earlier operator choice when the new run used the default (REV-32)', async () => {
@@ -508,7 +524,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       });
 
       expect(savedUpdate()).toMatchObject({ provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' });
-      expect(savedUpdate().$unset).toEqual({ requestedProvider: '', requestedModel: '' });
+      expect(savedUpdate().$unset).toEqual({ requestedProvider: '', requestedModel: '', rebuild: '' });
     });
 
     it('leaves the source fields alone for jobs queued without one', async () => {
@@ -517,7 +533,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       await capturedProcessor!({ id: 'job-legacy', data: { leadId, auditId: 'audit-1' } });
 
       expect(savedUpdate()).not.toHaveProperty('provider');
-      expect(savedUpdate()).not.toHaveProperty('$unset');
+      expect(savedUpdate()).not.toHaveProperty('$unset.requestedProvider');
+      expect(savedUpdate()).not.toHaveProperty('$unset.requestedModel');
     });
   });
 
@@ -598,6 +615,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue(
         'http://localhost:9000/revamp-assets/banners/smile-dental-456789.webp',
       );
+      vi.mocked(MvpProject.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
     };
 
     it('re-renders the stored copy in the saved layout into the same slug, without touching the lead', async () => {

@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import '../../i18n/index.js';
-import { MvpLayoutChip, layoutRuleOf } from '../MvpLayoutChip.js';
+import { MvpLayoutChip, layoutRuleOf, rebuildFallbackOf } from '../MvpLayoutChip.js';
 import { IMvpProjectDetail } from '../../api/client.js';
 import { en } from '../../i18n/locales/en.js';
 import { ru } from '../../i18n/locales/ru.js';
@@ -16,6 +16,7 @@ const mvp = (layout?: IMvpProjectDetail['layout']): IMvpProjectDetail => ({
   fullPreviewUrl: 'http://localhost:9000/revamp-demos/v/demo/index.html',
   layout,
 });
+const escape = (text: string) => text.replace(/'/g, '&#x27;');
 const render = (project: IMvpProjectDetail | null) =>
   renderToStaticMarkup(React.createElement(MvpLayoutChip, { mvp: project }));
 
@@ -70,10 +71,64 @@ describe('MvpLayoutChip (REV-54)', () => {
 
   it('has a label and an explanation for every layout and rule in every language', () => {
     for (const locale of [en, ru, pl, lt, be]) {
-      expect(Object.keys(locale.mvpLayout.variants)).toEqual(['bento', 'split', 'editorial', 'compact']);
-      expect(Object.keys(locale.mvpLayout.descriptions)).toEqual(['bento', 'split', 'editorial', 'compact']);
-      expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(8);
+      expect(Object.keys(locale.mvpLayout.variants)).toEqual(['original', 'bento', 'split', 'editorial', 'compact']);
+      expect(Object.keys(locale.mvpLayout.descriptions)).toEqual(['original', 'bento', 'split', 'editorial', 'compact']);
+      expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(9);
+      expect(Object.keys(locale.mvpLayout.fallback)).toEqual(['unread', 'no_content', 'low_coverage', 'invalid', 'too_large']);
       expect(locale.mvpLayout.unread.length).toBeGreaterThan(0);
     }
+  });
+
+  it('reads the rebuild rule (REV-110)', () => {
+    expect(layoutRuleOf(['rule:rebuild'])).toBe('rebuild');
+  });
+
+  it('reads why the rebuild fell back, with the coverage it read (REV-110)', () => {
+    expect(rebuildFallbackOf(['rebuild:low_coverage', 'coverage:0.72', 'rule:derived'])).toEqual({
+      reason: 'rebuild:low_coverage',
+      percent: 72,
+    });
+    expect(rebuildFallbackOf(['rebuild:unread'])).toEqual({ reason: 'rebuild:unread' });
+    // Rounded down: just under the threshold never reads as reaching it, and float error is absorbed
+    expect(rebuildFallbackOf(['rebuild:low_coverage', 'coverage:0.849'])?.percent).toBe(84);
+    expect(rebuildFallbackOf(['rebuild:low_coverage', 'coverage:0.29'])?.percent).toBe(29);
+    expect(rebuildFallbackOf(['rebuild:too_large', 'coverage:abc'])).toEqual({ reason: 'rebuild:too_large' });
+    expect(rebuildFallbackOf(['rebuild:made_up'])).toBeUndefined();
+    expect(rebuildFallbackOf(['rule:rebuild'])).toBeUndefined();
+    expect(rebuildFallbackOf([])).toBeUndefined();
+    expect(rebuildFallbackOf(undefined)).toBeUndefined();
+  });
+
+  it('shows the rebuilt original site with its summary, in the default color (REV-110)', () => {
+    const html = render({
+      ...mvp({ variant: 'original', reasons: ['rule:rebuild'] }),
+      rebuild: {
+        coverage: 0.98,
+        sections: 17,
+        omitted: [{ what: 'embed', reason: 'second_form' }],
+        tuning: ['alt:2', 'contrast:1'],
+      },
+    });
+    expect(html).toContain(en.mvpLayout.variants.original);
+    expect(html).toContain(en.mvpLayout.rules.rebuild);
+    expect(html).toContain('Sections rebuilt: 17, left out: 1, fixes: 2');
+    expect(html).not.toContain('MuiChip-colorWarning');
+  });
+
+  it('drops the rebuild summary once the MVP is on a template, before the re-render removes it (REV-110)', () => {
+    const html = render({
+      ...mvp({ variant: 'split', reasons: ['rule:manual'] }),
+      rebuild: { coverage: 0.98, sections: 17, omitted: [], tuning: [] },
+    });
+    expect(html).not.toContain('Sections rebuilt');
+  });
+
+  it('marks a fallback to the template with a warning chip and says why (REV-110)', () => {
+    const html = render(mvp({ variant: 'split', reasons: ['rebuild:low_coverage', 'coverage:0.72', 'rule:derived'] }));
+    expect(html).toContain('MuiChip-colorWarning');
+    expect(html).toContain(escape(en.mvpLayout.fallback.low_coverage.replace('{{percent}}', '72')));
+    const unread = render(mvp({ variant: 'bento', reasons: ['rebuild:unread', 'rule:default'] }));
+    expect(unread).toContain('MuiChip-colorWarning');
+    expect(unread).toContain(escape(en.mvpLayout.fallback.unread));
   });
 });

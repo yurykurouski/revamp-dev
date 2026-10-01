@@ -57,6 +57,13 @@ describe('SiteSectionsSchema (REV-109)', () => {
     expect(SITE_SECTION_KINDS).toContain('features');
   });
 
+  it('accepts an item background photo only as an http(s) URL (REV-110)', () => {
+    expect(ok(withItem({ backgroundImage: 'https://falcodent.pl/ortheo.jpg' }))).toBe(true);
+    expect(ok(withItem({ backgroundImage: 'javascript:alert(1)' }))).toBe(false);
+    expect(ok(withItem({ backgroundImage: 'data:image/png;base64,AA' }))).toBe(false);
+    expect(ok(withItem({ backgroundImage: `https://x.pl/${'a'.repeat(L.urlChars)}` }))).toBe(false);
+  });
+
   it('keeps the caps at their limits and rejects one past them', () => {
     const many = <T>(count: number, value: T) => Array.from({ length: count }, () => value);
     expect(ok({ ...result, sections: many(L.sections, section) })).toBe(true);

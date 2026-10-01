@@ -219,6 +219,7 @@ const toItem = (item: RawSiteItem, flag: Cut): ISiteSectionItem => {
     // A line that is only the price is the price, not text
     text: texts(item.text.filter((line) => cleanText(line) !== price), flag),
     image: toImage(item.image),
+    backgroundImage: storableUrl(item.backgroundImage),
     price,
     rating: item.rating !== undefined && item.rating >= 0 && item.rating <= 5 ? Math.round(item.rating * 10) / 10 : undefined,
     links: toLinks(item.links, flag),

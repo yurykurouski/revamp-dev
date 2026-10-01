@@ -276,4 +276,13 @@ describe('Prototype step free-text change (REV-85)', () => {
     expect(applyButton().disabled).toBe(true);
     expect(prompt().getAttribute('aria-disabled')).toBe('true');
   });
+
+  it('is unavailable on the rebuilt original site and says why, while the layout can still be switched (REV-110)', () => {
+    render({}, { ...mvp, layout: { variant: 'original', reasons: ['rule:rebuild'] } });
+    expect(textarea().disabled).toBe(true);
+    expect(applyButton().disabled).toBe(true);
+    expect(prompt().getAttribute('aria-disabled')).toBe('true');
+    expect(container.querySelector(`[aria-label="${en.mvpEdit.unsupported}"]`)?.contains(prompt())).toBe(true);
+    expect(layoutButtons().every((el) => !el.disabled)).toBe(true);
+  });
 });

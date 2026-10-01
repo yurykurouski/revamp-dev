@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Window } from 'happy-dom';
-import { IBentoTemplateData, IMvpDesign, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
+import { IBentoTemplateData, IMvpDesign, BENTO_LAYOUT_VARIANTS, BentoLayoutVariant } from '@revamp/shared-types';
 import { bentoTemplateService } from '../../services/template.service.js';
 import { LAYOUT_SECTION_ORDER, generateBentoHtml } from '../bento.template.js';
 import { designCss, elementDeclarations, hasDesign, mergeDesigns, renderDesignBlock, resolveSectionOrder } from '../design.js';
@@ -38,7 +38,7 @@ afterEach(async () => {
   await Promise.all(windows.splice(0).map((window) => window.happyDOM.close()));
 });
 
-async function openPage(layout: MvpLayoutVariant, pageDesign: IMvpDesign | undefined = design): Promise<Window> {
+async function openPage(layout: BentoLayoutVariant, pageDesign: IMvpDesign | undefined = design): Promise<Window> {
   const window = new Window({
     url: 'https://mvp.example/',
     settings: { enableJavaScriptEvaluation: true, suppressInsecureJavaScriptEnvironmentWarning: true },
@@ -178,7 +178,7 @@ describe('MVP design spec (REV-92)', () => {
   describe('rendered page', () => {
     it('renders identically with no design or an empty one', () => {
       const stamp = (html: string) => html.replace(/© \d+/, '');
-      for (const layout of MVP_LAYOUT_VARIANTS) {
+      for (const layout of BENTO_LAYOUT_VARIANTS) {
         expect(stamp(generateBentoHtml({ ...data, layout, design: {} }))).toBe(stamp(generateBentoHtml({ ...data, layout })));
       }
     });
@@ -216,7 +216,7 @@ describe('MVP design spec (REV-92)', () => {
       expect(doc.querySelector('.site-footer')?.textContent).toContain('+48 22 542 18 04');
     });
 
-    it.each(MVP_LAYOUT_VARIANTS.filter((layout) => layout !== 'bento'))(
+    it.each(BENTO_LAYOUT_VARIANTS.filter((layout) => layout !== 'bento'))(
       'keeps the design order after a live switch to %s',
       async (to) => {
         const page = await openPage('bento');

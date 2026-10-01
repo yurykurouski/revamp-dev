@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit, IMvpDesign, MVP_LAYOUT_MANUAL_REASON, MvpLayoutVariant } from '@revamp/shared-types';
+import { IDeployJobData, ILead, IAudit, IMvpDesign, IMvpLayoutSelection, MVP_LAYOUT_MANUAL_ORIGINAL, MvpLayoutVariant } from '@revamp/shared-types';
 import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -8,7 +8,9 @@ import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { MvpPaletteOverride, bentoTemplateService } from '../services/template.service.js';
+import { MvpPaletteOverride } from '../services/template.service.js';
+import { defaultRebuildPrimary } from '../services/rebuild-template.service.js';
+import { rebuildLayout, renderMvp, requestedVariant } from '../services/mvp-render.js';
 import { buildLayoutSignals, deriveMvpLayout } from '../services/layout-selection.service.js';
 import { mergeDesigns } from '../templates/design.js';
 import { storageService } from '../services/storage.service.js';
@@ -83,17 +85,19 @@ async function publishMvp(
 const MAX_RELAYOUT_PASSES = 3;
 
 type SavedMvpDesign = {
-  layout?: { variant?: MvpLayoutVariant; design?: IMvpDesign | null } | null;
+  layout?: { variant?: MvpLayoutVariant; reasons?: string[] | null; design?: IMvpDesign | null } | null;
   colorPalette?: MvpPaletteOverride | null;
   design?: IMvpDesign | null;
+  rebuild?: unknown;
 };
 
 /**
  * The layout, palette and custom design (REV-92) the operator saved on the MVP (Bento for an MVP saved
- * without a layout); the custom design applies over the one derived from the original site (REV-104)
+ * without a layout); the custom design applies over the one derived from the original site (REV-104).
+ * A manual `original` pick that fell back to Bento still asks for the rebuild (REV-110).
  */
 const savedDesign = (project: SavedMvpDesign) => ({
-  variant: (project.layout?.variant ?? 'bento') as MvpLayoutVariant,
+  variant: (project.layout?.reasons?.includes(MVP_LAYOUT_MANUAL_ORIGINAL) ? 'original' : project.layout?.variant || 'bento') as MvpLayoutVariant,
   palette: {
     primary: project.colorPalette?.primary || undefined,
     secondary: project.colorPalette?.secondary || undefined,
@@ -101,6 +105,13 @@ const savedDesign = (project: SavedMvpDesign) => ({
   },
   design: mergeDesigns(project.layout?.design, project.design),
 });
+
+/** The layout a re-publish renders: the saved one, or a fresh manual `original` pick for one that had fallen back */
+const savedLayout = (project: SavedMvpDesign, variant: MvpLayoutVariant): IMvpLayoutSelection => {
+  if (!project.layout?.variant) return { variant: 'bento', reasons: [] };
+  if (variant === 'original' && project.layout.variant !== 'original') return manualMvpLayout(project.layout, 'original');
+  return project.layout as IMvpLayoutSelection;
+};
 
 const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof savedDesign>) =>
   a.variant === b.variant &&
@@ -143,16 +154,48 @@ export async function republishSavedMvp(leadId: string) {
 
   // The saved layout and palette are read again after each upload: a change made meanwhile gets its
   // own pass, so an older job can never leave an outdated look published
+  // The lead and the audit do not change between passes; the stored copy is the one the MVP was made with
+  const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, project.generatedContent));
+  let layout: IMvpLayoutSelection | undefined;
   for (let pass = 0; pass < MAX_RELAYOUT_PASSES; pass++) {
-    const html = bentoTemplateService.renderFromAudit(
-      leadData,
-      auditData,
-      project.generatedContent,
-      design.variant,
-      design.palette,
-      design.design,
-    );
-    published = await publishMvp(project.previewSlug, html, lead, audit);
+    const requested = savedLayout(project, design.variant);
+    const rendered = renderMvp({
+      lead: leadData,
+      audit: auditData,
+      generatedContent: project.generatedContent,
+      layout: requested,
+      derived,
+      palette: design.palette,
+      design: design.design,
+    });
+    published = await publishMvp(project.previewSlug, rendered.html, lead, audit);
+    layout = rendered.layout;
+
+    // The rebuild summary follows the page; a fallback records its reason on the layout. A page whose
+    // renderer changed (rebuild <-> Bento) cannot switch in place, so the preview reloads (REV-110)
+    // (an MVP saved without a layout keeps none while it renders as Bento)
+    const layoutChanged = JSON.stringify(rendered.layout) !== JSON.stringify(project.layout?.variant ? project.layout : requested);
+    const switched = Boolean(project.rebuild) !== Boolean(rendered.rebuild);
+    if (rendered.rebuild || project.rebuild || switched) {
+      await MvpProject.findByIdAndUpdate(project._id, {
+        $set: {
+          ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
+          ...(switched ? { editedAt: new Date() } : {}),
+        },
+        ...(rendered.rebuild ? {} : { $unset: { rebuild: '' } }),
+      }).exec();
+    }
+    // The layout is written only while it is still the one this pass rendered from: an operator's pick
+    // made during the upload wins, and shows up as a difference in the re-read below (another pass)
+    if (layoutChanged) {
+      const saved = await MvpProject.findOneAndUpdate(
+        { _id: project._id, layout: project.layout ?? { $exists: false } },
+        { $set: { layout: rendered.layout } },
+      ).exec();
+      // What this pass saved, so the re-read below compares against it
+      if (saved) design = savedDesign({ layout: rendered.layout, colorPalette: project.colorPalette, design: project.design });
+    }
+
     const latest = await MvpProject.findById(project._id).exec();
     if (!latest) break;
     const latestDesign = savedDesign(latest);
@@ -162,9 +205,9 @@ export async function republishSavedMvp(leadId: string) {
   }
 
   console.log(
-    `[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${design.variant} layout, primary ${design.palette.primary ?? 'from the audit'}`,
+    `[DeployWorker] Re-published MVP ${project._id} for lead ${leadId} in the ${layout?.variant} layout (${layout?.reasons.join(', ')}), primary ${design.palette.primary ?? 'from the audit'}`,
   );
-  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: design.variant, ...published };
+  return { success: true, relayout: true, mvpProjectId: project._id.toString(), layout: layout?.variant, ...published };
 }
 
 export const createDeployWorker = (): Worker => {
@@ -192,7 +235,7 @@ export const createDeployWorker = (): Worker => {
 
       // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
       // the same objects in the demos bucket and the preview URL already shared stays valid.
-      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout').exec();
+      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout rebuild').exec();
       const transliterated = transliterate(lead.businessName || lead.domain || 'demo');
       const rawSlug = transliterated
         .replace(/[^a-z0-9]+/g, '-')
@@ -204,23 +247,24 @@ export const createDeployWorker = (): Worker => {
       const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as Partial<ILead>;
       const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as Partial<IAudit>;
       const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, audit.generatedContent));
-      // A layout the operator picked survives a regeneration, over the freshly derived look (REV-84)
-      const previousLayout = existingProject?.layout;
-      const layout =
-        previousLayout?.reasons?.includes(MVP_LAYOUT_MANUAL_REASON) && previousLayout.variant
-          ? manualMvpLayout(derived, previousLayout.variant)
-          : derived;
+      // The rebuild of the original site (REV-110), unless the operator picked a layout, which survives
+      // a regeneration over the freshly derived look (REV-84); Bento with the reason when it cannot be rebuilt
+      const picked = requestedVariant(existingProject?.layout);
+      const requested = picked ? manualMvpLayout(derived, picked) : rebuildLayout(derived);
+      // The operator's custom design survives a regeneration (REV-92); the palette comes from the new
+      // audit run (the rebuild takes the site's own button color itself)
+      const rendered = renderMvp({
+        lead: leadData,
+        audit: auditData,
+        generatedContent: audit.generatedContent,
+        layout: requested,
+        derived,
+        design: mergeDesigns(requested.design, existingProject?.design),
+      });
+      const { html, layout } = rendered;
       console.log(`[DeployWorker] Layout: ${layout.variant} (${layout.reasons.join(', ')})`);
       if (auditData.siteLayoutError) console.log(`[DeployWorker] Original layout not read: ${auditData.siteLayoutError}`);
-      // The operator's custom design survives a regeneration (REV-92); the palette comes from the new audit run
-      const html = bentoTemplateService.renderFromAudit(
-        leadData,
-        auditData,
-        audit.generatedContent,
-        layout.variant,
-        undefined,
-        mergeDesigns(layout.design, existingProject?.design),
-      );
+      if (auditData.siteSectionsError) console.log(`[DeployWorker] Original sections not read: ${auditData.siteSectionsError}`);
 
       // 2b. Compare the MVP with the original site's key data (REV-36): judged by the LLM with its
       // quotes verified in code when one is configured (REV-37), else by code. Advisory only: it
@@ -248,13 +292,18 @@ export const createDeployWorker = (): Worker => {
               : {}),
           }
         : {};
+      // A run with no operator choice clears the previous run's choice; a Bento page has no rebuild summary
+      const unset = {
+        ...(generationSource && !generationSource.requestedProvider ? { requestedProvider: '', requestedModel: '' } : {}),
+        ...(rendered.rebuild ? {} : { rebuild: '' }),
+      };
+      // The rebuild's CTAs default to the site's own button color (REV-110)
+      const rebuildPrimary = layout.variant === 'original' ? defaultRebuildPrimary(auditData) : undefined;
       const mvpProject = await MvpProject.findOneAndUpdate(
         { leadId: lead._id },
         {
           $inc: { generationCount: 1 },
-          ...(generationSource && !generationSource.requestedProvider
-            ? { $unset: { requestedProvider: '', requestedModel: '' } }
-            : {}),
+          ...(Object.keys(unset).length ? { $unset: unset } : {}),
           ...sourceUpdate,
           generatedAt,
           auditId: audit._id,
@@ -276,13 +325,14 @@ export const createDeployWorker = (): Worker => {
             offerNotice: '',
           },
           colorPalette: {
-            primary: audit.extractedBrandTokens?.primaryColor || '#5c5bed',
+            primary: rebuildPrimary || audit.extractedBrandTokens?.primaryColor || '#5c5bed',
             secondary: audit.extractedBrandTokens?.secondaryColor || '#b8c4fe',
-            accent: audit.extractedBrandTokens?.accentColor || '#5c5bed',
+            accent: rebuildPrimary || audit.extractedBrandTokens?.accentColor || '#5c5bed',
           },
           isPublished: true,
           completenessReport,
           layout,
+          ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
         },
         { upsert: true, new: true },
       ).exec();

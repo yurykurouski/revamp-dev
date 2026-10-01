@@ -15,9 +15,9 @@ import {
   MVP_DESIGN_HIDEABLE,
   MVP_DESIGN_SECTIONS,
   MVP_DESIGN_TOKENS,
-  MVP_LAYOUT_VARIANTS,
+  BENTO_LAYOUT_VARIANTS,
   MvpEditChange,
-  MvpLayoutVariant,
+  BentoLayoutVariant,
 } from '@revamp/shared-types';
 import { ClaudeCliRunner } from './claude-cli.js';
 import { getSupportedIconNames } from '../templates/icons.js';
@@ -40,7 +40,7 @@ export interface MvpEditInput {
   current: {
     content: MvpContentOutput;
     primaryColor?: string;
-    layout: MvpLayoutVariant;
+    layout: BentoLayoutVariant;
     /** The MVP's custom design (REV-92), if it has one */
     design?: IMvpDesign;
   };
@@ -53,7 +53,7 @@ export interface MvpEditPlan {
   summary: string;
   content?: MvpContentOutput;
   primaryColor?: string;
-  layout?: MvpLayoutVariant;
+  layout?: BentoLayoutVariant;
   /** The whole new custom design; `{}` drops the current one (REV-92) */
   design?: IMvpDesign;
   changes: MvpEditChange[];
@@ -74,7 +74,7 @@ export interface MvpEditServiceOptions {
 /** How long an HTTP provider may take to answer; the CLI has its own timeout */
 const EDIT_LLM_TIMEOUT_MS = 90_000;
 
-const LAYOUT_DESCRIPTIONS: Record<MvpLayoutVariant, string> = {
+const LAYOUT_DESCRIPTIONS: Record<BentoLayoutVariant, string> = {
   bento: 'a grid of service cards',
   split: 'copy beside a large photo',
   editorial: 'a typographic, text-led page',
@@ -222,8 +222,13 @@ export class MvpEditService {
       }
     }
 
-    if (output.layout && output.layout !== input.current.layout) {
-      plan.layout = output.layout;
+    // Only Bento's own layouts are offered; the rebuilt original (REV-110) is never applied by a free-text change
+    if (
+      output.layout &&
+      (BENTO_LAYOUT_VARIANTS as readonly string[]).includes(output.layout) &&
+      output.layout !== input.current.layout
+    ) {
+      plan.layout = output.layout as BentoLayoutVariant;
       plan.changes.push('layout');
     }
 
@@ -304,7 +309,7 @@ export class MvpEditService {
           design: input.current.design ?? {},
         },
         allowedColors: input.colorCandidates,
-        allowedLayouts: MVP_LAYOUT_VARIANTS.map((variant) => ({ id: variant, description: LAYOUT_DESCRIPTIONS[variant] })),
+        allowedLayouts: BENTO_LAYOUT_VARIANTS.map((variant) => ({ id: variant, description: LAYOUT_DESCRIPTIONS[variant] })),
       },
       null,
       2,

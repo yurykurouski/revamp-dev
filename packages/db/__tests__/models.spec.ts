@@ -4,6 +4,7 @@ import { Lead } from '../src/models/Lead.model.js';
 import { Audit } from '../src/models/Audit.model.js';
 import { EmailCampaign } from '../src/models/EmailCampaign.model.js';
 import { AnalyticsEvent } from '../src/models/AnalyticsEvent.model.js';
+import { MvpProject } from '../src/models/MvpProject.model.js';
 
 describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => {
 
@@ -266,6 +267,20 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       const err2 = invalid.validateSync();
       expect(err2).toBeDefined();
       expect(err2?.errors['eventType']).toBeDefined();
+    });
+  });
+
+  describe('MvpProject Model', () => {
+    it('keeps the rebuild summary (REV-110)', () => {
+      const doc = new MvpProject({
+        auditId: new mongoose.Types.ObjectId(),
+        leadId: new mongoose.Types.ObjectId(),
+        previewSlug: 's',
+        fullPreviewUrl: 'u',
+        storageHtmlPath: 'p',
+        rebuild: { coverage: 0.98, sections: 2, omitted: [], tuning: ['alt:1'] },
+      });
+      expect(doc.toObject().rebuild).toEqual({ coverage: 0.98, sections: 2, omitted: [], tuning: ['alt:1'] });
     });
   });
 });

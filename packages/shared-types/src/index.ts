@@ -414,6 +414,8 @@ export interface ISiteSectionItem {
   /** Paragraphs and bullets, verbatim (an FAQ answer, a review's quote) */
   text: string[];
   image?: ISiteImage;
+  /** A photo painted behind the item, e.g. a hero slide's background */
+  backgroundImage?: string;
   /** As written, e.g. "od 150 zł" */
   price?: string;
   /** 0..5 */
@@ -662,6 +664,8 @@ export interface IMvpProject {
   editedAt?: string | Date;
   /** The operator's custom design, applied by the template on every render (REV-92) */
   design?: IMvpDesign;
+  /** What the rebuild left out and fixed (REV-110); absent when the page was rendered by the Bento template */
+  rebuild?: IMvpRebuildSummary;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -1161,7 +1165,11 @@ export interface IBentoServiceCard {
 }
 
 // Layout variants of the generated MVP, picked per lead from its audit data (REV-54)
-export const MVP_LAYOUT_VARIANTS = ['bento', 'split', 'editorial', 'compact'] as const;
+/** The Bento template's layouts (REV-54) */
+export const BENTO_LAYOUT_VARIANTS = ['bento', 'split', 'editorial', 'compact'] as const;
+export type BentoLayoutVariant = (typeof BENTO_LAYOUT_VARIANTS)[number];
+/** `original`: the section-by-section rebuild of the original home page (REV-110); the rest are Bento's */
+export const MVP_LAYOUT_VARIANTS = ['original', ...BENTO_LAYOUT_VARIANTS] as const;
 
 export type MvpLayoutVariant = (typeof MVP_LAYOUT_VARIANTS)[number];
 
@@ -1306,10 +1314,155 @@ export const MVP_LAYOUT_DERIVED_REASON = 'rule:derived';
 /** The reason code added when the original layout could not be read and the rules chose instead */
 export const MVP_LAYOUT_UNREAD_REASON = 'site_layout:unread';
 
+/** The reason code of an MVP rebuilt from the original site's sections (REV-110) */
+export const MVP_LAYOUT_REBUILD_REASON = 'rule:rebuild';
+/** Kept on a manual `original` pick that had to fall back, so a regeneration tries the rebuild again */
+export const MVP_LAYOUT_MANUAL_ORIGINAL = 'manual:original';
+/** Why the rebuild fell back to the Bento template (REV-110); stored first in `layout.reasons` */
+export const REBUILD_FALLBACK_REASONS = [
+  'rebuild:unread',
+  'rebuild:no_content',
+  'rebuild:low_coverage',
+  'rebuild:invalid',
+  'rebuild:too_large',
+] as const;
+export type RebuildFallbackReason = (typeof REBUILD_FALLBACK_REASONS)[number];
+
+export const REBUILD_OMISSIONS = ['section', 'nav_link', 'link', 'embed', 'image'] as const;
+export type RebuildOmission = (typeof REBUILD_OMISSIONS)[number];
+
+/** What the rebuild kept out and which fixes it applied (REV-110) */
+export interface IMvpRebuildSummary {
+  /** The reader's coverage ratio of the original page */
+  coverage: number;
+  /** Sections rendered (header and footer excluded) */
+  sections: number;
+  omitted: { what: RebuildOmission; reason: string; sample?: string }[];
+  /** Fix codes, e.g. `contrast:3`, `overlay:1`, `alt:12`, `font:body-16`, `collapse:11`, `h1:hidden` */
+  tuning: string[];
+}
+
+// The rebuild plan (REV-110): every decision of the rebuild, validated before it is rendered; never stored
+
+export interface IRebuildImage {
+  src: string;
+  /** Empty for a decorative image; never invented */
+  alt: string;
+  width?: number;
+  height?: number;
+  /** Loaded eagerly (the first section); the rest are lazy */
+  eager?: boolean;
+}
+
+/** `booking` → #booking; `anchor` → a section on the page */
+export interface IRebuildLink {
+  label: string;
+  href: string;
+  kind: 'booking' | 'anchor' | 'phone' | 'email' | 'map';
+}
+
+export interface IRebuildItem {
+  title?: string;
+  subtitle?: string;
+  text: string[];
+  image?: IRebuildImage;
+  /** A photo slide's photo, painted behind its caption (only in a section with `photoSlides`) */
+  backgroundImage?: string;
+  /** The original alt of a picture moved behind the caption, kept as the slide's text alternative */
+  backgroundAlt?: string;
+  price?: string;
+  rating?: number;
+  links: IRebuildLink[];
+}
+
+export type IRebuildBlock =
+  | { type: 'text'; text: string[] }
+  | { type: 'items'; arrangement: SiteSectionArrangement; items: IRebuildItem[] };
+
+export interface IRebuildSection {
+  /** Anchor id, `s-<index>` */
+  id: string;
+  index: number;
+  kind: SiteSectionKind;
+  arrangement: SiteSectionArrangement;
+  columns?: number;
+  mediaSide?: 'left' | 'right';
+  split?: number;
+  /** 1 only for the hero's heading */
+  headingLevel: 1 | 2;
+  /** A hero slider of photos: one full-width slide at a time, each over its own photo */
+  photoSlides?: boolean;
+  intro: { eyebrow?: string; heading?: string; text: string[]; links: IRebuildLink[] };
+  items: IRebuildItem[];
+  /** The original item style; `text` is set with a background, readable on it */
+  itemStyle?: ISiteItemStyle & { text?: string };
+  extra: IRebuildBlock[];
+  images: IRebuildImage[];
+  embeds: { kind: 'map' | 'video'; src: string; title: string }[];
+  /** The booking form renders here, in place of the original form or widget */
+  booking: boolean;
+  /** A long text section: its body sits in a collapsed <details> */
+  collapsed: boolean;
+  style: {
+    background?: string;
+    backgroundImage?: string;
+    /** Text color after the contrast fix */
+    text: string;
+    /** Dark overlay opacity over a background photo, 0..1 */
+    overlay?: number;
+    align: 'left' | 'center';
+    paddingY: number;
+    fullBleed: boolean;
+  };
+}
+
+export interface IRebuildPlan {
+  language: string;
+  businessName: string;
+  /** Set when no hero heading exists: the business name as a visually hidden h1 */
+  hiddenH1?: string;
+  year: number;
+  theme: {
+    primary: string;
+    /** CTA text color, by contrast with `primary` */
+    onPrimary: string;
+    pageBackground: string;
+    pageText: string;
+    headingFont: string;
+    bodyFont: string;
+    headingWeight: number;
+    headingUppercase: boolean;
+    h1Size: number;
+    h2Size: number;
+    bodySize: number;
+    lineHeight: number;
+    buttonRadius: number;
+    buttonUppercase: boolean;
+  };
+  header: {
+    logo?: IRebuildImage;
+    nav: { label: string; href: string }[];
+    cta: { label: string };
+    phone?: string;
+  };
+  sections: IRebuildSection[];
+  /** No form or widget was replaced: the booking form goes just before the footer */
+  bookingAppended: boolean;
+  /** Options of the booking form's service select: titles of the original's services sections */
+  bookingServices: string[];
+  footer: {
+    /** The original footer, when read */
+    section?: IRebuildSection;
+    contacts: { phone?: string; email?: string; address?: string; workingHours?: string };
+    social: { label: string; href: string }[];
+  };
+  summary: IMvpRebuildSummary;
+}
+
 export interface IBentoTemplateData {
   businessName: string;
   /** Page layout; the original Bento layout when absent (REV-54) */
-  layout?: MvpLayoutVariant;
+  layout?: BentoLayoutVariant;
   /** The operator's custom design (REV-92); the template's own look when absent */
   design?: IMvpDesign;
   /** The original site's BCP 47 language tag ("pl-PL"); drives `<html lang>` and the template UI text (REV-25) */
@@ -1390,6 +1543,8 @@ export const API_ERROR_CODES = [
   'MVP_EDIT_NOT_ALLOWED',
   'MVP_EDIT_FAILED',
   'MVP_EDIT_TIMEOUT',
+  'MVP_EDIT_UNSUPPORTED',
+  'MVP_REBUILD_UNAVAILABLE',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',

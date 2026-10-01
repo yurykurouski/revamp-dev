@@ -227,6 +227,7 @@ export const en = {
     tooltip: 'Layout: {{name}} — {{reason}}',
     unread: 'The original site\'s layout could not be read, so the rules chose this one.',
     variants: {
+      original: 'Original site',
       bento: 'Bento',
       split: 'Split',
       editorial: 'Editorial',
@@ -241,8 +242,10 @@ export const en = {
       default: 'default layout',
       manual: 'chosen by the operator',
       derived: 'follows the original site\'s layout',
+      rebuild: 'rebuilt from the original site',
     },
     descriptions: {
+      original: 'Their own site, rebuilt section by section',
       bento: 'Card grid of services',
       split: 'Copy beside a large photo',
       editorial: 'Typographic, text-led page',
@@ -251,6 +254,20 @@ export const en = {
     picker: 'Layout:',
     saveFailed: 'Could not save the layout: {{message}}',
     locked: 'The layout can be changed only while the MVP awaits review',
+    rebuildSummary: 'Sections rebuilt: {{sections}}, left out: {{omitted}}, fixes: {{fixes}}',
+    rebuildRefused: {
+      unread: 'The original site cannot be rebuilt because its page could not be read section by section.',
+      no_content: 'The original site cannot be rebuilt because no content sections were found on its page.',
+      low_coverage: 'The original site cannot be rebuilt because only {{percent}}% of its page could be read.',
+    },
+    rerendering: 'Re-rendering the page…',
+    fallback: {
+      unread: 'The original page could not be read section by section, so the template was used.',
+      no_content: 'No content sections were found on the original page, so the template was used.',
+      low_coverage: 'Only {{percent}}% of the original page could be read, so the template was used.',
+      invalid: 'The rebuild did not pass validation, so the template was used.',
+      too_large: 'The rebuilt page was too large, so the template was used.',
+    },
   },
   llm: {
     provider: 'LLM provider',
@@ -637,6 +654,7 @@ export const en = {
     resetDesign: 'Reset custom design',
     designReset: 'The custom design was removed; the page is back to the look of its layout.',
     noDesign: 'The MVP has no custom design to reset.',
+    unsupported: 'Free-text changes are not available for the rebuilt original site yet. Switch to a template layout to use them.',
   },
   colorPicker: {
     brandPalette: 'Brand palette:',

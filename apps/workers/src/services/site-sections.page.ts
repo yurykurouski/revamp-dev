@@ -38,6 +38,8 @@ export interface RawSiteItem {
   subtitle?: string;
   text: string[];
   image?: RawSiteImage;
+  /** A photo painted behind the item (a slide's background image), absolute */
+  backgroundImage?: string;
   price?: string;
   rating?: number;
   links: RawSiteLink[];
@@ -110,7 +112,12 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const vh = window.innerHeight;
   const MAX_ITEMS = 80;
   const MAX_RUNS = 200;
-  const EXCLUDED = 'script, style, noscript, template, svg, .swiper-slide-duplicate, .slick-cloned';
+  // Slider controls (arrows, dots) of the common libraries: their "Previous" / "Next" labels are not copy
+  const SLIDER_CONTROLS =
+    '.slick-arrow, .slick-dots, .swiper-button-prev, .swiper-button-next, .swiper-pagination, .elementor-swiper-button, .owl-nav, .owl-dots, ' +
+    '.carousel-control-prev, .carousel-control-next, .carousel-indicators, .flickity-button, .flickity-page-dots, .splide__arrows, .splide__pagination, ' +
+    '.glide__arrows, .glide__bullets, .et-pb-arrow-prev, .et-pb-arrow-next, .et-pb-controllers';
+  const EXCLUDED = `script, style, noscript, template, svg, .swiper-slide-duplicate, .slick-cloned, ${SLIDER_CONTROLS}`;
   const CONTENT = 'h1, h2, h3, h4, h5, h6, p, img, video, li, a, button, blockquote, iframe, figure, input, textarea';
   const MAP_SRC = /google\.[a-z.]+\/maps|maps\.google|openstreetmap|mapy\.|yandex\.[a-z]+\/(map-widget|maps)/i;
   const VIDEO_SRC = /youtube\.com|youtu\.be|youtube-nocookie|vimeo\.com|wistia/i;
@@ -119,7 +126,20 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const SLIDER = '.swiper, .swiper-container, .slick-slider, .owl-carousel, .carousel, .splide, .flickity-enabled, .glide, rs-module, .rev_slider';
   const PRICE = /(?:(?:od|from|от|ад|nuo|ab)\s+)?\d[\d\s.,]*\s?(?:zł|pln|€|eur|\$|usd|₽|руб|byn|br\b|£|gbp|kč|czk)/i;
 
-  const clean = (value: string | null | undefined): string => (value || '').replace(/­/g, '').replace(/\s+/g, ' ').trim();
+  // Soft hyphens and icon-font glyphs (private-use characters) are not copy
+  const clean = (value: string | null | undefined): string =>
+    (value || '').replace(/­/g, '').replace(/\p{Co}/gu, '').replace(/\s+/g, ' ').trim();
+  /** An element's text, cleaned, with a <br> read as a space (textContent runs the two lines together) */
+  const textOf = (el: Element): string => {
+    if (!el.querySelector('br')) return clean(el.textContent);
+    const parts: string[] = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      if (node.nodeType === Node.TEXT_NODE) parts.push(node.nodeValue || '');
+      else if ((node as Element).tagName === 'BR') parts.push(' ');
+    }
+    return clean(parts.join(''));
+  };
   const classOf = (el: Element): string => (typeof el.className === 'string' ? el.className : el.getAttribute('class') || '');
   const boxOf = (el: Element): RawBox => {
     const r = el.getBoundingClientRect();
@@ -172,7 +192,73 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     if (!match || match === document.body || match === document.documentElement) return false;
     return !match.querySelector('h1, main, article');
   };
-  const excluded = (el: Element): boolean => el.closest(EXCLUDED) !== null || inBoilerplate(el);
+  // Screen-reader-only text (a skip link, a visually hidden label) is clipped to nothing: not copy
+  const clippedAway = new Map<Element, boolean>();
+  const screenReaderOnly = (el: Element): boolean => {
+    for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
+      let clipped = clippedAway.get(node);
+      if (clipped === undefined) {
+        const style = window.getComputedStyle(node);
+        clipped =
+          style.position === 'absolute' &&
+          (/^rect\((0|1)px,? (0|1)px,? (0|1)px,? (0|1)px\)$/.test(style.clip) || style.clipPath === 'inset(50%)');
+        clippedAway.set(node, clipped);
+      }
+      if (clipped) return true;
+    }
+    return false;
+  };
+  // A hidden copy of content the page shows elsewhere (a mobile-only variant of a box) is not read twice, nor is a
+  // hidden block of pictures alone; hidden text found nowhere else (a collapsed answer, a tab panel, a slide) still is
+  const letters = (text: string) => text.toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+  let shownText: string | undefined;
+  // A class that hides the element on this screen size only (Elementor, Divi, Bootstrap, Tailwind, common themes)
+  const SCREEN_VARIANT = /^(elementor-hidden-(desktop|widescreen|laptop)|et_pb_hidden_desktop|hidden-(desktop|lg|xl)|hide-(on-)?desktop|visible-(xs|sm|mobile)|(lg|xl):hidden|d-(lg|xl)-none|mobile-only|show-on-mobile)$/i;
+  const stemOf = (src: string) =>
+    (src.split(/[?#]/)[0] ?? '').split('/').pop()!.replace(/\.[a-z0-9]+$/i, '').replace(/-\d+x\d+$/, '').toLowerCase();
+  let shownStems: Set<string> | undefined;
+  const pictureCopy = (node: Element): boolean => {
+    for (let el: Element | null = node; el && el !== document.body; el = el.parentElement) {
+      if (classOf(el).split(/\s+/).some((token) => SCREEN_VARIANT.test(token))) return true;
+    }
+    shownStems ??= new Set(
+      Array.from(document.querySelectorAll('img'))
+        .filter((img) => shown(img))
+        .map((img) => stemOf((img as HTMLImageElement).currentSrc || img.getAttribute('src') || ''))
+        .filter(Boolean),
+    );
+    const stems = Array.from(node.querySelectorAll('img')).map((img) => stemOf(img.getAttribute('data-src') || img.getAttribute('src') || ''));
+    return stems.length > 0 && stems.every((stem) => stem && shownStems!.has(stem));
+  };
+  const hiddenCopies = new Map<Element, boolean>();
+  const hiddenCopy = (el: Element): boolean => {
+    for (let node: Element | null = el; node && node !== document.body; node = node.parentElement) {
+      let copy = hiddenCopies.get(node);
+      if (copy === undefined) {
+        copy = false;
+        const style = window.getComputedStyle(node);
+        if (style.display === 'none' || style.visibility === 'hidden') {
+          shownText ??= letters(document.body.innerText);
+          let total = 0;
+          let found = 0;
+          const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+          for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+            const value = letters(text.nodeValue || '');
+            total += value.length;
+            if (value && shownText.includes(value)) found += value.length;
+          }
+          // Pictures alone, hidden, are a copy only when marked as another screen size's variant (a mobile-only
+          // carousel) or when the page shows the same pictures elsewhere; hidden slides of a fade slider are read
+          copy = total >= 20 ? found >= total * 0.9 : total === 0 && node.querySelector('img') !== null && pictureCopy(node);
+        }
+        hiddenCopies.set(node, copy);
+      }
+      if (copy) return true;
+    }
+    return false;
+  };
+  const excluded = (el: Element): boolean =>
+    el.closest(EXCLUDED) !== null || inBoilerplate(el) || screenReaderOnly(el) || hiddenCopy(el);
   const displays = new Map<Element, string>();
   const isBlock = (el: Element): boolean => {
     let display = displays.get(el);
@@ -188,6 +274,19 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     return node ?? root;
   };
 
+  // A form's labels, placeholders and button are the form's own interface, recorded with the form embed: not copy,
+  // and not page text for coverage either. A form that wraps page content (ASP.NET's page-wide form) is not one.
+  const formUi = new Map<Element, boolean>();
+  const inFormUi = (el: Element): boolean => {
+    const form = el.closest('form');
+    if (!form) return false;
+    let ui = formUi.get(form);
+    if (ui === undefined) {
+      ui = !form.querySelector('[data-revamp-block], h1, h2, header, footer, main');
+      formUi.set(form, ui);
+    }
+    return ui;
+  };
   /** Text of `root` as one string per nearest block-level ancestor, in page order; text inside `skip` is left out */
   const runsOf = (root: Element, skip: Element[]): Array<{ el: Element; text: string }> => {
     const runs = new Map<Element, string[]>();
@@ -195,7 +294,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const parent = node.parentElement;
       if (!parent || !node.nodeValue || !node.nodeValue.trim()) continue;
-      if (excluded(parent) || skip.some((el) => el.contains(parent))) continue;
+      if (excluded(parent) || skip.some((el) => el.contains(parent)) || inFormUi(parent)) continue;
       const block = blockOf(parent, root);
       const parts = runs.get(block);
       if (parts) parts.push(node.nodeValue);
@@ -212,7 +311,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   };
   const linkOf = (el: Element): RawSiteLink | undefined => {
     const href = absolute(el.getAttribute('href'));
-    const text = clean(el.textContent);
+    const text = textOf(el);
     const label = text || clean(el.getAttribute('aria-label')) || clean(el.getAttribute('title'));
     if (!href || !label) return undefined;
     return { label, href, button: isButton(el), ...(text ? {} : { labelFromAttribute: true }) };
@@ -235,7 +334,30 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   const linksIn = (root: Element, skip: Element[]): { links: RawSiteLink[]; standalone: Element[] } => {
     const anchors = Array.from(root.querySelectorAll('a[href]')).filter((a) => !excluded(a) && !skip.some((el) => el.contains(a)));
     const links = anchors.map(linkOf).filter((link): link is RawSiteLink => link !== undefined);
-    const standalone = anchors.filter((a) => !a.querySelector('p, h1, h2, h3, h4, h5, h6, li, img') && onlyLinks(blockOf(a, root), root));
+    // A button whose short label sits in one block inside the link (<a><span style="display:block">) is standalone
+    // too; a linked card with several blocks of copy is not
+    const labelInside = (a: Element): boolean => {
+      if (textOf(a).length > 60) return false;
+      const walker = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
+      const labelBlocks = new Set<Element>();
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (!parent || !node.nodeValue?.trim() || excluded(parent)) continue;
+        const block = blockOf(parent, root);
+        if (!a.contains(block)) return false;
+        labelBlocks.add(block);
+      }
+      return labelBlocks.size === 1;
+    };
+    // An icon inside a button (a small image before its label) does not make it a card
+    const holdsPicture = (a: Element) =>
+      Array.from(a.querySelectorAll('img')).some((img) => {
+        const r = img.getBoundingClientRect();
+        return r.width > 40 || r.height > 40 || (r.width === 0 && r.height === 0);
+      });
+    const standalone = anchors.filter(
+      (a) => !a.querySelector('p, h1, h2, h3, h4, h5, h6, li') && !holdsPicture(a) && (onlyLinks(blockOf(a, root), root) || labelInside(a)),
+    );
     return { links, standalone };
   };
 
@@ -310,9 +432,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const children = Array.from(el.children);
     return `${el.tagName}(${tags(children)}|${tags(children.flatMap((child) => Array.from(child.children)))})`;
   };
-  const profile = (el: Element) => `${hasImage(el) ? 'i' : ''}${clean(el.textContent) ? 't' : ''}`;
+  const profile = (el: Element) => `${hasImage(el) ? 'i' : ''}${textOf(el) ? 't' : ''}`;
   // An item holds more than one line of text, an image, a price, or is a list entry
-  const composite = (el: Element) => ITEM_TAGS.has(el.tagName) || hasImage(el) || runsOf(el, []).length >= 2 || PRICE.test(clean(el.textContent));
+  const composite = (el: Element) => ITEM_TAGS.has(el.tagName) || hasImage(el) || runsOf(el, []).length >= 2 || PRICE.test(textOf(el));
   // A class token naming a slider; flags such as Elementor's `has_eae_slider` on every section do not
   const SLIDER_TOKEN = /slider|slideshow/i;
   const FLAG_TOKEN = /^(has|no|is|with|enable|disable)[-_]/i;
@@ -325,6 +447,18 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     }
     return false;
   };
+  /** Cards on one row running past the edge of a box that clips them: a carousel built without a slider library */
+  const runsPastClip = (members: Element[]): boolean => {
+    const boxes = members.map((m) => m.getBoundingClientRect()).filter((r) => r.width > 0 && r.height > 0);
+    if (boxes.length < 3 || boxes.some((r) => Math.abs(r.top - boxes[0]!.top) > 10)) return false;
+    for (let node = members[0]!.parentElement; node && node !== document.body; node = node.parentElement) {
+      const style = window.getComputedStyle(node);
+      if (style.overflowX !== 'hidden' && style.overflowX !== 'clip' && style.overflowX !== 'auto' && style.overflowX !== 'scroll') continue;
+      const clip = node.getBoundingClientRect();
+      return boxes.some((r) => r.right > clip.right + 20 || r.left < clip.left - 20);
+    }
+    return false;
+  };
   const markupOf = (parent: Element, members: Element[], root: Element): RawGroupMarkup | undefined => {
     if (
       members.every((m) => m.matches('details') || m.querySelector('details, [aria-expanded]') !== null) ||
@@ -332,7 +466,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     ) {
       return 'accordion';
     }
-    if (inSlider(parent, root)) return 'slider';
+    if (inSlider(parent, root) || runsPastClip(members)) return 'slider';
     if (members.every((m) => /schema\.org\/Person/i.test(m.getAttribute('itemtype') || ''))) return 'person';
     if (members.every((m) => /schema\.org\/Review/i.test(m.getAttribute('itemtype') || ''))) return 'review';
     return undefined;
@@ -351,8 +485,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         members: panels as Element[],
         covers: [list, ...(panels as Element[])],
         markup: 'tabs',
-        titles: tabs.map((tab) => clean(tab.textContent)),
-        weight: (panels as Element[]).reduce((sum, panel) => sum + clean(panel.textContent).length, 0),
+        titles: tabs.map((tab) => textOf(tab)),
+        weight: (panels as Element[]).reduce((sum, panel) => sum + textOf(panel).length, 0),
       });
     }
 
@@ -363,13 +497,18 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       for (const child of Array.from(parent.children)) {
         // A link is text, unless it wraps a photo or a card: a gallery of linked images
         if (excluded(child) || (TEXT_TAGS.has(child.tagName) && !(child.tagName === 'A' && hasImage(child))) || taken(child)) continue;
-        if (!clean(child.textContent) && !hasImage(child)) continue;
+        if (!textOf(child) && !hasImage(child)) continue;
         const key = signature(child);
         const list = bySignature.get(key);
         if (list) list.push(child);
         else bySignature.set(key, [child]);
       }
-      for (const members of Array.from(bySignature.values())) {
+      for (const sameSignature of Array.from(bySignature.values())) {
+        let members = sameSignature;
+        // A heading row above rows of cards shares their markup; it is not an item (slides, tabs and accordion
+        // entries are items whatever they hold). Only a row holding a heading and nothing more is left out.
+        const headingRow = (el: Element) => !composite(el) && el.querySelector('h1, h2, h3, h4, h5, h6') !== null;
+        if (members.length > 2 && headingRow(members[0]!) && !markupOf(parent, members, root)) members = members.slice(1);
         if (members.length < 2) continue;
         // Most members must hold the same kinds of content: a text column beside a photo column is not a pair of cards
         const counts = new Map<string, number>();
@@ -377,13 +516,14 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         if (Math.max(...Array.from(counts.values())) < members.length * 0.75) continue;
         const markup = markupOf(parent, members, root);
         if (!markup && members.filter(composite).length < members.length * 0.75) continue;
-        const weight = members.reduce((sum, m) => sum + clean(m.textContent).length + (hasImage(m) ? 50 : 0), 0);
+        const weight = members.reduce((sum, m) => sum + textOf(m).length + (hasImage(m) ? 50 : 0), 0);
         found.push({ members, covers: members, ...(markup ? { markup } : {}), weight });
       }
     }
 
-    // Cards laid out in rows (Elementor inner sections, Bootstrap rows): a group whose every member is a
-    // row holding a group of the same cards is those cards, in page order
+    // Cards laid out in rows (Elementor inner sections, Bootstrap rows, Divi rows): a group whose every member is
+    // a row holding a group of the same cards is those cards, in page order. Rows before or after the card rows
+    // that hold no cards (the section's heading row, a button row) stay outside, as intro or extra text.
     const rowsFlattened = found.map((group): Found => {
       if (group.markup) return group;
       const inner = group.members.map((row) =>
@@ -391,12 +531,24 @@ export function collectSiteSectionsInPage(): RawSiteSections {
           .filter((other) => other !== group && other.members.every((member) => member !== row && row.contains(member)))
           .sort((a, b) => b.weight - a.weight)[0],
       );
-      if (inner.some((g) => g === undefined)) return group;
-      const cards = inner as Found[];
-      const cardSignature = signature(cards[0]!.members[0]!);
-      if (!cards.every((g) => g.members.every((member) => signature(member) === cardSignature))) return group;
-      if (cards.reduce((sum, g) => sum + g.weight, 0) < group.weight * 0.75) return group;
-      return { members: cards.flatMap((g) => g.members), covers: group.covers, weight: group.weight };
+      // A layout of a few columns where one column holds the cards (an intro column beside a carousel) is not a
+      // group: the cards are; the other columns' text stays intro or extra text
+      const holders = inner.filter((g): g is Found => g !== undefined);
+      if (group.members.length <= 3 && holders.length === 1 && holders[0]!.members.length >= 3 && holders[0]!.weight >= group.weight * 0.5) {
+        return holders[0]!;
+      }
+      const first = inner.findIndex((g) => g !== undefined);
+      const last = inner.length - 1 - [...inner].reverse().findIndex((g) => g !== undefined);
+      if (first < 0 || last - first + 1 < 2) return group;
+      const cards = inner.slice(first, last + 1);
+      if (cards.some((g) => g === undefined)) return group;
+      const rows = group.members.slice(first, last + 1);
+      const rowsWeight = rows.reduce((sum, m) => sum + textOf(m).length + (hasImage(m) ? 50 : 0), 0);
+      const cardGroups = cards as Found[];
+      const cardSignature = signature(cardGroups[0]!.members[0]!);
+      if (!cardGroups.every((g) => g.members.every((member) => signature(member) === cardSignature))) return group;
+      if (cardGroups.reduce((sum, g) => sum + g.weight, 0) < rowsWeight * 0.75) return group;
+      return { members: cardGroups.flatMap((g) => g.members), covers: rows, weight: group.weight };
     });
     const ranked = rowsFlattened.sort((a, b) => b.weight - a.weight);
     const top = ranked[0];
@@ -409,20 +561,29 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   };
 
   const TITLE = 'h1, h2, h3, h4, h5, h6, summary, [aria-expanded], dt';
-  const TITLE_FALLBACK = 'strong, b, [class*="title" i], [class*="name" i], [class*="author" i]';
+  const TITLE_FALLBACK = 'strong, b, [class*="title" i], [class*="heading" i], [class*="name" i], [class*="author" i]';
+  // A slide's position label ("1 / 5" on a Swiper slide) is not a rating
+  const isSlideLabel = (node: Element): boolean =>
+    node.matches('[role="group" i], [aria-roledescription="slide" i]') || /(^|[\s_-])slide($|[\s_-])|swiper-slide|slick-slide/i.test(classOf(node));
   const ratingOf = (el: Element): number | undefined => {
     const labels = [el, ...Array.from(el.querySelectorAll('[aria-label], [title]'))]
+      .filter((node) => !isSlideLabel(node))
       .map((node) => `${node.getAttribute('aria-label') || ''} ${node.getAttribute('title') || ''}`)
       .join(' ');
-    const scored = `${labels} ${clean(el.textContent)}`.match(/(?<![\d/.,])(\d(?:[.,]\d+)?)\s*(?:\/|na|z|из|of)\s*(5|10)(?![\d/])/i);
+    const scored = `${labels} ${textOf(el)}`.match(/(?<![\d/.,])(\d(?:[.,]\d+)?)\s*(?:\/|na|z|из|of)\s*(5|10)(?![\d/])/i);
     if (scored) {
       const value = parseFloat((scored[1] ?? '').replace(',', '.'));
       return scored[2] === '10' ? value / 2 : value;
     }
-    const glyphs = (clean(el.textContent).match(/★/g) || []).length;
+    const glyphs = (textOf(el).match(/★/g) || []).length;
     if (glyphs >= 1 && glyphs <= 5) return glyphs;
+    // A star is a class token "star"/"stars" or one joined by - or _ ("fa-star", "star-full"), never "justify-start"
+    const isStar = (node: Element) => classOf(node).split(/\s+/).some((token) => /(^|[-_])stars?($|[-_])/i.test(token));
     const stars = Array.from(el.querySelectorAll('[class*="star" i]')).filter(
-      (node) => node.querySelector('[class*="star" i]') === null && !/empty|half|outline|-o\b/i.test(classOf(node)),
+      (node) =>
+        isStar(node) &&
+        !Array.from(node.querySelectorAll('[class*="star" i]')).some(isStar) &&
+        !/empty|half|outline|-o\b/i.test(classOf(node)),
     );
     return stars.length >= 1 && stars.length <= 5 ? stars.length : undefined;
   };
@@ -430,7 +591,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   /** The item's most prominent heading (h2 over h4), the first of its level; a smaller label before it is not the title */
   const headingOf = (member: Element): Element | null => {
     for (const level of ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']) {
-      const found = Array.from(member.querySelectorAll(level)).find((h) => clean(h.textContent));
+      const found = Array.from(member.querySelectorAll(level)).find((h) => textOf(h));
       if (found) return found;
     }
     return null;
@@ -442,11 +603,11 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         : (headingOf(member) ??
           member.querySelector(TITLE) ??
           Array.from(member.querySelectorAll(TITLE_FALLBACK)).find((el) => {
-            const text = clean(el.textContent);
+            const text = textOf(el);
             return text.length > 0 && text.length <= 80;
           }) ??
           null);
-    const title = titleOverride ?? (titleEl ? clean(titleEl.textContent) : undefined);
+    const title = titleOverride ?? (titleEl ? textOf(titleEl) : undefined);
 
     // A short line right next to the title: a role under a name, a date over a review
     let subtitleEl: Element | undefined;
@@ -457,7 +618,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       }
       subtitleEl = [anchor.nextElementSibling, anchor.previousElementSibling].find((el): el is Element => {
         if (!el || el.querySelector('img, h1, h2, h3, h4, h5, h6')) return false;
-        const text = clean(el.textContent);
+        const text = textOf(el);
         return text.length > 0 && text.length <= 60 && !PRICE.test(text);
       });
     }
@@ -470,14 +631,15 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       .filter((image): image is RawSiteImage => image !== undefined)
       .sort((a, b) => b.box.width * b.box.height - a.box.width * a.box.height);
     const image = images[0];
-    let subtitle = subtitleEl ? clean(subtitleEl.textContent) : undefined;
+    let subtitle = subtitleEl ? textOf(subtitleEl) : undefined;
     // With nothing else under the title, the short line is the item's text, not its subtitle
     if (subtitle && text.length === 0 && !image) {
       text = [subtitle];
       subtitle = undefined;
     }
-    const price = clean(member.textContent).match(PRICE)?.[0]?.trim();
+    const price = textOf(member).match(PRICE)?.[0]?.trim();
     const rating = ratingOf(member);
+    const backgroundImage = backgroundImageOf(member);
     const icon =
       member.querySelector('svg, i[class*="icon" i], i[class*="fa-" i], [class*="icon" i]') !== null ||
       (image !== undefined && image.box.width > 0 && image.box.width <= 96);
@@ -486,6 +648,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       ...(subtitle ? { subtitle } : {}),
       text,
       ...(image ? { image } : {}),
+      ...(backgroundImage ? { backgroundImage } : {}),
       ...(price ? { price } : {}),
       ...(rating !== undefined ? { rating } : {}),
       links,
@@ -548,20 +711,40 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const { links, standalone } = linksIn(root, hidden);
     const firstMember = main?.members[0];
     const precedes = (el: Element) => !firstMember || Boolean(el.compareDocumentPosition(firstMember) & Node.DOCUMENT_POSITION_FOLLOWING);
-    const headingEl =
+    const headings =
       role === 'content'
-        ? Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6')).find(
-            (h) => !hidden.some((el) => el.contains(h)) && !excluded(h) && precedes(h) && clean(h.textContent),
-          )
-        : undefined;
-    const runs = runsOf(root, [...hidden, ...standalone, ...(headingEl ? [headingEl] : [])]);
+        ? Array.from(root.querySelectorAll('h1, h2, h3, h4, h5, h6'))
+            .filter((h) => !hidden.some((el) => el.contains(h)) && !excluded(h) && precedes(h) && textOf(h))
+            .slice(0, 2)
+        : [];
+    let headingEl: Element | undefined = headings[0];
+    // A short label right above a clearly larger heading is the eyebrow ("O NAS" over "Poznaj gabinet…")
+    let eyebrowEl: Element | undefined;
+    const larger = headings[1];
+    if (headingEl && larger && !headingEl.contains(larger) && textOf(headingEl).length <= 60) {
+      const between = document.createRange();
+      between.setStartAfter(headingEl);
+      between.setEndBefore(larger);
+      const sizeOf = (el: Element) => parseFloat(window.getComputedStyle(el).fontSize) || 0;
+      if (!clean(between.toString()) && sizeOf(larger) >= sizeOf(headingEl) * 1.25) {
+        eyebrowEl = headingEl;
+        headingEl = larger;
+      }
+    }
+    const runs = runsOf(root, [...hidden, ...standalone, ...(headingEl ? [headingEl] : []), ...(eyebrowEl ? [eyebrowEl] : [])]);
 
     // Intro: what comes before the items; header and footer keep all their text as extra
     const introRuns = role === 'content' ? runs.filter((run) => precedes(run.el)) : [];
-    let eyebrow: string | undefined;
+    let eyebrow: string | undefined = eyebrowEl ? textOf(eyebrowEl) : undefined;
     let eyebrowRun: (typeof runs)[number] | undefined;
     const firstRun = introRuns[0];
-    if (headingEl && firstRun && firstRun.text.length <= 60 && firstRun.el.compareDocumentPosition(headingEl) & Node.DOCUMENT_POSITION_FOLLOWING) {
+    if (
+      !eyebrowEl &&
+      headingEl &&
+      firstRun &&
+      firstRun.text.length <= 60 &&
+      firstRun.el.compareDocumentPosition(headingEl) & Node.DOCUMENT_POSITION_FOLLOWING
+    ) {
       eyebrow = firstRun.text;
       eyebrowRun = firstRun;
       introRuns.shift();
@@ -592,7 +775,11 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const headingLevel = headingEl ? Number(headingEl.tagName.slice(1)) : undefined;
     const backgroundImage = backgroundImageOf(root);
     const itemStyle = firstMember ? cardStyle(firstMember) : undefined;
-    const introBox = unionOf([...(headingEl ? [boxOf(headingEl)] : []), ...introRuns.map((run) => boxOf(run.el))]);
+    const introBox = unionOf([
+      ...(eyebrowEl ? [boxOf(eyebrowEl)] : []),
+      ...(headingEl ? [boxOf(headingEl)] : []),
+      ...introRuns.map((run) => boxOf(run.el)),
+    ]);
 
     return {
       role,
@@ -602,7 +789,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       ...(contentBox ? { contentBox } : {}),
       intro: {
         ...(eyebrow ? { eyebrow } : {}),
-        ...(headingEl ? { heading: clean(headingEl.textContent), headingLevel } : {}),
+        ...(headingEl ? { heading: textOf(headingEl), headingLevel } : {}),
         text: introRuns.map((run) => run.text),
         links,
       },
@@ -645,7 +832,31 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     .filter((el) => !footerCandidates.some((other) => other !== el && other.contains(el)))
     .sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1))
     .pop();
-  const chrome = [headerEl, footerEl].filter((el): el is Element => el !== undefined);
+  // A top bar right above the header (address, phones: OceanWP's #top-bar-wrap) belongs to the header
+  const headerBars: Element[] = [];
+  if (headerEl) {
+    const headerTop = headerEl.getBoundingClientRect().top;
+    for (let sib = headerEl.previousElementSibling; sib; sib = sib.previousElementSibling) {
+      const r = sib.getBoundingClientRect();
+      if (!shown(sib) || excluded(sib) || !textOf(sib)) continue;
+      if (sib.matches('[data-revamp-block]') || sib.querySelector('[data-revamp-block], h1, h2') || r.height > 200 || r.bottom > headerTop + 5) break;
+      headerBars.unshift(sib);
+    }
+  }
+  const chrome = [...headerBars, headerEl, footerEl].filter((el): el is Element => el !== undefined);
+
+  /** The header read together with its top bars: their links and text first, the header's logo first */
+  const withBars = (header: RawSiteBlock, bars: RawSiteBlock[]): RawSiteBlock =>
+    bars.length === 0
+      ? header
+      : {
+          ...header,
+          box: unionOf([...bars.map((b) => b.box), header.box]) ?? header.box,
+          intro: { ...header.intro, links: [...bars.flatMap((b) => b.intro.links), ...header.intro.links] },
+          extra: [...bars.flatMap((b) => b.extra), ...header.extra],
+          images: [...header.images, ...bars.flatMap((b) => b.images)],
+          embeds: [...bars.flatMap((b) => b.embeds), ...header.embeds],
+        };
 
   // Site-wide typography
   const firstIn = (roots: Element[], selector: string, test: (el: Element) => boolean) =>
@@ -654,9 +865,9 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const s = window.getComputedStyle(el);
     return { family: s.fontFamily, size: parseFloat(s.fontSize) || 0, weight: Number(s.fontWeight) || 400, transform: s.textTransform, color: s.color, lineHeight: s.lineHeight };
   };
-  const headingSample = firstIn(blocks, 'h2', (el) => clean(el.textContent).length > 0) ?? firstIn(blocks, 'h1', (el) => clean(el.textContent).length > 0);
-  const bodySample = firstIn(blocks, 'p', (el) => clean(el.textContent).length >= 40);
-  const buttonSample = firstIn([...chrome, ...blocks], 'a[href], button', (el) => clean(el.textContent).length > 0 && isButton(el));
+  const headingSample = firstIn(blocks, 'h2', (el) => textOf(el).length > 0) ?? firstIn(blocks, 'h1', (el) => textOf(el).length > 0);
+  const bodySample = firstIn(blocks, 'p', (el) => textOf(el).length >= 40);
+  const buttonSample = firstIn([...chrome, ...blocks], 'a[href], button', (el) => textOf(el).length > 0 && isButton(el));
   const typography: RawTypography = {};
   if (headingSample) {
     const { family, size, weight, transform, color } = fontOf(headingSample);
@@ -703,7 +914,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
   return {
     viewportWidth: vw,
     viewportHeight: vh,
-    ...(headerEl ? { header: readBlock(headerEl, 'header', undefined, []) } : {}),
+    ...(headerEl ? { header: withBars(readBlock(headerEl, 'header', undefined, []), headerBars.map((bar) => readBlock(bar, 'header', undefined, []))) } : {}),
     blocks: blocks.map((el) => readBlock(el, 'content', Number(el.getAttribute('data-revamp-block')), chrome)),
     ...(footerEl ? { footer: readBlock(footerEl, 'footer', undefined, []) } : {}),
     typography,

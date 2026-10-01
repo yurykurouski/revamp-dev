@@ -1,74 +1,20 @@
-import { IBentoTemplateData, MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
+import { IBentoTemplateData, BENTO_LAYOUT_VARIANTS, BentoLayoutVariant } from '@revamp/shared-types';
 import { getLucideIconSvg } from './icons.js';
 import { getMvpStrings } from './mvp-locale.js';
 import { escapeHtml } from './html.js';
 import { designCss, hasDesign, isHidden, renderDesignBlock, resolveSectionOrder } from './design.js';
 import { renderableCustomCss } from './css-sanitizer.js';
+import { hexToRgb, monogramSvg, resolveTrackerUrls, scriptJson, svgDataUri, trackerScriptTag } from './shared/page.js';
+import { bookingFormHtml, bookingScript } from './shared/booking.js';
 
-/**
- * Converts Hex color string (#RRGGBB or #RGB) to "R, G, B" triplet.
- */
-function hexToRgb(hex: string): string {
-  let cleanHex = hex.replace('#', '').trim();
-  if (cleanHex.length === 3) {
-    cleanHex = cleanHex
-      .split('')
-      .map((c) => c + c)
-      .join('');
-  }
-  const num = parseInt(cleanHex, 16);
-  if (isNaN(num)) {
-    return '92, 91, 237'; // Default brand fallback
-  }
-  const r = (num >> 16) & 255;
-  const g = (num >> 8) & 255;
-  const b = num & 255;
-  return `${r}, ${g}, ${b}`;
-}
-
-/**
- * Serialises a value for an inline <script>, so text cannot close the script element.
- */
-function scriptJson(value: unknown): string {
-  return JSON.stringify(value).replace(/</g, '\\u003c').replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
-}
-
-/**
- * Encodes an SVG document as a data URI, e.g. for an inline favicon.
- */
-function svgDataUri(svg: string): string {
-  return `data:image/svg+xml,${encodeURIComponent(svg.trim())}`;
-}
-
-/**
- * Resolves the telemetry URLs from the public API URL (REV-52). MVPs are served from the
- * storage host, so relative /api/v1/... paths would hit S3/MinIO instead of the API.
- * The tracker appends /api/v1/track/mvp-event to data-api, so data-api is the API origin.
- */
-export function resolveTrackerUrls(
-  publicApiUrl: string | undefined,
-): { scriptSrc: string; apiOrigin: string; eventUrl: string } | null {
-  if (!publicApiUrl) return null;
-  let apiOrigin: string;
-  try {
-    apiOrigin = new URL(publicApiUrl).origin;
-  } catch {
-    return null;
-  }
-  const apiBase = publicApiUrl.replace(/\/+$/, '');
-  return {
-    scriptSrc: `${apiBase}/track/revamp-tracker.js`,
-    apiOrigin,
-    eventUrl: `${apiBase}/track/mvp-event`,
-  };
-}
+export { resolveTrackerUrls } from './shared/page.js';
 
 /**
  * Styles each layout adds on top of the shared design system (REV-54). Only the active layout's
  * block is applied; the others wait in the layout <template>s for a live switch (REV-84). Bento
  * needs nothing extra.
  */
-const LAYOUT_CSS: Record<MvpLayoutVariant, string> = {
+const LAYOUT_CSS: Record<BentoLayoutVariant, string> = {
   bento: '',
   split: `
     /* LAYOUT: SPLIT (image-led) */
@@ -208,7 +154,7 @@ type MvpSection = 'about' | 'services' | 'gallery' | 'reviews';
  * Section order per layout: image-led layouts show the gallery early, text-led ones the About block.
  * Also sent to the page script, which reorders the sections on a live layout switch (REV-84).
  */
-export const LAYOUT_SECTION_ORDER: Record<MvpLayoutVariant, MvpSection[]> = {
+export const LAYOUT_SECTION_ORDER: Record<BentoLayoutVariant, MvpSection[]> = {
   bento: ['about', 'services', 'gallery', 'reviews'],
   split: ['gallery', 'services', 'about', 'reviews'],
   editorial: ['about', 'services', 'reviews', 'gallery'],
@@ -254,7 +200,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const accentRgb = hexToRgb(accentColor);
   const tracker = resolveTrackerUrls(data.publicApiUrl);
   // The layout only arranges the same grounded content differently (REV-54)
-  const layout: MvpLayoutVariant = data.layout ?? 'bento';
+  const layout: BentoLayoutVariant = data.layout ?? 'bento';
   // The operator's custom design (REV-92); without one the page renders exactly as before
   const design = hasDesign(data.design) ? data.design : undefined;
   const customCss = designCss(design);
@@ -287,17 +233,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   const footerTagline = escapeHtml(data.footerTagline || data.hero.subheadline);
 
   // Generated inline SVG monogram, used when the site has neither a logo nor a monogram
-  const initials =
-    data.businessName
-      .trim()
-      .split(/\s+/)
-      .slice(0, 2)
-      .map((w) => w.charAt(0).toUpperCase())
-      .join('') || 'R';
-  const fallbackMonogramSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="44" height="44" viewBox="0 0 44 44" fill="none">
-          <rect width="44" height="44" rx="10" fill="${primaryColor}" />
-          <text x="22" y="28" fill="#ffffff" font-family="system-ui, sans-serif" font-size="18" font-weight="700" text-anchor="middle">${escapeHtml(initials)}</text>
-        </svg>`;
+  const fallbackMonogramSvg = monogramSvg(data.businessName, primaryColor);
 
   // Logo or Monogram rendering
   let logoHtml = '';
@@ -494,7 +430,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     workingHours ? `<li class="quick-fact">${getLucideIconSvg('clock', { size: 18 })}<span>${escapeHtml(workingHours)}</span></li>` : '',
   ].join('');
 
-  const heroByLayout: Record<MvpLayoutVariant, string> = {
+  const heroByLayout: Record<BentoLayoutVariant, string> = {
     bento: `
     <!-- MODULE 2: HERO SECTION -->
     <section class="hero-section" data-revamp-part="hero">
@@ -559,7 +495,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     </section>`,
   };
 
-  const servicesBodyByLayout: Record<MvpLayoutVariant, string> = {
+  const servicesBodyByLayout: Record<BentoLayoutVariant, string> = {
     bento: `<div class="bento-grid" data-revamp-part="services">
           ${bentoCardsHtml}
         </div>`,
@@ -601,87 +537,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
     <!-- MODULE 5: INTERACTIVE BOOKING FORM -->
     <section class="booking-section" id="booking">
       <div class="container">
-        <div class="booking-wrapper">
-          <div class="section-header" style="margin-bottom: 2rem;">
-            <span class="section-tag">${escapeHtml(t.getInTouchTag)}</span>
-            <h2 class="section-title" style="font-size: 1.75rem;">${primaryCtaText}</h2>
-            <p class="section-desc">
-              ${escapeHtml(t.bookingDescription(data.businessName))}
-            </p>
-          </div>
-
-          <form id="lead-booking-form" class="booking-form" novalidate>
-            <div class="form-group">
-              <label for="lead-name" class="form-label">${escapeHtml(t.nameLabel)}</label>
-              <input 
-                type="text" 
-                id="lead-name" 
-                name="name" 
-                class="form-input" 
-                placeholder="${escapeHtml(t.namePlaceholder)}" 
-                required 
-                autocomplete="name"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="lead-phone" class="form-label">${escapeHtml(t.phoneLabel)}</label>
-              <input 
-                type="tel" 
-                id="lead-phone" 
-                name="phone" 
-                class="form-input" 
-                placeholder="${escapeHtml(t.phonePlaceholder)}" 
-                required 
-                autocomplete="tel"
-              />
-            </div>
-
-            <div class="form-group">
-              <label for="lead-service" class="form-label">${escapeHtml(t.serviceLabel)}</label>
-              <select id="lead-service" name="service" class="form-select">
-                <option value="${escapeHtml(t.generalConsultation)}">${escapeHtml(t.generalConsultation)}</option>
-                ${serviceSelectOptions}
-              </select>
-            </div>
-
-            <div class="form-group">
-              <label for="lead-notes" class="form-label">${escapeHtml(t.notesLabel)}</label>
-              <textarea 
-                id="lead-notes" 
-                name="notes" 
-                class="form-textarea" 
-                placeholder="${escapeHtml(t.notesPlaceholder)}"
-              ></textarea>
-            </div>
-
-            <div class="form-checkbox-container">
-              <input type="checkbox" id="policy-consent" class="form-checkbox" checked required />
-              <label for="policy-consent" class="checkbox-label">
-                ${escapeHtml(t.consent)}
-              </label>
-            </div>
-
-            <button type="submit" id="booking-submit-btn" class="form-submit-btn">
-              <span>${escapeHtml(t.bookNow)}</span>
-              ${getLucideIconSvg('send', { size: 18 })}
-            </button>
-          </form>
-
-          <!-- Confirmation State -->
-          <div id="booking-success-message" class="form-success-message" aria-live="polite">
-            <div class="success-icon-badge">
-              ${getLucideIconSvg('check-circle', { size: 36 })}
-            </div>
-            <h3 class="success-title">${escapeHtml(t.successTitle)}</h3>
-            <p class="success-desc" id="success-client-info">
-              ${escapeHtml(t.successDescription)}
-            </p>
-            <button type="button" id="reset-form-btn" class="btn-secondary" style="margin-inline: auto;">
-              ${escapeHtml(t.sendAnother)}
-            </button>
-          </div>
-        </div>
+        ${bookingFormHtml({ t, businessName: data.businessName, heading: primaryCtaText, serviceOptionsHtml: serviceSelectOptions })}
       </div>
     </section>`;
 
@@ -695,8 +551,8 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   };
   // Section order per layout with the design's order applied; the page script reorders by it too
   const sectionOrder = Object.fromEntries(
-    MVP_LAYOUT_VARIANTS.map((variant) => [variant, resolveSectionOrder(LAYOUT_SECTION_ORDER[variant], design)]),
-  ) as Record<MvpLayoutVariant, string[]>;
+    BENTO_LAYOUT_VARIANTS.map((variant) => [variant, resolveSectionOrder(LAYOUT_SECTION_ORDER[variant], design)]),
+  ) as Record<BentoLayoutVariant, string[]>;
   // Header links to the sections the page shows, in page order, when the design asks (REV-104)
   const sectionLinkLabel: Record<string, string> = {
     about: t.aboutTag,
@@ -716,7 +572,7 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
 
   // The other layouts' styles, hero and services markup, inert until the dashboard preview switches
   // to one of them (REV-84). Same grounded content, only arranged differently.
-  const layoutTemplatesHtml = MVP_LAYOUT_VARIANTS.filter((variant) => variant !== layout)
+  const layoutTemplatesHtml = BENTO_LAYOUT_VARIANTS.filter((variant) => variant !== layout)
     .map(
       (variant) => `
   <template data-revamp-layout="${variant}">
@@ -1754,118 +1610,8 @@ ${layoutTemplatesHtml}
   </script>
 
   <!-- CLIENT-SIDE INTERACTION SCRIPT (Zero dependencies, < 2 KB) -->
-  <script>
-    (function() {
-      const form = document.getElementById('lead-booking-form');
-      const successBlock = document.getElementById('booking-success-message');
-      const submitBtn = document.getElementById('booking-submit-btn');
-      const resetBtn = document.getElementById('reset-form-btn');
-      const clientInfo = document.getElementById('success-client-info');
-      const i18n = ${scriptJson({ bookNow: t.bookNow, sending: t.sending, successDetail: t.successDetail, fallbackService: t.generalConsultation })};
-
-      if (!form || !successBlock) return;
-
-      form.addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const nameInput = document.getElementById('lead-name');
-        const phoneInput = document.getElementById('lead-phone');
-        const serviceSelect = document.getElementById('lead-service');
-
-        if (!nameInput || !phoneInput) return;
-
-        const nameVal = nameInput.value.trim();
-        const phoneVal = phoneInput.value.trim();
-
-        if (!nameVal) {
-          nameInput.focus();
-          return;
-        }
-
-        if (!phoneVal || phoneVal.length < 6) {
-          phoneInput.focus();
-          return;
-        }
-
-        // Simulate instant submission with responsive feedback
-        submitBtn.disabled = true;
-        submitBtn.innerHTML = '<span></span>';
-        submitBtn.firstChild.textContent = i18n.sending;
-
-        setTimeout(function() {
-          form.style.display = 'none';
-          successBlock.style.display = 'block';
-
-          if (clientInfo) {
-            clientInfo.textContent = i18n.successDetail
-              .replace('{name}', nameVal)
-              .replace('{service}', serviceSelect ? serviceSelect.value : i18n.fallbackService)
-              .replace('{phone}', phoneVal);
-          }
-
-          // Dispatch telemetry Beacon if tracking token is provided
-          ${
-            data.trackingToken && tracker
-              ? `
-          try {
-            if (navigator.sendBeacon) {
-              navigator.sendBeacon(${scriptJson(tracker.eventUrl)}, new Blob([JSON.stringify({
-                token: ${scriptJson(data.trackingToken)},
-                eventType: 'booking_intent',
-                metadata: {
-                  name: nameVal,
-                  phone: phoneVal,
-                  service: serviceSelect ? serviceSelect.value : '',
-                  timestamp: new Date().toISOString()
-                }
-              })], { type: 'application/json' }));
-            }
-          } catch (err) {}
-          `
-              : ''
-          }
-        }, 300);
-      });
-
-      if (resetBtn) {
-        resetBtn.addEventListener('click', function() {
-          form.reset();
-          submitBtn.disabled = false;
-          submitBtn.innerHTML = '<span></span>';
-          submitBtn.firstChild.textContent = i18n.bookNow;
-          successBlock.style.display = 'none';
-          form.style.display = 'block';
-        });
-      }
-
-      // Real-time Theme Palette Live Customization via postMessage (REV-16 HITL Gate)
-      window.addEventListener('message', function(event) {
-        if (!event.data || event.data.type !== 'REVAMP_UPDATE_THEME' || !event.data.palette) return;
-        const palette = event.data.palette;
-        if (palette.primary) {
-          document.documentElement.style.setProperty('--brand-primary', palette.primary);
-          const hex = palette.primary.replace('#', '');
-          if (hex.length === 6) {
-            const r = parseInt(hex.substring(0, 2), 16);
-            const g = parseInt(hex.substring(2, 4), 16);
-            const b = parseInt(hex.substring(4, 6), 16);
-            document.documentElement.style.setProperty('--brand-primary-rgb', r + ', ' + g + ', ' + b);
-          }
-        }
-        if (palette.secondary) {
-          document.documentElement.style.setProperty('--brand-secondary', palette.secondary);
-        }
-        if (palette.accent) {
-          document.documentElement.style.setProperty('--brand-accent', palette.accent);
-        }
-      });
-    })();
-  </script>
-  ${
-    tracker
-      ? `<script src="${escapeHtml(tracker.scriptSrc)}" data-api="${escapeHtml(tracker.apiOrigin)}" data-token="${escapeHtml(data.trackingToken)}" async></script>`
-      : ''
-  }
+  ${bookingScript({ t, tracker, trackingToken: data.trackingToken, themeVars: { primary: '--brand-primary', primaryRgb: '--brand-primary-rgb', secondary: '--brand-secondary', accent: '--brand-accent' } })}
+  ${trackerScriptTag(tracker, data.trackingToken)}
 </body>
 </html>`;
 }
