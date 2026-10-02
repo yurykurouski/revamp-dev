@@ -105,6 +105,50 @@ export interface RawSiteSections {
   /** Characters of page text (visible text, plus hidden text inside sections) */
   pageChars: number;
   uncaptured: RawTextRun[];
+  /** The page outline for the vision model's grouping (REV-113) */
+  outline?: RawPageOutline;
+}
+
+export type RawOutlinePieceType = 'heading' | 'text' | 'list' | 'links' | 'image' | 'background' | 'embed';
+
+/** One numbered piece of the page outline the vision model groups by id (REV-113) */
+export interface RawOutlinePiece {
+  /** 1..n in document order */
+  id: number;
+  type: RawOutlinePieceType;
+  /** Tag of the nearest element */
+  tag: string;
+  /** Page coordinates; zero for hidden text */
+  box: RawBox;
+  font?: { size: number; weight: number; uppercase: boolean; color: string };
+  /** Opaque color behind the piece */
+  background?: string;
+  align?: string;
+  /** Kept hidden text: an accordion answer, a tab panel, a slide */
+  hidden?: boolean;
+  /** heading, text */
+  text?: string;
+  /** heading from h1..h6 */
+  level?: number;
+  /** A heading that is not an h tag (bold, larger or uppercase line) */
+  styled?: boolean;
+  /** list: one line per entry */
+  lines?: string[];
+  links?: RawSiteLink[];
+  image?: RawSiteImage;
+  /** background: absolute URL */
+  src?: string;
+  embed?: RawSiteEmbed;
+}
+
+/** The page cut into small numbered pieces in document order (REV-113) */
+export interface RawPageOutline {
+  pieces: RawOutlinePiece[];
+  /** The font size carrying the most text, px */
+  bodySize: number;
+  pageHeight: number;
+  /** More than OUTLINE_LIMITS.pieces; the rest were not collected */
+  truncated: boolean;
 }
 
 export function collectSiteSectionsInPage(): RawSiteSections {
@@ -911,6 +955,237 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     if (uncaptured.length < MAX_RUNS) uncaptured.push({ text: run.text.slice(0, 300), top: boxOf(run.el).top });
   }
 
+  // Page outline (REV-113): small numbered pieces a vision model groups into sections by id. Text is
+  // cut at <br> and block edges, so a table cell of <font><big><b> headings becomes headings and paragraphs.
+  const outline = ((): RawPageOutline => {
+    const MAX_PIECES = 600;
+    const pieces: RawOutlinePiece[] = [];
+    let truncated = false;
+    const addPiece = (piece: Omit<RawOutlinePiece, 'id'>) => {
+      if (pieces.length >= MAX_PIECES) {
+        truncated = true;
+        return;
+      }
+      pieces.push({ id: pieces.length + 1, ...piece });
+    };
+    // The body size: the font size that carries the most text
+    const charsBySize = new Map<number, number>();
+    {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        const length = clean(node.nodeValue).length;
+        if (!parent || !length || excluded(parent)) continue;
+        const size = Math.round(parseFloat(window.getComputedStyle(parent).fontSize) || 0);
+        charsBySize.set(size, (charsBySize.get(size) ?? 0) + length);
+      }
+    }
+    const bodySize = Array.from(charsBySize).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 16;
+    const fontFacts = (el: Element) => {
+      const s = window.getComputedStyle(el);
+      return { size: Math.round(parseFloat(s.fontSize) || 0), weight: Number(s.fontWeight) || 400, uppercase: s.textTransform === 'uppercase', color: s.color };
+    };
+    const shared = (el: Element) => ({ tag: el.tagName.toLowerCase(), font: fontFacts(el), background: backgroundOf(el), align: window.getComputedStyle(el).textAlign });
+    // Closed menus in the header, the nav and the footer are not page text (the rules reader skips them too)
+    const closedChrome = (el: Element) => {
+      const chromeRoot = el.closest('header, nav, footer, [role="navigation"], [role="banner"], [role="contentinfo"]');
+      if (!chromeRoot) return false;
+      for (let node: Element | null = el; node && node !== chromeRoot.parentElement; node = node.parentElement) if (closedStyle(node)) return true;
+      return false;
+    };
+    const skipText = (el: Element) => excluded(el) || inFormUi(el) || closedChrome(el);
+    const ZERO_BOX: RawBox = { top: 0, left: 0, width: 0, height: 0 };
+    // Kept hidden text (a closed <details>, a tab panel, a faded slide) still measures in Chrome: its box is zeroed
+    const notDrawn = (el: Element): boolean =>
+      typeof el.checkVisibility === 'function' ? !el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : !shown(el);
+    const placed = (el: Element, box: RawBox): { box: RawBox; hidden?: true } =>
+      notDrawn(el) || box.width === 0 || box.height === 0 ? { box: ZERO_BOX, hidden: true } : { box };
+
+    type Fragment = { node: Text; el: Element };
+    let line: Fragment[] = [];
+    let lines: Fragment[][] = [];
+    let blankPending = false;
+    const lineText = (frags: Fragment[]) => clean(frags.map((f) => f.node.nodeValue).join(' '));
+    const lineBox = (frags: Fragment[]): RawBox => {
+      const range = document.createRange();
+      range.setStartBefore(frags[0]!.node);
+      range.setEndAfter(frags[frags.length - 1]!.node);
+      const r = range.getBoundingClientRect();
+      return { top: Math.round(r.top + window.scrollY), left: Math.round(r.left + window.scrollX), width: Math.round(r.width), height: Math.round(r.height) };
+    };
+    const linksOfFrags = (frags: Fragment[]) =>
+      Array.from(new Set(frags.map((f) => f.el.closest('a[href]')).filter((a): a is Element => a !== null)))
+        .map(linkOf)
+        .filter((link): link is RawSiteLink => link !== undefined);
+    const LETTERS = /\p{L}/gu;
+    const styledHeading = (frags: Fragment[]): boolean => {
+      const text = lineText(frags);
+      if (text.length < 1 || text.length > 120 || /[,;]$/.test(text)) return false;
+      return frags
+        .filter((f) => clean(f.node.nodeValue))
+        .every((f) => {
+          const s = window.getComputedStyle(f.el);
+          const own = clean(f.node.nodeValue);
+          const upperText = (own.match(LETTERS) ?? []).length >= 4 && own === own.toUpperCase() && own !== own.toLowerCase();
+          return Number(s.fontWeight) >= 600 || (parseFloat(s.fontSize) || 0) >= bodySize * 1.2 || s.textTransform === 'uppercase' || upperText;
+        });
+    };
+    const endLine = () => {
+      if (line.length) lines.push(line);
+      line = [];
+    };
+    const flushText = (pending: Fragment[][]) => {
+      const frags = pending.flat();
+      if (!frags.length) return;
+      const box = unionOf(pending.map(lineBox)) ?? ZERO_BOX;
+      addPiece({ type: 'text', ...shared(frags[0]!.el), ...placed(frags[0]!.el, box), text: lineText(frags), links: linksOfFrags(frags) });
+    };
+    /** Ends the paragraph: heading lines become headings, the lines between them one text piece each */
+    const flushParagraph = () => {
+      endLine();
+      let pending: Fragment[][] = [];
+      for (const frags of lines) {
+        if (styledHeading(frags)) {
+          flushText(pending);
+          pending = [];
+          addPiece({ type: 'heading', ...shared(frags[0]!.el), ...placed(frags[0]!.el, lineBox(frags)), text: lineText(frags), styled: true, links: linksOfFrags(frags) });
+        } else pending.push(frags);
+      }
+      flushText(pending);
+      lines = [];
+      blankPending = false;
+    };
+    const lineBreak = () => {
+      if (line.length) {
+        endLine();
+        blankPending = false;
+      } else if (lines.length && !blankPending) {
+        // <br><br>: a blank line ends the paragraph
+        flushParagraph();
+        blankPending = true;
+      }
+    };
+
+    const addImage = (el: Element) => {
+      if (excluded(el)) return;
+      const image = imageOf(el);
+      if (!image) return;
+      const { width, height } = image.box;
+      if ((width > 0 || height > 0) && width < 40 && height < 40) return;
+      addPiece({ type: 'image', tag: 'img', ...placed(el, image.box), image });
+    };
+    const embedOf = (el: Element): RawSiteEmbed => {
+      if (el.tagName === 'FORM') {
+        const action = absolute(el.getAttribute('action'));
+        return { kind: 'form', ...(action ? { src: action } : {}), box: boxOf(el) };
+      }
+      const src = absolute(el.getAttribute('src') || el.getAttribute('data-src') || el.querySelector('source')?.getAttribute('src'));
+      if (el.tagName === 'IFRAME') return { kind: src && MAP_SRC.test(src) ? 'map' : src && VIDEO_SRC.test(src) ? 'video' : 'widget', ...(src ? { src } : {}), box: boxOf(el) };
+      if (el.tagName === 'VIDEO') return { kind: 'video', ...(src ? { src } : {}), box: boxOf(el) };
+      return { kind: 'map', box: boxOf(el) };
+    };
+    const EMBED = 'iframe, video, form, .leaflet-container, .gm-style';
+    /** Every text node under the element sits in a link, and it holds no photo: a menu, a button row */
+    const allLinks = (el: Element): boolean => {
+      const photo = Array.from(el.querySelectorAll('img')).some((img) => {
+        const r = img.getBoundingClientRect();
+        return r.width >= 40 || r.height >= 40;
+      });
+      if (photo) return false;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let any = false;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (!parent || !clean(node.nodeValue) || skipText(parent)) continue;
+        if (!parent.closest('a[href]')) {
+          // Separators between menu links ("|", "·") are not copy
+          if (/^[|·•/\\\-–—\s]+$/.test(node.nodeValue || '')) continue;
+          return false;
+        }
+        any = true;
+      }
+      return any;
+    };
+    const plainList = (el: Element) =>
+      (el.tagName === 'UL' || el.tagName === 'OL') &&
+      Array.from(el.children).every(
+        (li) => li.tagName === 'LI' && !li.querySelector('img, h1, h2, h3, h4, h5, h6') && Array.from(li.querySelectorAll('*')).every((d) => !isBlock(d)),
+      );
+
+    let visited = 0;
+    const visit = (el: Element): void => {
+      if (++visited > 20000 || pieces.length >= MAX_PIECES) {
+        if (pieces.length >= MAX_PIECES) truncated = true;
+        return;
+      }
+      if (el !== document.body && excluded(el)) return;
+      if (el.tagName === 'IMG') {
+        // A photo ends the paragraph before it, so the pieces stay in page order
+        flushParagraph();
+        addImage(el);
+        return;
+      }
+      if (el.matches(EMBED)) {
+        flushParagraph();
+        const embed = embedOf(el);
+        addPiece({ type: 'embed', tag: el.tagName.toLowerCase(), box: embed.box, embed });
+        return;
+      }
+      if (el !== document.body && el !== document.documentElement) {
+        const match = window.getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+        const r = el.getBoundingClientRect();
+        const src = match ? absolute(match[1]) : undefined;
+        if (src && r.width >= 200 && r.height >= 100) {
+          flushParagraph();
+          addPiece({ type: 'background', tag: el.tagName.toLowerCase(), box: boxOf(el), src });
+        }
+      }
+      if (/^H[1-6]$/.test(el.tagName)) {
+        flushParagraph();
+        const text = textOf(el);
+        if (text && !skipText(el)) {
+          addPiece({ type: 'heading', ...shared(el), ...placed(el, boxOf(el)), text, level: Number(el.tagName[1]), links: linksIn(el, []).links });
+        }
+        el.querySelectorAll('img').forEach(addImage);
+        return;
+      }
+      if (el !== document.body && isBlock(el) && allLinks(el)) {
+        flushParagraph();
+        const links = Array.from(el.querySelectorAll('a[href]'))
+          .filter((a) => !skipText(a))
+          .map(linkOf)
+          .filter((l): l is RawSiteLink => l !== undefined);
+        if (links.length) addPiece({ type: 'links', ...shared(el), box: boxOf(el), links });
+        return;
+      }
+      if (plainList(el) && !skipText(el)) {
+        flushParagraph();
+        const items = Array.from(el.children).map((li) => textOf(li)).filter(Boolean);
+        if (items.length) addPiece({ type: 'list', ...shared(el), ...placed(el, boxOf(el)), lines: items, links: linksIn(el, []).links });
+        return;
+      }
+      const block = isBlock(el);
+      if (block) flushParagraph();
+      for (const child of Array.from(el.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (clean(child.nodeValue) && !skipText(el)) {
+            line.push({ node: child as Text, el });
+            blankPending = false;
+          }
+          continue;
+        }
+        if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        const childEl = child as Element;
+        if (childEl.tagName === 'BR') lineBreak();
+        else visit(childEl);
+      }
+      if (block) flushParagraph();
+    };
+    visit(document.body);
+    flushParagraph();
+    return { pieces, bodySize, pageHeight: Math.round(document.documentElement.scrollHeight), truncated };
+  })();
+
   return {
     viewportWidth: vw,
     viewportHeight: vh,
@@ -920,5 +1195,6 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     typography,
     pageChars,
     uncaptured,
+    outline,
   };
 }
