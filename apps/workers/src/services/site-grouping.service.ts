@@ -44,7 +44,9 @@ Group the pieces as a visitor sees the page:
 Rules:
 - Use only ids from the outline. Use each id at most once in the whole answer: a piece that is a section's
   heading or an item's title is not listed again in pieces.
-- Every section needs a heading id: a heading piece, or a short text piece that reads as a title.
+- Every section needs a heading id: a heading piece, or a text piece of at most 120 characters that reads
+  as a title. Never an image, a list, links or a longer text: when a block has no such title, add it to
+  the section before it.
 - Place every piece that is part of the page, including link lists inside sections (they are the page's
   own copy). Leave a piece out only when it is not content: a second copy of the header menu (for example a
   hidden mobile menu with the same links), a hit counter, an empty spacer.

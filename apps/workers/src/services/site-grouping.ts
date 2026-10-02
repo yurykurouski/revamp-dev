@@ -117,18 +117,19 @@ const isPhoto = (p: RawOutlinePiece) =>
 type ItemPieces = { title?: RawOutlinePiece; pieces: RawOutlinePiece[] };
 
 /**
- * Items the page itself names when the model gave none: a slider section gets one per slide of the slider
- * that carries its copy (the outline's `slide` facts, the slide's first heading as its title; a thumbnail
- * strip's bare photos are left out), a gallery one per photo. Undefined otherwise.
+ * Items the page itself names: a slider section gets one per slide of the slider that carries its copy,
+ * whatever items the model made (the outline's `slide` facts, the slide's first heading as its title; a
+ * thumbnail strip's bare photos are left out); a gallery the model left without items one per photo.
+ * Undefined otherwise.
  */
 function derivedItems(
   s: Section,
   heading: RawOutlinePiece,
   pieces: RawOutlinePiece[],
+  itemPieces: RawOutlinePiece[],
 ): { items: ItemPieces[]; rest: RawOutlinePiece[]; headingUsed: boolean } | undefined {
-  if (s.items?.length) return undefined;
   if (s.arrangement === 'slider') {
-    const all = [heading, ...pieces].sort(byPage);
+    const all = [heading, ...pieces, ...itemPieces].sort(byPage);
     // The slider that carries the copy; another one beside it (a thumbnail strip) only repeats its photos
     const chars = new Map<number, number>();
     for (const p of all)
@@ -150,12 +151,12 @@ function derivedItems(
         return { ...(title ? { title } : {}), pieces: group.filter((p) => p !== title) };
       });
     // Copy on another slider stays with the section; its bare thumbnails are left out
-    const rest = pieces.filter(
-      (p) => !p.slide || (p.slide.slider !== main && linesOf(p).length > 0),
-    );
+    const rest = [...pieces, ...itemPieces]
+      .filter((p) => !p.slide || (p.slide.slider !== main && linesOf(p).length > 0))
+      .sort(byPage);
     return { items, rest, headingUsed: heading.slide?.slider === main };
   }
-  if (s.arrangement === 'gallery') {
+  if (s.arrangement === 'gallery' && !s.items?.length) {
     const photos = pieces.filter(isPhoto);
     if (photos.length < 2) return undefined;
     return {
@@ -175,7 +176,10 @@ function sectionBlock(
   const heading = get(s.heading);
   const eyebrow = s.eyebrow !== undefined ? get(s.eyebrow) : undefined;
   const answered = s.pieces.map(get).sort(byPage);
-  const derived = derivedItems(s, heading, answered);
+  const answeredItems = (s.items ?? [])
+    .flatMap((i) => [...(i.title !== undefined ? [i.title] : []), ...i.pieces])
+    .map(get);
+  const derived = derivedItems(s, heading, answered, answeredItems);
   const pieces = derived?.rest ?? answered;
   const items: ItemPieces[] =
     derived?.items ??

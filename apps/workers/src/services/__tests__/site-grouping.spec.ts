@@ -109,6 +109,24 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(about!.intro.heading).toBe('O nas');
   });
 
+  it('regroups a slider by its slides when the model split it into items without their photos', () => {
+    const on = (index: number) => ({ slide: { slider: 1, index } });
+    const slides: RawOutlinePiece[] = [
+      P(1, 'background', { tag: 'div', box: box(140, 0, 1440, 550), src: 'https://x.test/a.jpg', ...on(1) }),
+      P(2, 'heading', { text: 'Pierwszy', styled: true, box: box(365, 50, 554, 48), ...on(1) }),
+      P(3, 'background', { tag: 'div', box: box(140, 1450, 1440, 550), src: 'https://x.test/b.jpg', ...on(2) }),
+      P(4, 'heading', { text: 'Drugi', styled: true, box: box(297, 1500, 383, 48), ...on(2) }),
+      P(5, 'text', { text: 'Opis drugiego', box: box(350, 1500, 383, 48), ...on(2) }),
+    ];
+    const hero = readGroupedSections({ ...raw, outline: { ...outline, pieces: slides }, pageChars: 30 }, {
+      sections: [{ heading: 2, pieces: [1, 3], items: [{ title: 4, pieces: [5] }], kind: 'other', arrangement: 'slider' }],
+    }).sections!.sections[0]!;
+    expect(hero.items.map((i) => [i.title, i.text, i.backgroundImage])).toEqual([
+      ['Pierwszy', [], 'https://x.test/a.jpg'],
+      ['Drugi', ['Opis drugiego'], 'https://x.test/b.jpg'],
+    ]);
+  });
+
   it('takes the items from the slider that carries the text, not from its thumbnail strip', () => {
     const on = (slider: number, index: number) => ({ slide: { slider, index } });
     const bg = (id: number, src: string, slider: number, index: number, left: number) =>
