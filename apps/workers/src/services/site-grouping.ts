@@ -127,6 +127,7 @@ function derivedItems(
   heading: RawOutlinePiece,
   pieces: RawOutlinePiece[],
   itemPieces: RawOutlinePiece[],
+  viewportWidth: number,
 ): { items: ItemPieces[]; rest: RawOutlinePiece[]; headingUsed: boolean } | undefined {
   if (s.arrangement === 'slider') {
     const all = [heading, ...pieces, ...itemPieces].sort(byPage);
@@ -140,16 +141,24 @@ function derivedItems(
         );
     const main = Array.from(chars).sort((a, b) => b[1] - a[1])[0]?.[0];
     const slides = new Map<number, RawOutlinePiece[]>();
-    for (const p of all)
-      if (p.slide?.slider === main)
-        slides.set(p.slide.index, [...(slides.get(p.slide.index) ?? []), p]);
+    for (const p of all) {
+      const index = p.slide && p.slide.slider === main ? p.slide.index : undefined;
+      if (index !== undefined) slides.set(index, [...(slides.get(index) ?? []), p]);
+    }
     if (slides.size < 2) return undefined;
-    const items = Array.from(slides)
+    const ordered = Array.from(slides)
       .sort((a, b) => a[0] - b[0])
       .map(([, group]) => {
         const title = group.find((p) => p.type === 'heading');
         return { ...(title ? { title } : {}), pieces: group.filter((p) => p !== title) };
       });
+    // A looping slider waits with earlier slides off the canvas: start at the one on screen
+    const shown = ordered.findIndex((item) =>
+      [...(item.title ? [item.title] : []), ...item.pieces].some(
+        (p) => drawn(p.box) && p.box.left + p.box.width > 0 && p.box.left < viewportWidth,
+      ),
+    );
+    const items = shown > 0 ? [...ordered.slice(shown), ...ordered.slice(0, shown)] : ordered;
     // Copy on another slider stays with the section; its bare thumbnails are left out
     const rest = [...pieces, ...itemPieces]
       .filter((p) => !p.slide || (p.slide.slider !== main && linesOf(p).length > 0))
@@ -179,7 +188,7 @@ function sectionBlock(
   const answeredItems = (s.items ?? [])
     .flatMap((i) => [...(i.title !== undefined ? [i.title] : []), ...i.pieces])
     .map(get);
-  const derived = derivedItems(s, heading, answered, answeredItems);
+  const derived = derivedItems(s, heading, answered, answeredItems, viewportWidth);
   const pieces = derived?.rest ?? answered;
   const items: ItemPieces[] =
     derived?.items ??

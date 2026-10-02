@@ -1,6 +1,6 @@
 {
  "url": "https://www.anident.pl/",
- "recordedAt": "2026-10-02T18:00:08.903Z",
+ "recordedAt": "2026-10-02T18:10:01.924Z",
  "model": "claude-cli:sonnet",
  "viewportWidth": 1440,
  "viewportHeight": 900,
@@ -2148,16 +2148,16 @@
      13
     ],
     "kind": "other",
-    "arrangement": "text"
+    "arrangement": "banner"
    },
    {
-    "heading": 15,
+    "heading": 16,
+    "eyebrow": 15,
     "pieces": [
-     16,
      17
     ],
     "kind": "about",
-    "arrangement": "banner"
+    "arrangement": "media-beside-text"
    },
    {
     "heading": 18,
@@ -2205,8 +2205,13 @@
    },
    {
     "heading": 38,
+    "pieces": [],
+    "kind": "contact",
+    "arrangement": "banner"
+   },
+   {
+    "heading": 39,
     "pieces": [
-     39,
      40,
      41,
      42,
@@ -2239,7 +2244,7 @@
      57
     ],
     "kind": "features",
-    "arrangement": "list"
+    "arrangement": "media-beside-text"
    },
    {
     "heading": 58,

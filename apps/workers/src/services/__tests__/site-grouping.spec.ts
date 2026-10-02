@@ -109,6 +109,21 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(about!.intro.heading).toBe('O nas');
   });
 
+  it('starts the slides at the one on screen, in their loop order', () => {
+    const on = (index: number) => ({ slide: { slider: 1, index } });
+    const slides: RawOutlinePiece[] = [
+      P(1, 'background', { tag: 'div', box: box(140, -1450, 1440, 550), src: 'https://x.test/z.jpg', ...on(1) }),
+      P(2, 'background', { tag: 'div', box: box(140, 0, 1440, 550), src: 'https://x.test/a.jpg', ...on(2) }),
+      P(3, 'heading', { text: 'Pierwszy', styled: true, box: box(365, 50, 554, 48), ...on(2) }),
+      P(4, 'background', { tag: 'div', box: box(140, 1450, 1440, 550), src: 'https://x.test/b.jpg', ...on(3) }),
+      P(5, 'heading', { text: 'Drugi', styled: true, box: box(297, 1500, 383, 48), ...on(3) }),
+    ];
+    const hero = readGroupedSections({ ...raw, outline: { ...outline, pieces: slides }, pageChars: 20 }, {
+      sections: [{ heading: 3, pieces: [1, 2, 4, 5], kind: 'other', arrangement: 'slider' }],
+    }).sections!.sections[0]!;
+    expect(hero.items.map((i) => i.backgroundImage)).toEqual(['https://x.test/a.jpg', 'https://x.test/b.jpg', 'https://x.test/z.jpg']);
+  });
+
   it('regroups a slider by its slides when the model split it into items without their photos', () => {
     const on = (index: number) => ({ slide: { slider: 1, index } });
     const slides: RawOutlinePiece[] = [
