@@ -160,3 +160,26 @@ describe('ImageService', () => {
     });
   });
 });
+
+describe('ImageService.tilesForVision (REV-113)', () => {
+  it('cuts a full-page capture into page-ordered tiles at most maxTiles, scaled to the width', async () => {
+    const png = await sharp({ create: { width: 1440, height: 4000, channels: 3, background: '#fff' } }).png().toBuffer();
+    const tiles = await ImageService.tilesForVision(png, { tileHeight: 1800, maxTiles: 2, width: 1024 });
+    expect(tiles.map((t) => [t.top, t.bottom])).toEqual([
+      [0, 1800],
+      [1800, 3600],
+    ]);
+    const meta = await sharp(tiles[0]!.data).metadata();
+    expect([meta.format, meta.width]).toEqual(['webp', 1024]);
+  });
+
+  it('ends the last tile at the bottom of the page', async () => {
+    const png = await sharp({ create: { width: 1440, height: 2000, channels: 3, background: '#fff' } }).png().toBuffer();
+    const tiles = await ImageService.tilesForVision(png);
+    expect(tiles.map((t) => [t.top, t.bottom])).toEqual([
+      [0, 1800],
+      [1800, 2000],
+    ]);
+  });
+});
+

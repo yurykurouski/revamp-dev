@@ -177,3 +177,63 @@ describe('LlmClient (REV-37)', () => {
     });
   });
 });
+
+describe('images and usage (REV-113)', () => {
+  const img = { mediaType: 'image/webp' as const, data: Buffer.from('abc') };
+  const ok = (body: unknown) => vi.fn().mockResolvedValue({ ok: true, json: async () => body, text: async () => '' });
+  const bodyOf = (fetcher: ReturnType<typeof ok>) => JSON.parse((fetcher.mock.calls[0] as [string, { body: string }])[1].body);
+
+  it('sends images to Anthropic after the text, and returns token usage', async () => {
+    const fetcher = ok({ content: [{ type: 'text', text: '{}' }], usage: { input_tokens: 10, output_tokens: 5 } });
+    const client = new LlmClient({ provider: 'anthropic', anthropicApiKey: 'k', customFetcher: fetcher as unknown as typeof fetch });
+    const res = await client.completeWithUsage({ systemPrompt: 's', userPrompt: 'u', temperature: 0, images: [img] });
+    expect(bodyOf(fetcher).messages[0].content).toEqual([
+      { type: 'text', text: 'u' },
+      { type: 'image', source: { type: 'base64', media_type: 'image/webp', data: 'YWJj' } },
+    ]);
+    expect(res).toEqual({ text: '{}', usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 } });
+  });
+
+  it('keeps a text-only Anthropic prompt a plain string', async () => {
+    const fetcher = ok({ content: [{ type: 'text', text: '{}' }] });
+    const res = await new LlmClient({ provider: 'anthropic', anthropicApiKey: 'k', customFetcher: fetcher as unknown as typeof fetch }).completeWithUsage({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      temperature: 0,
+    });
+    expect(bodyOf(fetcher).messages[0].content).toBe('u');
+    expect(res.usage).toBeUndefined();
+  });
+
+  it('sends images to OpenAI as data URIs and to Gemini as inline data', async () => {
+    const openai = ok({ choices: [{ message: { content: '{}' } }], usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 } });
+    const o = await new LlmClient({ provider: 'openai', openaiApiKey: 'k', customFetcher: openai as unknown as typeof fetch }).completeWithUsage({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      temperature: 0,
+      images: [img],
+    });
+    expect(bodyOf(openai).messages[1].content[1]).toEqual({ type: 'image_url', image_url: { url: 'data:image/webp;base64,YWJj' } });
+    expect(o.usage).toEqual({ promptTokens: 1, completionTokens: 2, totalTokens: 3 });
+    const gemini = ok({ candidates: [{ content: { parts: [{ text: '{}' }] } }], usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 1 } });
+    const r = await new LlmClient({ provider: 'gemini', geminiApiKey: 'k', customFetcher: gemini as unknown as typeof fetch }).completeWithUsage({
+      systemPrompt: 's',
+      userPrompt: 'u',
+      temperature: 0,
+      images: [img],
+    });
+    expect(bodyOf(gemini).contents[0].parts[1]).toEqual({ inline_data: { mime_type: 'image/webp', data: 'YWJj' } });
+    expect(r.usage).toEqual({ promptTokens: 4, completionTokens: 1, totalTokens: 5 });
+  });
+
+  it('sends images to the CLI through the vision runner, and text-only prompts through the plain runner', async () => {
+    const vision = vi.fn().mockResolvedValue({ text: '{}', usage: { promptTokens: 1, completionTokens: 1, totalTokens: 2 } });
+    const plain = vi.fn().mockResolvedValue('{}');
+    const client = new LlmClient({ provider: 'claude-cli', claudeCliRunner: plain, claudeCliVisionRunner: vision });
+    const res = await client.completeWithUsage({ systemPrompt: 's', userPrompt: 'u', temperature: 0, images: [img] });
+    expect(vision).toHaveBeenCalledWith(expect.objectContaining({ images: [img] }));
+    expect(res.usage?.totalTokens).toBe(2);
+    await client.complete({ systemPrompt: 's', userPrompt: 'u', temperature: 0 });
+    expect(plain).toHaveBeenCalledTimes(1);
+  });
+});
