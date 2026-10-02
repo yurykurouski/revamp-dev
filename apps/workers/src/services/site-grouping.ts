@@ -117,9 +117,9 @@ const isPhoto = (p: RawOutlinePiece) =>
 type ItemPieces = { title?: RawOutlinePiece; pieces: RawOutlinePiece[] };
 
 /**
- * Items the page itself names when the model gave none: a slider section gets one per slide number (the
- * outline's `slide` facts, the slide's first heading as its title; a thumbnail strip's slide N joins slide N),
- * a gallery one per photo. Undefined otherwise.
+ * Items the page itself names when the model gave none: a slider section gets one per slide of the slider
+ * that carries its copy (the outline's `slide` facts, the slide's first heading as its title; a thumbnail
+ * strip's bare photos are left out), a gallery one per photo. Undefined otherwise.
  */
 function derivedItems(
   s: Section,
@@ -128,24 +128,32 @@ function derivedItems(
 ): { items: ItemPieces[]; rest: RawOutlinePiece[]; headingUsed: boolean } | undefined {
   if (s.items?.length) return undefined;
   if (s.arrangement === 'slider') {
-    const slides = new Map<string, RawOutlinePiece[]>();
-    for (const p of [heading, ...pieces].sort(byPage)) {
-      if (!p.slide) continue;
-      const key = String(p.slide.index);
-      slides.set(key, [...(slides.get(key) ?? []), p]);
-    }
+    const all = [heading, ...pieces].sort(byPage);
+    // The slider that carries the copy; another one beside it (a thumbnail strip) only repeats its photos
+    const chars = new Map<number, number>();
+    for (const p of all)
+      if (p.slide)
+        chars.set(
+          p.slide.slider,
+          (chars.get(p.slide.slider) ?? 0) + linesOf(p).join(' ').length + 1,
+        );
+    const main = Array.from(chars).sort((a, b) => b[1] - a[1])[0]?.[0];
+    const slides = new Map<number, RawOutlinePiece[]>();
+    for (const p of all)
+      if (p.slide?.slider === main)
+        slides.set(p.slide.index, [...(slides.get(p.slide.index) ?? []), p]);
     if (slides.size < 2) return undefined;
     const items = Array.from(slides)
-      .sort((a, b) => Number(a[0]) - Number(b[0]))
+      .sort((a, b) => a[0] - b[0])
       .map(([, group]) => {
         const title = group.find((p) => p.type === 'heading');
         return { ...(title ? { title } : {}), pieces: group.filter((p) => p !== title) };
       });
-    return {
-      items,
-      rest: pieces.filter((p) => !p.slide),
-      headingUsed: heading.slide !== undefined,
-    };
+    // Copy on another slider stays with the section; its bare thumbnails are left out
+    const rest = pieces.filter(
+      (p) => !p.slide || (p.slide.slider !== main && linesOf(p).length > 0),
+    );
+    return { items, rest, headingUsed: heading.slide?.slider === main };
   }
   if (s.arrangement === 'gallery') {
     const photos = pieces.filter(isPhoto);

@@ -28,6 +28,10 @@ Group the pieces as a visitor sees the page:
 - sections, in page order: each starts at its heading and holds every piece that belongs to that heading
   until the next section: its text, lists, buttons and the photos shown with it. A photo floated beside or
   between paragraphs belongs to that paragraph's section, never to a separate gallery.
+- heading: the section's main title. A short label right above a larger title (a small "O NAS" over
+  "Poznaj nasz gabinet") is the eyebrow, and the larger title is the heading.
+- a box with its own heading (a "Questions? Write to us" box beside a text, a contact form with a title)
+  is its own section, not part of the text next to it.
 - items, only for repeated cards or entries (services, people, reviews, questions): each item's title id and pieces.
 - a slider (pieces marked slide=S.N) is one section with arrangement slider; its heading is the first slide's
   heading and its pieces are every piece of every slide (the slides become its items).

@@ -109,7 +109,7 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(about!.intro.heading).toBe('O nas');
   });
 
-  it('merges a thumbnail strip into the slides it mirrors: one item per slide number', () => {
+  it('takes the items from the slider that carries the text, not from its thumbnail strip', () => {
     const on = (slider: number, index: number) => ({ slide: { slider, index } });
     const bg = (id: number, src: string, slider: number, index: number, left: number) =>
       P(id, 'background', { tag: 'div', box: box(140, left, 1440, 550), src, ...on(slider, index) });
@@ -118,8 +118,8 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
       P(2, 'heading', { text: 'Pierwszy', styled: true, box: box(365, 50, 554, 48), ...on(1, 1) }),
       bg(3, 'https://x.test/b.jpg', 1, 2, 1450),
       P(4, 'heading', { text: 'Drugi', styled: true, box: box(297, 1500, 383, 48), ...on(1, 2) }),
-      bg(5, 'https://x.test/a-thumb.jpg', 2, 1, 0),
-      bg(6, 'https://x.test/b-thumb.jpg', 2, 2, 290),
+      bg(5, 'https://x.test/a-thumb.jpg', 2, 6, 0),
+      bg(6, 'https://x.test/b-thumb.jpg', 2, 7, 290),
     ];
     const hero = readGroupedSections({ ...raw, outline: { ...outline, pieces: pieces2 }, pageChars: 20 }, {
       sections: [{ heading: 2, pieces: [1, 3, 4, 5, 6], kind: 'other', arrangement: 'slider' }],
@@ -128,6 +128,9 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
       ['Pierwszy', 'https://x.test/a.jpg'],
       ['Drugi', 'https://x.test/b.jpg'],
     ]);
+    // The thumbnails are neither items nor the section's own photo
+    expect(hero.images).toEqual([]);
+    expect(hero.style.backgroundImage).toBeUndefined();
   });
 
   it('records a left-out menu by its labels', () => {
