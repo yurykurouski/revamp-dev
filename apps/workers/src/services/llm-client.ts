@@ -338,11 +338,34 @@ export class LlmClient {
   }
 }
 
-/** Extracts the first JSON object from a model's text answer */
+/** The first balanced {...} from `start`, skipping braces inside strings; undefined when it never closes */
+function balancedObject(text: string, start: number): string | undefined {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return undefined;
+}
+
+/** Extracts the first JSON object from a model's text answer, also when more text (with braces) follows it */
 export function extractJsonObject(rawText: string): unknown {
-  const jsonMatch = rawText.trim().match(/\{[\s\S]*\}/);
+  const text = rawText.trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('LLM response did not contain a valid JSON object.');
   }
-  return JSON.parse(jsonMatch[0]);
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (err) {
+    const first = balancedObject(text, jsonMatch.index ?? 0);
+    if (first === undefined || first === jsonMatch[0]) throw err;
+    return JSON.parse(first);
+  }
 }

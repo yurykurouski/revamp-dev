@@ -171,6 +171,11 @@ describe('LlmClient (REV-37)', () => {
       expect(extractJsonObject('Sure! ```json\n{"a": {"b": 1}}\n```')).toEqual({ a: { b: 1 } });
     });
 
+    it('takes the first complete object when text with braces follows it (REV-113)', () => {
+      expect(extractJsonObject('{"sections":[{"heading":3}]}\n\nNote: piece {7} was left out.')).toEqual({ sections: [{ heading: 3 }] });
+      expect(extractJsonObject('{"a":"}"}\n{"b":2}')).toEqual({ a: '}' });
+    });
+
     it('throws when there is no JSON object', () => {
       expect(() => extractJsonObject('no json here')).toThrow('did not contain a valid JSON object');
       expect(() => extractJsonObject('{not json}')).toThrow();
