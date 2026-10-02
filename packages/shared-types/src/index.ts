@@ -1323,6 +1323,7 @@ export const REBUILD_FALLBACK_REASONS = [
   'rebuild:unread',
   'rebuild:no_content',
   'rebuild:low_coverage',
+  'rebuild:flat',
   'rebuild:invalid',
   'rebuild:too_large',
 ] as const;

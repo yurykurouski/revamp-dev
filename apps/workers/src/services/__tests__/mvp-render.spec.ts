@@ -41,6 +41,20 @@ describe('renderMvp (REV-110)', () => {
     expect(out.layout).toMatchObject({ variant: 'split', reasons: expect.arrayContaining(['rebuild:invalid']) });
     expect(bento).toHaveBeenCalledWith({}, {}, undefined, 'split', undefined, derived.design);
   });
+  it('falls back to Bento on a flat reading, with rebuild:flat and its facts first (REV-112)', () => {
+    const bento = vi.spyOn(bentoTemplateService, 'renderFromAudit').mockReturnValue('BENTO');
+    const block = (index: number, chars: number) => ({
+      index, role: 'content' as const, kind: 'other' as const, arrangement: 'text' as const,
+      intro: { text: ['x'.repeat(chars)], links: [] }, items: [], extra: [], images: [], embeds: [], style: {},
+    });
+    // The anident.pl shape: three long blocks without headings
+    const audit = { siteSections: { sections: [block(0, 4700), block(1, 3500), block(2, 350)], skipped: [], coverage: { pageChars: 8605, capturedChars: 8550, ratio: 0.994, uncaptured: [] } } };
+    const out = renderMvp({ lead: {}, audit, layout: rebuildLayout(derived), derived, design: derived.design });
+    expect(out.html).toBe('BENTO');
+    expect(out.rebuild).toBeUndefined();
+    expect(out.layout.reasons.slice(0, 4)).toEqual(['rebuild:flat', 'flat:share=0.55', 'flat:headings=0/3', 'rule:derived']);
+    expect(bento).toHaveBeenCalledOnce();
+  });
   it('rethrows an unexpected error rather than hiding it as a fallback', () => {
     vi.spyOn(rebuildTemplateService, 'renderFromAudit').mockImplementation(() => { throw new Error('bug'); });
     expect(() => renderMvp({ lead: {}, audit: {}, layout: rebuildLayout(derived), derived })).toThrow('bug');

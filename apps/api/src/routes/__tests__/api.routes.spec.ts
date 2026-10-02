@@ -1789,6 +1789,32 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(save).not.toHaveBeenCalled();
     });
 
+    it('refuses a switch to original when the reading is flat (REV-112)', async () => {
+      mockProject('split');
+      mockLead('NEEDS_APPROVAL');
+      const block = (index: number, chars: number) => ({
+        index, role: 'content', kind: 'other', arrangement: 'text',
+        intro: { text: ['x'.repeat(chars)], links: [] }, items: [], extra: [], images: [], embeds: [], style: {},
+      });
+      mockAudit({
+        siteSections: {
+          sections: [block(0, 4700), block(1, 3500), block(2, 350)],
+          skipped: [],
+          coverage: { pageChars: 8605, capturedChars: 8550, ratio: 0.994, uncaptured: [] },
+        },
+      });
+      const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+      save.mockClear();
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatchObject({
+        code: 'MVP_REBUILD_UNAVAILABLE',
+        details: { reason: 'rebuild:flat', facts: ['flat:share=0.55', 'flat:headings=0/3'] },
+      });
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+    });
+
     it('refuses a switch to original when the audit is missing', async () => {
       mockProject('split');
       mockLead('NEEDS_APPROVAL');

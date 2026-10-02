@@ -22,6 +22,9 @@ import {
   MVP_LAYOUT_VARIANTS,
   REBUILD_OMISSIONS,
   RebuildFallbackReason,
+  ISiteLink,
+  ISiteSection,
+  ISiteSectionItem,
   ISiteSections,
   MvpDesignElement,
   MvpLayoutVariant,
@@ -791,7 +794,7 @@ export const BentoLayoutVariantSchema = z.enum(BENTO_LAYOUT_VARIANTS);
 
 /** Codes that describe one render (REV-110), not the audit; a new pick starts without them */
 const isRenderOutcome = (reason: string) =>
-  reason.startsWith('rule:') || reason.startsWith('rebuild:') || reason.startsWith('coverage:') || reason.startsWith('manual:');
+  reason.startsWith('rule:') || reason.startsWith('rebuild:') || reason.startsWith('coverage:') || reason.startsWith('flat:') || reason.startsWith('manual:');
 
 export const MvpLayoutSelectionSchema = z.object({
   variant: MvpLayoutVariantSchema,
@@ -1215,6 +1218,70 @@ export function isPermanentAuditError(message: string): boolean {
 
 /** Below this share of the original page's text the MVP falls back to the Bento template */
 export const REBUILD_MIN_COVERAGE = 0.85;
+/**
+ * A reading of a page with at least this much text (`coverage.pageChars`) is checked for flatness
+ * (REV-112); a short one-screen page may well be a single block
+ */
+export const REBUILD_FLAT_MIN_PAGE_CHARS = 1500;
+/** Above this share of the sections' text in one hero or content section, the reading is flat (REV-112) */
+export const REBUILD_MAX_SECTION_SHARE = 0.5;
+/** Below this share of hero and content sections with a heading, the reading is flat (REV-112) */
+export const REBUILD_MIN_HEADING_SHARE = 0.25;
+
+/**
+ * Characters of text a section holds, as the reader's coverage counts them (REV-109). A price inside its
+ * item's text, and a link whose label the text already holds (a link inside a paragraph, a card wrapped
+ * in a link), are not counted twice. The reader passes `isAttributeLabel` for links labeled by
+ * aria-label or title, which are not page text; a stored reading no longer knows them.
+ */
+export function siteSectionChars(section: ISiteSection, isAttributeLabel: (link: ISiteLink) => boolean = () => false): number {
+  const sum = (list: string[]) => list.reduce((total, s) => total + s.length, 0);
+  const labels = (links: ISiteLink[], text: string) =>
+    sum(links.filter((link) => !isAttributeLabel(link) && !text.includes(link.label)).map((link) => link.label));
+  const itemChars = (i: ISiteSectionItem) => {
+    const text = [i.title, i.subtitle, ...i.text].filter(Boolean).join(' ');
+    return (
+      (i.title?.length ?? 0) +
+      (i.subtitle?.length ?? 0) +
+      sum(i.text) +
+      (i.price && !i.text.some((line) => line.includes(i.price!)) ? i.price.length : 0) +
+      labels(i.links, text)
+    );
+  };
+  const itemsChars = (items: ISiteSectionItem[]) => items.reduce((total, i) => total + itemChars(i), 0);
+  const introText = [
+    section.intro.eyebrow,
+    section.intro.heading,
+    ...section.intro.text,
+    ...section.extra.flatMap((e) => (e.type === 'text' ? e.text : [])),
+  ]
+    .filter(Boolean)
+    .join(' ');
+  return (
+    (section.intro.eyebrow?.length ?? 0) +
+    (section.intro.heading?.length ?? 0) +
+    sum(section.intro.text) +
+    labels(section.intro.links, introText) +
+    itemsChars(section.items) +
+    section.extra.reduce((total, e) => total + (e.type === 'text' ? sum(e.text) : itemsChars(e.items)), 0)
+  );
+}
+
+/**
+ * Why a reading is too flat to rebuild faithfully (REV-112): on a page with enough text, one hero or
+ * content section holds most of the sections' text, or few of them have a heading. Old table layouts
+ * read as a few giant blocks, which coverage alone accepts. Undefined when the reading has structure.
+ */
+function flatReading(read: ISiteSections): string[] | undefined {
+  if (read.coverage.pageChars < REBUILD_FLAT_MIN_PAGE_CHARS) return undefined;
+  const body = read.sections.filter((section) => section.role === 'hero' || section.role === 'content');
+  const total = read.sections.reduce((sum, section) => sum + siteSectionChars(section), 0);
+  if (body.length === 0 || total === 0) return undefined;
+  const share = Math.round((Math.max(...body.map((section) => siteSectionChars(section))) / total) * 1000) / 1000;
+  const headed = body.filter((section) => section.intro.heading).length;
+  if (share <= REBUILD_MAX_SECTION_SHARE && headed / body.length >= REBUILD_MIN_HEADING_SHARE) return undefined;
+  return [`flat:share=${share}`, `flat:headings=${headed}/${body.length}`];
+}
 
 export type RebuildEligibility = { ok: true } | { ok: false; reason: RebuildFallbackReason; facts: string[] };
 
@@ -1233,6 +1300,8 @@ export function rebuildEligibility(
   if (read.coverage.ratio < REBUILD_MIN_COVERAGE) {
     return { ok: false, reason: 'rebuild:low_coverage', facts: [`coverage:${read.coverage.ratio}`] };
   }
+  const flat = flatReading(read);
+  if (flat) return { ok: false, reason: 'rebuild:flat', facts: flat };
   return { ok: true };
 }
 

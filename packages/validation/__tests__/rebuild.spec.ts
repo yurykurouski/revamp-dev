@@ -2,13 +2,17 @@ import { describe, expect, it } from 'vitest';
 import {
   MvpLayoutSelectionSchema,
   MvpRebuildSummarySchema,
+  REBUILD_FLAT_MIN_PAGE_CHARS,
+  REBUILD_MAX_SECTION_SHARE,
   REBUILD_MIN_COVERAGE,
+  REBUILD_MIN_HEADING_SHARE,
   RebuildPlanSchema,
   UpdateMvpLayoutSchema,
   manualMvpLayout,
   rebuildEligibility,
+  siteSectionChars,
 } from '../src/index.js';
-import type { IRebuildPlan, ISiteSections } from '@revamp/shared-types';
+import type { IRebuildPlan, ISiteSection, ISiteSections } from '@revamp/shared-types';
 
 const sections = (ratio: number, roles: Array<'header' | 'hero' | 'content' | 'footer'> = ['header', 'hero', 'content']): ISiteSections => ({
   sections: roles.map((role, index) => ({
@@ -42,6 +46,96 @@ describe('rebuildEligibility (REV-110)', () => {
   });
 });
 
+/** A section with `chars` characters of body text, and a heading when given */
+const block = (index: number, role: ISiteSection['role'], chars: number, heading?: string): ISiteSection => ({
+  index, role, kind: 'other', arrangement: 'text',
+  intro: { ...(heading ? { heading } : {}), text: chars > 0 ? ['x'.repeat(chars)] : [], links: [] },
+  items: [], extra: [], images: [], embeds: [], style: {},
+});
+const reading = (pageChars: number, list: ISiteSection[]): ISiteSections => {
+  const captured = list.reduce((sum, section) => sum + siteSectionChars(section), 0);
+  return { sections: list, skipped: [], coverage: { pageChars, capturedChars: captured, ratio: 0.99, uncaptured: [] } };
+};
+
+// The shapes read from Mongo (REV-112): anident.pl and reskor.pl are table layouts read as a few giant
+// blocks, falcodent.pl a modern page read section by section
+const anident = reading(8605, [block(0, 'hero', 4700), block(1, 'content', 3500), block(2, 'content', 350)]);
+const reskor = reading(2781, [block(0, 'header', 60), block(1, 'content', 2600, 'O nas'), block(2, 'footer', 80)]);
+const falcodent = reading(5314, [
+  block(0, 'header', 120),
+  ...Array.from({ length: 17 }, (_, i) => block(i + 1, i === 0 ? 'hero' : 'content', i === 3 ? 1200 : 220, i % 3 === 2 ? undefined : `H${i}`)),
+  block(18, 'footer', 300),
+]);
+
+describe('rebuildEligibility: flat readings (REV-112)', () => {
+  it('names its thresholds', () => {
+    expect(REBUILD_FLAT_MIN_PAGE_CHARS).toBe(1500);
+    expect(REBUILD_MAX_SECTION_SHARE).toBe(0.5);
+    expect(REBUILD_MIN_HEADING_SHARE).toBe(0.25);
+  });
+  it('falls back on a few giant blocks without headings (anident.pl)', () => {
+    expect(rebuildEligibility({ siteSections: anident })).toEqual({
+      ok: false, reason: 'rebuild:flat', facts: ['flat:share=0.55', 'flat:headings=0/3'],
+    });
+  });
+  it('falls back when one section holds nearly all the text (reskor.pl)', () => {
+    expect(rebuildEligibility({ siteSections: reskor })).toEqual({
+      ok: false, reason: 'rebuild:flat', facts: ['flat:share=0.949', 'flat:headings=1/1'],
+    });
+  });
+  it('still rebuilds a page read section by section (falcodent.pl)', () => {
+    expect(rebuildEligibility({ siteSections: falcodent })).toEqual({ ok: true });
+  });
+  it('accepts a section at the share threshold and falls back just above it', () => {
+    const at = reading(2000, [block(0, 'hero', 500, 'A'), block(1, 'content', 500, 'B')]);
+    expect(rebuildEligibility({ siteSections: at })).toEqual({ ok: true });
+    const above = reading(2000, [block(0, 'hero', 501, 'A'), block(1, 'content', 499, 'B')]);
+    expect(rebuildEligibility({ siteSections: above })).toMatchObject({ reason: 'rebuild:flat', facts: ['flat:share=0.501', 'flat:headings=2/2'] });
+  });
+  it('counts the header and footer text in the total, but not as the largest section', () => {
+    const list = [block(0, 'header', 900), block(1, 'content', 400, 'A'), block(2, 'content', 300, 'B'), block(3, 'footer', 100)];
+    expect(rebuildEligibility({ siteSections: reading(2000, list) })).toEqual({ ok: true });
+  });
+  it('accepts a quarter of the sections with a heading and falls back below it', () => {
+    const titled = (headed: number) =>
+      reading(4000, Array.from({ length: 8 }, (_, i) => block(i, 'content', 200, i < headed ? `H${i}` : undefined)));
+    expect(rebuildEligibility({ siteSections: titled(2) })).toEqual({ ok: true });
+    expect(rebuildEligibility({ siteSections: titled(1) })).toMatchObject({ reason: 'rebuild:flat', facts: ['flat:share=0.126', 'flat:headings=1/8'] });
+  });
+  it('does not check a short page, which may well be one block', () => {
+    const short = (pageChars: number) => reading(pageChars, [block(0, 'hero', 1400)]);
+    expect(rebuildEligibility({ siteSections: short(REBUILD_FLAT_MIN_PAGE_CHARS - 1) })).toEqual({ ok: true });
+    expect(rebuildEligibility({ siteSections: short(REBUILD_FLAT_MIN_PAGE_CHARS) })).toMatchObject({ reason: 'rebuild:flat' });
+  });
+  it('reports low coverage before flatness', () => {
+    const low = { ...anident, coverage: { ...anident.coverage, ratio: 0.5 } };
+    expect(rebuildEligibility({ siteSections: low })).toMatchObject({ reason: 'rebuild:low_coverage' });
+  });
+  it('is not flat when the sections hold only media', () => {
+    expect(rebuildEligibility({ siteSections: reading(3000, [block(0, 'hero', 0), block(1, 'content', 0)]) })).toEqual({ ok: true });
+  });
+});
+
+describe('siteSectionChars (REV-109, shared by the coverage and REV-112)', () => {
+  const section: ISiteSection = {
+    ...block(0, 'content', 0, 'Head'),
+    intro: { eyebrow: 'Eye', heading: 'Head', text: ['Read more here'], links: [
+      { label: 'more', href: 'https://a.pl/x', kind: 'link' },
+      { label: 'Call', href: 'tel:1', kind: 'phone' },
+    ] },
+    items: [{ title: 'Cleaning', text: ['od 150 zł per visit'], price: 'od 150 zł', links: [] }, { title: 'Exam', text: [], price: '90 zł', links: [] }],
+    extra: [{ type: 'text', text: ['Extra'] }],
+  };
+  it('counts each piece of text once', () => {
+    // Eye 3 + Head 4 + 'Read more here' 14 + 'Call' 4 ('more' is in the text) + Cleaning 8 + its line 19
+    // (the price is in it) + Exam 4 + '90 zł' 5 + Extra 5
+    expect(siteSectionChars(section)).toBe(66);
+  });
+  it('leaves out labels the reader marks as not page text', () => {
+    expect(siteSectionChars(section, (link) => link.label === 'Call')).toBe(62);
+  });
+});
+
 describe('layout variants (REV-110)', () => {
   it('accepts original in the layout selection and the PATCH body', () => {
     expect(MvpLayoutSelectionSchema.parse({ variant: 'original', reasons: ['rule:rebuild'] }).variant).toBe('original');
@@ -52,6 +146,10 @@ describe('layout variants (REV-110)', () => {
       { reasons: ['rebuild:low_coverage', 'coverage:0.7', 'manual:original', 'rule:derived', 'images:3'] },
       'bento',
     );
+    expect(layout.reasons).toEqual(['rule:manual', 'images:3']);
+  });
+  it('manualMvpLayout drops the flat reading facts (REV-112)', () => {
+    const layout = manualMvpLayout({ reasons: ['rebuild:flat', 'flat:share=0.549', 'flat:headings=0/3', 'images:3'] }, 'original');
     expect(layout.reasons).toEqual(['rule:manual', 'images:3']);
   });
 });

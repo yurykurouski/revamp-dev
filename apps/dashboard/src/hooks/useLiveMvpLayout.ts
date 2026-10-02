@@ -34,7 +34,7 @@ const RERENDER_WAIT_MS = 90_000;
 const RERENDER_POLL_MS = 2000;
 
 /** The reasons the API gives for refusing a switch to the original site (`rebuildEligibility`) */
-const REFUSAL_REASONS = ['rebuild:unread', 'rebuild:no_content', 'rebuild:low_coverage'] as const;
+const REFUSAL_REASONS = ['rebuild:unread', 'rebuild:no_content', 'rebuild:low_coverage', 'rebuild:flat'] as const;
 type RefusalReason = (typeof REFUSAL_REASONS)[number];
 const isRefusalReason = (reason: string): reason is RefusalReason => (REFUSAL_REASONS as readonly string[]).includes(reason);
 const refusalKind = (reason: RefusalReason) =>
