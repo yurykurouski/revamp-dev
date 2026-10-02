@@ -577,6 +577,20 @@ describe('Prototype step layout picker (REV-84)', () => {
       expect(rerendering()).toBe(false);
     });
 
+    it('says the reading is too flat when the switch is refused with rebuild:flat (REV-112)', async () => {
+      render(mvpWith('bento'));
+      vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(
+        new ApiError('The original site cannot be rebuilt: rebuild:flat', 409, 'MVP_REBUILD_UNAVAILABLE', {
+          reason: 'rebuild:flat',
+          facts: ['flat:share=0.55', 'flat:headings=0/3'],
+        }),
+      );
+      click('original');
+      await vi.waitFor(() =>
+        expect(document.body.textContent).toContain(en.mvpLayout.saveFailed.replace('{{message}}', en.mvpLayout.rebuildRefused.flat)),
+      );
+    });
+
     it("shows the server's message for a refusal without a known reason", async () => {
       render(mvpWith('bento'));
       vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(

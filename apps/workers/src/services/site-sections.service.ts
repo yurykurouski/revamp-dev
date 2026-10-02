@@ -16,7 +16,7 @@ import type {
   SiteSectionArrangement,
   SiteSectionKind,
 } from '@revamp/shared-types';
-import { SITE_SECTIONS_LIMITS, SiteSectionsSchema } from '@revamp/validation';
+import { SITE_SECTIONS_LIMITS, SiteSectionsSchema, siteSectionChars } from '@revamp/validation';
 import { classifyBlock, WHY_US_WORDS, type RawLayoutBlock } from './site-layout.service.js';
 import type { RawItemGroup, RawSiteBlock, RawSiteImage, RawSiteItem, RawSiteLink, RawSiteSections, RawTextRun, RawTypography } from './site-sections.page.js';
 
@@ -228,42 +228,8 @@ const toItem = (item: RawSiteItem, flag: Cut): ISiteSectionItem => {
 
 const alignOf = (textAlign: string): 'left' | 'center' => (/center/.test(textAlign) ? 'center' : 'left');
 
-/**
- * Characters of text a section holds. A price inside its item's text, and a link whose label the text
- * already holds (a link inside a paragraph, a card wrapped in a link), are not counted twice.
- */
-function sectionChars(section: ISiteSection): number {
-  const sum = (list: string[]) => list.reduce((total, s) => total + s.length, 0);
-  const labels = (links: ISiteLink[], text: string) =>
-    sum(links.filter((link) => !attributeLabels.has(link) && !text.includes(link.label)).map((link) => link.label));
-  const itemChars = (i: ISiteSectionItem) => {
-    const text = [i.title, i.subtitle, ...i.text].filter(Boolean).join(' ');
-    return (
-      (i.title?.length ?? 0) +
-      (i.subtitle?.length ?? 0) +
-      sum(i.text) +
-      (i.price && !i.text.some((line) => line.includes(i.price!)) ? i.price.length : 0) +
-      labels(i.links, text)
-    );
-  };
-  const itemsChars = (items: ISiteSectionItem[]) => items.reduce((total, i) => total + itemChars(i), 0);
-  const introText = [
-    section.intro.eyebrow,
-    section.intro.heading,
-    ...section.intro.text,
-    ...section.extra.flatMap((e) => (e.type === 'text' ? e.text : [])),
-  ]
-    .filter(Boolean)
-    .join(' ');
-  return (
-    (section.intro.eyebrow?.length ?? 0) +
-    (section.intro.heading?.length ?? 0) +
-    sum(section.intro.text) +
-    labels(section.intro.links, introText) +
-    itemsChars(section.items) +
-    section.extra.reduce((total, e) => total + (e.type === 'text' ? sum(e.text) : itemsChars(e.items)), 0)
-  );
-}
+/** Characters of text a section holds, as the coverage counts them; aria-label and title labels are not page text */
+const sectionChars = (section: ISiteSection): number => siteSectionChars(section, (link) => attributeLabels.has(link));
 
 /** All the section's text in order, for duplicate detection and samples */
 function sectionText(section: ISiteSection): string {

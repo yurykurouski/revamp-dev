@@ -74,7 +74,7 @@ describe('MvpLayoutChip (REV-54)', () => {
       expect(Object.keys(locale.mvpLayout.variants)).toEqual(['original', 'bento', 'split', 'editorial', 'compact']);
       expect(Object.keys(locale.mvpLayout.descriptions)).toEqual(['original', 'bento', 'split', 'editorial', 'compact']);
       expect(Object.keys(locale.mvpLayout.rules)).toHaveLength(9);
-      expect(Object.keys(locale.mvpLayout.fallback)).toEqual(['unread', 'no_content', 'low_coverage', 'invalid', 'too_large']);
+      expect(Object.keys(locale.mvpLayout.fallback)).toEqual(['unread', 'no_content', 'low_coverage', 'flat', 'invalid', 'too_large']);
       expect(locale.mvpLayout.unread.length).toBeGreaterThan(0);
     }
   });
@@ -130,5 +130,15 @@ describe('MvpLayoutChip (REV-54)', () => {
     const unread = render(mvp({ variant: 'bento', reasons: ['rebuild:unread', 'rule:default'] }));
     expect(unread).toContain('MuiChip-colorWarning');
     expect(unread).toContain(escape(en.mvpLayout.fallback.unread));
+  });
+
+  it('marks a fallback on a flat reading with a warning chip and says why (REV-112)', () => {
+    const html = render(mvp({ variant: 'split', reasons: ['rebuild:flat', 'flat:share=0.55', 'flat:headings=0/3', 'rule:derived'] }));
+    expect(html).toContain('MuiChip-colorWarning');
+    expect(html).toContain(escape(en.mvpLayout.fallback.flat));
+    for (const locale of [en, ru, pl, lt, be]) {
+      expect(locale.mvpLayout.fallback.flat.length).toBeGreaterThan(0);
+      expect(locale.mvpLayout.rebuildRefused.flat.length).toBeGreaterThan(0);
+    }
   });
 });
