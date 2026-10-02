@@ -2,7 +2,8 @@
  * Node half of the site section reader (REV-109): turns the raw DOM facts `collectSiteSectionsInPage`
  * reports into validated `ISiteSections`. Cleans the text, attaches stray text to the nearer section,
  * skips noise, empty, duplicate and over-cap blocks with a reason, names each section's arrangement,
- * kind and style, and measures how much of the page's text the sections hold. No LLM at any step.
+ * kind and style, and measures how much of the page's text the sections hold. No LLM here; a grouping
+ * from the vision model (REV-113) arrives as assembled blocks with hints.
  */
 import type {
   ISiteImage,
@@ -15,6 +16,7 @@ import type {
   SiteLinkKind,
   SiteSectionArrangement,
   SiteSectionKind,
+  SiteSectionsSource,
 } from '@revamp/shared-types';
 import { SITE_SECTIONS_LIMITS, SiteSectionsSchema, siteSectionChars } from '@revamp/validation';
 import { classifyBlock, WHY_US_WORDS, type RawLayoutBlock } from './site-layout.service.js';
@@ -128,6 +130,30 @@ export function arrangementOf(block: RawSiteBlock): {
     text.left + text.width <= media.box.left + media.box.width;
   if (block.backgroundImage || (coversSection && copyOnMedia)) return { arrangement: 'banner' };
   return { arrangement: 'text' };
+}
+
+const ITEM_ARRANGEMENTS = new Set<SiteSectionArrangement>(['card-grid', 'list', 'accordion', 'tabs', 'slider', 'gallery']);
+
+/** The model's arrangement for a grouped section, when the assembled content can be shown that way (REV-113) */
+export function hintedArrangement(block: RawSiteBlock): ReturnType<typeof arrangementOf> | undefined {
+  const arrangement = block.hint?.arrangement;
+  if (!arrangement) return undefined;
+  const items = block.group?.items ?? [];
+  if (ITEM_ARRANGEMENTS.has(arrangement)) {
+    if (items.length < 2) return undefined;
+    return arrangement === 'card-grid' ? { arrangement, columns: Math.min(MAX_COLUMNS, Math.max(1, columnsOf(items))) } : { arrangement };
+  }
+  if (arrangement === 'embed') return block.embeds.length > 0 ? { arrangement } : undefined;
+  if (arrangement === 'banner') return block.backgroundImage || block.images.length > 0 ? { arrangement } : undefined;
+  if (arrangement === 'media-beside-text') {
+    const measured = arrangementOf(block);
+    if (measured.arrangement === 'media-beside-text') return measured;
+    const media = [...block.images].sort((a, b) => area(b.box) - area(a.box))[0];
+    if (!media) return undefined;
+    const text = block.introBox;
+    return { arrangement, ...(text ? { mediaSide: media.box.left + media.box.width / 2 < text.left + text.width / 2 ? ('left' as const) : ('right' as const) } : {}) };
+  }
+  return { arrangement };
 }
 
 /** What the items say the section is; wins over the heading (spec §5.4) */
@@ -325,10 +351,10 @@ function toSection(
     // A block without a heading of its own, right after a heading band, is named by that band's heading
     const heading = cleanText(block.intro.heading) ? undefined : bandHeading;
     const named = heading ? { ...block, intro: { ...block.intro, heading } } : block;
-    kind = kindFromItems(named) ?? (layoutBlock ? classifyBlock(heading ? { ...layoutBlock, heading } : layoutBlock) : 'other');
+    kind = block.hint?.kind ?? kindFromItems(named) ?? (layoutBlock ? classifyBlock(heading ? { ...layoutBlock, heading } : layoutBlock) : 'other');
   }
 
-  const arrangement = arrangementOf(block);
+  const arrangement = hintedArrangement(block) ?? arrangementOf(block);
   const items = block.group ? cutList(block.group.items.map((i) => toItem(i, flag)), L.items, flag) : [];
   const firstImage = block.group?.items.find((i) => i.image)?.image;
   const itemStyle = block.itemStyle
@@ -401,7 +427,11 @@ export type SiteSectionsReading = { sections: ISiteSections; error?: undefined }
  * Turns the raw DOM facts into the page's sections, or says why they don't describe any. Every block
  * becomes a section or a `skipped` entry with its reason; nothing is dropped silently.
  */
-export function readSiteSections(raw: RawSiteSections | undefined, layoutBlocks: RawLayoutBlock[] = []): SiteSectionsReading {
+export function readSiteSections(
+  raw: RawSiteSections | undefined,
+  layoutBlocks: RawLayoutBlock[] = [],
+  source: SiteSectionsSource = 'rules',
+): SiteSectionsReading {
   if (!raw || !Array.isArray(raw.blocks) || !(raw.viewportWidth > 0)) {
     return { error: 'The page sections could not be collected' };
   }
@@ -449,6 +479,11 @@ export function readSiteSections(raw: RawSiteSections | undefined, layoutBlocks:
     captured += chars;
   });
 
+  // Pieces the model placed nowhere: recorded, never counted as captured, so coverage shows the loss (REV-113)
+  for (const run of raw.leftOut ?? []) {
+    if (skipped.length < L.skipped) skipped.push({ index: run.index, reason: 'unassigned', sample: cleanText(run.text).slice(0, L.sampleChars) });
+  }
+
   if (!sections.some((s) => s.role === 'hero' || s.role === 'content')) {
     return { error: `No content sections on the page (${skipped.length} skipped)` };
   }
@@ -464,6 +499,7 @@ export function readSiteSections(raw: RawSiteSections | undefined, layoutBlocks:
       ratio: pageChars > 0 ? Math.min(1, Math.round((captured / pageChars) * 1000) / 1000) : 0,
       uncaptured: attached.unplaced.slice(0, L.uncaptured).map((t) => t.slice(0, L.sampleChars)),
     },
+    source,
   };
   // JSON drops the unset optional fields, which MongoDB would otherwise store as null
   const parsed = SiteSectionsSchema.safeParse(JSON.parse(JSON.stringify(result)));

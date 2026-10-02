@@ -1,9 +1,12 @@
+import type { SiteSectionArrangement, SiteSectionKind } from '@revamp/shared-types';
+
 /**
  * In-page half of the site section reader (REV-109). `collectSiteSectionsInPage` runs inside the
  * crawled page via page.evaluate(), so it must stay fully self-contained: no imports, no references
  * to module-level values. It reads the header, the blocks REV-104's layout walk tagged with
  * `data-revamp-block`, and the footer, and only reports raw DOM facts; `readSiteSections`
- * (site-sections.service.ts) makes every decision in Node. No LLM is involved at any step.
+ * (site-sections.service.ts) makes every decision in Node. The page outline (REV-113) is collected here
+ * too, for the vision model that groups its pieces by id; no model sees or writes anything in the page.
  */
 
 /** A box in page coordinates, px */
@@ -80,7 +83,15 @@ export interface RawSiteBlock {
   embeds: RawSiteEmbed[];
   style: { background: string; color: string; textAlign: string; paddingTop: number; paddingBottom: number };
   /** Computed style of the first item's card */
-  itemStyle?: { background: string; radius: number; borderWidth: number; boxShadow: string; textAlign: string };
+  itemStyle?: { background: string; radius: number; borderWidth: number; boxShadow: string; textAlign: string };  /** The vision model's kind and arrangement for a grouped section (REV-113); the reader checks them against the content */
+  hint?: { kind: SiteSectionKind; arrangement: SiteSectionArrangement };
+}
+
+/** Pieces the vision model placed in no section, one run each (REV-113) */
+export interface RawLeftOut {
+  /** Position in page order (header, blocks, footer) the run sits before */
+  index: number;
+  text: string;
 }
 
 /** Text outside every section, with its offset from the top of the page */
@@ -107,6 +118,8 @@ export interface RawSiteSections {
   uncaptured: RawTextRun[];
   /** The page outline for the vision model's grouping (REV-113) */
   outline?: RawPageOutline;
+  /** Outline pieces the vision model placed nowhere (REV-113) */
+  leftOut?: RawLeftOut[];
 }
 
 export type RawOutlinePieceType = 'heading' | 'text' | 'list' | 'links' | 'image' | 'background' | 'embed';
