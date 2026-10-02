@@ -778,6 +778,24 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
       expect(o.truncated).toBe(true);
     });
 
+    it('marks the pieces of each slide with their slider and slide number', async () => {
+      const slide = (title: string, photo: string) =>
+        `<div class="swiper-slide" style="width:1440px;flex:none;height:400px;background:url(https://img.test/${photo}.jpg) center/cover"><h2>${title}</h2><p>Opis slajdu ${title}.</p></div>`;
+      const o = await outlineOf(pageOf(`<div class="swiper" style="overflow:hidden"><div class="swiper-wrapper" style="display:flex">${slide('Pierwszy', 'a')}${slide('Drugi', 'b')}</div></div>
+        <section><h2>Poza sliderem</h2><p>Zwykły tekst.</p></section>`));
+      const facts = o.pieces.map((p) => `${p.type}:${p.text ?? p.src}:${p.slide ? `${p.slide.slider}.${p.slide.index}` : '-'}`);
+      expect(facts).toEqual([
+        'background:https://img.test/a.jpg:1.1',
+        'heading:Pierwszy:1.1',
+        'text:Opis slajdu Pierwszy.:1.1',
+        'background:https://img.test/b.jpg:1.2',
+        'heading:Drugi:1.2',
+        'text:Opis slajdu Drugi.:1.2',
+        'heading:Poza sliderem:-',
+        'text:Zwykły tekst.:-',
+      ]);
+    });
+
     it('reports the body size from the text it carries', async () => {
       const o = await outlineOf(pageOf(`<p>${'Zwykły tekst akapitu. '.repeat(20)}</p><h2>Duży</h2>`));
       expect(o.bodySize).toBe(16);

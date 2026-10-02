@@ -19,7 +19,9 @@ export const SITE_GROUPING_SYSTEM_PROMPT = `You organise a business's home page 
 Inputs: screenshots of the desktop page (1440px wide) in order, each with its page range, and an outline:
 one line per numbered piece of the page (heading, text, list, links, image, background, embed) with its
 font size, bold (b), position (y = px from the top of the page, x) and size, and the start of its text.
-"styled" headings are short bold, large or uppercase lines that are not HTML headings.
+"styled" headings are short bold, large or uppercase lines that are not HTML headings. "hidden" pieces are
+kept page text that is not shown until clicked (an accordion answer, a tab). "slide=S.N" marks a piece on
+slide N of slider S; slides other than the current one sit outside the screenshots (x beyond the page width).
 
 Group the pieces as a visitor sees the page:
 - header: the logo image (logo) and the menu and top-bar pieces (pieces).
@@ -27,13 +29,17 @@ Group the pieces as a visitor sees the page:
   until the next section: its text, lists, buttons and the photos shown with it. A photo floated beside or
   between paragraphs belongs to that paragraph's section, never to a separate gallery.
 - items, only for repeated cards or entries (services, people, reviews, questions): each item's title id and pieces.
+- a slider (pieces marked slide=S.N) is one section with arrangement slider; its heading is the first slide's
+  heading and its pieces are every piece of every slide (the slides become its items).
+- a gallery of photos is one section with arrangement gallery; its photos go in its pieces.
 - footer: the pieces at the bottom (address, hours, links, copyright).
 - kind, one of: services, pricing, gallery, about, team, reviews, faq, contact, map, features, other.
 - arrangement, how the section shows its content, one of: banner, media-beside-text, text, card-grid, list,
   accordion, tabs, slider, gallery, embed.
 
 Rules:
-- Use only ids from the outline. Use each id at most once.
+- Use only ids from the outline. Use each id at most once in the whole answer: a piece that is a section's
+  heading or an item's title is not listed again in pieces.
 - Every section needs a heading id: a heading piece, or a short text piece that reads as a title.
 - Place every piece that is part of the page. Leave a piece out only when it is not content (a duplicate
   menu, a hit counter, an empty spacer).
@@ -76,11 +82,13 @@ export class SiteGroupingService {
     const images = input.tiles.map((t) => ({ mediaType: 'image/webp' as const, data: t.data }));
     let usage: LlmUsage | undefined;
     let last = 'unknown error';
+    let rejected: string | undefined;
     for (const temperature of TEMPERATURES) {
       try {
         const res = await this.client.completeWithUsage({
           systemPrompt: SITE_GROUPING_SYSTEM_PROMPT,
-          userPrompt,
+          // A second attempt is told what was wrong with the first answer
+          userPrompt: rejected ? `${userPrompt}\n\nYour previous answer was rejected: ${rejected}. Answer again, following the rules.` : userPrompt,
           images,
           temperature,
           maxTokens: MAX_TOKENS,
@@ -91,11 +99,13 @@ export class SiteGroupingService {
         if (!parsed.success) {
           const issue = parsed.error.issues[0];
           last = `schema: ${issue?.path.join('.')} ${issue?.message}`;
+          rejected = last;
           continue;
         }
         const problems = checkGrouping(parsed.data, input.outline);
         if (problems.length) {
           last = problems.slice(0, 5).join('; ');
+          rejected = last;
           continue;
         }
         return { answer: parsed.data, modelUsed: this.client.modelName, usage };
@@ -118,6 +128,8 @@ export interface PageSectionsResult {
   measurementError?: IMeasurementError;
   modelUsed?: string;
   usage?: LlmUsage;
+  /** The model's ids-only answer when it passed the checks, stored or not; for the recorder script */
+  answer?: SiteGroupingAnswer;
 }
 
 /**
@@ -144,8 +156,8 @@ export async function readPageSections(input: {
   const unavailable = grouping.unavailableReason();
   if (unavailable) return fail(unavailable);
   const result = await grouping.group({ outline: input.raw.outline, tiles: input.tiles, url: input.url, niche: input.niche });
-  const meta = { modelUsed: result.modelUsed, usage: result.usage };
-  if ('error' in result) return fail(result.error, meta);
+  if ('error' in result) return fail(result.error, { modelUsed: result.modelUsed, usage: result.usage });
+  const meta = { modelUsed: result.modelUsed, usage: result.usage, answer: result.answer };
   const llm = readGroupedSections(input.raw, result.answer);
   if (llm.error) return fail(`The model's grouping could not be read: ${llm.error}`, meta);
   const llmGate = rebuildEligibility({ siteSections: llm.sections });

@@ -81,6 +81,47 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(rebuildEligibility({ siteSections: { ...read, coverage: { ...read.coverage, ratio: 0.9 } } })).toEqual({ ok: true });
   });
 
+  it('makes one item per slide of a slider section the model left without items, the slide heading as its title', () => {
+    const slide = (index: number) => ({ slide: { slider: 1, index } });
+    const slides: RawOutlinePiece[] = [
+      P(1, 'background', { tag: 'div', box: box(140, 0, 1440, 550), src: 'https://x.test/a.jpg', ...slide(1) }),
+      P(2, 'heading', { text: 'Nakładki', styled: true, box: box(365, 50, 554, 48), ...slide(1) }),
+      P(3, 'text', { text: 'Przejrzysta droga do uśmiechu', box: box(447, 50, 454, 19), ...slide(1) }),
+      P(4, 'background', { tag: 'div', box: box(140, 1450, 1440, 550), src: 'https://x.test/b.jpg', ...slide(2) }),
+      P(5, 'heading', { text: 'Stomatologia estetyczna', styled: true, box: box(297, 1500, 383, 48), ...slide(2) }),
+      P(6, 'heading', { text: 'O nas', level: 2, box: box(900, 90, 600, 48) }),
+      P(7, 'text', { text: 'Gabinet od 1995 roku.', box: box(960, 90, 600, 40) }),
+    ];
+    const o = { ...outline, pieces: slides };
+    const a: SiteGroupingAnswer = {
+      sections: [
+        { heading: 2, pieces: [1, 3, 4, 5], kind: 'other', arrangement: 'slider' },
+        { heading: 6, pieces: [7], kind: 'about', arrangement: 'text' },
+      ],
+    };
+    const [hero, about] = readGroupedSections({ ...raw, outline: o, pageChars: 120 }, a).sections!.sections;
+    expect(hero).toMatchObject({ role: 'hero', arrangement: 'slider' });
+    expect(hero!.intro.heading).toBeUndefined();
+    expect(hero!.items.map((i) => [i.title, i.text, i.backgroundImage])).toEqual([
+      ['Nakładki', ['Przejrzysta droga do uśmiechu'], 'https://x.test/a.jpg'],
+      ['Stomatologia estetyczna', [], 'https://x.test/b.jpg'],
+    ]);
+    expect(about!.intro.heading).toBe('O nas');
+  });
+
+  it('makes one item per photo of a gallery section the model left without items', () => {
+    const photos: RawOutlinePiece[] = [
+      P(1, 'heading', { text: 'Nasz gabinet', level: 2 }),
+      ...[2, 3, 4].map((id) => P(id, 'image', { tag: 'img', box: box(200, (id - 2) * 320, 300, 200), image: { src: `https://x.test/${id}.jpg`, alt: '', box: box(200, (id - 2) * 320, 300, 200), radius: 0 } })),
+    ];
+    const s = readGroupedSections({ ...raw, outline: { ...outline, pieces: photos }, pageChars: 12 }, {
+      sections: [{ heading: 1, pieces: [2, 3, 4], kind: 'gallery', arrangement: 'gallery' }],
+    }).sections!.sections[0]!;
+    expect(s).toMatchObject({ arrangement: 'gallery', kind: 'gallery', intro: expect.objectContaining({ heading: 'Nasz gabinet' }) });
+    expect(s.items.map((i) => i.image?.src)).toEqual(['https://x.test/2.jpg', 'https://x.test/3.jpg', 'https://x.test/4.jpg']);
+    expect(s.images).toEqual([]);
+  });
+
   it('refuses an invalid answer with its reasons', () => {
     expect(readGroupedSections(raw, { ...answer, footer: { pieces: [99] } }).error).toMatch(/unknown id 99/);
     expect(readGroupedSections({ ...raw, outline: undefined }, answer).error).toBe('No page outline');
@@ -95,5 +136,7 @@ describe('outlinePrompt (REV-113)', () => {
     expect(text).toMatch(/^5 image 350x233 alt="Implanty" y=500 x=590$/m);
     expect(text).toMatch(/^2 links \["Start","Oferta"\] y=210 x=40 w=1360 h=30$/m);
     expect(text).toMatch(/^4 text 13px "Implanty treść.*… \(\d+ chars\)" y=400/m);
+    const slid = outlinePrompt({ ...outline, pieces: [P(1, 'heading', { text: 'Slajd', styled: true, slide: { slider: 2, index: 3 } })] }, []);
+    expect(slid).toMatch(/^1 heading styled .* slide=2\.3$/m);
   });
 });

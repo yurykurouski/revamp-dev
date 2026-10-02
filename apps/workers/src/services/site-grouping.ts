@@ -91,18 +91,57 @@ function toItem(title: RawOutlinePiece | undefined, pieces: RawOutlinePiece[]): 
 }
 
 const MARKUP = new Set(['accordion', 'tabs', 'slider']);
+const isPhoto = (p: RawOutlinePiece) => (p.type === 'image' && p.image !== undefined) || (p.type === 'background' && p.src !== undefined);
+type ItemPieces = { title?: RawOutlinePiece; pieces: RawOutlinePiece[] };
 
-function sectionBlock(s: Section, get: (id: number) => RawOutlinePiece): RawSiteBlock {
+/**
+ * Items the page itself names when the model gave none: a slider section gets one per slide (the outline's
+ * `slide` facts, the slide's first heading as its title), a gallery one per photo. Undefined otherwise.
+ */
+function derivedItems(s: Section, heading: RawOutlinePiece, pieces: RawOutlinePiece[]): { items: ItemPieces[]; rest: RawOutlinePiece[]; headingUsed: boolean } | undefined {
+  if (s.items?.length) return undefined;
+  if (s.arrangement === 'slider') {
+    const slides = new Map<string, RawOutlinePiece[]>();
+    for (const p of [heading, ...pieces].sort(byPage)) {
+      if (!p.slide) continue;
+      const key = `${p.slide.slider}.${p.slide.index}`;
+      slides.set(key, [...(slides.get(key) ?? []), p]);
+    }
+    if (slides.size < 2) return undefined;
+    const items = Array.from(slides.values()).map((group) => {
+      const title = group.find((p) => p.type === 'heading');
+      return { ...(title ? { title } : {}), pieces: group.filter((p) => p !== title) };
+    });
+    return { items, rest: pieces.filter((p) => !p.slide), headingUsed: heading.slide !== undefined };
+  }
+  if (s.arrangement === 'gallery') {
+    const photos = pieces.filter(isPhoto);
+    if (photos.length < 2) return undefined;
+    return { items: photos.map((p) => ({ pieces: [p] })), rest: pieces.filter((p) => !isPhoto(p)), headingUsed: false };
+  }
+  return undefined;
+}
+
+function sectionBlock(s: Section, get: (id: number) => RawOutlinePiece, viewportWidth: number): RawSiteBlock {
   const heading = get(s.heading);
   const eyebrow = s.eyebrow !== undefined ? get(s.eyebrow) : undefined;
-  const pieces = s.pieces.map(get).sort(byPage);
-  const items = (s.items ?? []).map((i) => ({ title: i.title !== undefined ? get(i.title) : undefined, pieces: i.pieces.map(get) }));
-  const firstItem = Math.min(Infinity, ...items.flatMap((i) => [...(i.title ? [i.title.id] : []), ...i.pieces.map((p) => p.id)]));
+  const answered = s.pieces.map(get).sort(byPage);
+  const derived = derivedItems(s, heading, answered);
+  const pieces = derived?.rest ?? answered;
+  const items: ItemPieces[] =
+    derived?.items ?? (s.items ?? []).map((i) => ({ ...(i.title !== undefined ? { title: get(i.title) } : {}), pieces: i.pieces.map(get) }));
+  const ownHeading = derived?.headingUsed ? undefined : heading;
+  // Items the page names (slides, photos) sit beside the intro, not after it
+  const firstItem = derived
+    ? Infinity
+    : Math.min(Infinity, ...items.flatMap((i) => [...(i.title ? [i.title.id] : []), ...i.pieces.map((p) => p.id)]));
   const intro = pieces.filter((p) => isCopy(p) && p.id < firstItem);
   const after = pieces.filter((p) => isCopy(p) && p.id > firstItem);
   const all = [heading, ...(eyebrow ? [eyebrow] : []), ...pieces, ...items.flatMap((i) => [...(i.title ? [i.title] : []), ...i.pieces])];
-  const box = union(all.map((p) => p.box)) ?? ZERO;
-  const introBox = union([heading.box, ...(eyebrow ? [eyebrow.box] : []), ...intro.map((p) => p.box)]);
+  // Slides waiting off the canvas are not part of the section's drawn area
+  const onCanvas = (b: RawBox) => b.left + b.width > 0 && b.left < viewportWidth;
+  const box = union(all.map((p) => p.box).filter(onCanvas)) ?? ZERO;
+  const introBox = union([...(ownHeading ? [ownHeading.box] : []), ...(eyebrow ? [eyebrow.box] : []), ...intro.map((p) => p.box)].filter(onCanvas));
   const backgroundImage = backgroundImageOf(pieces);
   return {
     role: 'content',
@@ -111,10 +150,9 @@ function sectionBlock(s: Section, get: (id: number) => RawOutlinePiece): RawSite
     contentBox: box,
     intro: {
       ...(eyebrow ? { eyebrow: linesOf(eyebrow).join(' ') } : {}),
-      heading: linesOf(heading).join(' '),
-      headingLevel: heading.level ?? 2,
+      ...(ownHeading ? { heading: linesOf(ownHeading).join(' '), headingLevel: ownHeading.level ?? 2 } : {}),
       text: intro.flatMap(linesOf),
-      links: [...(heading.links ?? []), ...pieces.flatMap((p) => p.links ?? [])],
+      links: [...(ownHeading?.links ?? []), ...pieces.flatMap((p) => p.links ?? [])],
     },
     ...(items.length
       ? {
@@ -155,7 +193,7 @@ export function assembleGroupedBlocks(raw: RawSiteSections, outline: RawPageOutl
   const get = (id: number) => byId.get(id)!;
   const firstId = (s: Section) => Math.min(s.heading, ...s.pieces, ...(s.eyebrow !== undefined ? [s.eyebrow] : []));
   const sections = [...answer.sections].sort((a, b) => firstId(a) - firstId(b));
-  const blocks = sections.map((s) => sectionBlock(s, get));
+  const blocks = sections.map((s) => sectionBlock(s, get, raw.viewportWidth));
   // Padding: half the gap to the neighbouring sections, capped
   const gap = (a: RawBox | undefined, z: RawBox | undefined) => (a && z && drawn(a) && drawn(z) ? Math.max(0, z.top - (a.top + a.height)) : 0);
   blocks.forEach((b, i) => {
@@ -205,22 +243,22 @@ const where = (b: RawBox, size = true) => `y=${b.top} x=${b.left}${size ? ` w=${
 /** The outline as the model reads it: one line per piece, its facts, and a preview of its text */
 export function outlinePrompt(outline: RawPageOutline, tiles: { top: number; bottom: number }[]): string {
   const lines = outline.pieces.map((p) => {
-    const hidden = p.hidden ? ' hidden' : '';
+    const facts = `${p.hidden ? ' hidden' : ''}${p.slide ? ` slide=${p.slide.slider}.${p.slide.index}` : ''}`;
     switch (p.type) {
       case 'heading':
-        return `${p.id} heading ${p.level ? `h${p.level}` : 'styled'} ${p.font?.size ?? 0}px${(p.font?.weight ?? 400) >= 600 ? ' b' : ''} ${quote(preview(p.text ?? ''))} ${where(p.box)}${hidden}`;
+        return `${p.id} heading ${p.level ? `h${p.level}` : 'styled'} ${p.font?.size ?? 0}px${(p.font?.weight ?? 400) >= 600 ? ' b' : ''} ${quote(preview(p.text ?? ''))} ${where(p.box)}${facts}`;
       case 'text':
-        return `${p.id} text ${p.font?.size ?? 0}px ${quote(preview(p.text ?? ''))} ${where(p.box)}${hidden}`;
+        return `${p.id} text ${p.font?.size ?? 0}px ${quote(preview(p.text ?? ''))} ${where(p.box)}${facts}`;
       case 'list':
-        return `${p.id} list ${quote(preview((p.lines ?? []).join(' | ')))} ${where(p.box)}${hidden}`;
+        return `${p.id} list ${quote(preview((p.lines ?? []).join(' | ')))} ${where(p.box)}${facts}`;
       case 'links':
-        return `${p.id} links ${JSON.stringify((p.links ?? []).map((l) => l.label.slice(0, 40)))} ${where(p.box)}`;
+        return `${p.id} links ${JSON.stringify((p.links ?? []).map((l) => l.label.slice(0, 40)))} ${where(p.box)}${facts}`;
       case 'image':
-        return `${p.id} image ${p.image?.box.width ?? 0}x${p.image?.box.height ?? 0} alt=${quote((p.image?.alt ?? '').slice(0, 60))} ${where(p.box, false)}${hidden}`;
+        return `${p.id} image ${p.image?.box.width ?? 0}x${p.image?.box.height ?? 0} alt=${quote((p.image?.alt ?? '').slice(0, 60))} ${where(p.box, false)}${facts}`;
       case 'background':
-        return `${p.id} background ${p.box.width}x${p.box.height} ${where(p.box, false)}`;
+        return `${p.id} background ${p.box.width}x${p.box.height} ${where(p.box, false)}${facts}`;
       case 'embed':
-        return `${p.id} embed ${p.embed?.kind ?? 'widget'} ${where(p.box)}`;
+        return `${p.id} embed ${p.embed?.kind ?? 'widget'} ${where(p.box)}${facts}`;
     }
   });
   return [

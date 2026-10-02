@@ -152,6 +152,8 @@ export interface RawOutlinePiece {
   /** background: absolute URL */
   src?: string;
   embed?: RawSiteEmbed;
+  /** The piece sits on slide `index` (1..) of slider `slider` (1.., page order) */
+  slide?: { slider: number; index: number };
 }
 
 /** The page cut into small numbered pieces in document order (REV-113) */
@@ -1007,6 +1009,17 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       return false;
     };
     const skipText = (el: Element) => excluded(el) || inFormUi(el) || closedChrome(el);
+    // Slides of the common slider libraries; a piece on one is marked with its slider and slide number
+    const SLIDE = '.swiper-slide, .slick-slide, .owl-item, .carousel-item, .splide__slide, .glide__slide, .flickity-cell, rs-slide';
+    const sliders = new Map<Element, number>();
+    const slideFact = (el: Element): { slide?: { slider: number; index: number } } => {
+      const slideEl = el.closest(SLIDE);
+      const track = slideEl?.parentElement;
+      if (!slideEl || !track) return {};
+      if (!sliders.has(track)) sliders.set(track, sliders.size + 1);
+      const slides = Array.from(track.children).filter((child) => child.matches(SLIDE));
+      return { slide: { slider: sliders.get(track)!, index: slides.indexOf(slideEl) + 1 } };
+    };
     const ZERO_BOX: RawBox = { top: 0, left: 0, width: 0, height: 0 };
     // Kept hidden text (a closed <details>, a tab panel) still measures in Chrome: its box is zeroed. Opacity is not
     // checked: scroll-in animations leave real copy at opacity 0
@@ -1052,7 +1065,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       const frags = pending.flat();
       if (!frags.length) return;
       const box = unionOf(pending.map(lineBox)) ?? ZERO_BOX;
-      addPiece({ type: 'text', ...shared(frags[0]!.el), ...placed(frags[0]!.el, box), text: lineText(frags), links: linksOfFrags(frags) });
+      addPiece({ type: 'text', ...shared(frags[0]!.el), ...placed(frags[0]!.el, box), text: lineText(frags), links: linksOfFrags(frags), ...slideFact(frags[0]!.el) });
     };
     /** Ends the paragraph: heading lines become headings, the lines between them one text piece each */
     const flushParagraph = () => {
@@ -1062,7 +1075,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         if (styledHeading(frags)) {
           flushText(pending);
           pending = [];
-          addPiece({ type: 'heading', ...shared(frags[0]!.el), ...placed(frags[0]!.el, lineBox(frags)), text: lineText(frags), styled: true, links: linksOfFrags(frags) });
+          addPiece({ type: 'heading', ...shared(frags[0]!.el), ...placed(frags[0]!.el, lineBox(frags)), text: lineText(frags), styled: true, links: linksOfFrags(frags), ...slideFact(frags[0]!.el) });
         } else pending.push(frags);
       }
       flushText(pending);
@@ -1086,7 +1099,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       if (!image) return;
       const { width, height } = image.box;
       if ((width > 0 || height > 0) && width < 40 && height < 40) return;
-      addPiece({ type: 'image', tag: 'img', ...placed(el, image.box), image });
+      addPiece({ type: 'image', tag: 'img', ...placed(el, image.box), image, ...slideFact(el) });
     };
     const embedOf = (el: Element): RawSiteEmbed => {
       if (el.tagName === 'FORM') {
@@ -1142,7 +1155,7 @@ export function collectSiteSectionsInPage(): RawSiteSections {
       if (el.matches(EMBED)) {
         flushParagraph();
         const embed = embedOf(el);
-        addPiece({ type: 'embed', tag: el.tagName.toLowerCase(), box: embed.box, embed });
+        addPiece({ type: 'embed', tag: el.tagName.toLowerCase(), box: embed.box, embed, ...slideFact(el) });
         return;
       }
       if (el !== document.body && el !== document.documentElement) {
@@ -1151,14 +1164,14 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         const src = match ? absolute(match[1]) : undefined;
         if (src && r.width >= 200 && r.height >= 100) {
           flushParagraph();
-          addPiece({ type: 'background', tag: el.tagName.toLowerCase(), box: boxOf(el), src });
+          addPiece({ type: 'background', tag: el.tagName.toLowerCase(), box: boxOf(el), src, ...slideFact(el) });
         }
       }
       if (/^H[1-6]$/.test(el.tagName)) {
         flushParagraph();
         const text = textOf(el);
         if (text && !skipText(el)) {
-          addPiece({ type: 'heading', ...shared(el), ...placed(el, boxOf(el)), text, level: Number(el.tagName[1]), links: linksIn(el, []).links });
+          addPiece({ type: 'heading', ...shared(el), ...placed(el, boxOf(el)), text, level: Number(el.tagName[1]), links: linksIn(el, []).links, ...slideFact(el) });
         }
         el.querySelectorAll('img').forEach(addImage);
         return;
@@ -1169,13 +1182,13 @@ export function collectSiteSectionsInPage(): RawSiteSections {
           .filter((a) => !skipText(a))
           .map(linkOf)
           .filter((l): l is RawSiteLink => l !== undefined);
-        if (links.length) addPiece({ type: 'links', ...shared(el), box: boxOf(el), links });
+        if (links.length) addPiece({ type: 'links', ...shared(el), box: boxOf(el), links, ...slideFact(el) });
         return;
       }
       if (plainList(el) && !skipText(el)) {
         flushParagraph();
         const items = Array.from(el.children).map((li) => textOf(li)).filter(Boolean);
-        if (items.length) addPiece({ type: 'list', ...shared(el), ...placed(el, boxOf(el)), lines: items, links: linksIn(el, []).links });
+        if (items.length) addPiece({ type: 'list', ...shared(el), ...placed(el, boxOf(el)), lines: items, links: linksIn(el, []).links, ...slideFact(el) });
         return;
       }
       const block = isBlock(el);

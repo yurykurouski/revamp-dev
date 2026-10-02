@@ -41,6 +41,16 @@ describe('SiteGroupingService (REV-113)', () => {
     expect(r.usage?.totalTokens).toBe(220);
   });
 
+  it('tells the model why its first answer was rejected when it asks again', async () => {
+    const bad = JSON.stringify({ ...answer, footer: { pieces: [11, 4] } });
+    const client = clientOf(bad, JSON.stringify(answer));
+    const r = await new SiteGroupingService({ client }).group(input);
+    expect('answer' in r).toBe(true);
+    const prompts = vi.mocked(client.completeWithUsage).mock.calls.map((c) => c[0].userPrompt);
+    expect(prompts[0]).not.toContain('rejected');
+    expect(prompts[1]).toContain('Your previous answer was rejected: piece 4 used twice');
+  });
+
   it('a heading-less answer is invalid and falls back', async () => {
     const noHeading = JSON.stringify({ sections: [{ pieces: [4], kind: 'other', arrangement: 'text' }] });
     const r = await new SiteGroupingService({ client: clientOf(noHeading, noHeading) }).group(input);
@@ -60,6 +70,8 @@ describe('readPageSections (REV-113)', () => {
     expect(r.measurementError).toBeUndefined();
     expect(r.usage?.totalTokens).toBe(110);
     expect(r.modelUsed).toBe('stub');
+    // The ids-only answer, for the recorder script
+    expect(r.answer).toEqual(answer);
   });
 
   it('stores the rules reading and a sections error when no model is configured', async () => {
@@ -89,7 +101,8 @@ describe('readPageSections (REV-113)', () => {
     const flat = { sections: [{ heading: 3, pieces: [4, 5, 6, 7, 8, 9, 10], kind: 'other', arrangement: 'text' }] };
     const r = await readPageSections({ raw: passingRules, layoutBlocks: [], tiles, url: 'u', grouping: new SiteGroupingService({ client: clientOf(JSON.stringify(flat)) }) });
     expect(r.reading.sections?.source).toBe('rules');
-    expect(r.measurementError?.message).toMatch(/fails rebuild:/);
+    expect(r.measurementError?.message).toMatch(/fails rebuild:/);    // The rejected answer is still returned for the recorder
+    expect(r.answer?.sections).toHaveLength(1);
   });
 
   it('keeps the rules error when neither reader has sections', async () => {
