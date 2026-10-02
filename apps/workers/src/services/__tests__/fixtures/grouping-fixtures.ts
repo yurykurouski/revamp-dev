@@ -1,6 +1,6 @@
 /** An anident-like page outline and a model answer for it (REV-113): logo, menu, three headed sections with photos, footer */
 import type { SiteGroupingAnswer } from '@revamp/validation';
-import type { RawOutlinePiece, RawPageOutline, RawSiteSections } from '../../site-sections.page.js';
+import type { RawOutlinePiece, RawPageOutline, RawSiteBlock, RawSiteSections } from '../../site-sections.page.js';
 
 export const box = (top: number, left = 480, width = 460, height = 40) => ({ top, left, width, height });
 export const font = { size: 13, weight: 400, uppercase: false, color: 'rgb(0, 0, 0)' };
@@ -49,4 +49,26 @@ export const answer: SiteGroupingAnswer = {
     { heading: 9, pieces: [10], kind: 'services', arrangement: 'text' },
   ],
   footer: { pieces: [11] },
+};
+
+const contentBlock = (top: number, heading: string, text: string[]): RawSiteBlock => ({
+  role: 'content',
+  box: { top, left: 0, width: 1440, height: 500 },
+  introBox: { top: top + 40, left: 200, width: 1040, height: 400 },
+  contentBox: { top: top + 40, left: 200, width: 1040, height: 420 },
+  intro: { heading, headingLevel: 2, text, links: [] },
+  extra: [],
+  images: [],
+  embeds: [],
+  style: { background: 'rgb(255, 255, 255)', color: 'rgb(17, 17, 17)', textAlign: 'start', paddingTop: 40, paddingBottom: 40 },
+});
+
+/** A rules reading's raw facts: one headed block of 600 chars */
+export const rulesRaw: RawSiteSections = { ...raw, blocks: [contentBlock(1000, 'O nas', ['a'.repeat(300), 'b'.repeat(300)])], pageChars: 700 };
+
+/** Three headed blocks of 600 chars each: a rules reading that passes the rebuild gate */
+export const passingRules: RawSiteSections = {
+  ...raw,
+  blocks: [contentBlock(1000, 'Implanty', ['i'.repeat(600)]), contentBlock(1600, 'Licówki', ['l'.repeat(600)]), contentBlock(2200, 'Ortodoncja', ['o'.repeat(600)])],
+  pageChars: 1900,
 };
