@@ -170,6 +170,21 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(unread.toObject().siteSections).toBeUndefined();
     });
 
+    it('keeps the reading source and a sections measurement error (REV-113)', () => {
+      const siteSections = {
+        sections: [],
+        skipped: [{ index: 1, reason: 'unassigned', sample: 'Licznik odwiedzin' }],
+        coverage: { pageChars: 100, capturedChars: 90, ratio: 0.9, uncaptured: [] },
+        source: 'llm',
+      };
+      const measurementErrors = [{ measurement: 'sections', message: 'No vision model' }];
+      const audit = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSections, measurementErrors });
+      expect(audit.validateSync()).toBeUndefined();
+      const read = audit.toObject();
+      expect(read.siteSections).toEqual(siteSections);
+      expect(read.measurementErrors?.map(({ measurement, message }) => ({ measurement, message }))).toEqual(measurementErrors);
+    });
+
     it('should fail validation if leadId is missing', () => {
       const audit = new Audit({});
       const err = audit.validateSync();

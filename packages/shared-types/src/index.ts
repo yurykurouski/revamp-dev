@@ -149,9 +149,11 @@ export interface IAuditScores {
 
 /**
  * Audit measurements that can fail on their own without failing the audit (REV-100). `design` is the
- * Vision model's critique: when it fails, the critique is a template and its ratings are not scored (REV-101)
+ * Vision model's critique: when it fails, the critique is a template and its ratings are not scored (REV-101).
+ * `sections` is the vision model's grouping of the page (REV-113): when it fails, the rules reading is
+ * stored instead; it is not scored.
  */
-export const AUDIT_MEASUREMENTS = ['performance', 'accessibility', 'standards', 'design'] as const;
+export const AUDIT_MEASUREMENTS = ['performance', 'accessibility', 'standards', 'design', 'sections'] as const;
 export type AuditMeasurement = (typeof AUDIT_MEASUREMENTS)[number];
 
 /** A measurement the audit could not take, and why; its values are left out of the audit */
@@ -384,9 +386,13 @@ export type SiteLinkKind = (typeof SITE_LINK_KINDS)[number];
 export const SITE_EMBED_KINDS = ['map', 'video', 'form', 'widget'] as const;
 export type SiteEmbedKind = (typeof SITE_EMBED_KINDS)[number];
 
-/** Why a block was left out of the sections; nothing is dropped without one */
-export const SITE_SKIP_REASONS = ['noise', 'empty', 'duplicate', 'cap'] as const;
+/** Why a block was left out of the sections; nothing is dropped without one. `unassigned`: the model placed the piece nowhere (REV-113) */
+export const SITE_SKIP_REASONS = ['noise', 'empty', 'duplicate', 'cap', 'unassigned'] as const;
 export type SiteSkipReason = (typeof SITE_SKIP_REASONS)[number];
+
+/** Which reader produced `Audit.siteSections`: the DOM rules (REV-109) or the vision model's grouping by id (REV-113) */
+export const SITE_SECTIONS_SOURCES = ['rules', 'llm'] as const;
+export type SiteSectionsSource = (typeof SITE_SECTIONS_SOURCES)[number];
 
 export const SITE_IMAGE_SHAPES = ['square', 'round', 'wide', 'tall'] as const;
 export type SiteImageShape = (typeof SITE_IMAGE_SHAPES)[number];
@@ -484,6 +490,8 @@ export interface ISiteSections {
   typography?: ISiteTypography;
   skipped: { index: number; reason: SiteSkipReason; heading?: string; sample: string }[];
   coverage: { pageChars: number; capturedChars: number; ratio: number; uncaptured: string[] };
+  /** Absent on readings stored before REV-113 */
+  source?: SiteSectionsSource;
 }
 
 export interface IScreenshotUrls {

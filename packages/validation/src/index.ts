@@ -42,6 +42,7 @@ import {
   SITE_SECTION_KINDS,
   SITE_SECTION_ROLES,
   SITE_SKIP_REASONS,
+  SITE_SECTIONS_SOURCES,
   SITE_VERDICT_REASONS,
   findLlmProvider,
 } from '@revamp/shared-types';
@@ -254,6 +255,35 @@ export const SITE_SECTIONS_LIMITS = {
   totalChars: 150_000,
 } as const;
 
+/** The page outline the vision model groups (REV-113) */
+export const OUTLINE_LIMITS = { pieces: 600, sections: 40, items: 60, previewChars: 160 } as const;
+
+const pieceId = z.number().int().min(1).max(OUTLINE_LIMITS.pieces);
+const pieceIds = z.array(pieceId).max(OUTLINE_LIMITS.pieces);
+
+/**
+ * The vision model's grouping of the page (REV-113): references to outline pieces only. There is no
+ * string field, and unknown keys are stripped, so no model-written text can reach the stored reading.
+ */
+export const SiteGroupingAnswerSchema = z.object({
+  header: z.object({ logo: pieceId.optional(), pieces: pieceIds }).optional(),
+  sections: z
+    .array(
+      z.object({
+        heading: pieceId,
+        eyebrow: pieceId.optional(),
+        pieces: pieceIds,
+        items: z.array(z.object({ title: pieceId.optional(), pieces: pieceIds })).max(OUTLINE_LIMITS.items).optional(),
+        kind: z.enum(SITE_SECTION_KINDS),
+        arrangement: z.enum(SITE_SECTION_ARRANGEMENTS),
+      }),
+    )
+    .min(1)
+    .max(OUTLINE_LIMITS.sections),
+  footer: z.object({ pieces: pieceIds }).optional(),
+});
+export type SiteGroupingAnswer = z.infer<typeof SiteGroupingAnswerSchema>;
+
 const SL = SITE_SECTIONS_LIMITS;
 const siteHex = z.string().regex(/^#[0-9a-f]{6}$/i);
 const siteUrl = z.string().max(SL.urlChars).regex(/^https?:\/\//i);
@@ -338,7 +368,8 @@ const siteFont = {
 };
 
 /**
- * The original home page as ordered sections, read from the DOM by code (never a model): each
+ * The original home page as ordered sections, read from the DOM by code, or grouped by a vision model
+ * by id (REV-113); the text is always the page's own. Each
  * section's content, arrangement and measured style, what was left out and why, and how much of the
  * page's text the sections hold.
  */
@@ -375,6 +406,7 @@ export const SiteSectionsSchema = z.object({
     ratio: z.number().min(0).max(1),
     uncaptured: z.array(z.string().min(1).max(SL.sampleChars)).max(SL.uncaptured),
   }),
+  source: z.enum(SITE_SECTIONS_SOURCES).optional(),
 });
 
 export type SiteSectionsDto = z.infer<typeof SiteSectionsSchema>;
