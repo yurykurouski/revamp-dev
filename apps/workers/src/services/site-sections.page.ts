@@ -995,9 +995,10 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     };
     const skipText = (el: Element) => excluded(el) || inFormUi(el) || closedChrome(el);
     const ZERO_BOX: RawBox = { top: 0, left: 0, width: 0, height: 0 };
-    // Kept hidden text (a closed <details>, a tab panel, a faded slide) still measures in Chrome: its box is zeroed
+    // Kept hidden text (a closed <details>, a tab panel) still measures in Chrome: its box is zeroed. Opacity is not
+    // checked: scroll-in animations leave real copy at opacity 0
     const notDrawn = (el: Element): boolean =>
-      typeof el.checkVisibility === 'function' ? !el.checkVisibility({ opacityProperty: true, visibilityProperty: true }) : !shown(el);
+      typeof el.checkVisibility === 'function' ? !el.checkVisibility({ visibilityProperty: true }) : !shown(el);
     const placed = (el: Element, box: RawBox): { box: RawBox; hidden?: true } =>
       notDrawn(el) || box.width === 0 || box.height === 0 ? { box: ZERO_BOX, hidden: true } : { box };
 
