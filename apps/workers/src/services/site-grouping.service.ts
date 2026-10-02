@@ -41,8 +41,9 @@ Rules:
 - Use only ids from the outline. Use each id at most once in the whole answer: a piece that is a section's
   heading or an item's title is not listed again in pieces.
 - Every section needs a heading id: a heading piece, or a short text piece that reads as a title.
-- Place every piece that is part of the page. Leave a piece out only when it is not content (a duplicate
-  menu, a hit counter, an empty spacer).
+- Place every piece that is part of the page, including link lists inside sections (they are the page's
+  own copy). Leave a piece out only when it is not content: a second copy of the header menu (for example a
+  hidden mobile menu with the same links), a hit counter, an empty spacer.
 - Respond with one raw JSON object, no prose, no markdown:
 {"header":{"logo":<id>,"pieces":[<id>...]},"sections":[{"heading":<id>,"eyebrow":<id, optional>,"pieces":[<id>...],
 "items":[{"title":<id>,"pieces":[<id>...]}] (optional),"kind":"<kind>","arrangement":"<arrangement>"}],"footer":{"pieces":[<id>...]}}`;

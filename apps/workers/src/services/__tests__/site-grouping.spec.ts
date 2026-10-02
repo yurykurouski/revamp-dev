@@ -109,6 +109,33 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(about!.intro.heading).toBe('O nas');
   });
 
+  it('merges a thumbnail strip into the slides it mirrors: one item per slide number', () => {
+    const on = (slider: number, index: number) => ({ slide: { slider, index } });
+    const bg = (id: number, src: string, slider: number, index: number, left: number) =>
+      P(id, 'background', { tag: 'div', box: box(140, left, 1440, 550), src, ...on(slider, index) });
+    const pieces2: RawOutlinePiece[] = [
+      bg(1, 'https://x.test/a.jpg', 1, 1, 0),
+      P(2, 'heading', { text: 'Pierwszy', styled: true, box: box(365, 50, 554, 48), ...on(1, 1) }),
+      bg(3, 'https://x.test/b.jpg', 1, 2, 1450),
+      P(4, 'heading', { text: 'Drugi', styled: true, box: box(297, 1500, 383, 48), ...on(1, 2) }),
+      bg(5, 'https://x.test/a-thumb.jpg', 2, 1, 0),
+      bg(6, 'https://x.test/b-thumb.jpg', 2, 2, 290),
+    ];
+    const hero = readGroupedSections({ ...raw, outline: { ...outline, pieces: pieces2 }, pageChars: 20 }, {
+      sections: [{ heading: 2, pieces: [1, 3, 4, 5, 6], kind: 'other', arrangement: 'slider' }],
+    }).sections!.sections[0]!;
+    expect(hero.items.map((i) => [i.title, i.backgroundImage])).toEqual([
+      ['Pierwszy', 'https://x.test/a.jpg'],
+      ['Drugi', 'https://x.test/b.jpg'],
+    ]);
+  });
+
+  it('records a left-out menu by its labels', () => {
+    const withMenu = [...pieces.slice(0, 11), P(12, 'links', { links: [{ label: 'Profilaktyka', href: 'https://anident.test/p', button: false }, { label: 'Implanty', href: 'https://anident.test/i', button: false }] })];
+    const read = readGroupedSections({ ...raw, outline: { ...outline, pieces: withMenu } }, answer).sections!;
+    expect(read.skipped).toContainEqual(expect.objectContaining({ reason: 'unassigned', sample: 'Profilaktyka Implanty' }));
+  });
+
   it('makes one item per photo of a gallery section the model left without items', () => {
     const photos: RawOutlinePiece[] = [
       P(1, 'heading', { text: 'Nasz gabinet', level: 2 }),
