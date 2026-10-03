@@ -6,13 +6,14 @@ import {
   BENTO_LAYOUT_VARIANTS,
   BentoLayoutVariant,
 } from '@revamp/shared-types';
-import { MvpContentOutput, canChangeMvpLayout, manualMvpLayout } from '@revamp/validation';
+import { MvpContentOutput, canChangeMvpLayout, hasRebuildEdit, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpColorCandidate, MvpEditService, mvpEditService } from '../services/mvp-edit.service.js';
+import { RebuildEditService, rebuildEditService } from '../services/rebuild-edit.service.js';
 import { republishSavedMvp } from './deploy.worker.js';
 import { hasDesign, mergeDesigns } from '../templates/design.js';
 
@@ -51,13 +52,15 @@ const expired = () =>
 /**
  * Applies an operator's free-text change to a generated MVP (REV-85): the edit agent interprets it
  * under Strict Grounding, the new copy, primary color and/or layout are saved on the MVP, and the
- * published page is re-rendered before the result is returned, so the dashboard can reload it. Same
+ * published page is re-rendered before the result is returned, so the dashboard can reload it. A rebuilt
+ * MVP (REV-111) is changed through its own id-only edit instead of the Bento copy and design. Same
  * rule as a layout change: never while a regeneration runs or once outreach is scheduled (HITL).
  */
 export async function processMvpEditJob(
   data: IMvpEditJobData,
   service: MvpEditService = mvpEditService,
   now: () => number = Date.now,
+  rebuildService: RebuildEditService = rebuildEditService,
 ): Promise<IMvpEditJobResult> {
   if (now() > data.deadline) throw expired();
 
@@ -68,7 +71,19 @@ export async function processMvpEditJob(
   if (!lead) throw new Error(`Lead ${leadId} not found.`);
   if (!canChangeMvpLayout(lead.status)) throw leadLocked(lead.status);
 
+  // The rebuilt original (REV-110) has its own edit (REV-111); a manual pick that fell back renders as Bento
+  const rebuilt = project.layout?.variant === 'original';
+
   // Dropping the custom design asks no model: the template's own look is re-published (REV-92)
+  if (data.action === 'reset-design' && rebuilt) {
+    if (!hasRebuildEdit(project.rebuildEdit)) {
+      return { applied: false, summary: 'The MVP has no custom design.', changes: [] };
+    }
+    await MvpProject.findByIdAndUpdate(project._id, { $set: { editedAt: new Date() }, $unset: { rebuildEdit: '' } }).exec();
+    await republishSavedMvp(leadId);
+    console.log(`[MvpEditWorker] Dropped the rebuild edit of MVP ${data.mvpProjectId}`);
+    return { applied: true, summary: 'The custom design was removed.', changes: ['design'] };
+  }
   if (data.action === 'reset-design') {
     if (!hasDesign(project.design)) {
       return { applied: false, summary: 'The MVP has no custom design.', changes: [] };
@@ -82,8 +97,52 @@ export async function processMvpEditJob(
   const audit = await findGenerationAudit(leadId, project.auditId?.toString());
   if (!audit) throw new Error(`No completed audit found for lead ${leadId}.`);
 
+  // Only the parts the change touched, so a palette or layout picked meanwhile is kept otherwise
+  const apply = async (summary: string, changes: IMvpEditJobResult['changes'], update: Record<string, unknown>, unset: Record<string, ''> = {}) => {
+    // The model may take a while: the operator may have given up, or the lead moved on meanwhile
+    if (now() > data.deadline) throw expired();
+    const latestLead = await Lead.findById(leadId).exec();
+    if (!latestLead || !canChangeMvpLayout(latestLead.status)) throw leadLocked(latestLead?.status);
+    await MvpProject.findByIdAndUpdate(project._id, { $set: { ...update, editedAt: new Date() }, ...(Object.keys(unset).length ? { $unset: unset } : {}) }).exec();
+    await republishSavedMvp(leadId);
+    console.log(`[MvpEditWorker] Applied ${changes.join(', ')} to MVP ${data.mvpProjectId}: ${summary}`);
+    return { applied: true, summary, changes };
+  };
+  const palette = (color: string | undefined) =>
+    // Primary and accent together, as the palette picker saves them (REV-16)
+    color ? { 'colorPalette.primary': color, 'colorPalette.accent': color } : {};
+
+  // The rebuilt page (REV-111): the model edits the original's sections by id, never its copy
+  if (rebuilt) {
+    if (!audit.siteSections) throw new Error(`The audit of lead ${leadId} has no reading of the original page.`);
+    const auditKey = audit._id.toString();
+    // An edit for another audit run names other sections, so it is not offered as the current one
+    const saved = project.rebuildEdit?.auditId === auditKey ? project.rebuildEdit : undefined;
+    const { auditId: _ignored, ...currentEdit } = saved ?? { auditId: '' };
+    const plan = await rebuildService.interpret({
+      instruction: data.instruction,
+      siteSections: audit.siteSections,
+      current: { ...(saved ? { edit: currentEdit } : {}), primaryColor: project.colorPalette?.primary },
+      colorCandidates: colorCandidates(project.colorPalette?.primary, audit.extractedBrandTokens),
+    });
+    if (plan.changes.length === 0) {
+      console.log(`[MvpEditWorker] Nothing to change on MVP ${data.mvpProjectId}: ${plan.summary}`);
+      return { applied: false, summary: plan.summary, changes: [] };
+    }
+    const dropEdit = plan.edit !== undefined && !hasRebuildEdit(plan.edit);
+    return apply(
+      plan.summary,
+      plan.changes,
+      {
+        ...(plan.edit && !dropEdit ? { rebuildEdit: JSON.parse(JSON.stringify({ ...plan.edit, auditId: auditKey })) } : {}),
+        ...palette(plan.primaryColor),
+        ...(plan.layout ? { layout: manualMvpLayout(project.layout, plan.layout) } : {}),
+      },
+      dropEdit ? { rebuildEdit: '' } : {},
+    );
+  }
+
   const savedVariant = project.layout?.variant;
-  // The rebuilt original (REV-110) is not edited by the free-text change until REV-111; the API refuses it
   const layout: BentoLayoutVariant =
     savedVariant && (BENTO_LAYOUT_VARIANTS as readonly string[]).includes(savedVariant) ? (savedVariant as BentoLayoutVariant) : 'bento';
 
@@ -120,28 +179,19 @@ export async function processMvpEditJob(
     return { applied: false, summary: plan.summary, changes: [] };
   }
 
-  // The model may take a while: the operator may have given up, or the lead moved on meanwhile
-  if (now() > data.deadline) throw expired();
-  const latestLead = await Lead.findById(leadId).exec();
-  if (!latestLead || !canChangeMvpLayout(latestLead.status)) throw leadLocked(latestLead?.status);
-
-  // Only the parts the change touched, so a palette or layout picked meanwhile is kept otherwise
-  const update: Record<string, unknown> = { editedAt: new Date() };
-  if (plan.content) update['generatedContent'] = JSON.parse(JSON.stringify(plan.content));
-  if (plan.primaryColor) {
-    // Primary and accent together, as the palette picker saves them (REV-16)
-    update['colorPalette.primary'] = plan.primaryColor;
-    update['colorPalette.accent'] = plan.primaryColor;
-  }
-  if (plan.layout) update['layout'] = manualMvpLayout(project.layout, plan.layout);
   // An empty design drops the custom design (REV-92)
   const dropDesign = plan.design !== undefined && !hasDesign(plan.design);
-  if (plan.design && !dropDesign) update['design'] = JSON.parse(JSON.stringify(plan.design));
-  await MvpProject.findByIdAndUpdate(project._id, { $set: update, ...(dropDesign ? { $unset: { design: '' } } : {}) }).exec();
-
-  await republishSavedMvp(leadId);
-  console.log(`[MvpEditWorker] Applied ${plan.changes.join(', ')} to MVP ${data.mvpProjectId}: ${plan.summary}`);
-  return { applied: true, summary: plan.summary, changes: plan.changes };
+  return apply(
+    plan.summary,
+    plan.changes,
+    {
+      ...(plan.content ? { generatedContent: JSON.parse(JSON.stringify(plan.content)) } : {}),
+      ...palette(plan.primaryColor),
+      ...(plan.layout ? { layout: manualMvpLayout(project.layout, plan.layout) } : {}),
+      ...(plan.design && !dropDesign ? { design: JSON.parse(JSON.stringify(plan.design)) } : {}),
+    },
+    dropDesign ? { design: '' } : {},
+  );
 }
 
 export const createMvpEditWorker = (): Worker => {
