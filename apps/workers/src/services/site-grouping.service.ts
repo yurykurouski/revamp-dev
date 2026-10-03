@@ -165,7 +165,13 @@ export async function readPageSections(input: {
   const result = await grouping.group({ outline: input.raw.outline, tiles: input.tiles, url: input.url, niche: input.niche });
   if ('error' in result) return fail(result.error, { modelUsed: result.modelUsed, usage: result.usage });
   const meta = { modelUsed: result.modelUsed, usage: result.usage, answer: result.answer };
-  const llm = readGroupedSections(input.raw, result.answer);
+  let llm: SiteSectionsReading;
+  try {
+    llm = readGroupedSections(input.raw, result.answer);
+  } catch (err) {
+    // The grouping never fails the audit
+    llm = { error: err instanceof Error ? err.message : String(err) };
+  }
   if (llm.error) return fail(`The model's grouping could not be read: ${llm.error}`, meta);
   const llmGate = rebuildEligibility({ siteSections: llm.sections });
   const rulesGate = rules.sections ? rebuildEligibility({ siteSections: rules.sections }) : undefined;

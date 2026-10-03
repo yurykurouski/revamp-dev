@@ -1011,13 +1011,15 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     const skipText = (el: Element) => excluded(el) || inFormUi(el) || closedChrome(el);
     // Slides of the common slider libraries; a piece on one is marked with its slider and slide number
     const SLIDE = '.swiper-slide, .slick-slide, .owl-item, .carousel-item, .splide__slide, .glide__slide, .flickity-cell, rs-slide';
+    // Loop clones of the libraries EXCLUDED does not cover; a clone repeats a slide, so it is not read
+    const SLIDE_CLONE = '.owl-item.cloned, .splide__slide--clone, .glide__slide--clone';
     const sliders = new Map<Element, number>();
     const slideFact = (el: Element): { slide?: { slider: number; index: number } } => {
       const slideEl = el.closest(SLIDE);
       const track = slideEl?.parentElement;
       if (!slideEl || !track) return {};
       if (!sliders.has(track)) sliders.set(track, sliders.size + 1);
-      const slides = Array.from(track.children).filter((child) => child.matches(SLIDE));
+      const slides = Array.from(track.children).filter((child) => child.matches(SLIDE) && !child.matches(SLIDE_CLONE));
       return { slide: { slider: sliders.get(track)!, index: slides.indexOf(slideEl) + 1 } };
     };
     const ZERO_BOX: RawBox = { top: 0, left: 0, width: 0, height: 0 };
@@ -1119,6 +1121,8 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         return r.width >= 40 || r.height >= 40;
       });
       if (photo) return false;
+      // A linked card (a link around a heading or paragraphs) is copy, read piece by piece, as the rules reader does
+      if (el.querySelector('a[href] :is(p, h1, h2, h3, h4, h5, h6, li)')) return false;
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
       let any = false;
       for (let node = walker.nextNode(); node; node = walker.nextNode()) {
@@ -1145,14 +1149,16 @@ export function collectSiteSectionsInPage(): RawSiteSections {
         if (pieces.length >= MAX_PIECES) truncated = true;
         return;
       }
-      if (el !== document.body && excluded(el)) return;
+      if (el !== document.body && (excluded(el) || el.matches(SLIDE_CLONE))) return;
       if (el.tagName === 'IMG') {
         // A photo ends the paragraph before it, so the pieces stay in page order
         flushParagraph();
         addImage(el);
         return;
       }
-      if (el.matches(EMBED)) {
+      // A form that wraps page content (ASP.NET's page-wide form) is the page, not an embed (as `inFormUi` reads it)
+      const pageForm = el.tagName === 'FORM' && el.querySelector('[data-revamp-block], h1, h2, header, footer, main') !== null;
+      if (el.matches(EMBED) && !pageForm) {
         flushParagraph();
         const embed = embedOf(el);
         addPiece({ type: 'embed', tag: el.tagName.toLowerCase(), box: embed.box, embed, ...slideFact(el) });
@@ -1182,8 +1188,11 @@ export function collectSiteSectionsInPage(): RawSiteSections {
           .filter((a) => !skipText(a))
           .map(linkOf)
           .filter((l): l is RawSiteLink => l !== undefined);
-        if (links.length) addPiece({ type: 'links', ...shared(el), box: boxOf(el), links, ...slideFact(el) });
-        return;
+        if (links.length) {
+          addPiece({ type: 'links', ...shared(el), box: boxOf(el), links, ...slideFact(el) });
+          return;
+        }
+        // Links that go nowhere ("#"): their text is still copy, read below
       }
       if (plainList(el) && !skipText(el)) {
         flushParagraph();

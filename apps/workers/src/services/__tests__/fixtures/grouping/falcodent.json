@@ -1,9 +1,10 @@
 {
  "url": "https://falcodent.pl/",
- "recordedAt": "2026-10-02T18:10:25.964Z",
+ "recordedAt": "2026-10-03T13:06:38.535Z",
  "model": "claude-cli:sonnet",
  "viewportWidth": 1440,
  "viewportHeight": 900,
+ "pageChars": 5314,
  "typography": {
   "heading": {
    "family": "Montserrat, sans-serif",
@@ -27,7 +28,6 @@
    "color": "rgb(255, 255, 255)"
   }
  },
- "pageChars": 5314,
  "outline": {
   "pieces": [
    {
@@ -201,7 +201,7 @@
     "tag": "div",
     "box": {
      "top": 140,
-     "left": -2900,
+     "left": -1450,
      "width": 1440,
      "height": 550
     },
@@ -217,7 +217,7 @@
     "tag": "div",
     "box": {
      "top": 140,
-     "left": -1450,
+     "left": 0,
      "width": 1440,
      "height": 550
     },
@@ -241,7 +241,7 @@
     "align": "left",
     "box": {
      "top": 365,
-     "left": -1400,
+     "left": 50,
      "width": 554,
      "height": 48
     },
@@ -267,7 +267,7 @@
     "align": "left",
     "box": {
      "top": 447,
-     "left": -1400,
+     "left": 50,
      "width": 454,
      "height": 19
     },
@@ -284,7 +284,7 @@
     "tag": "div",
     "box": {
      "top": 140,
-     "left": 0,
+     "left": 1450,
      "width": 1440,
      "height": 550
     },
@@ -308,7 +308,7 @@
     "align": "left",
     "box": {
      "top": 297,
-     "left": 50,
+     "left": 1500,
      "width": 383,
      "height": 48
     },
@@ -334,7 +334,7 @@
     "align": "left",
     "box": {
      "top": 379,
-     "left": 50,
+     "left": 1500,
      "width": 98,
      "height": 37
     },
@@ -360,7 +360,7 @@
     "align": "left",
     "box": {
      "top": 418,
-     "left": 50,
+     "left": 1500,
      "width": 313,
      "height": 37
     },
@@ -386,7 +386,7 @@
     "align": "left",
     "box": {
      "top": 458,
-     "left": 50,
+     "left": 1500,
      "width": 255,
      "height": 37
     },
@@ -412,7 +412,7 @@
     "align": "left",
     "box": {
      "top": 497,
-     "left": 50,
+     "left": 1500,
      "width": 113,
      "height": 37
     },
@@ -430,7 +430,7 @@
     "tag": "div",
     "box": {
      "top": 140,
-     "left": 1450,
+     "left": 2900,
      "width": 1440,
      "height": 550
     },
@@ -454,7 +454,7 @@
     "align": "left",
     "box": {
      "top": 337,
-     "left": 1500,
+     "left": 2950,
      "width": 178,
      "height": 37
     },
@@ -480,7 +480,7 @@
     "align": "left",
     "box": {
      "top": 376,
-     "left": 1500,
+     "left": 2950,
      "width": 209,
      "height": 37
     },
@@ -506,7 +506,7 @@
     "align": "left",
     "box": {
      "top": 416,
-     "left": 1500,
+     "left": 2950,
      "width": 346,
      "height": 37
     },
@@ -532,7 +532,7 @@
     "align": "left",
     "box": {
      "top": 455,
-     "left": 1500,
+     "left": 2950,
      "width": 286,
      "height": 37
     },
@@ -550,7 +550,7 @@
     "tag": "div",
     "box": {
      "top": 140,
-     "left": 2900,
+     "left": 4350,
      "width": 1440,
      "height": 550
     },
@@ -574,7 +574,7 @@
     "align": "left",
     "box": {
      "top": 545,
-     "left": 2950,
+     "left": 4400,
      "width": 183,
      "height": 48
     },
@@ -600,7 +600,7 @@
     "align": "left",
     "box": {
      "top": 599,
-     "left": 2950,
+     "left": 4400,
      "width": 334,
      "height": 48
     },
@@ -618,7 +618,7 @@
     "tag": "div",
     "box": {
      "top": 700,
-     "left": -580,
+     "left": -290,
      "width": 280,
      "height": 118
     },
@@ -634,7 +634,7 @@
     "tag": "div",
     "box": {
      "top": 700,
-     "left": -290,
+     "left": 0,
      "width": 280,
      "height": 118
     },
@@ -650,7 +650,7 @@
     "tag": "div",
     "box": {
      "top": 700,
-     "left": 0,
+     "left": 290,
      "width": 280,
      "height": 118
     },
@@ -666,7 +666,7 @@
     "tag": "div",
     "box": {
      "top": 700,
-     "left": 290,
+     "left": 580,
      "width": 280,
      "height": 118
     },
@@ -682,7 +682,7 @@
     "tag": "div",
     "box": {
      "top": 700,
-     "left": 580,
+     "left": 870,
      "width": 280,
      "height": 118
     },
@@ -772,7 +772,7 @@
     "align": "center",
     "box": {
      "top": 1237,
-     "left": -1433,
+     "left": -533,
      "width": 706,
      "height": 51
     },
@@ -789,7 +789,7 @@
     "tag": "img",
     "box": {
      "top": 1335,
-     "left": -1175,
+     "left": -275,
      "width": 64,
      "height": 64
     },
@@ -798,7 +798,7 @@
      "alt": "",
      "box": {
       "top": 1335,
-      "left": -1175,
+      "left": -275,
       "width": 64,
       "height": 64
      },
@@ -823,7 +823,7 @@
     "align": "start",
     "box": {
      "top": 1353,
-     "left": -1096,
+     "left": -196,
      "width": 111,
      "height": 24
     },
@@ -849,7 +849,7 @@
     "align": "center",
     "box": {
      "top": 1279,
-     "left": -548,
+     "left": 352,
      "width": 736,
      "height": 83
     },
@@ -874,7 +874,7 @@
     "align": "center",
     "box": {
      "top": 1343,
-     "left": -312,
+     "left": 588,
      "width": 490,
      "height": 51
     },
@@ -891,7 +891,7 @@
     "tag": "img",
     "box": {
      "top": 1441,
-     "left": -298,
+     "left": 602,
      "width": 64,
      "height": 64
     },
@@ -900,7 +900,7 @@
      "alt": "",
      "box": {
       "top": 1441,
-      "left": -298,
+      "left": 602,
       "width": 64,
       "height": 64
      },
@@ -925,7 +925,7 @@
     "align": "start",
     "box": {
      "top": 1459,
-     "left": -219,
+     "left": 681,
      "width": 158,
      "height": 24
     },
@@ -951,7 +951,7 @@
     "align": "center",
     "box": {
      "top": 1279,
-     "left": 367,
+     "left": 1267,
      "width": 688,
      "height": 19
     },
@@ -968,7 +968,7 @@
     "tag": "img",
     "box": {
      "top": 1345,
-     "left": 577,
+     "left": 1477,
      "width": 64,
      "height": 65
     },
@@ -977,7 +977,7 @@
      "alt": "",
      "box": {
       "top": 1345,
-      "left": 577,
+      "left": 1477,
       "width": 64,
       "height": 65
      },
@@ -1002,7 +1002,7 @@
     "align": "start",
     "box": {
      "top": 1363,
-     "left": 656,
+     "left": 1556,
      "width": 208,
      "height": 24
     },
@@ -1987,6 +1987,27 @@
    },
    {
     "id": 87,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 4849,
+     "left": 306,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 88,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2008,7 +2029,7 @@
     }
    },
    {
-    "id": 88,
+    "id": 89,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2030,7 +2051,7 @@
     "links": []
    },
    {
-    "id": 89,
+    "id": 90,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2051,7 +2072,28 @@
     "links": []
    },
    {
-    "id": 90,
+    "id": 91,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 4849,
+     "left": 686,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 92,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2073,7 +2115,7 @@
     }
    },
    {
-    "id": 91,
+    "id": 93,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2095,7 +2137,7 @@
     "links": []
    },
    {
-    "id": 92,
+    "id": 94,
     "type": "text",
     "tag": "p",
     "font": {
@@ -2116,7 +2158,28 @@
     "links": []
    },
    {
-    "id": 93,
+    "id": 95,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 4844,
+     "left": 1066,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 96,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2138,7 +2201,7 @@
     }
    },
    {
-    "id": 94,
+    "id": 97,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2160,7 +2223,7 @@
     "links": []
    },
    {
-    "id": 95,
+    "id": 98,
     "type": "text",
     "tag": "p",
     "font": {
@@ -2181,7 +2244,28 @@
     "links": []
    },
    {
-    "id": 96,
+    "id": 99,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 5418,
+     "left": 306,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 100,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2203,7 +2287,7 @@
     }
    },
    {
-    "id": 97,
+    "id": 101,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2225,7 +2309,7 @@
     "links": []
    },
    {
-    "id": 98,
+    "id": 102,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2246,7 +2330,28 @@
     "links": []
    },
    {
-    "id": 99,
+    "id": 103,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 5398,
+     "left": 686,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 104,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2268,7 +2373,7 @@
     }
    },
    {
-    "id": 100,
+    "id": 105,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2290,7 +2395,7 @@
     "links": []
    },
    {
-    "id": 101,
+    "id": 106,
     "type": "text",
     "tag": "p",
     "font": {
@@ -2311,7 +2416,28 @@
     "links": []
    },
    {
-    "id": 102,
+    "id": 107,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 5420,
+     "left": 1066,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 108,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2333,7 +2459,7 @@
     }
    },
    {
-    "id": 103,
+    "id": 109,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2355,7 +2481,7 @@
     "links": []
    },
    {
-    "id": 104,
+    "id": 110,
     "type": "text",
     "tag": "p",
     "font": {
@@ -2376,7 +2502,28 @@
     "links": []
    },
    {
-    "id": 105,
+    "id": 111,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 14,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(23, 55, 132)"
+    },
+    "background": "rgb(255, 255, 255)",
+    "align": "center",
+    "box": {
+     "top": 5869,
+     "left": 258,
+     "width": 48,
+     "height": 18
+    },
+    "text": "Więcej",
+    "links": []
+   },
+   {
+    "id": 112,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2398,7 +2545,7 @@
     }
    },
    {
-    "id": 106,
+    "id": 113,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2420,7 +2567,7 @@
     "links": []
    },
    {
-    "id": 107,
+    "id": 114,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2441,7 +2588,7 @@
     "links": []
    },
    {
-    "id": 108,
+    "id": 115,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2463,7 +2610,7 @@
     }
    },
    {
-    "id": 109,
+    "id": 116,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2485,7 +2632,7 @@
     "links": []
    },
    {
-    "id": 110,
+    "id": 117,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2506,7 +2653,7 @@
     "links": []
    },
    {
-    "id": 111,
+    "id": 118,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2528,7 +2675,7 @@
     }
    },
    {
-    "id": 112,
+    "id": 119,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2550,7 +2697,7 @@
     "links": []
    },
    {
-    "id": 113,
+    "id": 120,
     "type": "text",
     "tag": "p",
     "font": {
@@ -2571,7 +2718,7 @@
     "links": []
    },
    {
-    "id": 114,
+    "id": 121,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2593,7 +2740,7 @@
     "links": []
    },
    {
-    "id": 115,
+    "id": 122,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2615,7 +2762,7 @@
     "links": []
    },
    {
-    "id": 116,
+    "id": 123,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2637,7 +2784,7 @@
     }
    },
    {
-    "id": 117,
+    "id": 124,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2659,7 +2806,7 @@
     }
    },
    {
-    "id": 118,
+    "id": 125,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2681,7 +2828,7 @@
     }
    },
    {
-    "id": 119,
+    "id": 126,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2703,7 +2850,7 @@
     }
    },
    {
-    "id": 120,
+    "id": 127,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2725,7 +2872,7 @@
     }
    },
    {
-    "id": 121,
+    "id": 128,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2747,7 +2894,7 @@
     }
    },
    {
-    "id": 122,
+    "id": 129,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2769,7 +2916,7 @@
     }
    },
    {
-    "id": 123,
+    "id": 130,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2791,7 +2938,7 @@
     }
    },
    {
-    "id": 124,
+    "id": 131,
     "type": "background",
     "tag": "section",
     "box": {
@@ -2803,7 +2950,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 125,
+    "id": 132,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2825,7 +2972,7 @@
     "links": []
    },
    {
-    "id": 126,
+    "id": 133,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2847,7 +2994,7 @@
     "links": []
    },
    {
-    "id": 127,
+    "id": 134,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2868,7 +3015,7 @@
     "links": []
    },
    {
-    "id": 128,
+    "id": 135,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2890,7 +3037,7 @@
     "links": []
    },
    {
-    "id": 129,
+    "id": 136,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -2912,7 +3059,7 @@
     "links": []
    },
    {
-    "id": 130,
+    "id": 137,
     "type": "background",
     "tag": "div",
     "box": {
@@ -2924,7 +3071,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 131,
+    "id": 138,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2945,7 +3092,7 @@
     "links": []
    },
    {
-    "id": 132,
+    "id": 139,
     "type": "background",
     "tag": "div",
     "box": {
@@ -2957,7 +3104,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 133,
+    "id": 140,
     "type": "text",
     "tag": "div",
     "font": {
@@ -2978,7 +3125,7 @@
     "links": []
    },
    {
-    "id": 134,
+    "id": 141,
     "type": "background",
     "tag": "div",
     "box": {
@@ -2990,7 +3137,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 135,
+    "id": 142,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3011,7 +3158,7 @@
     "links": []
    },
    {
-    "id": 136,
+    "id": 143,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -3033,7 +3180,7 @@
     "links": []
    },
    {
-    "id": 137,
+    "id": 144,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -3055,7 +3202,7 @@
     "links": []
    },
    {
-    "id": 138,
+    "id": 145,
     "type": "background",
     "tag": "div",
     "box": {
@@ -3067,7 +3214,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 139,
+    "id": 146,
     "type": "text",
     "tag": "p",
     "font": {
@@ -3088,7 +3235,7 @@
     "links": []
    },
    {
-    "id": 140,
+    "id": 147,
     "type": "links",
     "tag": "section",
     "font": {
@@ -3189,7 +3336,7 @@
     ]
    },
    {
-    "id": 141,
+    "id": 148,
     "type": "background",
     "tag": "section",
     "box": {
@@ -3201,7 +3348,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 142,
+    "id": 149,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -3223,7 +3370,7 @@
     "links": []
    },
    {
-    "id": 143,
+    "id": 150,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -3245,7 +3392,7 @@
     "links": []
    },
    {
-    "id": 144,
+    "id": 151,
     "type": "background",
     "tag": "section",
     "box": {
@@ -3257,7 +3404,7 @@
     "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg"
    },
    {
-    "id": 145,
+    "id": 152,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3279,7 +3426,7 @@
     }
    },
    {
-    "id": 146,
+    "id": 153,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3300,7 +3447,7 @@
     "links": []
    },
    {
-    "id": 147,
+    "id": 154,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3322,7 +3469,7 @@
     }
    },
    {
-    "id": 148,
+    "id": 155,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3343,7 +3490,7 @@
     "links": []
    },
    {
-    "id": 149,
+    "id": 156,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3365,7 +3512,7 @@
     }
    },
    {
-    "id": 150,
+    "id": 157,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3386,7 +3533,7 @@
     "links": []
    },
    {
-    "id": 151,
+    "id": 158,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3408,7 +3555,7 @@
     }
    },
    {
-    "id": 152,
+    "id": 159,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3429,7 +3576,7 @@
     "links": []
    },
    {
-    "id": 153,
+    "id": 160,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3451,7 +3598,7 @@
     }
    },
    {
-    "id": 154,
+    "id": 161,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3472,7 +3619,7 @@
     "links": []
    },
    {
-    "id": 155,
+    "id": 162,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3494,7 +3641,7 @@
     }
    },
    {
-    "id": 156,
+    "id": 163,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3515,7 +3662,7 @@
     "links": []
    },
    {
-    "id": 157,
+    "id": 164,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3537,7 +3684,7 @@
     }
    },
    {
-    "id": 158,
+    "id": 165,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3558,7 +3705,7 @@
     "links": []
    },
    {
-    "id": 159,
+    "id": 166,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3580,7 +3727,7 @@
     }
    },
    {
-    "id": 160,
+    "id": 167,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3601,7 +3748,7 @@
     "links": []
    },
    {
-    "id": 161,
+    "id": 168,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3623,7 +3770,7 @@
     }
    },
    {
-    "id": 162,
+    "id": 169,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3644,7 +3791,7 @@
     "links": []
    },
    {
-    "id": 163,
+    "id": 170,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3666,7 +3813,7 @@
     }
    },
    {
-    "id": 164,
+    "id": 171,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3687,7 +3834,7 @@
     "links": []
    },
    {
-    "id": 165,
+    "id": 172,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3709,7 +3856,7 @@
     }
    },
    {
-    "id": 166,
+    "id": 173,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3730,7 +3877,7 @@
     "links": []
    },
    {
-    "id": 167,
+    "id": 174,
     "type": "links",
     "tag": "div",
     "font": {
@@ -3756,7 +3903,7 @@
     ]
    },
    {
-    "id": 168,
+    "id": 175,
     "type": "text",
     "tag": "div",
     "font": {
@@ -3777,7 +3924,7 @@
     "links": []
    },
    {
-    "id": 169,
+    "id": 176,
     "type": "image",
     "tag": "img",
     "box": {
@@ -3799,7 +3946,7 @@
     }
    },
    {
-    "id": 170,
+    "id": 177,
     "type": "heading",
     "tag": "h2",
     "font": {
@@ -3821,7 +3968,7 @@
     "links": []
    },
    {
-    "id": 171,
+    "id": 178,
     "type": "heading",
     "tag": "h6",
     "font": {
@@ -3843,7 +3990,7 @@
     "links": []
    },
    {
-    "id": 172,
+    "id": 179,
     "type": "heading",
     "tag": "strong",
     "font": {
@@ -3865,7 +4012,7 @@
     "links": []
    },
    {
-    "id": 173,
+    "id": 180,
     "type": "heading",
     "tag": "strong",
     "font": {
@@ -3887,7 +4034,7 @@
     "links": []
    },
    {
-    "id": 174,
+    "id": 181,
     "type": "text",
     "tag": "p",
     "font": {
@@ -3908,7 +4055,7 @@
     "links": []
    },
    {
-    "id": 175,
+    "id": 182,
     "type": "heading",
     "tag": "strong",
     "font": {
@@ -3930,7 +4077,7 @@
     "links": []
    },
    {
-    "id": 176,
+    "id": 183,
     "type": "text",
     "tag": "p",
     "font": {
@@ -3951,7 +4098,7 @@
     "links": []
    },
    {
-    "id": 177,
+    "id": 184,
     "type": "heading",
     "tag": "h5",
     "font": {
@@ -3973,7 +4120,7 @@
     "links": []
    },
    {
-    "id": 178,
+    "id": 185,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -3995,7 +4142,7 @@
     "links": []
    },
    {
-    "id": 179,
+    "id": 186,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -4017,7 +4164,7 @@
     "links": []
    },
    {
-    "id": 180,
+    "id": 187,
     "type": "embed",
     "tag": "iframe",
     "box": {
@@ -4038,7 +4185,7 @@
     }
    },
    {
-    "id": 181,
+    "id": 188,
     "type": "image",
     "tag": "img",
     "box": {
@@ -4060,7 +4207,7 @@
     }
    },
    {
-    "id": 182,
+    "id": 189,
     "type": "text",
     "tag": "p",
     "font": {
@@ -4081,7 +4228,7 @@
     "links": []
    },
    {
-    "id": 183,
+    "id": 190,
     "type": "text",
     "tag": "p",
     "font": {
@@ -4102,7 +4249,7 @@
     "links": []
    },
    {
-    "id": 184,
+    "id": 191,
     "type": "text",
     "tag": "p",
     "font": {
@@ -4123,7 +4270,7 @@
     "links": []
    },
    {
-    "id": 185,
+    "id": 192,
     "type": "text",
     "tag": "div",
     "font": {
@@ -4144,7 +4291,7 @@
     "links": []
    },
    {
-    "id": 186,
+    "id": 193,
     "type": "heading",
     "tag": "strong",
     "font": {
@@ -4166,7 +4313,7 @@
     "links": []
    },
    {
-    "id": 187,
+    "id": 194,
     "type": "text",
     "tag": "p",
     "font": {
@@ -4187,7 +4334,7 @@
     "links": []
    },
    {
-    "id": 188,
+    "id": 195,
     "type": "text",
     "tag": "div",
     "font": {
@@ -4208,7 +4355,28 @@
     "links": []
    },
    {
-    "id": 189,
+    "id": 196,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 15,
+     "weight": 500,
+     "uppercase": false,
+     "color": "rgb(255, 255, 255)"
+    },
+    "background": "rgb(97, 206, 112)",
+    "align": "center",
+    "box": {
+     "top": 10934,
+     "left": 184,
+     "width": 75,
+     "height": 18
+    },
+    "text": "Kliknij tutaj",
+    "links": []
+   },
+   {
+    "id": 197,
     "type": "heading",
     "tag": "p",
     "font": {
@@ -4231,7 +4399,7 @@
     "links": []
    },
    {
-    "id": 190,
+    "id": 198,
     "type": "text",
     "tag": "p",
     "font": {
@@ -4266,13 +4434,13 @@
   },
   "sections": [
    {
-    "heading": 10,
+    "heading": 7,
     "pieces": [
      5,
      6,
-     7,
      8,
      9,
+     10,
      11,
      12,
      13,
@@ -4291,7 +4459,7 @@
      26,
      27
     ],
-    "kind": "services",
+    "kind": "other",
     "arrangement": "slider"
    },
    {
@@ -4357,7 +4525,7 @@
      60
     ],
     "kind": "contact",
-    "arrangement": "text"
+    "arrangement": "embed"
    },
    {
     "heading": 63,
@@ -4429,27 +4597,23 @@
       "title": 85,
       "pieces": [
        84,
-       86
+       86,
+       87
       ]
      },
      {
-      "title": 88,
+      "title": 89,
       "pieces": [
-       87,
-       89
-      ]
-     },
-     {
-      "title": 91,
-      "pieces": [
+       88,
        90,
-       92
+       91
       ]
      },
      {
-      "title": 94,
+      "title": 93,
       "pieces": [
-       93,
+       92,
+       94,
        95
       ]
      },
@@ -4457,27 +4621,23 @@
       "title": 97,
       "pieces": [
        96,
-       98
+       98,
+       99
       ]
      },
      {
-      "title": 100,
+      "title": 101,
       "pieces": [
-       99,
-       101
-      ]
-     },
-     {
-      "title": 103,
-      "pieces": [
+       100,
        102,
-       104
+       103
       ]
      },
      {
-      "title": 106,
+      "title": 105,
       "pieces": [
-       105,
+       104,
+       106,
        107
       ]
      },
@@ -4485,14 +4645,29 @@
       "title": 109,
       "pieces": [
        108,
-       110
+       110,
+       111
       ]
      },
      {
-      "title": 112,
+      "title": 113,
       "pieces": [
-       111,
-       113
+       112,
+       114
+      ]
+     },
+     {
+      "title": 116,
+      "pieces": [
+       115,
+       117
+      ]
+     },
+     {
+      "title": 119,
+      "pieces": [
+       118,
+       120
       ]
      }
     ],
@@ -4500,131 +4675,130 @@
     "arrangement": "card-grid"
    },
    {
-    "heading": 115,
-    "eyebrow": 114,
+    "heading": 122,
+    "eyebrow": 121,
     "pieces": [
-     116,
-     117,
-     118,
-     119,
-     120,
-     121,
-     122,
-     123
+     123,
+     124,
+     125,
+     126,
+     127,
+     128,
+     129,
+     130
     ],
     "kind": "gallery",
     "arrangement": "gallery"
    },
    {
-    "heading": 126,
-    "eyebrow": 125,
+    "heading": 133,
+    "eyebrow": 132,
     "pieces": [
-     124,
-     127
-    ],
-    "kind": "other",
-    "arrangement": "text"
-   },
-   {
-    "heading": 129,
-    "eyebrow": 128,
-    "pieces": [
-     130,
      131,
-     132,
-     133,
-     134,
-     135
+     134
     ],
     "kind": "other",
-    "arrangement": "list"
+    "arrangement": "banner"
    },
    {
-    "heading": 137,
-    "eyebrow": 136,
+    "heading": 136,
+    "eyebrow": 135,
     "pieces": [
+     137,
      138,
      139,
-     140
+     140,
+     141,
+     142
+    ],
+    "items": [],
+    "kind": "other",
+    "arrangement": "list"
+   },
+   {
+    "heading": 144,
+    "eyebrow": 143,
+    "pieces": [
+     145,
+     146,
+     147
     ],
     "kind": "other",
     "arrangement": "list"
    },
    {
-    "heading": 143,
-    "eyebrow": 142,
+    "heading": 150,
+    "eyebrow": 149,
     "pieces": [
-     141,
-     144,
-     167,
-     168,
-     169
+     148,
+     151,
+     174
     ],
     "items": [
      {
-      "title": 146,
+      "title": 153,
       "pieces": [
-       145
+       152
       ]
      },
      {
-      "title": 148,
+      "title": 155,
       "pieces": [
-       147
+       154
       ]
      },
      {
-      "title": 150,
+      "title": 157,
       "pieces": [
-       149
+       156
       ]
      },
      {
-      "title": 152,
+      "title": 159,
       "pieces": [
-       151
+       158
       ]
      },
      {
-      "title": 154,
+      "title": 161,
       "pieces": [
-       153
+       160
       ]
      },
      {
-      "title": 156,
+      "title": 163,
       "pieces": [
-       155
+       162
       ]
      },
      {
-      "title": 158,
+      "title": 165,
       "pieces": [
-       157
+       164
       ]
      },
      {
-      "title": 160,
+      "title": 167,
       "pieces": [
-       159
+       166
       ]
      },
      {
-      "title": 162,
+      "title": 169,
       "pieces": [
-       161
+       168
       ]
      },
      {
-      "title": 164,
+      "title": 171,
       "pieces": [
-       163
+       170
       ]
      },
      {
-      "title": 166,
+      "title": 173,
       "pieces": [
-       165
+       172
       ]
      }
     ],
@@ -4632,18 +4806,20 @@
     "arrangement": "card-grid"
    },
    {
-    "heading": 171,
-    "eyebrow": 170,
+    "heading": 178,
+    "eyebrow": 177,
     "pieces": [
-     172,
-     173,
-     174,
      175,
      176,
-     177,
-     178,
      179,
-     180
+     180,
+     181,
+     182,
+     183,
+     184,
+     185,
+     186,
+     187
     ],
     "kind": "map",
     "arrangement": "embed"
@@ -4651,15 +4827,16 @@
   ],
   "footer": {
    "pieces": [
-    181,
-    182,
-    183,
-    184,
-    185,
-    186,
-    187,
     188,
-    190
+    189,
+    190,
+    191,
+    192,
+    193,
+    194,
+    195,
+    196,
+    198
    ]
   }
  }

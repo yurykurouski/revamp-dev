@@ -1,9 +1,10 @@
 {
  "url": "https://www.anident.pl/",
- "recordedAt": "2026-10-02T18:10:01.924Z",
+ "recordedAt": "2026-10-03T13:06:16.563Z",
  "model": "claude-cli:sonnet",
  "viewportWidth": 1440,
  "viewportHeight": 900,
+ "pageChars": 8605,
  "typography": {
   "heading": {
    "family": "helvetica, arial, sans-serif",
@@ -20,7 +21,6 @@
    "color": "rgb(0, 0, 0)"
   }
  },
- "pageChars": 8605,
  "outline": {
   "pieces": [
    {
@@ -1684,6 +1684,27 @@
    },
    {
     "id": 61,
+    "type": "text",
+    "tag": "span",
+    "font": {
+     "size": 13,
+     "weight": 400,
+     "uppercase": false,
+     "color": "rgb(0, 0, 0)"
+    },
+    "background": "rgb(237, 228, 185)",
+    "align": "right",
+    "box": {
+     "top": 5850,
+     "left": 964,
+     "width": 44,
+     "height": 15
+    },
+    "text": "do góry",
+    "links": []
+   },
+   {
+    "id": 62,
     "type": "heading",
     "tag": "b",
     "font": {
@@ -1705,7 +1726,7 @@
     "links": []
    },
    {
-    "id": 62,
+    "id": 63,
     "type": "heading",
     "tag": "b",
     "font": {
@@ -1727,7 +1748,7 @@
     "links": []
    },
    {
-    "id": 63,
+    "id": 64,
     "type": "image",
     "tag": "img",
     "box": {
@@ -1749,7 +1770,7 @@
     }
    },
    {
-    "id": 64,
+    "id": 65,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1771,7 +1792,7 @@
     "links": []
    },
    {
-    "id": 65,
+    "id": 66,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1793,7 +1814,7 @@
     "links": []
    },
    {
-    "id": 66,
+    "id": 67,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1815,7 +1836,7 @@
     "links": []
    },
    {
-    "id": 67,
+    "id": 68,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1837,7 +1858,7 @@
     "links": []
    },
    {
-    "id": 68,
+    "id": 69,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1859,7 +1880,7 @@
     "links": []
    },
    {
-    "id": 69,
+    "id": 70,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1881,7 +1902,7 @@
     "links": []
    },
    {
-    "id": 70,
+    "id": 71,
     "type": "text",
     "tag": "font",
     "font": {
@@ -1902,7 +1923,7 @@
     "links": []
    },
    {
-    "id": 71,
+    "id": 72,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1924,7 +1945,7 @@
     "links": []
    },
    {
-    "id": 72,
+    "id": 73,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -1946,7 +1967,7 @@
     "links": []
    },
    {
-    "id": 73,
+    "id": 74,
     "type": "text",
     "tag": "font",
     "font": {
@@ -1967,7 +1988,7 @@
     "links": []
    },
    {
-    "id": 74,
+    "id": 75,
     "type": "heading",
     "tag": "big",
     "font": {
@@ -1989,7 +2010,7 @@
     "links": []
    },
    {
-    "id": 75,
+    "id": 76,
     "type": "heading",
     "tag": "font",
     "font": {
@@ -2011,7 +2032,7 @@
     "links": []
    },
    {
-    "id": 76,
+    "id": 77,
     "type": "heading",
     "tag": "big",
     "font": {
@@ -2033,7 +2054,7 @@
     "links": []
    },
    {
-    "id": 77,
+    "id": 78,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -2055,7 +2076,7 @@
     "links": []
    },
    {
-    "id": 78,
+    "id": 79,
     "type": "image",
     "tag": "img",
     "box": {
@@ -2077,7 +2098,7 @@
     }
    },
    {
-    "id": 79,
+    "id": 80,
     "type": "text",
     "tag": "span",
     "font": {
@@ -2098,7 +2119,7 @@
     "links": []
    },
    {
-    "id": 80,
+    "id": 81,
     "type": "heading",
     "tag": "span",
     "font": {
@@ -2126,9 +2147,9 @@
  },
  "answer": {
   "header": {
-   "logo": 2,
+   "logo": 1,
    "pieces": [
-    1,
+    2,
     3,
     4,
     5,
@@ -2181,8 +2202,8 @@
    },
    {
     "heading": 26,
-    "eyebrow": 27,
     "pieces": [
+     27,
      28,
      29,
      30,
@@ -2193,8 +2214,8 @@
    },
    {
     "heading": 32,
-    "eyebrow": 33,
     "pieces": [
+     33,
      34,
      35,
      36,
@@ -2204,13 +2225,8 @@
     "arrangement": "media-beside-text"
    },
    {
-    "heading": 38,
-    "pieces": [],
-    "kind": "contact",
-    "arrangement": "banner"
-   },
-   {
     "heading": 39,
+    "eyebrow": 38,
     "pieces": [
      40,
      41,
@@ -2244,13 +2260,14 @@
      57
     ],
     "kind": "features",
-    "arrangement": "media-beside-text"
+    "arrangement": "list"
    },
    {
     "heading": 58,
     "pieces": [
      59,
-     60
+     60,
+     61
     ],
     "kind": "about",
     "arrangement": "media-beside-text"
@@ -2258,7 +2275,6 @@
   ],
   "footer": {
    "pieces": [
-    61,
     62,
     63,
     64,
@@ -2277,7 +2293,8 @@
     77,
     78,
     79,
-    80
+    80,
+    81
    ]
   }
  }

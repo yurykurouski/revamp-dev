@@ -796,6 +796,26 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
       ]);
     });
 
+    it('reads linked cards as headings and text, also when they link nowhere', async () => {
+      const card = (href: string, title: string, text: string) => `<a href="${href}" style="display:block"><h3>${title}</h3><p>${text}</p></a>`;
+      for (const href of ['/implanty', '#']) {
+        const o = await outlineOf(pageOf(`<section><h2>Nasze usługi</h2>${card(href, 'Implanty', 'Trwałe uzupełnienie braków.')}${card(href, 'Licówki', 'Piękny uśmiech.')}</section>`));
+        expect(brief(o), href).toEqual(['heading:Nasze usługi', 'heading:Implanty', 'text:Trwałe uzupełnienie braków.', 'heading:Licówki', 'text:Piękny uśmiech.']);
+      }
+    });
+
+    it('reads a page-wide form (ASP.NET) as the page, not as one embed', async () => {
+      const o = await outlineOf(pageOf(`<form action="/Default.aspx"><div><h1>Gabinet</h1><p>Leczymy od lat.</p><h2>Oferta</h2><p>Implanty i protetyka.</p></div></form>`));
+      expect(brief(o)).toEqual(['heading:Gabinet', 'text:Leczymy od lat.', 'heading:Oferta', 'text:Implanty i protetyka.']);
+    });
+
+    it('leaves out the loop clones of a slider', async () => {
+      const item = (cls: string, title: string) => `<div class="owl-item ${cls}" style="width:1440px;flex:none"><h2>${title}</h2></div>`;
+      const o = await outlineOf(pageOf(`<div class="owl-carousel" style="overflow:hidden"><div class="owl-stage" style="display:flex">
+        ${item('cloned', 'Slajd 2')}${item('active', 'Slajd 1')}${item('', 'Slajd 2')}${item('cloned', 'Slajd 1')}</div></div>`));
+      expect(o.pieces.map((p) => `${p.text}:${p.slide?.index}`)).toEqual(['Slajd 1:1', 'Slajd 2:2']);
+    });
+
     it('reports the body size from the text it carries', async () => {
       const o = await outlineOf(pageOf(`<p>${'Zwykły tekst akapitu. '.repeat(20)}</p><h2>Duży</h2>`));
       expect(o.bodySize).toBe(16);

@@ -105,6 +105,13 @@ describe('readPageSections (REV-113)', () => {
     expect(r.answer?.sections).toHaveLength(1);
   });
 
+  it('stores the rules reading when reading the model answer throws', async () => {
+    const grouping = { unavailableReason: () => undefined, group: vi.fn().mockResolvedValue({ answer: { sections: [{ heading: 3, pieces: null, kind: 'other', arrangement: 'text' }] }, modelUsed: 'stub' }) } as unknown as SiteGroupingService;
+    const r = await readPageSections({ raw: rulesRaw, layoutBlocks: [], tiles, url: 'u', grouping });
+    expect(r.reading.sections?.source).toBe('rules');
+    expect(r.measurementError?.message).toMatch(/could not be read/);
+  });
+
   it('keeps the rules error when neither reader has sections', async () => {
     const r = await readPageSections({ rawError: 'Section collection failed: boom', layoutBlocks: [], tiles, url: 'u' });
     expect(r.reading.error).toBe('Section collection failed: boom');
