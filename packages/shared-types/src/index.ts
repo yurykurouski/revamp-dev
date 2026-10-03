@@ -962,16 +962,17 @@ export type SiteComplexitySign = (typeof SITE_COMPLEXITY_SIGNS)[number];
 
 /** What makes a site look dated (REV-114); read from its home page by code */
 export const SITE_DATED_SIGNS = [
+  // weight 2
   'table_layout',
-  'narrow_fixed',
-  'frameset',
-  'legacy_tags',
-  'old_doctype',
-  'legacy_font',
   'no_viewport',
-  'low_res_hero',
-  'tiny_text',
-  'plain_buttons',
+  'frames',
+  'flash',
+  'narrow_fixed',
+  // weight 1
+  'legacy_tags',
+  'default_font',
+  'old_jquery',
+  'stale_copyright',
 ] as const;
 export type SiteDatedSign = (typeof SITE_DATED_SIGNS)[number];
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ISiteSection } from '@revamp/shared-types';
+import { SITE_DATED_SIGNS, type ISiteSection } from '@revamp/shared-types';
 import {
   MvpLayoutSelectionSchema,
   RebuildEditAnswerSchema,
@@ -54,6 +54,9 @@ const page = (over: { s4?: number[] } = {}) => ({
 });
 
 describe('SiteEraSchema', () => {
+  it('lists the signs in the spec order', () => {
+    expect(SITE_DATED_SIGNS).toEqual(['table_layout', 'no_viewport', 'frames', 'flash', 'narrow_fixed', 'legacy_tags', 'default_font', 'old_jquery', 'stale_copyright']);
+  });
   it('accepts a read era', () => {
     expect(SiteEraSchema.safeParse({ dated: true, score: 7, signs: ['table_layout', 'narrow_fixed'], contentWidth: 760 }).success).toBe(true);
   });
@@ -175,6 +178,12 @@ describe('manualMvpLayout with a level', () => {
     expect(next.reasons).not.toContain('modernize:dated');
     expect(next.reasons).not.toContain('dated:7');
     expect(next.reasons).toContain('images:3');
+  });
+  it('has no level and no manual level reason on a layout other than original', () => {
+    const next = manualMvpLayout({ reasons: ['modernize:manual'], rebuildLevel: 'modern' }, 'bento');
+    expect(next.rebuildLevel).toBeUndefined();
+    expect(next.reasons).not.toContain('modernize:manual');
+    expect(manualMvpLayout({ reasons: [] }, 'bento', 'modern').rebuildLevel).toBeUndefined();
   });
   it('keeps the previous level without one', () => {
     expect(manualMvpLayout({ reasons: [...previous.reasons], rebuildLevel: 'modern' }, 'original').rebuildLevel).toBe('modern');

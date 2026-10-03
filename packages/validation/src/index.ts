@@ -882,7 +882,8 @@ export function manualMvpLayout(
   level?: RebuildLevel,
 ): MvpLayoutSelection {
   const facts = (previous?.reasons ?? []).filter((reason) => !isRenderOutcome(reason));
-  const rebuildLevel = level ?? previous?.rebuildLevel ?? undefined;
+  // The level belongs to the rebuild: only the original layout has one
+  const rebuildLevel = variant === 'original' ? (level ?? previous?.rebuildLevel ?? undefined) : undefined;
   const levelPicked = level !== undefined || (previous?.reasons ?? []).includes(MVP_LAYOUT_MODERNIZE_REASONS.manual);
   return MvpLayoutSelectionSchema.parse({
     variant,
