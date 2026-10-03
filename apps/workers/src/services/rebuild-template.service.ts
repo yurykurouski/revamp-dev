@@ -1,4 +1,4 @@
-import type { IAudit, ILead, IMvpRebuildSummary, IRebuildEdit, IRebuildEditAnswer, RebuildFallbackReason } from '@revamp/shared-types';
+import type { IAudit, ILead, IMvpRebuildSummary, IRebuildEdit, IRebuildEditAnswer, IRebuildModernizeAnswer, RebuildFallbackReason } from '@revamp/shared-types';
 import { RebuildPlanSchema, rebuildEligibility } from '@revamp/validation';
 import { env } from '../config/env.js';
 import { renderRebuild } from '../templates/rebuild/index.js';
@@ -48,6 +48,8 @@ export const rebuildTemplateService = {
     audit: Partial<IAudit> | undefined,
     palette?: MvpPaletteOverride,
     edit?: IRebuildEdit | null,
+    /** The modernize layer (REV-114), already checked against this audit's sections; under the operator's edit */
+    modernize?: IRebuildModernizeAnswer,
     now: Date = new Date(),
   ): { html: string; summary: IMvpRebuildSummary } {
     const eligible = rebuildEligibility(audit);
@@ -70,6 +72,7 @@ export const rebuildTemplateService = {
         logoUrl: isHttpUrl(audit?.extractedBrandTokens?.logoUrl) ? audit!.extractedBrandTokens!.logoUrl : undefined,
         primary,
         year: now.getFullYear(),
+        ...(modernize ? { modernize } : {}),
         ...(answer ? { edit: answer } : {}),
       }),
     );

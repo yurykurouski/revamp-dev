@@ -372,6 +372,15 @@ describe('mvp edit worker on the rebuilt MVP (REV-111)', () => {
     expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
   });
 
+  it('keeps the modern design and the level on a reset (REV-114)', async () => {
+    const layout = { variant: 'original', rebuildLevel: 'modern', reasons: ['rule:manual', 'modernize:manual'] };
+    vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...rebuilt, layout, rebuildEdit: { auditId, ...edit }, modernize: { auditId, source: 'llm', design: { theme: { typeScale: 'modern' } } } }));
+    await processMvpEditJob({ ...job(), action: 'reset-design' }, bento(), Date.now, rebuildReturning({ summary: 'x', changes: [] }));
+    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$unset).toEqual({ rebuildEdit: '' });
+    expect(Object.keys(update.$set)).toEqual(['editedAt']);
+  });
+
   it('has nothing to reset on a rebuild without an edit, even with a Bento design saved', async () => {
     const result = await processMvpEditJob({ ...job(), action: 'reset-design' }, bento(), Date.now, rebuildReturning({ summary: 'x', changes: [] }));
     expect(result).toEqual({ applied: false, summary: 'The MVP has no custom design.', changes: [] });

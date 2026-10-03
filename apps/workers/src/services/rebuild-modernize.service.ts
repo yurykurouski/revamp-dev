@@ -54,6 +54,8 @@ export interface RebuildModernizeInput {
 export type RebuildModernizeChoice = Omit<IRebuildModernize, 'auditId'> & {
   /** Tokens the calls used, when the provider reported them */
   usage?: LlmUsage;
+  /** The model the tokens were used by, set with `usage` */
+  model?: string;
 };
 
 export class RebuildModernizeService {
@@ -66,7 +68,7 @@ export class RebuildModernizeService {
   /** The model's design when it passes, else the default with the reason; never throws for a model failure */
   async choose(input: RebuildModernizeInput): Promise<RebuildModernizeChoice> {
     const start = defaultModernDesign(input.siteSections);
-    const fallback = (error: string, usage?: LlmUsage): RebuildModernizeChoice => ({ source: 'default', design: start, error, ...(usage ? { usage } : {}) });
+    const fallback = (error: string, usage?: LlmUsage): RebuildModernizeChoice => ({ source: 'default', design: start, error, ...(usage ? { usage, model: this.llm.modelName } : {}) });
     const unavailable = this.llm.unavailableReason();
     if (!this.llm.provider || unavailable) return fallback('not_configured');
 
@@ -99,7 +101,7 @@ export class RebuildModernizeService {
         return fallback(`call_failed: ${message}`, usage);
       }
       const checked = this.check(text, input.siteSections);
-      if (checked.ok) return { source: 'llm', design: checked.design, ...(usage ? { usage } : {}) };
+      if (checked.ok) return { source: 'llm', design: checked.design, ...(usage ? { usage, model: this.llm.modelName } : {}) };
       rejected = checked.reason;
       console.warn(`[RebuildModernizeService] Answer rejected: ${rejected}`);
     }

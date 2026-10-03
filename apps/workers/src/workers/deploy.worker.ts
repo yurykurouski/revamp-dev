@@ -1,16 +1,31 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit, IMvpDesign, IMvpLayoutSelection, IRebuildEdit, MVP_LAYOUT_MANUAL_ORIGINAL, MvpLayoutVariant } from '@revamp/shared-types';
+import {
+  IDeployJobData,
+  ILead,
+  IAudit,
+  IMvpDesign,
+  IMvpLayoutSelection,
+  IMvpRebuildSummary,
+  IRebuildEdit,
+  IRebuildModernize,
+  MVP_LAYOUT_MANUAL_ORIGINAL,
+  MvpLayoutVariant,
+  RebuildLevel,
+} from '@revamp/shared-types';
 import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { env } from '../config/env.js';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
+import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { MvpPaletteOverride } from '../services/template.service.js';
 import { defaultRebuildPrimary } from '../services/rebuild-template.service.js';
-import { rebuildLayout, renderMvp, requestedVariant } from '../services/mvp-render.js';
+import { rebuildLayout, rebuildLevelFor, renderMvp, requestedVariant, withRebuildLevel } from '../services/mvp-render.js';
+import { modernizeForAudit } from '../services/rebuild-modernize.js';
+import { RebuildModernizeChoice, rebuildModernizeService } from '../services/rebuild-modernize.service.js';
 import { buildLayoutSignals, deriveMvpLayout } from '../services/layout-selection.service.js';
 import { mergeDesigns } from '../templates/design.js';
 import { storageService } from '../services/storage.service.js';
@@ -81,15 +96,73 @@ async function publishMvp(
   return { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl };
 }
 
+const HEX = /^#[0-9a-f]{6}$/i;
+
+/** The site's own colors for the modernize call: its button color, then the brand colors, as hex and once each */
+function brandColors(audit: Partial<IAudit>): string[] {
+  const tokens = audit.extractedBrandTokens;
+  const colors = [audit.siteSections?.typography?.button?.background, tokens?.primaryColor, tokens?.secondaryColor, tokens?.accentColor];
+  return [...new Set(colors.filter((c): c is string => Boolean(c && HEX.test(c))).map((c) => c.toLowerCase()))];
+}
+
+/** The modernize call's tokens (REV-114), as the audit worker records its own; never fails the job */
+async function recordModernizeTokens(leadId: unknown, choice: RebuildModernizeChoice) {
+  if (!choice.usage) return;
+  try {
+    await AnalyticsEvent.create({
+      leadId,
+      eventType: 'token_usage',
+      metadata: {
+        model: choice.model,
+        promptTokens: choice.usage.promptTokens,
+        completionTokens: choice.usage.completionTokens,
+        totalTokens: choice.usage.totalTokens,
+        stage: 'mvp_modernize',
+      },
+    });
+  } catch (error) {
+    console.warn(`[DeployWorker] Failed to record the modernize token usage for lead ${String(leadId)}:`, error);
+  }
+}
+
+/**
+ * The modernize design a render at this level uses (REV-114): at `modern`, the stored one when it was made for
+ * this audit and still fits, else a fresh one from the model (or its default), saved with the audit id before
+ * the page renders. Any other level keeps what is stored, unused. `changed` is true when a design was computed.
+ */
+export async function resolveModernize(
+  project: { _id?: unknown; modernize?: IRebuildModernize | null } | null | undefined,
+  auditData: Partial<IAudit>,
+  level: RebuildLevel,
+): Promise<{ modernize?: IRebuildModernize; changed: boolean }> {
+  const stored = project?.modernize ?? undefined;
+  if (level !== 'modern' || !auditData.siteSections) return { modernize: stored, changed: false };
+  const valid = modernizeForAudit(stored, auditData);
+  if (valid) return { modernize: valid, changed: false };
+
+  const choice = await rebuildModernizeService.choose({ siteSections: auditData.siteSections, brandColors: brandColors(auditData) });
+  await recordModernizeTokens(auditData.leadId, choice);
+  const modernize: IRebuildModernize = {
+    auditId: String(auditData._id ?? ''),
+    source: choice.source,
+    design: choice.design,
+    ...(choice.error ? { error: choice.error } : {}),
+  };
+  console.log(`[DeployWorker] Modern design for audit ${modernize.auditId}: ${modernize.source}${modernize.error ? ` (${modernize.error})` : ''}`);
+  if (project?._id) await MvpProject.findByIdAndUpdate(project._id, { $set: { modernize } }).exec();
+  return { modernize, changed: true };
+}
+
 /** How many times a relayout re-renders when the operator keeps changing the MVP while it publishes */
 const MAX_RELAYOUT_PASSES = 3;
 
 type SavedMvpDesign = {
-  layout?: { variant?: MvpLayoutVariant; reasons?: string[] | null; design?: IMvpDesign | null } | null;
+  layout?: { variant?: MvpLayoutVariant; reasons?: string[] | null; design?: IMvpDesign | null; rebuildLevel?: RebuildLevel | null } | null;
   colorPalette?: MvpPaletteOverride | null;
   design?: IMvpDesign | null;
   rebuild?: unknown;
   rebuildEdit?: IRebuildEdit | null;
+  modernize?: IRebuildModernize | null;
 };
 
 /**
@@ -107,6 +180,9 @@ const savedDesign = (project: SavedMvpDesign) => ({
   design: mergeDesigns(project.layout?.design, project.design),
   // The operator's change to the rebuild (REV-111)
   rebuildEdit: project.rebuildEdit ?? undefined,
+  // The rebuild's level and its modern design (REV-114)
+  rebuildLevel: project.layout?.rebuildLevel ?? undefined,
+  modernize: project.modernize ?? undefined,
 });
 
 /** The layout a re-publish renders: the saved one, or a fresh manual `original` pick for one that had fallen back */
@@ -122,7 +198,9 @@ const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof save
   a.palette.secondary === b.palette.secondary &&
   a.palette.accent === b.palette.accent &&
   JSON.stringify(a.design ?? null) === JSON.stringify(b.design ?? null) &&
-  JSON.stringify(a.rebuildEdit ?? null) === JSON.stringify(b.rebuildEdit ?? null);
+  JSON.stringify(a.rebuildEdit ?? null) === JSON.stringify(b.rebuildEdit ?? null) &&
+  a.rebuildLevel === b.rebuildLevel &&
+  JSON.stringify(a.modernize ?? null) === JSON.stringify(b.modernize ?? null);
 
 /**
  * Re-publishes an existing MVP in the layout (REV-84), palette (REV-90) and edits the operator saved: the
@@ -163,8 +241,17 @@ export async function republishSavedMvp(leadId: string) {
   const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, project.generatedContent));
   let layout: IMvpLayoutSelection | undefined;
   let html: string | undefined;
+  const auditKey = String(audit._id);
+  // A modern design computed by this job, so a later pass never asks the model again for the same audit
+  let computed: IRebuildModernize | undefined;
   for (let pass = 0; pass < MAX_RELAYOUT_PASSES; pass++) {
     const requested = savedLayout(project, design.variant);
+    const level: RebuildLevel = requested.variant === 'original' ? (requested.rebuildLevel ?? 'faithful') : 'faithful';
+    const owned = project.modernize?.auditId === auditKey ? project.modernize : (computed ?? project.modernize);
+    const resolved = await resolveModernize({ _id: project._id, modernize: owned }, auditData, level);
+    if (resolved.changed) computed = resolved.modernize;
+    // What is stored now, so the re-read below compares against it
+    design = { ...design, modernize: resolved.modernize };
     const rendered = renderMvp({
       lead: leadData,
       audit: auditData,
@@ -174,6 +261,7 @@ export async function republishSavedMvp(leadId: string) {
       palette: design.palette,
       design: design.design,
       rebuildEdit: design.rebuildEdit,
+      modernize: resolved.modernize,
     });
     html = rendered.html;
     published = await publishMvp(project.previewSlug, rendered.html, lead, audit);
@@ -184,11 +272,15 @@ export async function republishSavedMvp(leadId: string) {
     // (an MVP saved without a layout keeps none while it renders as Bento)
     const layoutChanged = JSON.stringify(rendered.layout) !== JSON.stringify(project.layout?.variant ? project.layout : requested);
     const switched = Boolean(project.rebuild) !== Boolean(rendered.rebuild);
+    // A level change restyles the whole page, so the preview reloads too (REV-114); a summary saved before
+    // the levels is faithful
+    const previous = project.rebuild as IMvpRebuildSummary | null | undefined;
+    const levelChanged = Boolean(previous && rendered.rebuild) && (previous?.level ?? 'faithful') !== rendered.rebuild?.level;
     if (rendered.rebuild || project.rebuild || switched) {
       await MvpProject.findByIdAndUpdate(project._id, {
         $set: {
           ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
-          ...(switched ? { editedAt: new Date() } : {}),
+          ...(switched || levelChanged ? { editedAt: new Date() } : {}),
         },
         ...(rendered.rebuild ? {} : { $unset: { rebuild: '' } }),
       }).exec();
@@ -201,7 +293,15 @@ export async function republishSavedMvp(leadId: string) {
         { $set: { layout: rendered.layout } },
       ).exec();
       // What this pass saved, so the re-read below compares against it
-      if (saved) design = savedDesign({ layout: rendered.layout, colorPalette: project.colorPalette, design: project.design, rebuildEdit: project.rebuildEdit });
+      if (saved) {
+        design = savedDesign({
+          layout: rendered.layout,
+          colorPalette: project.colorPalette,
+          design: project.design,
+          rebuildEdit: project.rebuildEdit,
+          modernize: resolved.modernize,
+        });
+      }
     }
 
     const latest = await MvpProject.findById(project._id).exec();
@@ -250,7 +350,7 @@ export const createDeployWorker = (): Worker => {
 
       // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
       // the same objects in the demos bucket and the preview URL already shared stays valid.
-      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout rebuild rebuildEdit').exec();
+      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout rebuild rebuildEdit modernize').exec();
       const transliterated = transliterate(lead.businessName || lead.domain || 'demo');
       const rawSlug = transliterated
         .replace(/[^a-z0-9]+/g, '-')
@@ -265,7 +365,9 @@ export const createDeployWorker = (): Worker => {
       // The rebuild of the original site (REV-110), unless the operator picked a layout, which survives
       // a regeneration over the freshly derived look (REV-84); Bento with the reason when it cannot be rebuilt
       const picked = requestedVariant(existingProject?.layout);
-      const requested = picked ? manualMvpLayout(derived, picked) : rebuildLayout(derived);
+      // The rebuild's level (REV-114): the operator's pick survives, else the audit's dated-site detector decides
+      const requested = withRebuildLevel(picked ? manualMvpLayout(derived, picked) : rebuildLayout(derived), rebuildLevelFor(existingProject?.layout, auditData));
+      const level: RebuildLevel = requested.rebuildLevel ?? 'faithful';
       // The operator's custom design survives a regeneration (REV-92); the palette comes from the new
       // audit run (the rebuild takes the site's own button color itself)
       // The operator's change to the rebuild (REV-111) names this audit's sections: kept for the same audit,
@@ -275,6 +377,12 @@ export const createDeployWorker = (): Worker => {
       if (savedEdit && !rebuildEdit) {
         console.log(`[DeployWorker] Rebuild edit for audit ${savedEdit.auditId} dropped: the MVP is generated from audit ${audit._id.toString()}`);
       }
+      // The modern design (REV-114) also names this audit's sections: one for an older audit is dropped, and
+      // computed again only when this render is modern
+      const savedModernize = existingProject?.modernize ?? undefined;
+      const staleModernize = Boolean(savedModernize && savedModernize.auditId !== audit._id.toString());
+      const resolved = await resolveModernize(existingProject, auditData, level);
+      const modernize = staleModernize && !resolved.changed ? undefined : resolved.modernize;
       const rendered = renderMvp({
         lead: leadData,
         audit: auditData,
@@ -283,6 +391,7 @@ export const createDeployWorker = (): Worker => {
         derived,
         design: mergeDesigns(requested.design, existingProject?.design),
         rebuildEdit,
+        modernize,
       });
       const { html, layout } = rendered;
       console.log(`[DeployWorker] Layout: ${layout.variant} (${layout.reasons.join(', ')})`);
@@ -320,6 +429,7 @@ export const createDeployWorker = (): Worker => {
         ...(generationSource && !generationSource.requestedProvider ? { requestedProvider: '', requestedModel: '' } : {}),
         ...(rendered.rebuild ? {} : { rebuild: '' }),
         ...(savedEdit && !rebuildEdit ? { rebuildEdit: '' } : {}),
+        ...(staleModernize && !resolved.changed ? { modernize: '' } : {}),
       };
       // The rebuild's CTAs default to the site's own button color (REV-110)
       const rebuildPrimary = layout.variant === 'original' ? defaultRebuildPrimary(auditData) : undefined;
@@ -357,6 +467,7 @@ export const createDeployWorker = (): Worker => {
           completenessReport,
           layout,
           ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
+          ...(resolved.changed ? { modernize: resolved.modernize } : {}),
         },
         { upsert: true, new: true },
       ).exec();
