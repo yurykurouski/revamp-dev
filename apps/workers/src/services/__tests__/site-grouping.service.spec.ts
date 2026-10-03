@@ -101,7 +101,8 @@ describe('readPageSections (REV-113)', () => {
     const flat = { sections: [{ heading: 3, pieces: [4, 5, 6, 7, 8, 9, 10], kind: 'other', arrangement: 'text' }] };
     const r = await readPageSections({ raw: passingRules, layoutBlocks: [], tiles, url: 'u', grouping: new SiteGroupingService({ client: clientOf(JSON.stringify(flat)) }) });
     expect(r.reading.sections?.source).toBe('rules');
-    expect(r.measurementError?.message).toMatch(/fails rebuild:/);    // The rejected answer is still returned for the recorder
+    expect(r.measurementError?.message).toMatch(/fails rebuild:/);
+    // The rejected answer is still returned for the recorder
     expect(r.answer?.sections).toHaveLength(1);
   });
 

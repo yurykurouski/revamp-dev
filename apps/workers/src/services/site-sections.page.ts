@@ -83,7 +83,8 @@ export interface RawSiteBlock {
   embeds: RawSiteEmbed[];
   style: { background: string; color: string; textAlign: string; paddingTop: number; paddingBottom: number };
   /** Computed style of the first item's card */
-  itemStyle?: { background: string; radius: number; borderWidth: number; boxShadow: string; textAlign: string };  /** The vision model's kind and arrangement for a grouped section (REV-113); the reader checks them against the content */
+  itemStyle?: { background: string; radius: number; borderWidth: number; boxShadow: string; textAlign: string };
+  /** The vision model's kind and arrangement for a grouped section (REV-113); the reader checks them against the content */
   hint?: { kind: SiteSectionKind; arrangement: SiteSectionArrangement };
 }
 
