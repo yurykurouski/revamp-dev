@@ -513,6 +513,9 @@ export interface IAudit {
   standardsChecks?: IStandardsChecks;
   /** Absent when the accessibility scan failed (see `measurementErrors`) */
   a11ySummary?: IA11ySummary;
+  /** How dated the original home page looks (REV-114); absent when it could not be read (see `siteEraError`) */
+  siteEra?: ISiteEra;
+  siteEraError?: string;
   /** The scan's violations (REV-102); absent when the scan failed or on audits before REV-102 */
   axeViolations?: IAxeViolation[];
   /** Measurements this audit could not take; their values are absent and the total is partial (REV-100) */
@@ -676,6 +679,8 @@ export interface IMvpProject {
   rebuild?: IMvpRebuildSummary;
   /** The operator's change to the rebuilt page (REV-111), applied by the rebuild on every render */
   rebuildEdit?: IRebuildEdit;
+  /** The modernize level's design for the rebuilt page (REV-114), applied under the operator's edit */
+  modernize?: IRebuildModernize;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -954,6 +959,31 @@ export type SiteVerdictReason = (typeof SITE_VERDICT_REASONS)[number];
 /** What makes a site too big or too involved for a one-page MVP */
 export const SITE_COMPLEXITY_SIGNS = ['many_pages', 'ecommerce', 'login', 'app_framework'] as const;
 export type SiteComplexitySign = (typeof SITE_COMPLEXITY_SIGNS)[number];
+
+/** What makes a site look dated (REV-114); read from its home page by code */
+export const SITE_DATED_SIGNS = [
+  // weight 2
+  'table_layout',
+  'no_viewport',
+  'frames',
+  'flash',
+  'narrow_fixed',
+  // weight 1
+  'legacy_tags',
+  'default_font',
+  'old_jquery',
+  'stale_copyright',
+] as const;
+export type SiteDatedSign = (typeof SITE_DATED_SIGNS)[number];
+
+/** How dated the original home page looks (REV-114): a score from the signs, and the content width measured */
+export interface ISiteEra {
+  dated: boolean;
+  score: number;
+  signs: SiteDatedSign[];
+  /** Width in px of the page's content column, when it was measured */
+  contentWidth?: number;
+}
 
 /** Why a site could not be assessed */
 export const SITE_ASSESSMENT_FAILURES = [
@@ -1317,6 +1347,8 @@ export interface IMvpLayoutSelection {
    * The operator's own design is applied over it field by field; absent when the layout was not derived.
    */
   design?: IMvpDesign;
+  /** How the rebuild was rendered (REV-114); absent on a layout other than `original` */
+  rebuildLevel?: RebuildLevel;
 }
 
 /** The reason code of a layout derived from the original site's layout (REV-104) */
@@ -1328,6 +1360,12 @@ export const MVP_LAYOUT_UNREAD_REASON = 'site_layout:unread';
 export const MVP_LAYOUT_REBUILD_REASON = 'rule:rebuild';
 /** Kept on a manual `original` pick that had to fall back, so a regeneration tries the rebuild again */
 export const MVP_LAYOUT_MANUAL_ORIGINAL = 'manual:original';
+/** Why the rebuild is at the modernize level (REV-114): the site is dated, the operator chose it, or the model's design was replaced by the default */
+export const MVP_LAYOUT_MODERNIZE_REASONS = {
+  dated: 'modernize:dated',
+  manual: 'modernize:manual',
+  fallback: 'modernize:default',
+} as const;
 /** Why the rebuild fell back to the Bento template (REV-110); stored first in `layout.reasons` */
 export const REBUILD_FALLBACK_REASONS = [
   'rebuild:unread',
@@ -1351,7 +1389,13 @@ export interface IMvpRebuildSummary {
   omitted: { what: RebuildOmission; reason: string; sample?: string }[];
   /** Fix codes, e.g. `contrast:3`, `overlay:1`, `alt:12`, `font:body-16`, `collapse:11`, `h1:hidden` */
   tuning: string[];
+  /** `faithful` keeps the original look; `modern` applies the modernize design (REV-114) */
+  level?: RebuildLevel;
 }
+
+/** How far the rebuild departs from the original look (REV-114) */
+export const REBUILD_LEVELS = ['faithful', 'modern'] as const;
+export type RebuildLevel = (typeof REBUILD_LEVELS)[number];
 
 // The rebuild edit (REV-111): the operator's change to a rebuilt MVP, by the reader's ids and fixed values only
 
@@ -1361,11 +1405,25 @@ export type RebuildEditBackground = (typeof REBUILD_EDIT_BACKGROUNDS)[number];
 export const REBUILD_EDIT_ALIGNS = ['left', 'center'] as const;
 export const REBUILD_EDIT_HEADING_CASES = ['none', 'uppercase'] as const;
 
+/** The only arrangements a section can be switched to (REV-114) */
+export const REBUILD_EDIT_ARRANGEMENTS = ['card-grid', 'list'] as const;
+export const REBUILD_MEDIA_FITS = ['natural', 'fill'] as const;
+export type RebuildMediaFit = (typeof REBUILD_MEDIA_FITS)[number];
+export const REBUILD_HERO_STYLES = ['split', 'banner'] as const;
+export type RebuildHeroStyle = (typeof REBUILD_HERO_STYLES)[number];
+export const REBUILD_TYPE_SCALES = ['original', 'modern'] as const;
+
 export interface IRebuildSectionEdit {
   background?: RebuildEditBackground;
   align?: (typeof REBUILD_EDIT_ALIGNS)[number];
   /** The section's vertical padding */
   density?: (typeof MVP_DESIGN_DENSITIES)[number];
+  /** Intro paragraphs or list items shown as cards, or paragraphs as a list (REV-114) */
+  arrangement?: (typeof REBUILD_EDIT_ARRANGEMENTS)[number];
+  /** The side the photo sits on, in a media-beside-text section (REV-114) */
+  mediaSide?: 'left' | 'right';
+  /** `fill` stretches the photo to its column (REV-114) */
+  media?: RebuildMediaFit;
 }
 
 /** What the model may answer: no free text but CSS that passes the sanitizer */
@@ -1376,12 +1434,15 @@ export interface IRebuildEditAnswer {
   hidden?: string[];
   /** Piece ids left out of their section: `s-<i>.t<n>` intro paragraph, `s-<i>.i<n>` item, `s-<i>.x<n>` extra block */
   dropped?: string[];
+  /** A photo from a later section (`s-<i>.m<n>`, the n-th image of the read section) shown in the opening section (REV-114) */
+  hero?: { photo: string; style: RebuildHeroStyle };
   sections?: Record<string, IRebuildSectionEdit>;
   theme?: {
     font?: (typeof MVP_DESIGN_FONTS)[number];
     density?: (typeof MVP_DESIGN_DENSITIES)[number];
     corners?: (typeof MVP_DESIGN_CORNERS)[number];
     headingCase?: (typeof REBUILD_EDIT_HEADING_CASES)[number];
+    typeScale?: (typeof REBUILD_TYPE_SCALES)[number];
   };
   /** Passes the workers' sanitizer (REV-93) */
   customCss?: string;
@@ -1390,6 +1451,19 @@ export interface IRebuildEditAnswer {
 /** The saved edit, with the audit its ids were read from; an edit for another audit is not applied */
 export interface IRebuildEdit extends IRebuildEditAnswer {
   auditId: string;
+}
+
+/** What the modernize level may decide: the edit's look fields, never order, hiding, dropping or CSS (REV-114) */
+export type IRebuildModernizeAnswer = Omit<IRebuildEditAnswer, 'order' | 'hidden' | 'dropped' | 'customCss'>;
+
+/** The modernize design of a rebuilt page, with the audit its ids were read from (REV-114) */
+export interface IRebuildModernize {
+  auditId: string;
+  /** `llm` when the model chose the design, `default` when the code's default stands in */
+  source: 'llm' | 'default';
+  design: IRebuildModernizeAnswer;
+  /** Why the model's design was not used */
+  error?: string;
 }
 
 // The rebuild plan (REV-110): every decision of the rebuild, validated before it is rendered; never stored
@@ -1437,6 +1511,9 @@ export interface IRebuildSection {
   arrangement: SiteSectionArrangement;
   columns?: number;
   mediaSide?: 'left' | 'right';
+  /** `fill` stretches the photo to its column, up to `mediaMax` px (REV-114) */
+  mediaFit?: RebuildMediaFit;
+  mediaMax?: number;
   split?: number;
   /** 1 only for the hero's heading */
   headingLevel: 1 | 2;

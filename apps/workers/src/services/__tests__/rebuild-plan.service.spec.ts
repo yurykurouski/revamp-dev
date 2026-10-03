@@ -1,8 +1,11 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { ISiteSection, ISiteSections } from '@revamp/shared-types';
-import { RebuildPlanSchema } from '@revamp/validation';
-import { planRebuild, RebuildInput } from '../rebuild-plan.service.js';
-import { contrastRatio } from '../rebuild-tuning.js';
+import type { IRebuildPlan, ISiteSection, ISiteSections } from '@revamp/shared-types';
+import { RebuildPlanSchema, SITE_SECTIONS_LIMITS, type SiteGroupingAnswer } from '@revamp/validation';
+import { mergeRebuildEdits, planRebuild, RebuildInput } from '../rebuild-plan.service.js';
+import { BANNER_OVERLAY, contrastRatio } from '../rebuild-tuning.js';
+import { readGroupedSections } from '../site-grouping.js';
+import type { RawSiteSections } from '../site-sections.page.js';
 import { FONT_STACKS } from '../../templates/design.js';
 import { getMvpStrings } from '../../templates/mvp-locale.js';
 
@@ -510,5 +513,275 @@ describe('planRebuild with the operator edit (REV-111)', () => {
     const unsafe = planRebuild(input(page, { edit: { customCss: 'body { display: none; }' } }));
     expect(unsafe.customCss).toBeUndefined();
     expect(unsafe.summary.tuning).toContain('edit:css-dropped');
+  });
+});
+
+describe('modernize (REV-114)', () => {
+  // The anident.pl reading, as the vision grouping stores it (site-grouping.recorded.spec.ts)
+  const anident = (): ISiteSections => {
+    const r = JSON.parse(readFileSync(new URL('./fixtures/grouping/anident.json', import.meta.url), 'utf8'));
+    const raw: RawSiteSections = { viewportWidth: r.viewportWidth, viewportHeight: r.viewportHeight, blocks: [], typography: r.typography, pageChars: r.pageChars, uncaptured: [], outline: r.outline };
+    return readGroupedSections(raw, r.answer as SiteGroupingAnswer).sections!;
+  };
+  const anidentInput = (over: Partial<RebuildInput> = {}): RebuildInput => input([], { siteSections: anident(), businessName: 'Anident', ...over });
+  const valid = (plan: IRebuildPlan) => {
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+    return plan;
+  };
+  const byId = (plan: IRebuildPlan, id: string) => plan.sections.find((s) => s.id === id);
+  const t = getMvpStrings('pl-PL');
+
+  it('plans exactly as today without a modernize layer', () => {
+    const base = anidentInput();
+    const plan = planRebuild(base);
+    expect(planRebuild({ ...base, modernize: undefined })).toEqual(plan);
+    expect({ summary: plan.summary, sections: plan.sections.map((s) => `${s.id}:${s.arrangement}`) }).toMatchSnapshot();
+  });
+
+  it('merges the layers with the operator winning per field, and the operator edit unchanged without a modernize layer', () => {
+    const edit = { order: ['s-2'], sections: { 's-3': { background: 'dark' as const } } };
+    expect(mergeRebuildEdits(undefined, edit).edit).toBe(edit);
+    expect(mergeRebuildEdits(undefined, undefined).edit).toBeUndefined();
+    const merged = mergeRebuildEdits(
+      { sections: { 's-3': { background: 'tinted', align: 'center' } }, theme: { font: 'humanist', typeScale: 'modern' }, hero: { photo: 's-2.m0', style: 'split' } },
+      { ...edit, theme: { font: 'serif' }, customCss: '.rb-heading { color: red; }' },
+    );
+    expect(merged.edit).toEqual({
+      order: ['s-2'],
+      customCss: '.rb-heading { color: red; }',
+      sections: { 's-3': { background: 'dark', align: 'center' } },
+      theme: { font: 'serif', typeScale: 'modern' },
+      hero: { photo: 's-2.m0', style: 'split' },
+    });
+    expect(merged.from('sections.s-3.background')).toBe('edit');
+    expect(merged.from('sections.s-3.align')).toBe('modernize');
+    expect(merged.from('theme.font')).toBe('edit');
+    expect(merged.from('theme.typeScale')).toBe('modernize');
+    expect(merged.from('hero')).toBe('modernize');
+    expect(mergeRebuildEdits({ hero: { photo: 's-2.m0', style: 'split' } }, { hero: { photo: 's-4.m0', style: 'banner' } }).edit?.hero).toEqual({ photo: 's-4.m0', style: 'banner' });
+  });
+
+  describe('cards from paragraphs (anident s-9)', () => {
+    const faithful = planRebuild(anidentInput());
+    const paragraphs = byId(faithful, 's-9')!.intro.text;
+    const carded = (s: IRebuildPlan['sections'][number]) => [
+      ...s.intro.text,
+      ...s.items.flatMap((i) => i.text),
+      ...s.extra.flatMap((b) => (b.type === 'text' ? b.text : [])),
+    ];
+
+    it('turns the short paragraphs into cards and keeps the long one after them as text', () => {
+      const plan = valid(planRebuild(anidentInput({ modernize: { sections: { 's-9': { arrangement: 'card-grid' } } } })));
+      const s9 = byId(plan, 's-9')!;
+      expect(paragraphs).toHaveLength(26);
+      // The longest carded paragraph is 135 characters: 3 columns
+      expect(s9).toMatchObject({ arrangement: 'card-grid', collapsed: false, columns: 3 });
+      // Cards made from bare paragraphs get a surface of their own, rounded by the theme's corners
+      expect(s9.itemStyle).toMatchObject({ border: true });
+      expect(byId(faithful, 's-9')!.itemStyle).toBeUndefined();
+      expect(s9.items).toHaveLength(25);
+      expect(s9.items.every((item, n) => item.text.length === 1 && item.text[0] === paragraphs[n] && item.links.length === 0)).toBe(true);
+      expect(s9.intro.text).toEqual([]);
+      expect(s9.intro.heading).toBe(byId(faithful, 's-9')!.intro.heading);
+      expect(s9.extra[0]).toEqual({ type: 'text', text: [paragraphs[25]] });
+      // Every paragraph appears exactly once, in the page's order (Review Focus 2)
+      expect(carded(s9)).toEqual(paragraphs);
+      expect(plan.summary.tuning).toContain('modernize:cards:9');
+      expect(byId(faithful, 's-9')!.collapsed).toBe(true);
+    });
+
+    it("applies the operator's drops first", () => {
+      const plan = valid(planRebuild(anidentInput({ modernize: { sections: { 's-9': { arrangement: 'card-grid' } } }, edit: { dropped: ['s-9.t0'] } })));
+      const s9 = byId(plan, 's-9')!;
+      expect(s9.items.map((i) => i.text[0])).not.toContain(paragraphs[0]);
+      expect(s9.items).toHaveLength(24);
+      expect(carded(s9)).toEqual(paragraphs.slice(1));
+      expect(plan.summary.omitted).toContainEqual(expect.objectContaining({ what: 'text', reason: 'dropped' }));
+    });
+
+    it('uses 3 columns when no carded paragraph is over 160 characters, and keeps a long opening paragraph as intro', () => {
+      const long = 'D'.repeat(320);
+      const text = section(4, { intro: { heading: 'Atuty', text: [long, 'Krótko o nas.', 'Nowoczesny sprzęt.', 'Doświadczeni lekarze.'], links: [] } });
+      const plan = valid(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+      const s4 = byId(plan, 's-4')!;
+      expect(s4).toMatchObject({ arrangement: 'card-grid', columns: 3 });
+      expect(s4.intro.text).toEqual([long]);
+      expect(s4.items.map((i) => i.text)).toEqual([['Krótko o nas.'], ['Nowoczesny sprzęt.'], ['Doświadczeni lekarze.']]);
+      const wide = section(4, { intro: { heading: 'Atuty', text: ['A'.repeat(161), 'Krótko.', 'Sprzęt.'], links: [] } });
+      expect(byId(planRebuild(input([hero, wide], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')).toMatchObject({ arrangement: 'card-grid', columns: 2 });
+      const list = byId(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'list' } } } })), 's-4')!;
+      expect(list).toMatchObject({ arrangement: 'list', items: s4.items, intro: { text: [long] } });
+      expect(list.columns).toBeUndefined();
+      expect(list.itemStyle).toBeUndefined();
+    });
+
+    it('leaves a section as text when the paragraphs after the cards would push an extra block past the cap', () => {
+      const full = Array.from({ length: 20 }, (_, n) => ({ type: 'text' as const, text: [`Blok ${n}.`] }));
+      const text = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.', 'E'.repeat(320)], links: [] }, extra: full });
+      const plan = valid(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+      expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'text', items: [] });
+      expect(byId(plan, 's-4')!.extra).toHaveLength(20);
+      expect(plan.summary.tuning.some((code) => code.includes('cards:'))).toBe(false);
+      // Without paragraphs after the run nothing is pushed out, so the cards are made
+      const short = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.'], links: [] }, extra: full });
+      expect(byId(planRebuild(input([hero, short], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')).toMatchObject({ arrangement: 'card-grid' });
+    });
+
+    it('leaves a section as text when the cards would push its items past the cap', () => {
+      const items = (n: number) => Array.from({ length: n }, (_, i) => ({ title: `Punkt ${i}`, text: [], links: [] }));
+      const paragraphs = { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.'], links: [] };
+      const over = section(4, { intro: paragraphs, items: items(SITE_SECTIONS_LIMITS.items - 2) });
+      const plan = valid(planRebuild(input([hero, over], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+      expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'text' });
+      expect(byId(plan, 's-4')!.intro.text).toEqual(['Jeden.', 'Dwa.', 'Trzy.']);
+      expect(plan.summary.tuning.some((code) => code.includes('cards:'))).toBe(false);
+      // Exactly at the cap the cards are made
+      const at = section(4, { intro: paragraphs, items: items(SITE_SECTIONS_LIMITS.items - 3) });
+      const fits = byId(planRebuild(input([hero, at], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')!;
+      expect(fits.arrangement).toBe('card-grid');
+      expect(fits.items).toHaveLength(SITE_SECTIONS_LIMITS.items);
+    });
+
+    it('leaves a section that does not fit as text, with no code', () => {
+      const text = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.'], links: [] } });
+      const plan = valid(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+      expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'text', items: [] });
+      expect(plan.summary.tuning.some((code) => code.includes('cards:'))).toBe(false);
+    });
+  });
+
+  it('shows a list as cards, keeping its items', () => {
+    const items = ['Implanty', 'Licówki', 'Wybielanie'].map((title) => ({ title, text: [], links: [] }));
+    const list = section(4, { kind: 'services', arrangement: 'list', items });
+    const plan = valid(planRebuild(input([hero, list], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+    expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'card-grid', items, itemStyle: { border: true } });
+    expect(plan.summary.tuning).toContain('modernize:cards:4');
+    // Items with a style of their own keep it
+    const styled = section(4, { kind: 'services', arrangement: 'list', items, itemStyle: { background: '#f3f4f6', radius: 8 } });
+    const kept = byId(planRebuild(input([hero, styled], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')!;
+    expect(kept.itemStyle).toMatchObject({ background: '#f3f4f6', radius: 8 });
+    expect(kept.itemStyle?.border).toBeUndefined();
+  });
+
+  it('fills the media column up to twice the photo width, and moves the photo to the left', () => {
+    const plan = valid(planRebuild(anidentInput({ modernize: { sections: { 's-2': { media: 'fill', mediaSide: 'left' } } } })));
+    expect(byId(plan, 's-2')).toMatchObject({ mediaFit: 'fill', mediaMax: 704, mediaSide: 'left' });
+    expect(plan.summary.tuning).toEqual(expect.arrayContaining(['modernize:fill:2', 'modernize:side:2']));
+    const wide = section(4, { arrangement: 'media-beside-text', images: [{ src: 'https://x.pl/a.jpg', width: 900 }] });
+    expect(byId(planRebuild(input([hero, wide], { modernize: { sections: { 's-4': { media: 'fill' } } } })), 's-4')!.mediaMax).toBe(1200);
+  });
+
+  describe('hero photo', () => {
+    const photo = 'https://www.anident.pl/images/xanident-klinika-stomatologiczna-warszawa.jpg.pagespeed.ic.yNpcOzSGnX.webp';
+
+    it('splits the hero with a photo from a later section, without changing the reading', () => {
+      const base = anidentInput({ modernize: { hero: { photo: 's-2.m0', style: 'split' } } });
+      const before = JSON.stringify(base.siteSections);
+      const plan = valid(planRebuild(base));
+      const s1 = byId(plan, 's-1')!;
+      expect(s1).toMatchObject({ arrangement: 'media-beside-text', mediaSide: 'right', mediaFit: 'fill', headingLevel: 1 });
+      expect(s1.images[0]).toMatchObject({ src: photo, eager: true });
+      expect(byId(plan, 's-2')!.images.map((i) => i.src)).not.toContain(photo);
+      expect(plan.summary.tuning).toContain('modernize:hero-photo:s-2.m0');
+      // The anident hero's own links all go to other pages and are dropped: it gets the header's CTA
+      expect(s1.intro.links).toEqual([{ label: t.sendRequest, href: '#booking', kind: 'booking' }]);
+      expect(plan.summary.tuning).toContain('modernize:hero-cta');
+      expect(JSON.stringify(base.siteSections)).toBe(before);
+    });
+
+    const opening = section(1, { role: 'hero', intro: { heading: 'Stomatologia estetyczna', text: ['Witamy'], links: [] } });
+    const gallery = (width: number) => section(3, { arrangement: 'media-beside-text', intro: { heading: 'Gabinet', text: ['Nowoczesny gabinet.'], links: [] },
+      images: [{ src: 'https://falcodent.pl/gabinet.jpg', alt: 'Gabinet', width, height: 800 }] });
+
+    it("gives a hero without links the header's call to action", () => {
+      const plan = valid(planRebuild(input([header, opening, gallery(600)], { modernize: { hero: { photo: 's-3.m0', style: 'split' } } })));
+      expect(byId(plan, 's-1')!.intro.links).toContainEqual({ label: 'Umów wizytę', href: '#booking', kind: 'booking' });
+      expect(plan.header.cta.label).toBe('Umów wizytę');
+      expect(plan.summary.tuning).toContain('modernize:hero-cta');
+      const plain = valid(planRebuild(input([opening, gallery(600)], { modernize: { hero: { photo: 's-3.m0', style: 'split' } } })));
+      expect(byId(plain, 's-1')!.intro.links).toEqual([{ label: t.sendRequest, href: '#booking', kind: 'booking' }]);
+    });
+
+    it('gives a hero that has a link no call to action', () => {
+      const linked = { ...opening, intro: { ...opening.intro, links: [{ label: 'Zadzwoń', href: 'tel:+48510510706', kind: 'phone' as const }] } };
+      const plan = valid(planRebuild(input([header, linked, gallery(600)], { modernize: { hero: { photo: 's-3.m0', style: 'split' } } })));
+      expect(byId(plan, 's-1')!.intro.links.map((l) => l.kind)).toEqual(['phone']);
+      expect(plan.summary.tuning.some((code) => code.endsWith('hero-cta'))).toBe(false);
+    });
+
+    it('gives a hero whose only link goes to another page the call to action', () => {
+      const away = { ...opening, intro: { ...opening.intro, links: [{ label: 'Cennik', href: 'https://falcodent.pl/cennik/', kind: 'link' as const }] } };
+      const plan = valid(planRebuild(input([header, away, gallery(600)], { modernize: { hero: { photo: 's-3.m0', style: 'split' } } })));
+      expect(byId(plan, 's-1')!.intro.links).toEqual([{ label: 'Umów wizytę', href: '#booking', kind: 'booking' }]);
+      expect(plan.summary.tuning).toContain('modernize:hero-cta');
+      expect(plan.summary.omitted).toContainEqual({ what: 'link', reason: 'other_page', sample: 'Cennik' });
+    });
+
+    it('lays a wide photo behind the hero as a banner', () => {
+      const plan = valid(planRebuild(input([header, opening, gallery(1200)], { modernize: { hero: { photo: 's-3.m0', style: 'banner' } } })));
+      const s1 = byId(plan, 's-1')!;
+      expect(s1.style).toMatchObject({ backgroundImage: 'https://falcodent.pl/gabinet.jpg', overlay: BANNER_OVERLAY, text: '#ffffff' });
+      expect(s1.images).toEqual([]);
+      expect(plan.summary.tuning).toEqual(expect.arrayContaining(['overlay:1', 'modernize:hero-photo:s-3.m0']));
+      expect(byId(plan, 's-3')!.images).toEqual([]);
+    });
+
+    it('omits the source section left empty, and the nav link to it (Review Focus 3)', () => {
+      const nav = section(0, { role: 'header', intro: { text: [], links: [{ label: 'Galeria', href: 'https://falcodent.pl/#galeria', kind: 'link' }] } });
+      const only = section(3, { arrangement: 'gallery', intro: { text: [], links: [] }, images: [{ src: 'https://falcodent.pl/gabinet.jpg', width: 1200 }] });
+      const plan = valid(planRebuild(input([nav, opening, only], { modernize: { hero: { photo: 's-3.m0', style: 'banner' } } })));
+      expect(plan.sections.map((s) => s.id)).toEqual(['s-1']);
+      expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'empty' });
+      expect(plan.summary.omitted).toContainEqual({ what: 'nav_link', reason: 'other_page', sample: 'Galeria' });
+    });
+
+    it("ignores side and fill on the source section once its only photo moved (Review Focus 1)", () => {
+      const plan = valid(planRebuild(anidentInput({ modernize: { hero: { photo: 's-2.m0', style: 'split' } }, edit: { sections: { 's-2': { mediaSide: 'left', media: 'fill' } } } })));
+      const s2 = byId(plan, 's-2')!;
+      expect(s2.images).toEqual([]);
+      expect(s2.mediaFit).toBeUndefined();
+      expect(s2.mediaMax).toBeUndefined();
+      expect(s2.mediaSide).not.toBe('left');
+      expect(plan.summary.tuning.filter((code) => /:(side|fill|style):2$/.test(code))).toEqual([]);
+      const small = section(3, { arrangement: 'media-beside-text', intro: { heading: 'Gabinet', text: ['Tekst.'], links: [] }, images: [{ src: 'https://falcodent.pl/g.jpg', width: 600 }] });
+      valid(planRebuild(input([opening, small], { modernize: { hero: { photo: 's-3.m0', style: 'split' }, sections: { 's-3': { mediaSide: 'left', media: 'fill' } } } })));
+    });
+  });
+
+  it('applies the modern type scale', () => {
+    const plan = valid(planRebuild(anidentInput({ modernize: { theme: { typeScale: 'modern' } } })));
+    expect(plan.theme).toMatchObject({ h1Size: 56, h2Size: 36 });
+    expect(plan.theme.bodySize).toBeGreaterThanOrEqual(17);
+    expect(plan.summary.tuning).toContain('modernize:type');
+    const big = planRebuild(input([hero], { siteSections: read([hero], { typography: { heading: { family: 'Arial', size: 34, weight: 700, uppercase: false }, body: { family: 'Arial', size: 19, weight: 400, color: '#111111' } } }), modernize: { theme: { typeScale: 'modern' } } }));
+    expect(big.theme.bodySize).toBe(19);
+  });
+
+  it('records modernize style and theme codes for its own fields', () => {
+    const plan = valid(planRebuild(anidentInput({ modernize: { sections: { 's-3': { background: 'tinted' } }, theme: { font: 'humanist' } } })));
+    expect(byId(plan, 's-3')!.style.background).toBe('#ecf4f6');
+    expect(plan.theme.headingFont).toBe(FONT_STACKS.humanist);
+    expect(plan.summary.tuning).toEqual(expect.arrayContaining(['modernize:style:3', 'modernize:theme']));
+    expect(plan.summary.tuning).not.toContain('edit:style:3');
+    expect(plan.summary.tuning).not.toContain('edit:theme');
+  });
+
+  it("lets the operator's choice win over the modernize layer", () => {
+    const plan = valid(planRebuild(anidentInput({
+      modernize: { sections: { 's-3': { background: 'tinted' } }, theme: { font: 'humanist' } },
+      edit: { sections: { 's-3': { background: 'dark' } }, theme: { font: 'serif' } },
+    })));
+    expect(byId(plan, 's-3')!.style.background).toBe('#111827');
+    expect(plan.summary.tuning).toContain('edit:style:3');
+    expect(plan.summary.tuning).not.toContain('modernize:style:3');
+    expect(plan.theme).toMatchObject({ headingFont: FONT_STACKS.serif, bodyFont: FONT_STACKS.serif });
+    expect(plan.summary.tuning).toContain('edit:theme');
+    expect(plan.summary.tuning).not.toContain('modernize:theme');
+  });
+
+  it("records the operator's own choice of the new fields as edit codes", () => {
+    const plan = valid(planRebuild(anidentInput({ edit: { sections: { 's-9': { arrangement: 'card-grid' }, 's-4': { media: 'fill' } }, theme: { typeScale: 'modern' } } })));
+    expect(plan.summary.tuning).toEqual(expect.arrayContaining(['edit:cards:9', 'edit:fill:4', 'edit:type']));
+    expect(plan.summary.tuning.some((code) => code.startsWith('modernize:'))).toBe(false);
   });
 });

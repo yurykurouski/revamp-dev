@@ -15,6 +15,7 @@ import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
 import { readSiteLayout } from '../services/site-layout.service.js';
 import { readPageSections } from '../services/site-grouping.service.js';
+import { readSiteEra } from '../services/site-era.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
@@ -67,6 +68,7 @@ export const createAuditWorker = (): Worker => {
           complexitySignals,
           siteLayout: rawSiteLayout,
           siteSections: rawSiteSections,
+          homeHtml,
         } = await browserService.captureFullAudit(url);
 
         // Deterministic complexity estimate: one-page brochure sites are the easiest to replace (REV-38)
@@ -131,6 +133,26 @@ export const createAuditWorker = (): Worker => {
         const siteSections = sectionsResult.reading;
         if (siteSections.error) console.warn(`[AuditWorker] Original sections not read for lead ${leadId}: ${siteSections.error}`);
 
+        // Whether the original site looks dated (REV-114); deterministic, and never fails the audit
+        let siteEra: ReturnType<typeof readSiteEra> | undefined;
+        let siteEraError: string | undefined;
+        if (homeHtml) {
+          try {
+            siteEra = readSiteEra({
+              html: homeHtml,
+              contentWidth: rawSiteSections.raw?.contentWidth,
+              fullBleedShare: rawSiteSections.raw?.fullBleedShare,
+              typography: siteSections.sections?.typography,
+              now: new Date(),
+            });
+          } catch (eraErr) {
+            siteEraError = (eraErr instanceof Error ? eraErr.message : String(eraErr)).slice(0, 300);
+          }
+        } else {
+          siteEraError = 'home page HTML not read';
+        }
+        if (siteEraError) console.warn(`[AuditWorker] Site era not read for lead ${leadId}: ${siteEraError}`);
+
         // Record each model call's token usage when the provider reports it
         const recordTokens = async (stage: string, model: string | undefined, usage: LlmUsage | undefined) => {
           if (!usage) return;
@@ -190,6 +212,9 @@ export const createAuditWorker = (): Worker => {
           // Exactly one of the two is set, so a re-audit never keeps the previous run's sections (REV-109)
           siteSections: siteSections.sections,
           siteSectionsError: siteSections.error,
+          // Exactly one of the two is set, so a re-audit never keeps the previous run's verdict (REV-114)
+          siteEra,
+          siteEraError,
         };
         // `scores` and `webVitals` are replaced whole; the fields below are unset when not measured
         const unmeasured = Object.keys(measuredFields).filter((key) => measuredFields[key] === undefined);

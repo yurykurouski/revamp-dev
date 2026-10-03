@@ -2,11 +2,14 @@ import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useIsMutating, useQueryClient } from '@tanstack/react-query';
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
-import { MVP_LAYOUT_VARIANTS, MvpLayoutVariant } from '@revamp/shared-types';
+import { MVP_LAYOUT_MODERNIZE_REASONS, MVP_LAYOUT_VARIANTS, MvpLayoutVariant, RebuildLevel } from '@revamp/shared-types';
 import { canChangeMvpLayout } from '@revamp/validation';
 import { ApiError, type ILeadItem, type IMvpProjectDetail } from '../api/client.js';
 import { rebuildFallbackOf } from '../components/MvpLayoutChip.js';
 import { UPDATE_MVP_LAYOUT_MUTATION_KEY, mvpRecordId, useUpdateMvpLayoutMutation } from './useLeads.js';
+
+/** The rebuild level an MVP is rendered at (REV-114); an MVP from before levels is faithful */
+const renderedLevelOf = (mvp: IMvpProjectDetail | null | undefined): RebuildLevel => mvp?.rebuild?.level ?? 'faithful';
 
 /** The message the MVP page's own script handles to switch layouts in place (REV-84) */
 export interface SetLayoutMessage {
@@ -30,6 +33,13 @@ export const savedMvpLayout = (mvp: IMvpProjectDetail | null | undefined): MvpLa
 const crossesRenderer = (a: MvpLayoutVariant | undefined, b: MvpLayoutVariant) => (a === 'original') !== (b === 'original');
 /** How long the picker waits for a re-render across renderers before it stops polling */
 const RERENDER_WAIT_MS = 90_000;
+/** The workers' timeout for one model call (`EDIT_LLM_TIMEOUT_MS` in the workers' mvp-edit.service.ts) */
+const MODEL_CALL_TIMEOUT_MS = 90_000;
+/**
+ * How long a level pick (REV-114) is waited for: a first switch to Modernized may ask the model twice (a
+ * rejected answer is retried once) before the page renders, so two calls and a margin for the render
+ */
+export const LEVEL_RERENDER_WAIT_MS = 2 * MODEL_CALL_TIMEOUT_MS + 30_000;
 /** How often the MVP is fetched while the page is re-rendered */
 const RERENDER_POLL_MS = 2000;
 
@@ -92,8 +102,18 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   // a repeated pick of the original can fall back to the very same template layout.
   const watched = `${version}:${mvp?.editedAt ?? ''}`;
   const shown = `${saved ?? ''}|${mvp?.layout?.reasons?.join(',') ?? ''}|${Boolean(mvp?.rebuild)}`;
-  const settled = Boolean(mvp) && Boolean(mvp?.rebuild) === (saved === 'original');
-  const [rerender, setRerender] = useState<{ version: string; before: string; since: number; echoSeen: boolean } | null>(null);
+  // A level pick (REV-114) is also waited for until the page is rendered at the picked level
+  const [rerender, setRerender] = useState<{
+    version: string;
+    before: string;
+    since: number;
+    echoSeen: boolean;
+    level?: RebuildLevel;
+  } | null>(null);
+  const settled =
+    Boolean(mvp) &&
+    Boolean(mvp?.rebuild) === (saved === 'original') &&
+    (!rerender?.level || renderedLevelOf(mvp) === rerender.level);
   if (rerender && (rerender.version !== watched || (settled && (shown !== rerender.before || rerender.echoSeen)))) setRerender(null);
   else if (rerender && !rerender.echoSeen && mvp && !settled) setRerender({ ...rerender, echoSeen: true });
   const isSaving = useIsMutating({ mutationKey: UPDATE_MVP_LAYOUT_MUTATION_KEY }) > 0;
@@ -102,6 +122,17 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   // instead would show the old layout for a render and bounce the preview back and forth
   if (pick && (pick.version !== version || (!isSaving && pending === saved))) setPick(null);
   const layout = pending ?? saved;
+  const savedLevel: RebuildLevel = mvp?.layout?.rebuildLevel ?? 'faithful';
+  const [levelPick, setLevelPick] = useState<{ version: string; level: RebuildLevel } | null>(null);
+  const pendingLevel = levelPick?.version === version ? levelPick.level : null;
+  if (levelPick && (levelPick.version !== version || (!isSaving && pendingLevel === savedLevel))) setLevelPick(null);
+  const level = pendingLevel ?? savedLevel;
+  const reasons = mvp?.layout?.reasons ?? [];
+  const levelReason = reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.fallback)
+    ? ('defaultDesign' as const)
+    : reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.dated)
+      ? ('suggested' as const)
+      : undefined;
   const canChange = Boolean(mvpId) && canChangeMvpLayout(lead.status);
 
   const post = useCallback(
@@ -123,8 +154,9 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   const leadId = lead.id;
   useEffect(() => {
     if (!rerender) return;
+    const waitMs = rerender.level ? LEVEL_RERENDER_WAIT_MS : RERENDER_WAIT_MS;
     const id = setInterval(() => {
-      if (Date.now() - rerender.since > RERENDER_WAIT_MS) setRerender(null);
+      if (Date.now() - rerender.since > waitMs) setRerender(null);
       else void queryClient.invalidateQueries({ queryKey: ['mvp', leadId] });
     }, RERENDER_POLL_MS);
     return () => clearInterval(id);
@@ -155,8 +187,28 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
     );
   };
 
+  /** Switches the rebuilt original between faithful and modernized (REV-114); the page is re-rendered */
+  const changeLevel = (next: RebuildLevel) => {
+    if (!mvpId || !canChange || layout !== 'original' || next === level) return;
+    setLevelPick({ version, level: next });
+    const before = shown;
+    mutation.mutate(
+      { mvpId, leadId: lead.id, variant: 'original', level: next },
+      {
+        onSuccess: () => setRerender({ version: watched, before, since: Date.now(), echoSeen: false, level: next }),
+        onError: (err) => {
+          setLevelPick(null);
+          setError(layoutSaveError(err, t));
+        },
+      },
+    );
+  };
+
   return {
     layout,
+    level,
+    changeLevel,
+    levelReason,
     canChange,
     changeLayout,
     onFrameLoad,

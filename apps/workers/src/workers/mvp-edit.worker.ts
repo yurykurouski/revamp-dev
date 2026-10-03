@@ -15,6 +15,7 @@ import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpColorCandidate, MvpEditService, mvpEditService } from '../services/mvp-edit.service.js';
 import { RebuildEditService, rebuildEditService } from '../services/rebuild-edit.service.js';
 import { editForAudit } from '../services/rebuild-template.service.js';
+import { modernizeForAudit } from '../services/rebuild-modernize.js';
 import { republishSavedMvp } from './deploy.worker.js';
 import { hasDesign, mergeDesigns } from '../templates/design.js';
 
@@ -119,10 +120,12 @@ export async function processMvpEditJob(
     const auditKey = audit._id.toString();
     // An edit for another audit run names other sections, so it is not offered as the current one
     const currentEdit = editForAudit(project.rebuildEdit, { _id: auditKey });
+    // A Modernized page (REV-114) has the modern look under the edit; the model is told so it keeps it
+    const modernize = project.layout?.rebuildLevel === 'modern' ? modernizeForAudit(project.modernize, { _id: auditKey, siteSections: audit.siteSections })?.design : undefined;
     const plan = await rebuildService.interpret({
       instruction: data.instruction,
       siteSections: audit.siteSections,
-      current: { ...(currentEdit ? { edit: currentEdit } : {}), primaryColor: project.colorPalette?.primary },
+      current: { ...(currentEdit ? { edit: currentEdit } : {}), ...(modernize ? { modernize } : {}), primaryColor: project.colorPalette?.primary },
       colorCandidates: colorCandidates(project.colorPalette?.primary, audit.extractedBrandTokens),
     });
     if (plan.changes.length === 0) {

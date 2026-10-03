@@ -1,0 +1,1147 @@
+{
+  "url": "https://falcodent.pl",
+  "source": "llm",
+  "siteSections": {
+    "sections": [
+      {
+        "index": 0,
+        "role": "header",
+        "kind": "other",
+        "arrangement": "text",
+        "intro": {
+          "text": [],
+          "links": [
+            {
+              "label": "Home",
+              "href": "https://falcodent.pl/",
+              "kind": "link"
+            },
+            {
+              "label": "Oferta",
+              "href": "https://falcodent.pl/oferta/",
+              "kind": "link"
+            },
+            {
+              "label": "Metamorfozy",
+              "href": "https://falcodent.pl/metamorfozy/",
+              "kind": "link"
+            },
+            {
+              "label": "Wyposażenie",
+              "href": "https://falcodent.pl/sprzet/",
+              "kind": "link"
+            },
+            {
+              "label": "Strefa pacjenta",
+              "href": "https://falcodent.pl/strefa-pacjenta/",
+              "kind": "link"
+            },
+            {
+              "label": "Cennik",
+              "href": "https://falcodent.pl/cennik/",
+              "kind": "link"
+            },
+            {
+              "label": "MEDYCYNA ESTETYCZNA",
+              "href": "https://falcodent.pl/medycyna-estetyczna/",
+              "kind": "link"
+            },
+            {
+              "label": "Kontakt",
+              "href": "https://falcodent.pl/kontakt/",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [
+          {
+            "type": "text",
+            "text": [
+              "Aleja Zjednoczenia 21/23, 01-829 Warszawa (METRO STARE BIELANY) | +48 510-510-706 | (22) 639-82-80"
+            ]
+          }
+        ],
+        "images": [
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2022/11/logo_falko1-1.png",
+            "alt": "Gabinet stomatologiczny | Falcodent",
+            "width": 160,
+            "height": 63
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#173784",
+          "textColor": "#ffffff",
+          "align": "left",
+          "paddingY": 0,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 1,
+        "role": "hero",
+        "kind": "other",
+        "arrangement": "slider",
+        "intro": {
+          "text": [],
+          "links": []
+        },
+        "items": [
+          {
+            "title": "Estetyczne nakładki ortodontyczne",
+            "text": [
+              "Najbardziej przejrzysta droga do zmiany Twojego Uśmiechu"
+            ],
+            "backgroundImage": "https://falcodent.pl/wp-content/uploads/2023/01/ortheo.jpg",
+            "links": []
+          },
+          {
+            "title": "Stomatologia estetyczna",
+            "text": [
+              "Licówki",
+              "Korony pełnoceramiczne",
+              "Wybielanie laserowe",
+              "Implanty"
+            ],
+            "backgroundImage": "https://falcodent.pl/wp-content/uploads/2023/02/o-6.jpg",
+            "links": []
+          },
+          {
+            "title": "Pantomogram",
+            "text": [
+              "Zabiegi laserowe",
+              "Leczenie pod mikroskopem",
+              "Profilaktyka vectorowa"
+            ],
+            "backgroundImage": "https://falcodent.pl/wp-content/uploads/2023/01/Periodentologia.jpg",
+            "links": []
+          },
+          {
+            "title": "NOWOŚĆ !",
+            "text": [
+              "Medycyna estetyczna"
+            ],
+            "backgroundImage": "https://falcodent.pl/wp-content/uploads/2023/01/Projekt-bez-tytulu-37.jpg",
+            "links": []
+          },
+          {
+            "text": [],
+            "backgroundImage": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T101454.385.jpg",
+            "links": []
+          }
+        ],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "textColor": "#000000",
+          "align": "left",
+          "paddingY": 35,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 2,
+        "role": "content",
+        "kind": "reviews",
+        "arrangement": "slider",
+        "intro": {
+          "eyebrow": "OPINIE",
+          "heading": "Naszych Pacjentów",
+          "headingLevel": 2,
+          "text": [],
+          "links": [
+            {
+              "label": "Zobacz więcej opinii",
+              "href": "https://www.google.com/search?q=falco-dent+bwarszawa&oq=falco-dent+bwarszawa&aqs=chrome..69i57j0i22i30i625.6405j0j7&sourceid=chrome&ie=UTF-8#lrd=0x471ecbcd94fef9cb:0xd64becc4a6e08c23,1,,,,",
+              "kind": "cta"
+            },
+            {
+              "label": "Dodaj nową opinię",
+              "href": "https://www.google.com/search?q=falco-dent+bwarszawa&oq=falco-dent+bwarszawa&aqs=chrome..69i57j0i22i30i625.6405j0j7&sourceid=chrome&ie=UTF-8#lrd=0x471ecbcd94fef9cb:0xd64becc4a6e08c23,1,,,,",
+              "kind": "cta"
+            }
+          ]
+        },
+        "items": [
+          {
+            "title": "Agi Lebiedz",
+            "text": [
+              "Bardzo polecam, swietny gabinet i wspaniala obsluga. Bardzo sie ciesze ze na Panstwa trafilam i do zobaczenia nastepnym razem! Dziekuje!"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/01/agi-opinia.webp",
+              "width": 64,
+              "height": 64
+            },
+            "links": []
+          },
+          {
+            "title": "Marta Barcicka",
+            "text": [
+              "Leczę się u doktor Kościuszko od wielu lat. Profesjonalna, przesympatyczna osoba. Dokładnie wszystko tlumaczy, potrafi opowiedzieć o planie leczenia w sposób dostosowany do pacjenta i jego wiedzy",
+              "nawet leczenie kanałowe przebieglo bezboleśnie i sprawnie. Najlepszy stomatolog. Polecam !"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/01/MARTA-150x150.webp",
+              "width": 64,
+              "height": 64
+            },
+            "links": []
+          },
+          {
+            "title": "Katarzyna Berenson",
+            "text": [
+              "Polecam. Miałam wyrywane ósemki i leczone inne ząbki w tej klinice. Wszystko super"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/01/katarzyna-berenson-opinia.webp",
+              "width": 64,
+              "height": 65
+            },
+            "links": []
+          }
+        ],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2022/11/separator.png",
+            "width": 57,
+            "height": 179
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "textColor": "#0a0a0a",
+          "align": "center",
+          "paddingY": 60,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 3,
+        "role": "content",
+        "kind": "about",
+        "arrangement": "media-beside-text",
+        "mediaSide": "right",
+        "intro": {
+          "eyebrow": "O NAS",
+          "heading": "Poznaj gabinet stomatologiczny Falco-Dent",
+          "headingLevel": 2,
+          "text": [
+            "Gabinet stomatologiczny Falco-Dent powstał w 1995 roku z pasji do stomatologii i przywracania pacjentom zdrowego, pięknego uśmiechu. Nasz zespół to doświadczeni specjaliści z różnych dziedzin stomatologii, którzy gwarantują indywidualne podejście oraz wykonywanie usług stomatologicznych na najwyższym poziomie.",
+            "Posiadamy najnowocześniejszy sprzęt stomatologiczny, aby każdy z naszych Pacjentów miał dostęp do najnowszych technologii. Pracujemy w powiększeniu (mikroskop, lupy) w celu zapewnienia największej precyzji wykonywanych zabiegów.",
+            "Spośród innych gabinetów wyróżniamy się na rynku już ponad 25 letnim doświadczeniem !",
+            "Twój PROBLEM oraz Twoje OCZEKIWANIA są dla Nas NAJWAŻNIEJSZE !",
+            "Preferujemy INDYWIDUALNE podejście do każdego pacjenta.",
+            "Przed rozpoczęciem leczenia przeprowadzamy pełną diagnostykę, przygotowujemy indywidualny plan leczenia, omawiamy poszczególne jego etapy i podajemy zbliżony kosztorys. Oferta naszej kliniki obejmuje wszystkie dziedziny stomatologii.",
+            "Zaufaj najwyższej jakości i doświadczeniu.",
+            "Zdrowie i dobre samopoczucie naszych pacjentów jest dla nas najwyższą wartością!"
+          ],
+          "links": [
+            {
+              "label": "Umów wizytę",
+              "href": "https://falcodent.pl/kontakt/",
+              "kind": "cta"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2023/02/FALCODENT.png",
+            "width": 620,
+            "height": 828
+          },
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T101118.751-1024x683.jpg",
+            "width": 620,
+            "height": 414
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "textColor": "#0a0a0a",
+          "align": "left",
+          "paddingY": 26,
+          "fullBleed": false,
+          "split": 0.5
+        }
+      },
+      {
+        "index": 4,
+        "role": "content",
+        "kind": "contact",
+        "arrangement": "text",
+        "intro": {
+          "heading": "Masz pytania? Napisz do nas!",
+          "headingLevel": 3,
+          "text": [
+            "recepcja.falcodent@gmail.com",
+            "Lub zostaw swój email - odpiszemy!"
+          ],
+          "links": []
+        },
+        "items": [],
+        "extra": [],
+        "images": [],
+        "embeds": [
+          {
+            "kind": "form"
+          }
+        ],
+        "style": {
+          "background": "#ffffff",
+          "backgroundImage": "https://falcodent.pl/wp-content/uploads/2024/02/Projekt-bez-tytulu-5-1.jpg",
+          "textColor": "#ffffff",
+          "align": "left",
+          "paddingY": 37,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 5,
+        "role": "content",
+        "kind": "features",
+        "arrangement": "card-grid",
+        "columns": 4,
+        "intro": {
+          "eyebrow": "CO NAS WYRÓŻNIA",
+          "heading": "Stawiamy na wysoką jakość i podejście do pacjenta",
+          "headingLevel": 2,
+          "text": [],
+          "links": []
+        },
+        "items": [
+          {
+            "title": "Leczenie kompleksowe – od diagnostyki po implany",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/Projekt-bez-tytulu-23.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Leczenie laserem – laser LASOTRONIX PRO",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/Projekt-bez-tytulu-24.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Profilaktyka i leczenie przyzębia – Vector Durr",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Tekst-akapitu-14.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Leczenie estetycznymi nakładkami ortodontycznymi",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/Projekt-bez-tytulu-25.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "ICON – leczenie początkującej próchnicy bez wiertła (białe plamy)",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/o-4.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Indywidualne podejście do pacjenta (plan leczenia na życzenie)",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/Projekt-bez-tytulu-26.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Dogodna lokalizacja – obok metra STARE BIELANY",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/o.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Możliwość płatności kartą, przelewem",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/o-1.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          }
+        ],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#173784",
+          "backgroundImage": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg",
+          "textColor": "#ffffff",
+          "align": "center",
+          "paddingY": 37,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 6,
+        "role": "content",
+        "kind": "team",
+        "arrangement": "card-grid",
+        "columns": 3,
+        "intro": {
+          "eyebrow": "ZESPÓŁ",
+          "heading": "Nasi specjaliści",
+          "headingLevel": 2,
+          "text": [],
+          "links": []
+        },
+        "items": [
+          {
+            "title": "Małgorzata Falkowska-Kościuszko",
+            "text": [
+              "Stomatologia estetyczna,endodoncja, protetyka, leczenie nakładkami",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T101948.771.jpg",
+              "width": 340,
+              "height": 340
+            },
+            "links": []
+          },
+          {
+            "title": "Magdalena Zawadzka",
+            "text": [
+              "Stomatologia zachowawcza, endodoncja, protetyka",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T102528.698.jpg",
+              "width": 340,
+              "height": 340
+            },
+            "links": []
+          },
+          {
+            "title": "Magdalena Dąbkowska",
+            "text": [
+              "Ortodoncja, leczenie nakładkami",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T102929.025.jpg",
+              "width": 340,
+              "height": 340
+            },
+            "links": []
+          },
+          {
+            "title": "Antoni Krzemiński",
+            "text": [
+              "Stomatologia zachowawcza, endodoncja, chirurgia",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/elementor/thumbs/Antoni-Krzeminski-2-scaled-qf6cy56a3gqol7q6mprsht8wx1qjb7vcn1kx7pwl8o.jpeg",
+              "alt": "stomatologia zachowawcza, chirurgia",
+              "width": 340,
+              "height": 340
+            },
+            "links": []
+          },
+          {
+            "title": "Natalia Pawłowska",
+            "text": [
+              "Stomatologia zachowawcza, estetyczna oraz protetyka",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/elementor/thumbs/20240603_142925_0000-qq8387j52rz1s04lkativrjiz6jitcns7lbxo33d6w.png",
+              "alt": "20240603_142925_0000",
+              "width": 340,
+              "height": 340
+            },
+            "links": []
+          },
+          {
+            "title": "Grzegorz Lewandowski",
+            "text": [
+              "Chirurgia, implanty",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/11/ikona-pan-doktor.jpg",
+              "width": 340,
+              "height": 340
+            },
+            "links": []
+          },
+          {
+            "title": "Edyta Gronowska - Olesiejuk",
+            "text": [
+              "Higienistka",
+              "Więcej"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T103246.733.jpg",
+              "width": 245,
+              "height": 245
+            },
+            "links": []
+          },
+          {
+            "title": "Elżbieta Gruca",
+            "text": [
+              "Asystentka"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Projekt-bez-tytulu-2023-02-27T103113.713.jpg",
+              "width": 245,
+              "height": 245
+            },
+            "links": []
+          },
+          {
+            "title": "Marta Savych",
+            "text": [
+              "Asystentka"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/elementor/thumbs/Marta-asystentka--scaled-qf6cl36z6avbc6ouv2mbv3ufwe30ek1k6fe59d9fns.jpeg",
+              "alt": "Marta asystentka",
+              "width": 245,
+              "height": 245
+            },
+            "links": []
+          },
+          {
+            "title": "Kornelia Grabarczyk",
+            "text": [
+              "Rejestratorka medyczna"
+            ],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/03/Kornelia-ok-1024x1024.jpeg",
+              "width": 245,
+              "height": 245
+            },
+            "links": []
+          }
+        ],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2022/11/separator.png",
+            "width": 45,
+            "height": 141
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "textColor": "#0a0a0a",
+          "align": "center",
+          "paddingY": 55,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 7,
+        "role": "content",
+        "kind": "gallery",
+        "arrangement": "gallery",
+        "intro": {
+          "eyebrow": "GALERIA",
+          "heading": "Nasz gabinet",
+          "headingLevel": 2,
+          "text": [],
+          "links": []
+        },
+        "items": [
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-1-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-2-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-3-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-4-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-8-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-5-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-6-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          },
+          {
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/Galeria-7-600x600.jpeg",
+              "width": 300,
+              "height": 300
+            },
+            "links": []
+          }
+        ],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "textColor": "#0a0a0a",
+          "align": "center",
+          "paddingY": 80,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 8,
+        "role": "content",
+        "kind": "other",
+        "arrangement": "text",
+        "intro": {
+          "eyebrow": "BEZPIECZEŃSTWO",
+          "heading": "Bezpieczeństwo w gabinecie stomatologicznym Falco-Dent",
+          "headingLevel": 2,
+          "text": [
+            "Aby zapewnić Państwu bezpieczeństwo w czasie wykonywania zabiegów, sterylizujemy narzędzia w najwyższej klasie autoklanie. Każda sterylizacja potwierdzona jest wskaźnikiem fizycznym (paskowym), którego wynik jest archiwizowany w dokumentacji (do wglądu w naszym gabinecie). Raz w miesiącu kontrola prawidłowej sterylizacji jest wysyłana do Sanepidu. Również to badanie potwierdzone jest dokumentem (do wglądu)."
+          ],
+          "links": []
+        },
+        "items": [],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "backgroundImage": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg",
+          "textColor": "#ffffff",
+          "align": "center",
+          "paddingY": 48,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 9,
+        "role": "content",
+        "kind": "other",
+        "arrangement": "banner",
+        "intro": {
+          "eyebrow": "REGULAMIN",
+          "heading": "Regulamin organizacyjny",
+          "headingLevel": 2,
+          "text": [
+            "Regulamin organizacyjny podmiotu leczniczego",
+            "Załącznik nr 1 – Cennik świadczeń zdrowotnych",
+            "Załącznik nr 2 – opłaty za udostepnienie dokumentacji"
+          ],
+          "links": []
+        },
+        "items": [],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#173784",
+          "backgroundImage": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg",
+          "textColor": "#0a0a0a",
+          "align": "left",
+          "paddingY": 69,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 10,
+        "role": "content",
+        "kind": "other",
+        "arrangement": "banner",
+        "intro": {
+          "eyebrow": "RODO",
+          "heading": "Polityka prywatności",
+          "headingLevel": 2,
+          "text": [
+            "Polityka Prywatnosci Falco-Dent"
+          ],
+          "links": [
+            {
+              "label": "Stomatologia estetyczna",
+              "href": "https://falcodent.pl/stomatologia-estetyczna/",
+              "kind": "link"
+            },
+            {
+              "label": "Profilaktyka",
+              "href": "https://falcodent.pl/profilaktyka/",
+              "kind": "link"
+            },
+            {
+              "label": "Stomatologia dziecięca",
+              "href": "https://falcodent.pl/stomatologia-dziecieca/",
+              "kind": "link"
+            },
+            {
+              "label": "Stomatologia zachowawcza",
+              "href": "https://falcodent.pl/stomatologia-zachowawcza/",
+              "kind": "link"
+            },
+            {
+              "label": "Endodoncja",
+              "href": "https://falcodent.pl/endodoncja/",
+              "kind": "link"
+            },
+            {
+              "label": "Implanty",
+              "href": "https://falcodent.pl/implanty/",
+              "kind": "link"
+            },
+            {
+              "label": "Protetyka",
+              "href": "https://falcodent.pl/protetyka/",
+              "kind": "link"
+            },
+            {
+              "label": "Chirurgia",
+              "href": "https://falcodent.pl/chirurgia/",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#173784",
+          "backgroundImage": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg",
+          "textColor": "#0a0a0a",
+          "align": "left",
+          "paddingY": 46,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 11,
+        "role": "content",
+        "kind": "services",
+        "arrangement": "card-grid",
+        "columns": 4,
+        "intro": {
+          "eyebrow": "NASZA OFERTA",
+          "heading": "Zapoznaj się z naszą bogatą ofertą zabiegów",
+          "headingLevel": 2,
+          "text": [],
+          "links": [
+            {
+              "label": "Pełna oferta",
+              "href": "https://falcodent.pl/oferta/",
+              "kind": "cta"
+            }
+          ]
+        },
+        "items": [
+          {
+            "title": "Profilaktyka Vectorowa",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/sta.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Stomatologia estetyczna",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-21.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Laser biostymulacyjny i wysokoenergetyczny",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/12/Projekt-bez-tytulu-24.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Nakładki ortodontyczne ORTHERO",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/sta-3.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Implanty",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Tekst-akapitu-8.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Ortodoncja",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/sta-1.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Stomatologia zachowawcza",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Tekst-akapitu.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Stomatologia dziecięca",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Tekst-akapitu-2.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Endodoncja",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Tekst-akapitu-7.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Protetyka",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2023/02/sta-2.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          },
+          {
+            "title": "Chirurgia",
+            "text": [],
+            "image": {
+              "src": "https://falcodent.pl/wp-content/uploads/2022/11/Tekst-akapitu-4.jpg",
+              "width": 241,
+              "height": 169
+            },
+            "links": []
+          }
+        ],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#ffffff",
+          "backgroundImage": "https://falcodent.pl/wp-content/uploads/2022/11/Projekt-bez-tytulu-5.jpg",
+          "textColor": "#ffffff",
+          "align": "center",
+          "paddingY": 0,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 12,
+        "role": "content",
+        "kind": "contact",
+        "arrangement": "media-beside-text",
+        "mediaSide": "right",
+        "intro": {
+          "eyebrow": "LOKALIZACJA FALCO-DENT",
+          "heading": "Al. Zjednoczenia 21/23 01-829 Warszawa",
+          "headingLevel": 6,
+          "text": [
+            "[instagram feed=\"2562\"]",
+            "Dojazd komunikacją miejską",
+            "Stacja Metra Stare Bielany",
+            "(wyjście w kierunku Al. Zjednoczenia)",
+            "Przystanek autobusowy : METRO STARE BIELANY",
+            "linie : 103 , 156 , 197 , 397",
+            "+48 510-510-706 +48 (22) 639-82-80",
+            "Godziny otwarcia",
+            "pon-pt 9:00 - 20:00"
+          ],
+          "links": []
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2022/11/separator.png",
+            "width": 45,
+            "height": 141
+          }
+        ],
+        "embeds": [
+          {
+            "kind": "map",
+            "src": "https://maps.google.com/maps?q=falcodent%20al%20zjednoczenia%2021&t=m&z=17&output=embed&iwloc=near"
+          }
+        ],
+        "style": {
+          "background": "#ffffff",
+          "textColor": "#0a0a0a",
+          "align": "left",
+          "paddingY": 0,
+          "fullBleed": true
+        }
+      },
+      {
+        "index": 13,
+        "role": "footer",
+        "kind": "other",
+        "arrangement": "text",
+        "intro": {
+          "text": [],
+          "links": []
+        },
+        "items": [],
+        "extra": [
+          {
+            "type": "text",
+            "text": [
+              "+48 510-510-706 +48(22) 639-82-80",
+              "falcodent.poczta@interia.pl",
+              "Godziny otwarcia pon-pt 9:00 – 20:00",
+              "Dojazd komunikacją miejską",
+              "Stacja Metra Stare Bielany",
+              "(wyjście w kierunku Al. Zjednoczenia) Przystanek autobusowy : METRO STARE BIELANY linie : 103 , 156 , 197 , 397",
+              "Realizacja projektu strony internetowej: PrestoMedia.pl",
+              "Kliknij tutaj",
+              "[instagram feed=\"2562\"]"
+            ]
+          }
+        ],
+        "images": [
+          {
+            "src": "https://falcodent.pl/wp-content/uploads/2022/11/logo_falko1-1.png",
+            "width": 164,
+            "height": 64
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#232323",
+          "textColor": "#ffffff",
+          "align": "left",
+          "paddingY": 0,
+          "fullBleed": false
+        }
+      }
+    ],
+    "typography": {
+      "heading": {
+        "family": "Montserrat",
+        "size": 20,
+        "weight": 600,
+        "uppercase": false,
+        "color": "#173784"
+      },
+      "body": {
+        "family": "Montserrat",
+        "size": 14,
+        "weight": 500,
+        "lineHeight": 1.8,
+        "color": "#000000"
+      },
+      "button": {
+        "radius": 0,
+        "filled": true,
+        "uppercase": false,
+        "background": "#173784",
+        "color": "#ffffff"
+      }
+    },
+    "skipped": [
+      {
+        "index": 1,
+        "reason": "unassigned",
+        "sample": "Home Oferta Metamorfozy Wyposażenie Strefa pacjenta Cennik MEDYCYNA ESTETYCZNA Kontakt"
+      },
+      {
+        "index": 13,
+        "reason": "unassigned",
+        "sample": "Zadzwoń"
+      }
+    ],
+    "coverage": {
+      "pageChars": 5314,
+      "capturedChars": 5103,
+      "ratio": 0.96,
+      "uncaptured": []
+    },
+    "source": "llm"
+  },
+  "answer": {
+    "sections": {
+      "s-1": {
+        "background": "page",
+        "align": "left",
+        "density": "comfortable"
+      },
+      "s-2": {
+        "background": "tinted",
+        "align": "center",
+        "density": "comfortable"
+      },
+      "s-3": {
+        "background": "page",
+        "align": "left",
+        "density": "airy",
+        "mediaSide": "right",
+        "media": "fill"
+      },
+      "s-4": {
+        "background": "tinted",
+        "align": "center",
+        "density": "comfortable"
+      },
+      "s-5": {
+        "background": "brand",
+        "align": "center",
+        "density": "airy"
+      },
+      "s-6": {
+        "background": "page",
+        "align": "center",
+        "density": "comfortable"
+      },
+      "s-7": {
+        "background": "tinted",
+        "align": "center",
+        "density": "comfortable"
+      },
+      "s-8": {
+        "background": "page",
+        "align": "center",
+        "density": "comfortable"
+      },
+      "s-9": {
+        "background": "brand",
+        "align": "left",
+        "density": "comfortable"
+      },
+      "s-10": {
+        "background": "dark",
+        "align": "left",
+        "density": "compact"
+      },
+      "s-11": {
+        "background": "tinted",
+        "align": "center",
+        "density": "airy"
+      },
+      "s-12": {
+        "background": "page",
+        "align": "left",
+        "density": "comfortable",
+        "mediaSide": "left",
+        "media": "natural"
+      }
+    },
+    "theme": {
+      "font": "humanist",
+      "density": "comfortable",
+      "corners": "soft",
+      "typeScale": "modern"
+    }
+  }
+}

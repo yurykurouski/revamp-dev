@@ -7,6 +7,7 @@ import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.ser
 import { collectComplexitySignalsInPage, RawComplexitySignals } from './site-complexity.service.js';
 import { collectSiteLayoutInPage, RawSiteLayout } from './site-layout.service.js';
 import { collectSiteSectionsInPage, RawSiteSections } from './site-sections.page.js';
+import { MAX_HTML_BYTES } from './site-assessment.service.js';
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -42,6 +43,8 @@ export interface FullAuditCrawlingResult extends ScreenshotResult {
   siteLayout: { raw?: RawSiteLayout; error?: string };
   /** Raw DOM facts of the home page's sections (REV-109); absent with the reason when collection failed */
   siteSections: { raw?: RawSiteSections; error?: string };
+  /** The desktop page's HTML for the dated-site check (REV-114); absent when it could not be read */
+  homeHtml?: string;
 }
 
 /**
@@ -504,6 +507,7 @@ export class BrowserService {
     let complexitySignals: RawComplexitySignals | undefined;
     let siteLayout: { raw?: RawSiteLayout; error?: string };
     let siteSections: { raw?: RawSiteSections; error?: string };
+    let homeHtml: string | undefined;
 
     // 1. Desktop Screenshot (1440x900)
     const desktopOptions: BrowserContextOptions = {
@@ -536,6 +540,11 @@ export class BrowserService {
       siteSections = siteLayout.raw
         ? await this.extractSiteSections(page)
         : { error: `layout walk failed: ${siteLayout.error ?? 'no layout facts'}`.slice(0, 300) };
+      try {
+        homeHtml = (await page.content()).slice(0, MAX_HTML_BYTES);
+      } catch (htmlErr) {
+        console.warn('[BrowserService] Could not read the page HTML for the dated-site check:', htmlErr);
+      }
     } finally {
       await desktopContext.close();
     }
@@ -589,6 +598,7 @@ export class BrowserService {
       complexitySignals,
       siteLayout,
       siteSections,
+      homeHtml,
     };
   }
 

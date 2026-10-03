@@ -260,6 +260,13 @@ export const lt: Translation = {
       low_coverage: 'Originalios svetainės atkurti negalima, nes pavyko perskaityti tik {{percent}}% jos puslapio.',
       flat: 'Originalios svetainės atkurti negalima, nes jos puslapis perskaitytas kaip keli ilgi blokai be antraščių.',
     },
+    level: {
+      label: 'Išvaizda',
+      faithful: 'Tiksli kopija',
+      modern: 'Atnaujinta',
+      suggested: 'Siūloma: originali svetainė atrodo pasenusi',
+      defaultDesign: 'Standartinis modernus dizainas (DI pasirinkimas buvo nepasiekiamas)',
+    },
     rerendering: 'Puslapis perpiešiamas…',
     fallback: {
       unread: 'Originalaus puslapio nepavyko perskaityti skiltimis, todėl naudotas šablonas.',

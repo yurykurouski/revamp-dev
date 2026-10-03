@@ -10,6 +10,8 @@ import { RebuildUnavailable, rebuildTemplateService } from '../../services/rebui
 import { storageService } from '../../services/storage.service.js';
 import { browserService } from '../../services/browser.service.js';
 import { ImageService } from '../../services/image.service.js';
+import { rebuildModernizeService } from '../../services/rebuild-modernize.service.js';
+import { AnalyticsEvent } from '../../models/AnalyticsEvent.model.js';
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
@@ -19,6 +21,8 @@ vi.mock('../../services/template.service.js');
 vi.mock('../../services/storage.service.js');
 vi.mock('../../services/browser.service.js');
 vi.mock('../../services/image.service.js');
+vi.mock('../../models/AnalyticsEvent.model.js');
+vi.mock('../../services/rebuild-modernize.service.js', () => ({ rebuildModernizeService: { choose: vi.fn() } }));
 vi.mock('../../queues/connection.js', () => ({
   redisConnection: {} as any,
 }));
@@ -120,6 +124,7 @@ const savedProject = (p: Record<string, unknown>) => {
   vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
   vi.mocked(MvpProject.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
   publishMocks();
+  return project as Record<string, unknown>;
 };
 
 beforeEach(() => {
@@ -135,7 +140,7 @@ describe('deploy with the rebuild (REV-110)', () => {
     expect(storageService.uploadHtml).toHaveBeenCalledWith(expect.any(String), '<html>REBUILD</html>', expect.anything());
     const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
     expect(update.layout).toMatchObject({ variant: 'original', reasons: expect.arrayContaining(['rule:rebuild']) });
-    expect(update.rebuild).toEqual({ coverage: 0.98, sections: 5, omitted: [], tuning: ['alt:2'] });
+    expect(update.rebuild).toEqual({ coverage: 0.98, sections: 5, omitted: [], tuning: ['alt:2'], level: 'faithful' });
     expect(update.colorPalette.primary).toBe('#c2185b');
     expect(result.success).toBe(true);
   });
@@ -215,7 +220,7 @@ describe('re-publish with the rebuild (REV-110)', () => {
     savedProject({ layout: { variant: 'original', reasons: ['rule:manual'] }, colorPalette: { primary: '#00ff00' }, rebuild: undefined });
     vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
     await republishSavedMvp(leadId);
-    expect(rebuildTemplateService.renderFromAudit).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ primary: '#00ff00' }), undefined);
+    expect(rebuildTemplateService.renderFromAudit).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ primary: '#00ff00' }), undefined, undefined);
     expect(MvpProject.findByIdAndUpdate).toHaveBeenCalledWith(
       projectId,
       expect.objectContaining({ $set: expect.objectContaining({ editedAt: expect.any(Date), rebuild: expect.anything() }) }),
@@ -323,5 +328,214 @@ describe('the rebuild edit and completeness (REV-111)', () => {
     expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![3]).toBeUndefined();
     const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as any;
     expect(update.$unset).toMatchObject({ rebuildEdit: '' });
+  });
+});
+
+describe('the rebuild level and the modern design (REV-114)', () => {
+  const design = { theme: { typeScale: 'modern' as const } };
+  const summary = (level?: 'faithful' | 'modern') => ({ coverage: 1, sections: 1, omitted: [], tuning: [], ...(level ? { level } : {}) });
+  const dated = { siteSections: sectionsFixture, siteEra: { dated: true, score: 7, signs: ['table_layout', 'frames', 'default_font'] } };
+  const lastUpsert = () => vi.mocked(MvpProject.findOneAndUpdate).mock.calls.at(-1)![1] as Record<string, any>;
+  const modernizeWrites = () =>
+    vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.filter(([, update]) => (update as any)?.$set?.modernize).map(([, update]) => (update as any).$set.modernize);
+
+  beforeEach(() => {
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: summary() });
+    vi.mocked(rebuildModernizeService.choose).mockResolvedValue({ source: 'llm', design });
+    vi.mocked(MvpProject.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+  });
+
+  describe('generation', () => {
+    it('modernizes a dated site: one model call, the design saved for this audit, the level and its reasons', async () => {
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledWith({ siteSections: sectionsFixture, brandColors: ['#c2185b', '#4f46e5', '#e0e7ff'] });
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
+      const update = lastUpsert();
+      expect(update.modernize).toEqual({ auditId, source: 'llm', design });
+      expect(update.layout).toMatchObject({ variant: 'original', rebuildLevel: 'modern' });
+      expect(update.layout.reasons.slice(0, 3)).toEqual(['rule:rebuild', 'modernize:dated', 'dated:7']);
+      expect(update.rebuild.level).toBe('modern');
+      expect(update.$unset).toBeUndefined();
+    });
+
+    it('saves the design on an existing MVP before it renders', async () => {
+      existingProject({ _id: projectId, layout: { variant: 'original', reasons: ['rule:rebuild'] } });
+      await runDeploy(dated);
+      expect(modernizeWrites()).toEqual([{ auditId, source: 'llm', design }]);
+      const saved = vi.mocked(MvpProject.findByIdAndUpdate).mock.invocationCallOrder[0]!;
+      expect(saved).toBeLessThan(vi.mocked(rebuildTemplateService.renderFromAudit).mock.invocationCallOrder[0]!);
+    });
+
+    it('reuses a design stored for the same audit without a call', async () => {
+      existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId, source: 'llm', design } });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
+      const update = lastUpsert();
+      expect(update).not.toHaveProperty('modernize');
+      expect(update.$unset?.modernize).toBeUndefined();
+    });
+
+    it('recomputes a design stored for an older audit', async () => {
+      vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId: 'ffffffffffffffffffffffff', source: 'llm', design } });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      const update = lastUpsert();
+      expect(update.modernize).toEqual({ auditId, source: 'llm', design });
+      expect(update.$unset?.modernize).toBeUndefined();
+    });
+
+    it('unsets a design stored for an older audit when the new one is not dated, without a call', async () => {
+      existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId: 'ffffffffffffffffffffffff', source: 'llm', design } });
+      await runDeploy({ siteSections: sectionsFixture, siteEra: { dated: false, score: 1, signs: ['old_jquery'] } });
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      const update = lastUpsert();
+      expect(update.$unset).toMatchObject({ modernize: '' });
+      expect(update).not.toHaveProperty('modernize');
+      expect(update.layout.rebuildLevel).toBe('faithful');
+      expect(update.layout.reasons[0]).toBe('rule:rebuild');
+      expect(update.layout.reasons.some((r: string) => r.startsWith('modernize:') || r.startsWith('dated:'))).toBe(false);
+      expect(update.rebuild.level).toBe('faithful');
+    });
+
+    it('makes no call for an undated site', async () => {
+      await runDeploy({ siteSections: sectionsFixture });
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toBeUndefined();
+    });
+
+    it("keeps the operator's faithful pick on a dated site", async () => {
+      existingProject({ layout: { variant: 'original', rebuildLevel: 'faithful', reasons: ['rule:manual', 'modernize:manual'] } });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      const layout = lastUpsert().layout;
+      expect(layout).toMatchObject({ variant: 'original', rebuildLevel: 'faithful' });
+      expect(layout.reasons.slice(0, 2)).toEqual(['rule:manual', 'modernize:manual']);
+      expect(layout.reasons).not.toContain('modernize:dated');
+    });
+
+    it('makes no call and stores no design for a dated site that cannot be rebuilt', async () => {
+      await runDeploy({ ...dated, siteSectionsError: 'the page did not load' });
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(modernizeWrites()).toEqual([]);
+      expect(lastUpsert()).not.toHaveProperty('modernize');
+    });
+
+    it.each(['call_failed: timeout', 'not_configured'])('asks again for a default stored after a temporary failure (%s)', async (error) => {
+      existingProject({ _id: projectId, layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId, source: 'default', design: {}, error } });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      expect(lastUpsert().modernize).toEqual({ auditId, source: 'llm', design });
+    });
+
+    it('reuses a default stored after an invalid answer without a call', async () => {
+      const stored = { auditId, source: 'default', design, error: 'invalid: s-9: unknown section' };
+      existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: stored });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
+      expect(lastUpsert()).not.toHaveProperty('modernize');
+    });
+
+    it('marks the default design on the layout and records the tokens the model used', async () => {
+      vi.mocked(rebuildModernizeService.choose).mockResolvedValue({
+        source: 'default',
+        design,
+        error: 'invalid: s-9: unknown section',
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+        model: 'claude-test',
+      });
+      await runDeploy(dated);
+      const update = lastUpsert();
+      expect(update.modernize).toEqual({ auditId, source: 'default', design, error: 'invalid: s-9: unknown section' });
+      expect(update.layout.reasons.slice(0, 4)).toEqual(['rule:rebuild', 'modernize:dated', 'dated:7', 'modernize:default']);
+      expect(AnalyticsEvent.create).toHaveBeenCalledWith({
+        leadId,
+        eventType: 'token_usage',
+        metadata: { model: 'claude-test', promptTokens: 10, completionTokens: 5, totalTokens: 15, stage: 'mvp_modernize' },
+      });
+    });
+  });
+
+  describe('re-publish', () => {
+    const modernLayout = { variant: 'original', rebuildLevel: 'modern', reasons: ['rule:manual', 'modernize:manual'] };
+    const faithfulLayout = { variant: 'original', rebuildLevel: 'faithful', reasons: ['rule:manual', 'modernize:manual'] };
+    const editedAtWrites = () => vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.filter(([, update]) => (update as any)?.$set?.editedAt);
+
+    it('a first switch to modern computes and stores the design, and marks the page edited', async () => {
+      const project = savedProject({ layout: modernLayout, rebuild: summary('faithful') });
+      // The saved design comes back on the re-read
+      vi.mocked(MvpProject.findByIdAndUpdate).mockImplementation(((_id: unknown, update: any) => {
+        if (update.$set?.modernize) project.modernize = update.$set.modernize;
+        return { exec: vi.fn().mockResolvedValue(null) };
+      }) as any);
+      await republishSavedMvp(leadId);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      expect(modernizeWrites()).toEqual([{ auditId, source: 'llm', design }]);
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
+      expect(editedAtWrites()).toHaveLength(1);
+      expect((editedAtWrites()[0]![1] as any).$set.rebuild.level).toBe('modern');
+      expect(storageService.uploadHtml).toHaveBeenCalledTimes(1);
+    });
+
+    it('reuses the stored design on a later re-publish, and leaves editedAt alone at the same level', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary('modern'), modernize: { auditId, source: 'llm', design } });
+      await republishSavedMvp(leadId);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
+      expect(editedAtWrites()).toHaveLength(0);
+    });
+
+    it('switching back to faithful keeps the stored design and marks the page edited', async () => {
+      savedProject({ layout: faithfulLayout, rebuild: summary('modern'), modernize: { auditId, source: 'llm', design } });
+      await republishSavedMvp(leadId);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toBeUndefined();
+      expect(editedAtWrites()).toHaveLength(1);
+      const unsets = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map(([, update]) => (update as any)?.$unset ?? {});
+      expect(unsets.every((u) => !('modernize' in u))).toBe(true);
+    });
+
+    it('treats a summary saved before the level as faithful', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary(), modernize: { auditId, source: 'llm', design } });
+      await republishSavedMvp(leadId);
+      expect(editedAtWrites()).toHaveLength(1);
+    });
+
+    it('makes no call on a re-publish of a page that cannot be rebuilt', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary('faithful') });
+      const unread = { _id: auditId, siteSections: sectionsFixture, siteSectionsError: 'the page did not load', screenshotUrls: {}, toObject: () => unread };
+      vi.mocked(findGenerationAudit).mockResolvedValue(unread as any);
+      await republishSavedMvp(leadId);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(modernizeWrites()).toEqual([]);
+    });
+
+    it('asks again once per job for a default stored after a failed call', async () => {
+      const failed = { auditId, source: 'default', design, error: 'call_failed: timeout' };
+      vi.mocked(rebuildModernizeService.choose).mockResolvedValue({ source: 'default', design, error: 'call_failed: again' });
+      savedProject({ layout: modernLayout, rebuild: summary('modern'), modernize: failed });
+      // A second pass (the palette changed meanwhile) re-reads the design the first pass stored
+      const changed = { _id: projectId, leadId, auditId, previewSlug: 'falco-dent-456789', layout: modernLayout, colorPalette: { primary: '#00ff00' }, rebuild: summary('modern') };
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...changed, modernize: { ...failed, error: 'call_failed: again' } }) } as any);
+      await republishSavedMvp(leadId);
+      expect(storageService.uploadHtml).toHaveBeenCalledTimes(2);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+    });
+
+    it('never calls the model twice for the same audit in one job', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary('modern') });
+      // The operator changes the palette during the upload: a second pass, re-read without the design (as a stale read)
+      const changed = { _id: projectId, leadId, auditId, previewSlug: 'falco-dent-456789', layout: modernLayout, colorPalette: { primary: '#00ff00' }, rebuild: summary('modern') };
+      vi.mocked(MvpProject.findById)
+        .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(changed) } as any)
+        .mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...changed, modernize: { auditId, source: 'llm', design } }) } as any);
+      await republishSavedMvp(leadId);
+      expect(storageService.uploadHtml).toHaveBeenCalledTimes(2);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls.map((call) => call[4])).toEqual([design, design]);
+    });
   });
 });

@@ -261,6 +261,13 @@ export const en = {
       low_coverage: 'The original site cannot be rebuilt because only {{percent}}% of its page could be read.',
       flat: 'The original site cannot be rebuilt because its page was read as a few long blocks without headings.',
     },
+    level: {
+      label: 'Look',
+      faithful: 'Faithful',
+      modern: 'Modernized',
+      suggested: 'Suggested: the original site looks dated',
+      defaultDesign: 'Standard modern design (the AI choice was not available)',
+    },
     rerendering: 'Re-rendering the page…',
     fallback: {
       unread: 'The original page could not be read section by section, so the template was used.',

@@ -1,0 +1,358 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`modernize (REV-114) > plans exactly as today without a modernize layer 1`] = `
+{
+  "sections": [
+    "s-1:text",
+    "s-2:media-beside-text",
+    "s-3:media-beside-text",
+    "s-4:media-beside-text",
+    "s-5:media-beside-text",
+    "s-6:media-beside-text",
+    "s-7:media-beside-text",
+    "s-8:media-beside-text",
+    "s-9:text",
+    "s-10:media-beside-text",
+  ],
+  "summary": {
+    "coverage": 0.997,
+    "omitted": [
+      {
+        "reason": "other_page",
+        "sample": "implanty",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "wybielanie zębów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "pantomogram",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "protetyka",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "usuwanie ósemek",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "licówki",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "ortodoncja",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "leczenie kanałowe",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "mikroskop",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "porcelanowe licówki bez szlifowania zębów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "więcej informacji o Klinice Stomatologicznej ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "galerię zdjęć Kliniki Stomatologicznej ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "jak do nas dojechać",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "nasze atuty",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "lekarze stomatolodzy Kliniki ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "oferowane przez nas usługi",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "pełny cennik usług stomatologicznych",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "opinie pacjentów o leczeniu w Klinice ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "dlaczego warto wykonać implanty w Klinice ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "szczegółowy cennik implantów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "wyceny różnorodnych rozwiązań implantologicznych",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "dlaczego warto wykonać licówki w Klinice ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "zdjęcia wykonanych przez nas licówek przed i po",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "cennik licówek porcelanowych",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "opinie pacjentów o licówkach wykonanych w Klinice ANIDENT",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "szczegółowe dane kontaktowe",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "szczegółowe wskazówki dojazdu",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "pantomogram",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "systemów implantologicznych iRES (implanty hybrydowe), MEGAGEN oraz Zimmer",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "implantów MEGAGEN",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "implantów Zimmer",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "implantów hybrydowych iRES",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "cyrkonowe korony pełnoceramiczne",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "porcelanowe licówki bez szlifowania zębów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "leczenie kanałowe pod mikroskopem",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "atrakcyjne ceny",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "rabaty",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "implanty",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "ortodoncja",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "protetyka",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "korony protetyczne",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "mosty protetyczne",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "licówki",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "chirurgia stomatologiczna",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "leczenie kanałowe",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "wybielanie zębów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "biżuteria nazębna",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "wybielanie zębów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "lakowanie zębów",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "licówki",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "biżuteria nazębna",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "protetyka",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "ortodoncja",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "chirurgia stomatologiczna",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "leczenie kanałowe",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "implanty",
+        "what": "link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "ZOBACZ OPINIE NASZYCH PACJENTÓW",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "O NAS",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "USŁUGI",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "LEKARZE",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "CENY",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "GALERIA",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "MEDIA",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "BLOG",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "DOJAZD",
+        "what": "nav_link",
+      },
+      {
+        "reason": "other_page",
+        "sample": "KONTAKT",
+        "what": "nav_link",
+      },
+    ],
+    "sections": 10,
+    "tuning": [
+      "collapse:9",
+      "booking:appended",
+    ],
+  },
+}
+`;

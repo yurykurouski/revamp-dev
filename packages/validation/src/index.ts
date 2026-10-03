@@ -18,12 +18,20 @@ import {
   MVP_DESIGN_SECTIONS,
   MVP_DESIGN_TOKENS,
   MVP_LAYOUT_MANUAL_REASON,
+  MVP_LAYOUT_MODERNIZE_REASONS,
   BENTO_LAYOUT_VARIANTS,
   MVP_LAYOUT_VARIANTS,
   REBUILD_OMISSIONS,
   REBUILD_EDIT_ALIGNS,
+  REBUILD_EDIT_ARRANGEMENTS,
   REBUILD_EDIT_BACKGROUNDS,
   REBUILD_EDIT_HEADING_CASES,
+  REBUILD_HERO_STYLES,
+  REBUILD_LEVELS,
+  REBUILD_MEDIA_FITS,
+  REBUILD_TYPE_SCALES,
+  RebuildLevel,
+  SITE_DATED_SIGNS,
   IRebuildEditAnswer,
   RebuildFallbackReason,
   ISiteLink,
@@ -205,6 +213,20 @@ export type SiteComplexityDto = z.infer<typeof SiteComplexitySchema>;
 
 /** Most sections a home page layout keeps; longer pages are cut, the order of the rest is enough */
 export const SITE_LAYOUT_MAX_SECTIONS = 20;
+
+/** Score at which a site counts as dated (REV-114) */
+export const SITE_DATED_THRESHOLD = 3;
+/** A hero banner needs a photo at least this wide, in px (REV-114) */
+export const REBUILD_BANNER_MIN_WIDTH = 1000;
+
+export const SiteEraSchema = z
+  .object({
+    dated: z.boolean(),
+    score: z.number().min(0),
+    signs: z.array(z.enum(SITE_DATED_SIGNS)).max(SITE_DATED_SIGNS.length),
+    contentWidth: z.number().min(0).optional(),
+  })
+  .strict();
 
 /**
  * The original home page's layout as the audit read it from the DOM: its sections in page order, the
@@ -830,13 +852,21 @@ export const BentoLayoutVariantSchema = z.enum(BENTO_LAYOUT_VARIANTS);
 
 /** Codes that describe one render (REV-110), not the audit; a new pick starts without them */
 const isRenderOutcome = (reason: string) =>
-  reason.startsWith('rule:') || reason.startsWith('rebuild:') || reason.startsWith('coverage:') || reason.startsWith('flat:') || reason.startsWith('manual:');
+  reason.startsWith('rule:') ||
+  reason.startsWith('rebuild:') ||
+  reason.startsWith('coverage:') ||
+  reason.startsWith('flat:') ||
+  reason.startsWith('manual:') ||
+  reason.startsWith('dated:') ||
+  reason.startsWith('modernize:');
 
 export const MvpLayoutSelectionSchema = z.object({
   variant: MvpLayoutVariantSchema,
   reasons: z.array(z.string().min(1).max(60)).max(12),
   /** The look derived from the original site's layout (REV-104); defined below, hence lazy */
   design: z.lazy(() => MvpDesignSchema).optional(),
+  /** How the rebuild was rendered (REV-114) */
+  rebuildLevel: z.enum(REBUILD_LEVELS).optional(),
 });
 
 export type MvpLayoutSelection = z.infer<typeof MvpLayoutSelectionSchema>;
@@ -847,23 +877,35 @@ export type MvpLayoutSelection = z.infer<typeof MvpLayoutSelectionSchema>;
  * operator's.
  */
 export function manualMvpLayout(
-  previous: { reasons?: string[] | null; design?: unknown } | null | undefined,
+  previous: { reasons?: string[] | null; design?: unknown; rebuildLevel?: RebuildLevel | null } | null | undefined,
   variant: MvpLayoutVariant,
+  level?: RebuildLevel,
 ): MvpLayoutSelection {
   const facts = (previous?.reasons ?? []).filter((reason) => !isRenderOutcome(reason));
+  // The level belongs to the rebuild: only the original layout has one
+  const rebuildLevel = variant === 'original' ? (level ?? previous?.rebuildLevel ?? undefined) : undefined;
+  const levelPicked = level !== undefined || (previous?.reasons ?? []).includes(MVP_LAYOUT_MODERNIZE_REASONS.manual);
   return MvpLayoutSelectionSchema.parse({
     variant,
-    reasons: [MVP_LAYOUT_MANUAL_REASON, ...facts].slice(0, 12),
+    reasons: [MVP_LAYOUT_MANUAL_REASON, ...(levelPicked && rebuildLevel ? [MVP_LAYOUT_MODERNIZE_REASONS.manual] : []), ...facts].slice(0, 12),
     ...(previous?.design ? { design: previous.design } : {}),
+    ...(rebuildLevel ? { rebuildLevel } : {}),
   });
 }
 
 /**
  * Schema for PATCH /api/v1/mvp/:id/layout: the layout the operator picked for the MVP (REV-84)
  */
-export const UpdateMvpLayoutSchema = z.object({
-  variant: MvpLayoutVariantSchema,
-});
+export const UpdateMvpLayoutSchema = z
+  .object({
+    variant: MvpLayoutVariantSchema,
+    /** The rebuild's level (REV-114); only for the `original` layout */
+    level: z.enum(REBUILD_LEVELS).optional(),
+  })
+  .refine((dto) => dto.level === undefined || dto.variant === 'original', {
+    message: 'A rebuild level only applies to the original layout',
+    path: ['level'],
+  });
 
 export type UpdateMvpLayoutDto = z.infer<typeof UpdateMvpLayoutSchema>;
 
@@ -1350,6 +1392,7 @@ export const MvpRebuildSummarySchema = z.object({
     .array(z.object({ what: z.enum(REBUILD_OMISSIONS), reason: z.string().min(1).max(60), sample: z.string().max(120).optional() }))
     .max(REBUILD_SUMMARY_LIMITS.omitted),
   tuning: z.array(z.string().min(1).max(60)).max(REBUILD_SUMMARY_LIMITS.tuning),
+  level: z.enum(REBUILD_LEVELS).optional(),
 });
 
 /** Iframe hosts the rebuild may embed (REV-110) */
@@ -1403,6 +1446,8 @@ const RebuildSectionSchema = z.object({
   arrangement: z.enum(SITE_SECTION_ARRANGEMENTS),
   columns: z.number().int().min(1).max(8).optional(),
   mediaSide: z.enum(['left', 'right']).optional(),
+  mediaFit: z.enum(REBUILD_MEDIA_FITS).optional(),
+  mediaMax: z.number().int().min(1).max(1200).optional(),
   split: z.number().min(0.1).max(0.9).optional(),
   headingLevel: z.union([z.literal(1), z.literal(2)]),
   photoSlides: z.boolean().optional(),
@@ -1504,6 +1549,8 @@ export const RebuildPlanSchema = z.object({
 export const REBUILD_EDIT_LIMITS = { dropped: 200 } as const;
 const rebuildSectionId = z.string().regex(/^s-\d{1,3}$/, 'A section id is s-<index>');
 const rebuildPieceId = z.string().regex(/^s-\d{1,3}\.[tix]\d{1,3}$/, 'A piece id is s-<index>.t|i|x<n>');
+/** An image of a read section; only the hero photo names one (REV-114) */
+const rebuildPhotoId = z.string().regex(/^s-\d{1,3}\.m\d{1,3}$/, 'A photo id is s-<index>.m<n>');
 
 export const RebuildEditAnswerSchema = z
   .object({
@@ -1518,20 +1565,38 @@ export const RebuildEditAnswerSchema = z
             background: z.enum(REBUILD_EDIT_BACKGROUNDS).optional(),
             align: z.enum(REBUILD_EDIT_ALIGNS).optional(),
             density: z.enum(MVP_DESIGN_DENSITIES).optional(),
+            arrangement: z.enum(REBUILD_EDIT_ARRANGEMENTS).optional(),
+            mediaSide: z.enum(['left', 'right']).optional(),
+            media: z.enum(REBUILD_MEDIA_FITS).optional(),
           })
           .strict(),
       )
       .optional(),
+    hero: z.object({ photo: rebuildPhotoId, style: z.enum(REBUILD_HERO_STYLES) }).strict().optional(),
     theme: z
       .object({
         font: z.enum(MVP_DESIGN_FONTS).optional(),
         density: z.enum(MVP_DESIGN_DENSITIES).optional(),
         corners: z.enum(MVP_DESIGN_CORNERS).optional(),
         headingCase: z.enum(REBUILD_EDIT_HEADING_CASES).optional(),
+        typeScale: z.enum(REBUILD_TYPE_SCALES).optional(),
       })
       .strict()
       .optional(),
     customCss: z.string().max(MVP_CUSTOM_CSS_MAX).optional(),
+  })
+  .strict();
+
+/** What the modernize level may decide (REV-114): the look fields of the edit, never order, hiding, dropping or CSS */
+export const RebuildModernizeAnswerSchema = RebuildEditAnswerSchema.omit({ order: true, hidden: true, dropped: true, customCss: true }).strict();
+
+/** The saved modernize design, with the audit its ids were read from */
+export const RebuildModernizeSchema = z
+  .object({
+    auditId: z.string().regex(/^[a-f0-9]{24}$/i),
+    source: z.enum(['llm', 'default']),
+    design: RebuildModernizeAnswerSchema,
+    error: z.string().max(300).optional(),
   })
   .strict();
 
@@ -1562,6 +1627,7 @@ export function hasRebuildEdit(edit: IRebuildEditAnswer | null | undefined): boo
       edit.dropped?.length ||
       Object.values(edit.sections ?? {}).some((section) => some(section)) ||
       some(edit.theme) ||
+      edit.hero ||
       edit.customCss?.trim(),
   );
 }
@@ -1569,6 +1635,26 @@ export function hasRebuildEdit(edit: IRebuildEditAnswer | null | undefined): boo
 /** The section the rebuild gives the page's h1: the first hero with a heading, as the planner decides */
 export const rebuildH1Section = (sections: ISiteSection[]): ISiteSection | undefined =>
   sections.find((s) => s.role === 'hero' && Boolean(s.intro.heading?.trim()));
+
+/** Longest intro paragraph that still fits a card (REV-114) */
+export const REBUILD_CARD_MAX_CHARS = 300;
+
+/**
+ * The run of paragraphs that become cards (REV-114): at least 3 in a row, each at most 300 characters,
+ * with only longer paragraphs before and after it (those stay as the section's intro and outro). A longer
+ * paragraph inside the run, or fewer than 3, means the section does not fit. `end` is exclusive.
+ */
+export function cardRun(paragraphs: string[]): { start: number; end: number } | null {
+  const long = (text: string) => text.length > REBUILD_CARD_MAX_CHARS;
+  let i = 0;
+  while (i < paragraphs.length && long(paragraphs[i]!)) i++;
+  const start = i;
+  while (i < paragraphs.length && !long(paragraphs[i]!)) i++;
+  const end = i;
+  while (i < paragraphs.length && long(paragraphs[i]!)) i++;
+  if (i !== paragraphs.length || end - start < 3) return null;
+  return { start, end };
+}
 
 export type RebuildEditCheck = { ok: true } | { ok: false; reason: string };
 
@@ -1604,6 +1690,35 @@ export function checkRebuildEdit(edit: IRebuildEditAnswer, read: Pick<ISiteSecti
     const h1Id = `s-${h1.index}`;
     if (hidden.includes(h1Id)) return fail(`${h1Id} holds the page's main heading and cannot be hidden`);
     if (main[0] === h1 && order.length && order[0] !== h1Id) return fail(`${h1Id} opens the page and must stay first`);
+  }
+
+  // Modernize vocabulary (REV-114)
+  for (const [id, change] of Object.entries(edit.sections ?? {})) {
+    const section = byId.get(id)!;
+    const { arrangement } = change;
+    if (arrangement && arrangement !== section.arrangement) {
+      const fits =
+        section.arrangement === 'text'
+          ? cardRun(section.intro.text) !== null
+          : section.arrangement === 'list' && arrangement === 'card-grid' && section.items.length >= 3;
+      if (!fits) return fail(`${id} cannot be shown as ${arrangement}`);
+    }
+    if ((change.mediaSide || change.media) && !(section.arrangement === 'media-beside-text' && section.images.length > 0)) {
+      return fail(`${id} has no photo beside its text`);
+    }
+  }
+  if (edit.hero) {
+    if (!h1) return fail('the page has no main heading');
+    const slides = h1.arrangement === 'slider' && h1.items.some((item) => item.image);
+    if (h1.images.length || h1.style.backgroundImage || slides) return fail('the opening section already shows a photo');
+    const [, sectionId, n] = edit.hero.photo.match(/^(s-\d+)\.m(\d+)$/) ?? [];
+    const source = sectionId ? byId.get(sectionId) : undefined;
+    const image = source?.images[Number(n)];
+    if (!source || !image || !/^https?:\/\//i.test(image.src)) return fail(`unknown piece ${edit.hero.photo}`);
+    if (source.index <= h1.index) return fail(`${edit.hero.photo} is not below the opening section`);
+    if (edit.hero.style === 'banner' && (image.width ?? 0) < REBUILD_BANNER_MIN_WIDTH) {
+      return fail(`${edit.hero.photo} is too small for a banner`);
+    }
   }
   return { ok: true };
 }

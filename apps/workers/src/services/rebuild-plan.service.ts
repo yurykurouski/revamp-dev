@@ -1,6 +1,7 @@
 import type {
   IMvpRebuildSummary,
   IRebuildEditAnswer,
+  IRebuildModernizeAnswer,
   IRebuildSectionEdit,
   IRebuildBlock,
   IRebuildImage,
@@ -15,11 +16,14 @@ import type {
   ISiteSections,
 } from '@revamp/shared-types';
 import { z } from 'zod';
-import { REBUILD_IFRAME_HOSTS, REBUILD_SUMMARY_LIMITS, SITE_SECTIONS_LIMITS } from '@revamp/validation';
+import { REBUILD_BANNER_MIN_WIDTH, REBUILD_IFRAME_HOSTS, REBUILD_SUMMARY_LIMITS, SITE_SECTIONS_LIMITS, rebuildH1Section } from '@revamp/validation';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { FONT_STACKS } from '../templates/design.js';
 import { UnsafeCssError, sanitizeMvpCss } from '../templates/css-sanitizer.js';
 import { BANNER_OVERLAY, clampPadding, fontStack, mix, onColor, readableText, typeScale } from './rebuild-tuning.js';
+import { type EditSource, arrangedSection, mergeRebuildEdits } from './rebuild-modernize-plan.js';
+
+export { mergeRebuildEdits };
 
 // The rebuild's decisions (REV-110): which sections, links, embeds and fixes. Pure; the renderer only
 // turns the plan into markup, and nothing here adds a fact the original page does not have.
@@ -35,6 +39,8 @@ export interface RebuildInput {
   year: number;
   /** The operator's change (REV-111), its ids already checked against these sections */
   edit?: IRebuildEditAnswer;
+  /** The modernize layer (REV-114), under the operator's edit; its ids already checked against these sections */
+  modernize?: IRebuildModernizeAnswer;
 }
 
 /** A `text` section longer than this puts its body in a collapsed <details> */
@@ -48,6 +54,14 @@ export const CORNER_RADIUS = { sharp: 0, soft: 6, rounded: 12, 'extra-round': 99
 export const DARK_BACKGROUND = '#111827';
 /** A tint is this share of the primary over white */
 const TINT_SHARE = 0.08;
+/** The modern type scale (REV-114): fixed heading sizes, the body at least this */
+export const MODERN_TYPE = { h1Size: 56, h2Size: 36, minBodySize: 17 } as const;
+/** A filled media column is at most twice the photo's natural width, and never over this */
+export const MEDIA_MAX = 1200;
+/** The section edit's style fields (REV-111), recorded as `style:<i>` */
+const STYLE_KEYS = ['background', 'align', 'density'] as const;
+/** The theme edit's fields recorded as `theme` (REV-111); the type scale has its own `type` code */
+const THEME_KEYS = ['font', 'density', 'corners', 'headingCase'] as const;
 
 const LIMITS = SITE_SECTIONS_LIMITS;
 const EmailSchema = z.string().email().max(254);
@@ -127,6 +141,9 @@ function planLink(link: ISiteLink, rec: Recorder): IRebuildLink | null {
   rec.omit('link', isHttp(href) ? 'other_page' : 'unsafe_url', text);
   return null;
 }
+
+/** A header link that is the page's call to action: marked so, or to a booking host */
+const isCtaLink = (link: ISiteLink) => link.kind === 'cta' || (isHttp(link.href) && BOOKING_HOSTS.test(hostOf(link.href)));
 
 const planLinks = (links: ISiteLink[], rec: Recorder) =>
   links.map((link) => planLink(link, rec)).filter((link): link is IRebuildLink => link !== null).slice(0, LIMITS.links);
@@ -233,6 +250,8 @@ const textLength = (section: ISiteSection) =>
 interface Look {
   primary: string;
   sections: Record<string, IRebuildSectionEdit>;
+  /** Where a field of the applied edit came from (REV-114), for its code's prefix */
+  from: (path: string) => EditSource;
   density?: keyof typeof DENSITY_PADDING;
   radius?: number;
 }
@@ -253,14 +272,30 @@ function editedBackground(pick: IRebuildSectionEdit['background'], read: string 
   }
 }
 
+/** The h1 section given a photo from a later section (REV-114), with its codes and the CTA it gets when no link of its survives */
+interface HeroPhoto {
+  index: number;
+  style: 'split' | 'banner';
+  codes: string[];
+  cta: { link: IRebuildLink; code: string };
+}
+
 function planSection(
-  section: ISiteSection,
-  ctx: { rec: Recorder; t: ReturnType<typeof getMvpStrings>; booking: { placed: boolean }; h1: { used: boolean }; look?: Look },
+  read: ISiteSection,
+  ctx: { rec: Recorder; t: ReturnType<typeof getMvpStrings>; booking: { placed: boolean }; h1: { used: boolean }; look?: Look; hero?: HeroPhoto },
   fixes: string[],
 ): IRebuildSection {
   const { rec, t } = ctx;
-  const edit = ctx.look?.sections[`s-${section.index}`];
-  if (edit && Object.values(edit).some((value) => value !== undefined)) fixes.push(`edit:style:${section.index}`);
+  const sid = `s-${read.index}`;
+  const edit = ctx.look?.sections[sid];
+  const from = (key: keyof IRebuildSectionEdit): EditSource => ctx.look?.from(`sections.${sid}.${key}`) ?? 'edit';
+  const styled = new Set(STYLE_KEYS.filter((key) => edit?.[key] !== undefined).map(from));
+  styled.forEach((source) => fixes.push(`${source}:style:${read.index}`));
+  // Cards or a list from the section's paragraphs (REV-114), before anything is measured
+  const section = arrangedSection(read, edit?.arrangement);
+  if (section !== read) fixes.push(`${from('arrangement')}:cards:${read.index}`);
+  const hero = ctx.hero?.index === section.index ? ctx.hero : undefined;
+  if (hero) fixes.push(...hero.codes);
   const eager = section.role === 'hero';
   const heading = label(section.intro.heading);
   const headingLevel: 1 | 2 = section.role === 'hero' && heading && !ctx.h1.used ? 1 : 2;
@@ -322,9 +357,30 @@ function planSection(
   const collapsed = section.arrangement === 'text' && textLength(section) > COLLAPSE_CHARS;
   if (collapsed) fixes.push(`collapse:${section.index}`);
 
+  // A hero given a photo gets the header's CTA when none of its own links survives planning (REV-114)
+  const introLinks = planLinks(section.intro.links, rec);
+  if (hero && !introLinks.length) {
+    introLinks.push(hero.cta.link);
+    fixes.push(hero.cta.code);
+  }
+
   const extra: IRebuildBlock[] = section.extra
     .slice(0, LIMITS.extra)
     .map((entry): IRebuildBlock => (entry.type === 'text' ? { type: 'text', text: texts(entry.text) } : { type: 'items', arrangement: entry.arrangement, items: planItems(entry.items, rec, false) }));
+
+  const images = mediaFirst(section)
+    .slice(0, LIMITS.images)
+    .map((image, i) => planImage(image, heading, rec, eager && i === 0))
+    .filter((image): image is IRebuildImage => Boolean(image));
+  // Side and fill (REV-114) only where a photo sits beside the text; a section whose photo moved to the hero has none
+  const hasMedia = section.arrangement === 'media-beside-text' && images.length > 0;
+  const side = hasMedia && !hero ? edit?.mediaSide : undefined;
+  if (side) fixes.push(`${from('mediaSide')}:side:${section.index}`);
+  const filled = hasMedia && !hero && edit?.media === 'fill';
+  if (filled) fixes.push(`${from('media')}:fill:${section.index}`);
+  const fill = filled || (hasMedia && hero?.style === 'split');
+  const mediaMax = fill && images[0]!.width ? Math.min(MEDIA_MAX, images[0]!.width * 2) : undefined;
+  const mediaSide = side ?? section.mediaSide;
 
   return {
     id: `s-${section.index}`,
@@ -332,7 +388,9 @@ function planSection(
     kind: section.kind,
     arrangement: section.arrangement,
     ...(section.columns ? { columns: Math.min(8, Math.max(1, Math.round(section.columns))) } : {}),
-    ...(section.mediaSide ? { mediaSide: section.mediaSide } : {}),
+    ...(mediaSide ? { mediaSide } : {}),
+    ...(fill ? { mediaFit: 'fill' as const } : {}),
+    ...(mediaMax !== undefined ? { mediaMax } : {}),
     ...(section.style.split !== undefined ? { split: Math.min(0.9, Math.max(0.1, section.style.split)) } : {}),
     headingLevel,
     ...(photoSlides ? { photoSlides } : {}),
@@ -340,15 +398,12 @@ function planSection(
       ...(label(section.intro.eyebrow) ? { eyebrow: label(section.intro.eyebrow) } : {}),
       ...(heading ? { heading } : {}),
       text: texts(section.intro.text),
-      links: planLinks(section.intro.links, rec),
+      links: introLinks,
     },
     items: planItems(section.items, rec, eager, photoSlides),
     ...(itemStyle ? { itemStyle } : {}),
     extra,
-    images: mediaFirst(section)
-      .slice(0, LIMITS.images)
-      .map((image, i) => planImage(image, heading, rec, eager && i === 0))
-      .filter((image): image is IRebuildImage => Boolean(image)),
+    images,
     embeds,
     booking,
     collapsed,
@@ -378,6 +433,30 @@ function withoutDropped(section: ISiteSection, dropped: Set<string>, rec: Record
     items: section.items.filter((_, n) => kept('i', n)),
     extra: section.extra.filter((_, n) => kept('x', n)),
   };
+}
+
+/**
+ * The page with the hero photo moved (REV-114): out of its section and into the h1 section, as the split's media
+ * or the banner's background. Copies the two sections it touches and never changes the reading; a photo the
+ * checks would refuse is left where it is.
+ */
+function withHeroPhoto(sections: ISiteSection[], hero: IRebuildEditAnswer['hero']): { sections: ISiteSection[]; h1?: ISiteSection } {
+  const id = hero ? /^s-(\d+)\.m(\d+)$/.exec(hero.photo) : null;
+  if (!hero || !id) return { sections };
+  const main = sections.filter((s) => s.role === 'hero' || s.role === 'content').slice(0, LIMITS.sections);
+  const h1 = rebuildH1Section(main);
+  const source = main.find((s) => s.index === Number(id[1]));
+  const n = Number(id[2]);
+  const image = source?.images[n];
+  if (!h1 || !source || !image || !isHttp(image.src) || main.indexOf(source) <= main.indexOf(h1)) return { sections };
+  if (h1.images.length || isHttp(h1.style.backgroundImage) || isPhotoSlider(h1)) return { sections };
+  if (hero.style === 'banner' && (image.width ?? 0) < REBUILD_BANNER_MIN_WIDTH) return { sections };
+  const opened: ISiteSection =
+    hero.style === 'split'
+      ? { ...h1, arrangement: 'media-beside-text', mediaSide: 'right', images: [image] }
+      : { ...h1, arrangement: h1.arrangement === 'text' ? 'banner' : h1.arrangement, style: { ...h1.style, backgroundImage: image.src } };
+  const rest: ISiteSection = { ...source, images: source.images.filter((_, m) => m !== n) };
+  return { sections: sections.map((s) => (s === h1 ? opened : s === source ? rest : s)), h1 };
 }
 
 /** The operator's CSS, through the sanitizer again; CSS that no longer passes is left out and recorded */
@@ -417,8 +496,9 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
   const t = getMvpStrings(language);
   for (const skipped of read.skipped) rec.omit('section', skipped.reason, skipped.sample || skipped.heading);
 
-  // The operator's edit (REV-111): hidden sections and dropped pieces leave before planning, recorded
-  const edit = input.edit;
+  // The operator's edit (REV-111) over the modernize layer (REV-114): hidden sections and dropped pieces
+  // leave before planning, recorded
+  const { edit, from } = mergeRebuildEdits(input.modernize, input.edit);
   const hidden = new Set(edit?.hidden ?? []);
   const dropped = new Set(edit?.dropped ?? []);
   const pageSections = read.sections
@@ -433,6 +513,7 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     ? {
         primary: input.primary,
         sections: edit.sections ?? {},
+        from,
         ...(edit.theme?.density ? { density: edit.theme.density } : {}),
         ...(corners ? { radius: CORNER_RADIUS[corners] } : {}),
       }
@@ -440,8 +521,24 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
 
   const header = pageSections.find((s) => s.role === 'header');
   const footer = pageSections.find((s) => s.role === 'footer');
-  const ctx = { rec, t, booking: { placed: false }, h1: { used: false }, ...(look ? { look } : {}) };
-  const mainSections = pageSections.filter((s) => s.role === 'hero' || s.role === 'content');
+  // The header's call to action: the original's own label, else the localised one
+  let ctaLabel: string | undefined;
+  for (const link of header?.intro.links ?? []) if (isCtaLink(link)) ctaLabel ??= label(link.label);
+  const cta = label(ctaLabel) ?? t.sendRequest;
+
+  // The hero photo (REV-114) moves after the drops and before planning; a hero without a link gets the header's CTA
+  const moved = withHeroPhoto(pageSections, edit?.hero);
+  const heroPhoto: HeroPhoto | undefined =
+    moved.h1 && edit?.hero
+      ? {
+          index: moved.h1.index,
+          style: edit.hero.style,
+          codes: [`${from('hero')}:hero-photo:${edit.hero.photo}`],
+          cta: { link: { label: cta, href: '#booking', kind: 'booking' }, code: `${from('hero')}:hero-cta` },
+        }
+      : undefined;
+  const ctx = { rec, t, booking: { placed: false }, h1: { used: false }, ...(look ? { look } : {}), ...(heroPhoto ? { hero: heroPhoto } : {}) };
+  const mainSections = moved.sections.filter((s) => s.role === 'hero' || s.role === 'content');
   for (const dropped of mainSections.slice(LIMITS.sections)) rec.omit('section', 'over_cap', dropped.intro.heading);
   const sections = mainSections
     .slice(0, LIMITS.sections)
@@ -490,12 +587,8 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     (isHttp(input.logoUrl) ? { src: input.logoUrl, alt: cut(businessName, 300), eager: true } : undefined);
   const nav: IRebuildPlan['header']['nav'] = [];
   const anchors = footerSection ? [...sections, footerSection] : sections;
-  let ctaLabel: string | undefined;
   for (const link of header?.intro.links ?? []) {
-    if (link.kind === 'cta' || (isHttp(link.href) && BOOKING_HOSTS.test(hostOf(link.href)))) {
-      ctaLabel ??= label(link.label);
-      continue;
-    }
+    if (isCtaLink(link)) continue;
     const text = label(link.label);
     if (link.kind === 'phone' || link.kind === 'email' || link.kind === 'map') {
       rec.omit('nav_link', 'contact_link', text);
@@ -509,8 +602,15 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
 
   const scale = typeScale(read.typography);
   scale.tuning.forEach((code) => rec.fix(code));
+  // The modern type scale (REV-114) replaces the read sizes; the responsive clamps stay in the CSS
+  const modern = edit?.theme?.typeScale === 'modern';
+  if (modern) rec.fix(`${from('theme.typeScale')}:type`);
+  const sizes = modern
+    ? { h1Size: MODERN_TYPE.h1Size, h2Size: MODERN_TYPE.h2Size, bodySize: Math.max(scale.bodySize, MODERN_TYPE.minBodySize) }
+    : { h1Size: scale.h1Size, h2Size: scale.h2Size, bodySize: scale.bodySize };
   const theme = themeEdit(edit?.theme, fontStack(read.typography?.heading.family), fontStack(read.typography?.body.family));
-  if (edit?.theme && Object.values(edit.theme).some((value) => value !== undefined)) rec.fix('edit:theme');
+  const themed = new Set(THEME_KEYS.filter((key) => edit?.theme?.[key] !== undefined).map((key) => from(`theme.${key}`)));
+  themed.forEach((source) => rec.fix(`${source}:theme`));
   const customCss = plannedCss(edit?.customCss, rec);
   const button = read.typography?.button;
   const phone = input.contacts.phone?.trim().slice(0, 30) || undefined;
@@ -531,9 +631,9 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
       bodyFont: theme.bodyFont,
       headingWeight: scale.headingWeight,
       headingUppercase: edit?.theme?.headingCase ? edit.theme.headingCase === 'uppercase' : scale.headingUppercase,
-      h1Size: scale.h1Size,
-      h2Size: scale.h2Size,
-      bodySize: scale.bodySize,
+      h1Size: sizes.h1Size,
+      h2Size: sizes.h2Size,
+      bodySize: sizes.bodySize,
       lineHeight: scale.lineHeight,
       buttonRadius: corners ? CORNER_RADIUS[corners] : Math.min(999, Math.max(0, button?.radius ?? 6)),
       buttonUppercase: button?.uppercase ?? false,
@@ -541,7 +641,7 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     header: {
       ...(logo ? { logo } : {}),
       nav,
-      cta: { label: label(ctaLabel) ?? t.sendRequest },
+      cta: { label: cta },
       ...(phone ? { phone } : {}),
     },
     sections,

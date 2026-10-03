@@ -260,6 +260,13 @@ export const pl: Translation = {
       low_coverage: 'Nie można odtworzyć oryginalnej strony, ponieważ udało się odczytać tylko {{percent}}% jej treści.',
       flat: 'Nie można odtworzyć oryginalnej strony, ponieważ odczytano ją jako kilka długich bloków bez nagłówków.',
     },
+    level: {
+      label: 'Wygląd',
+      faithful: 'Wierna kopia',
+      modern: 'Odświeżony',
+      suggested: 'Sugerowane: oryginalna strona wygląda na przestarzałą',
+      defaultDesign: 'Standardowy nowoczesny projekt (wybór AI był niedostępny)',
+    },
     rerendering: 'Ponowne renderowanie strony…',
     fallback: {
       unread: 'Nie udało się odczytać oryginalnej strony sekcja po sekcji, więc użyto szablonu.',

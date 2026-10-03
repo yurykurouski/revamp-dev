@@ -223,7 +223,7 @@ router.patch(
       if (!mongoose.Types.ObjectId.isValid(id)) {
         throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
       }
-      const { variant } = req.body;
+      const { variant, level } = req.body;
 
       const project = await MvpProject.findById(id).exec();
       if (!project) {
@@ -243,7 +243,9 @@ router.patch(
         );
       }
 
-      if (project.layout?.variant === variant) {
+      // A missing level counts as faithful; a request without one keeps the current level (REV-114)
+      const currentLevel = project.layout?.rebuildLevel ?? 'faithful';
+      if (project.layout?.variant === variant && (level ?? currentLevel) === currentLevel) {
         res.status(200).json({ success: true, message: 'The MVP already uses this layout', data: project });
         return;
       }
@@ -261,7 +263,7 @@ router.patch(
       }
 
       // The audit facts and the derived look (REV-104) are kept; the rule becomes the operator's
-      const layout = manualMvpLayout(project.layout, variant);
+      const layout = manualMvpLayout(project.layout, variant, level);
       const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout } }, { new: true }).exec();
       if (!saved) {
         throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');

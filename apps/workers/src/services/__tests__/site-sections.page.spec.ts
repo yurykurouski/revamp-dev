@@ -72,6 +72,21 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(result.coverage.ratio, `uncaptured: ${JSON.stringify(result.coverage.uncaptured)}`).toBeGreaterThanOrEqual(0.95);
   };
 
+  it('reports the median block width and the full-bleed share (REV-114)', async () => {
+    const narrow = '<div style="width:760px;margin:0 auto">Narrow</div>';
+    await page.setContent(
+      pageOf(
+        `<section data-revamp-block="0">${narrow}</section>`.replace('<section ', '<section style="width:760px;margin:0 auto" ') +
+          `<section data-revamp-block="1" style="width:760px;margin:0 auto">Two</section>` +
+          `<section data-revamp-block="2">Full</section>`,
+      ),
+      { waitUntil: 'load' },
+    );
+    const raw = await page.evaluate(collectSiteSectionsInPage);
+    expect(raw.contentWidth).toBe(760);
+    expect(raw.fullBleedShare).toBeCloseTo(1 / 3, 2);
+  });
+
   it('reads the header with its logo, menu and call button, and the footer with address, hours and links', async () => {
     const result = await sectionsOf(pageOf(`${HEADER}${HERO}
       <section><h2>O gabinecie</h2><p>Leczymy dzieci i dorosłych, z pełną diagnostyką na miejscu.</p></section>${FOOTER}`));

@@ -372,6 +372,34 @@ describe('mvp edit worker on the rebuilt MVP (REV-111)', () => {
     expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
   });
 
+  it('keeps the modern design and the level on a reset (REV-114)', async () => {
+    const layout = { variant: 'original', rebuildLevel: 'modern', reasons: ['rule:manual', 'modernize:manual'] };
+    vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...rebuilt, layout, rebuildEdit: { auditId, ...edit }, modernize: { auditId, source: 'llm', design: { theme: { typeScale: 'modern' } } } }));
+    await processMvpEditJob({ ...job(), action: 'reset-design' }, bento(), Date.now, rebuildReturning({ summary: 'x', changes: [] }));
+    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$unset).toEqual({ rebuildEdit: '' });
+    expect(Object.keys(update.$set)).toEqual(['editedAt']);
+  });
+
+  it('tells the agent the modern look under the edit on a Modernized MVP only (REV-114)', async () => {
+    const modernize = { auditId, source: 'llm', design: { theme: { typeScale: 'modern' as const } } };
+    const modern = { ...rebuilt, layout: { variant: 'original', rebuildLevel: 'modern', reasons: ['rule:rebuild', 'modernize:dated'] }, modernize };
+    const page = {
+      ...siteSections,
+      sections: [{ index: 0, role: 'hero', kind: 'other', arrangement: 'text', intro: { heading: 'Hi', text: [], links: [] }, items: [], extra: [], images: [], embeds: [], style: {} }],
+    };
+    vi.mocked(findGenerationAudit).mockResolvedValue({ ...audit, siteSections: page } as any);
+    vi.mocked(MvpProject.findById).mockReturnValue(exec(modern));
+    const rebuild = rebuildReturning({ summary: 'Nothing', changes: [] });
+    await processMvpEditJob(job(), bento(), Date.now, rebuild);
+    expect(rebuild.interpret.mock.calls[0]![0].current.modernize).toEqual(modernize.design);
+
+    vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...modern, layout: { ...modern.layout, rebuildLevel: 'faithful' } }));
+    const faithful = rebuildReturning({ summary: 'Nothing', changes: [] });
+    await processMvpEditJob(job(), bento(), Date.now, faithful);
+    expect(faithful.interpret.mock.calls[0]![0].current).not.toHaveProperty('modernize');
+  });
+
   it('has nothing to reset on a rebuild without an edit, even with a Bento design saved', async () => {
     const result = await processMvpEditJob({ ...job(), action: 'reset-design' }, bento(), Date.now, rebuildReturning({ summary: 'x', changes: [] }));
     expect(result).toEqual({ applied: false, summary: 'The MVP has no custom design.', changes: [] });

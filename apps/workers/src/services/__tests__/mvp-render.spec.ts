@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { IMvpLayoutSelection } from '@revamp/shared-types';
-import { fallbackLayout, rebuildLayout, renderMvp, requestedVariant } from '../mvp-render.js';
+import type { IAudit, IMvpLayoutSelection, IRebuildModernize, ISiteSections } from '@revamp/shared-types';
+import { fallbackLayout, rebuildLayout, rebuildLevelFor, renderMvp, requestedVariant, withRebuildLevel } from '../mvp-render.js';
+import { defaultModernDesign } from '../rebuild-modernize.js';
 import { bentoTemplateService } from '../template.service.js';
 import { RebuildUnavailable, rebuildTemplateService } from '../rebuild-template.service.js';
 
@@ -64,5 +65,100 @@ describe('renderMvp (REV-110)', () => {
     const layout = { ...derived, variant: 'editorial' as const };
     expect(renderMvp({ lead: {}, audit: {}, layout, derived, design: derived.design }).html).toBe('BENTO');
     expect(bento).toHaveBeenCalledWith({}, {}, undefined, 'editorial', undefined, derived.design);
+  });
+});
+
+describe('the rebuild level (REV-114)', () => {
+  const auditId = '0123456789abcdef01234567';
+  const block = (index: number, role: 'hero' | 'content', heading: string) => ({
+    index, role, kind: 'other' as const, arrangement: 'text' as const,
+    intro: { heading, text: ['Pierwszy akapit.', 'Drugi akapit.', 'Trzeci akapit.'], links: [] }, items: [], extra: [], images: [], embeds: [], style: {},
+  });
+  const siteSections: ISiteSections = {
+    sections: [block(1, 'hero', 'Witamy'), block(2, 'content', 'O nas')],
+    typography: { heading: { family: 'Lato', size: 32, weight: 700, uppercase: false }, body: { family: 'Lato', size: 16, weight: 400 }, button: { radius: 4, filled: true, uppercase: false, background: '#c2185b' } },
+    skipped: [], coverage: { pageChars: 100, capturedChars: 98, ratio: 0.98, uncaptured: [] },
+  };
+  const audit = { _id: auditId, siteSections } as unknown as Partial<IAudit>;
+  const stored: IRebuildModernize = { auditId, source: 'llm', design: { theme: { typeScale: 'modern' }, sections: { 's-2': { background: 'tinted' } } } };
+  const modern = withRebuildLevel(rebuildLayout(derived), { level: 'modern', reasons: ['modernize:dated', 'dated:7'] });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  describe('rebuildLevelFor', () => {
+    it("keeps the operator's level over the detector", () => {
+      expect(rebuildLevelFor({ rebuildLevel: 'faithful', reasons: ['rule:manual', 'modernize:manual'] }, { siteEra: { dated: true, score: 7, signs: [] } })).toEqual({
+        level: 'faithful',
+        reasons: ['modernize:manual'],
+      });
+      expect(rebuildLevelFor({ rebuildLevel: 'modern', reasons: ['rule:manual', 'modernize:manual'] }, {}).level).toBe('modern');
+    });
+    it('modernizes a dated site, with the score', () => {
+      expect(rebuildLevelFor(undefined, { siteEra: { dated: true, score: 7, signs: [] } })).toEqual({ level: 'modern', reasons: ['modernize:dated', 'dated:7'] });
+      // A previous detector choice is not a pick: the new audit decides
+      expect(rebuildLevelFor({ rebuildLevel: 'modern', reasons: ['rule:rebuild', 'modernize:dated'] }, { siteEra: { dated: false, score: 1, signs: [] } }).level).toBe('faithful');
+    });
+    it('stays faithful on an undated or unread site', () => {
+      expect(rebuildLevelFor(null, { siteEra: { dated: false, score: 2, signs: [] } })).toEqual({ level: 'faithful', reasons: [] });
+      expect(rebuildLevelFor(null, {})).toEqual({ level: 'faithful', reasons: [] });
+    });
+  });
+
+  describe('withRebuildLevel', () => {
+    it('puts the level codes after the rule and replaces older ones, within the caps', () => {
+      expect(modern).toMatchObject({ variant: 'original', rebuildLevel: 'modern', reasons: ['rule:rebuild', 'modernize:dated', 'dated:7', 'hero:side-right', 'images:5'] });
+      const again = withRebuildLevel(modern, { level: 'faithful', reasons: [] });
+      expect(again).toMatchObject({ rebuildLevel: 'faithful', reasons: ['rule:rebuild', 'hero:side-right', 'images:5'] });
+      const full = withRebuildLevel({ variant: 'original', reasons: ['rule:rebuild', ...Array.from({ length: 11 }, (_, i) => `fact:${i}`)] }, { level: 'modern', reasons: ['modernize:dated', 'dated:7'] });
+      expect(full.reasons).toHaveLength(12);
+      expect(full.reasons.slice(0, 3)).toEqual(['rule:rebuild', 'modernize:dated', 'dated:7']);
+    });
+    it('leaves a Bento layout alone', () => {
+      expect(withRebuildLevel(derived, { level: 'modern', reasons: ['modernize:dated'] })).toBe(derived);
+    });
+  });
+
+  describe('renderMvp', () => {
+    it('passes the stored design at modern and records the level', () => {
+      const render = vi.spyOn(rebuildTemplateService, 'renderFromAudit').mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 2, omitted: [], tuning: [] } });
+      const out = renderMvp({ lead: {}, audit, layout: modern, derived, modernize: stored });
+      expect(render.mock.calls[0]![4]).toEqual(stored.design);
+      expect(out.rebuild?.level).toBe('modern');
+      expect(out.layout).toBe(modern);
+    });
+    it('records faithful on a plain rebuild', () => {
+      vi.spyOn(rebuildTemplateService, 'renderFromAudit').mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 2, omitted: [], tuning: [] } });
+      expect(renderMvp({ lead: {}, audit, layout: rebuildLayout(derived), derived }).rebuild?.level).toBe('faithful');
+    });
+    it('renders the same page at faithful whether a design is stored or not', () => {
+      const faithful = withRebuildLevel(rebuildLayout(derived), { level: 'faithful', reasons: [] });
+      const plain = renderMvp({ lead: { businessName: 'X' }, audit, layout: faithful, derived });
+      const withStored = renderMvp({ lead: { businessName: 'X' }, audit, layout: faithful, derived, modernize: stored });
+      expect(withStored.html).toBe(plain.html);
+      const modernHtml = renderMvp({ lead: { businessName: 'X' }, audit, layout: modern, derived, modernize: stored }).html;
+      expect(modernHtml).not.toBe(plain.html);
+    });
+    it('marks a default design on the layout, and drops the mark when the model chose', () => {
+      vi.spyOn(rebuildTemplateService, 'renderFromAudit').mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 2, omitted: [], tuning: [] } });
+      const out = renderMvp({ lead: {}, audit, layout: modern, derived, modernize: { ...stored, source: 'default', error: 'not_configured' } });
+      expect(out.layout.reasons).toEqual(['rule:rebuild', 'modernize:dated', 'dated:7', 'modernize:default', 'hero:side-right', 'images:5']);
+      expect(renderMvp({ lead: {}, audit, layout: out.layout, derived, modernize: stored }).layout.reasons).not.toContain('modernize:default');
+    });
+    it('ignores a design stored for another audit, rendering the default', () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+      const render = vi.spyOn(rebuildTemplateService, 'renderFromAudit').mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 2, omitted: [], tuning: [] } });
+      const out = renderMvp({ lead: {}, audit, layout: modern, derived, modernize: { ...stored, auditId: 'ffffffffffffffffffffffff' } });
+      expect(render.mock.calls[0]![4]).toEqual(defaultModernDesign(siteSections));
+      expect(out.layout.reasons).toContain('modernize:default');
+      expect(warn).toHaveBeenCalled();
+    });
+    it('a Bento fallback ignores the level', () => {
+      vi.spyOn(rebuildTemplateService, 'renderFromAudit').mockImplementation(() => { throw new RebuildUnavailable('rebuild:invalid'); });
+      vi.spyOn(bentoTemplateService, 'renderFromAudit').mockReturnValue('BENTO');
+      const out = renderMvp({ lead: {}, audit, layout: modern, derived, modernize: stored });
+      expect(out.rebuild).toBeUndefined();
+      expect(out.layout.rebuildLevel).toBeUndefined();
+      expect(out.layout.reasons.some((r) => r.startsWith('modernize:') || r.startsWith('dated:'))).toBe(false);
+    });
   });
 });

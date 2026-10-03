@@ -130,6 +130,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       mobileBuffer: Buffer.from('raw-mobile-png'),
       desktopFullBuffer: Buffer.from('raw-desktop-full-png'),
       mobileFullBuffer: Buffer.from('raw-mobile-full-png'),
+      homeHtml: '<html><body><table><tr><td><table></table></td></tr></table></body></html>',
       a11yResult: {
         a11yScore: 82,
         summary: {
@@ -321,7 +322,9 @@ describe('AuditWorker (@revamp/workers)', () => {
           sections: [expect.objectContaining({ index: 0, role: 'hero', arrangement: 'text', intro: expect.objectContaining({ heading: 'Test Dental' }) })],
           coverage: { pageChars: 31, capturedChars: 31, ratio: 1, uncaptured: [] },
         }),
-        $unset: { siteLayoutError: '', siteSectionsError: '' },
+        // The home page HTML was read: the dated-site verdict is stored and no stale error kept (REV-114)
+        siteEra: expect.objectContaining({ dated: true, signs: expect.arrayContaining(['table_layout', 'no_viewport']) }),
+        $unset: { siteLayoutError: '', siteSectionsError: '', siteEraError: '' },
         designCritique: expect.objectContaining({
           visualHierarchyRating: 70,
           mobileFriendlinessRating: 80,
@@ -461,7 +464,11 @@ describe('AuditWorker (@revamp/workers)', () => {
       // The original layout was not read either: its reason is stored instead (REV-104)
       siteLayout: '',
       siteSections: '',
+      // No home page HTML was captured, so the verdict is unset (REV-114)
+      siteEra: '',
     });
+    expect(completed.siteEraError).toBe('home page HTML not read');
+    expect(completed).not.toHaveProperty('siteEra');
     expect(completed.siteLayoutError).toBe('Layout not collected in this test');
     // The sections were not read either: the reason is stored and an earlier audit's sections are cleared (REV-109, Review Focus 5)
     expect(completed.siteSectionsError).toBe('Sections not collected in this test');

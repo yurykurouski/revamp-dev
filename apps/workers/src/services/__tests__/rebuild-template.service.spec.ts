@@ -11,7 +11,7 @@ const audit = (over: Partial<IAudit> = {}): Partial<IAudit> => ({ siteSections: 
 
 describe('rebuildTemplateService (REV-110)', () => {
   it('renders the rebuild and returns its summary', () => {
-    const { html, summary } = rebuildTemplateService.renderFromAudit({ businessName: 'Falco-Dent' }, audit(), undefined, undefined, new Date('2026-09-30'));
+    const { html, summary } = rebuildTemplateService.renderFromAudit({ businessName: 'Falco-Dent' }, audit(), undefined, undefined, undefined, new Date('2026-09-30'));
     expect(html).toContain('Witamy');
     expect(summary).toMatchObject({ coverage: 0.98, sections: 1 });
   });
@@ -62,5 +62,15 @@ describe('rebuildTemplateService with the operator edit (REV-111)', () => {
   it('editForAudit strips the audit id', () => {
     expect(editForAudit({ auditId, order: ['s-1'] }, { _id: auditId } as unknown as Partial<IAudit>)).toEqual({ order: ['s-1'] });
     expect(editForAudit(undefined, {})).toBeUndefined();
+  });
+});
+
+describe('rebuildTemplateService with the modernize layer (REV-114)', () => {
+  it('applies the modernize design under no edit', () => {
+    const plain = rebuildTemplateService.renderFromAudit({ businessName: 'X' }, audit(), undefined, undefined, undefined, new Date('2026-09-30'));
+    const modern = rebuildTemplateService.renderFromAudit({ businessName: 'X' }, audit(), undefined, undefined, { theme: { typeScale: 'modern' } }, new Date('2026-09-30'));
+    expect(modern.html).not.toBe(plain.html);
+    expect(modern.summary.tuning.some((code) => code.startsWith('modernize:'))).toBe(true);
+    expect(plain.summary.tuning.some((code) => code.startsWith('modernize:'))).toBe(false);
   });
 });
