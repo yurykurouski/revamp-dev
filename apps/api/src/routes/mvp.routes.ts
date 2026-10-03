@@ -312,15 +312,6 @@ async function runMvpChange(
     });
   }
 
-  // The rebuilt original (REV-110) has no design spec or Bento copy to change until REV-111
-  if (project.layout?.variant === 'original') {
-    throw new AppError(
-      409,
-      'MVP_EDIT_UNSUPPORTED',
-      'Free-text changes and custom designs are not available for the rebuilt original site yet. Switch to a template layout to use them.',
-    );
-  }
-
   const outcome = await runMvpEditJob({
     mvpProjectId: id,
     instruction: job.instruction,
@@ -346,8 +337,8 @@ async function runMvpChange(
 }
 
 // POST /mvp/:id/edit: the operator describes a change in their own words; the workers' LLM applies it to
-// the copy, palette, layout and/or custom design (REV-92) under Strict Grounding and the page is
-// re-published (REV-85). The request waits for the result, so the operator is told what changed or why
+// the copy, palette, layout and/or custom design (REV-92) under Strict Grounding, or to the rebuilt page's
+// sections by id (REV-111), and the page is re-published (REV-85). The request waits for the result, so the operator is told what changed or why
 // nothing did.
 router.post(
   '/:id/edit',

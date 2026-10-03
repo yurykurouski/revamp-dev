@@ -647,6 +647,8 @@ export const pl: Translation = {
     placeholder: 'Np. opinie nad usługami, nagłówki szeryfowe, ciemny hero, zaokrąglone przyciski',
     hint: '{{count}}/{{max}} · Enter — zastosuj, Shift+Enter — nowa linia',
     grounding: 'AI przeredagowuje i restylizuje to, co już jest na stronie; nigdy nie dodaje faktów ani kontaktów.',
+    placeholderRebuild: 'Np. opinie nad usługami, ukryj galerię, nagłówki szeryfowe, więcej przestrzeni',
+    groundingRebuild: 'AI przestawia, ukrywa i zmienia wygląd sekcji oryginalnej strony; nigdy nie pisze tekstu.',
     apply: 'Zastosuj',
     applying: 'Stosowanie…',
     applied: 'Zastosowano: {{summary}}',
@@ -657,7 +659,6 @@ export const pl: Translation = {
     resetDesign: 'Resetuj własny projekt',
     designReset: 'Własny projekt usunięto: strona znów wygląda jak w wybranym układzie.',
     noDesign: 'MVP nie ma własnego projektu do zresetowania.',
-    unsupported: 'Zmiany opisowe nie są jeszcze dostępne dla odtworzonej strony. Przełącz na układ szablonu, aby z nich skorzystać.',
   },
   colorPicker: {
     brandPalette: 'Paleta marki:',

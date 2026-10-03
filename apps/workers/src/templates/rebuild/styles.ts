@@ -10,7 +10,7 @@ export const fontStack = (stack: string): string => {
   return clean.trim() || 'sans-serif';
 };
 
-/** The rebuild's CSS (REV-110): the tuned theme as custom properties, then rules shared by every rebuilt page */
+/** The rebuild's CSS (REV-110): the tuned theme as custom properties, rules shared by every rebuilt page, then the operator's CSS */
 export function rebuildCss(plan: IRebuildPlan): string {
   const t = plan.theme;
   return `:root {
@@ -23,7 +23,7 @@ export function rebuildCss(plan: IRebuildPlan): string {
   --rb-body-size: ${t.bodySize}px; --rb-line: ${t.lineHeight};
   --rb-button-radius: ${t.buttonRadius}px; --rb-button-case: ${t.buttonUppercase ? 'uppercase' : 'none'};
 }
-${STATIC_CSS}`;
+${STATIC_CSS}${plan.customCss ? `\n/* The operator's CSS (REV-111), sanitized */\n${plan.customCss}` : ''}`;
 }
 
 // Driven only by data-* attributes and the plan's variables; never per-site CSS

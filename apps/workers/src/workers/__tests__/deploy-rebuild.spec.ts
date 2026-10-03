@@ -215,7 +215,7 @@ describe('re-publish with the rebuild (REV-110)', () => {
     savedProject({ layout: { variant: 'original', reasons: ['rule:manual'] }, colorPalette: { primary: '#00ff00' }, rebuild: undefined });
     vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
     await republishSavedMvp(leadId);
-    expect(rebuildTemplateService.renderFromAudit).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ primary: '#00ff00' }));
+    expect(rebuildTemplateService.renderFromAudit).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ primary: '#00ff00' }), undefined);
     expect(MvpProject.findByIdAndUpdate).toHaveBeenCalledWith(
       projectId,
       expect.objectContaining({ $set: expect.objectContaining({ editedAt: expect.any(Date), rebuild: expect.anything() }) }),
@@ -256,8 +256,8 @@ describe('re-publish with the rebuild (REV-110)', () => {
     const [filter, update] = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]! as [Record<string, any>, Record<string, any>];
     expect(filter).toEqual({ _id: projectId, layout: { variant: 'original', reasons: ['rule:manual'] } });
     expect(update.$set.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:too_large']);
-    // Bento before and after: no renderer switch, nothing else to write
-    expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
+    // Bento before and after: no renderer switch; the only other write is the re-checked completeness (REV-111)
+    expect(vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => Object.keys((call[1] as any).$set))).toEqual([['completenessReport']]);
     expect(storageService.uploadHtml).toHaveBeenCalledTimes(1);
     expect(result.layout).toBe(update.$set.layout.variant);
   });
@@ -282,5 +282,46 @@ describe('re-publish with the rebuild (REV-110)', () => {
     expect(MvpProject.findOneAndUpdate).toHaveBeenCalledTimes(1);
     expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![0]).toMatchObject({ layout: { variant: 'original' } });
     expect(result.layout).toBe('compact');
+  });
+});
+
+describe('the rebuild edit and completeness (REV-111)', () => {
+  const edit = { auditId, hidden: ['s-2'] };
+
+  it('re-publishes with the saved edit and saves a fresh code-only completeness report', async () => {
+    savedProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, rebuild: { coverage: 1, sections: 1, omitted: [], tuning: [] }, rebuildEdit: edit });
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: '<html><body>Falco-Dent</body></html>', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
+    await republishSavedMvp(leadId);
+    expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![3]).toEqual(edit);
+    const reports = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => (call[1] as any)?.$set?.completenessReport).filter(Boolean);
+    expect(reports).toHaveLength(1);
+    expect(reports[0]).toMatchObject({ method: 'deterministic' });
+    expect(reports[0].checks.find((c: any) => c.field === 'businessName')).toMatchObject({ status: 'present' });
+  });
+
+  it('re-checks completeness on a Bento re-publish too', async () => {
+    savedProject({ layout: { variant: 'bento', reasons: ['rule:manual'] } });
+    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<html><body>Bento</body></html>');
+    await republishSavedMvp(leadId);
+    const reports = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => (call[1] as any)?.$set?.completenessReport).filter(Boolean);
+    expect(reports).toHaveLength(1);
+  });
+
+  it('keeps an edit made for the audit a regeneration renders', async () => {
+    existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, rebuildEdit: edit });
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
+    await runDeploy({ siteSections: sectionsFixture });
+    expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![3]).toEqual(edit);
+    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$unset?.rebuildEdit).toBeUndefined();
+  });
+
+  it('drops an edit made for another audit when a regeneration reads a newer one', async () => {
+    existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, rebuildEdit: { ...edit, auditId: 'ffffffffffffffffffffffff' } });
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
+    await runDeploy({ siteSections: sectionsFixture });
+    expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![3]).toBeUndefined();
+    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$unset).toMatchObject({ rebuildEdit: '' });
   });
 });

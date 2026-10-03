@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { MVP_CUSTOM_CSS_MAX, UnsafeCssError, renderableCustomCss, sanitizeMvpCss } from '../css-sanitizer.js';
+import { MVP_CUSTOM_CSS_MAX, REBUILD_CSS_HOOKS, UnsafeCssError, renderableCustomCss, sanitizeMvpCss } from '../css-sanitizer.js';
 
 const problemsOf = (css: string): string[] => {
   try {
@@ -112,5 +112,21 @@ describe('sanitizeMvpCss (REV-93)', () => {
       expect(warn).toHaveBeenCalledTimes(1);
       warn.mockRestore();
     });
+  });
+});
+
+describe('sanitizeMvpCss on the rebuilt page (REV-111)', () => {
+  it('accepts the rebuild hooks, a section by its data-revamp-section hook, and a sticky .rb-header', () => {
+    expect(() => sanitizeMvpCss('[data-revamp-section="s-1"] .rb-heading { color: var(--rb-primary); }')).not.toThrow();
+    expect(() => sanitizeMvpCss('.rb-header { position: sticky; top: 0; }')).not.toThrow();
+    for (const hook of REBUILD_CSS_HOOKS) {
+      const selector = hook.replace('<index>', '2');
+      expect(() => sanitizeMvpCss(`${selector} { letter-spacing: .02em; }`), selector).not.toThrow();
+    }
+  });
+
+  it('still refuses another fixed element and attributes outside data-revamp-*', () => {
+    expect(() => sanitizeMvpCss('.rb-section { position: fixed; }')).toThrow(UnsafeCssError);
+    expect(() => sanitizeMvpCss('.rb-section[data-kind="about"] { color: red; }')).toThrow(UnsafeCssError);
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BANNER_OVERLAY, clampPadding, contrastRatio, fontStack, onColor, readableText, typeScale } from '../rebuild-tuning.js';
+import { BANNER_OVERLAY, mix, clampPadding, contrastRatio, fontStack, onColor, readableText, typeScale } from '../rebuild-tuning.js';
 import { FONT_STACKS } from '../../templates/design.js';
 
 describe('contrast (REV-110)', () => {
@@ -60,5 +60,14 @@ describe('type (REV-110)', () => {
     expect(clampPadding(80)).toBe(80);
     expect(clampPadding(300)).toBe(120);
     expect(clampPadding(undefined)).toBe(64);
+  });
+});
+
+describe('mix (REV-111)', () => {
+  it('moves a color toward white or black by the share', () => {
+    expect(mix('#000000', 255, 1)).toBe('#ffffff');
+    expect(mix('#0e7490', 255, 0)).toBe('#0e7490');
+    expect(mix('#0e7490', 255, 0.92)).toBe('#ecf4f6');
+    expect(mix('#ffffff', 0, 0.5)).toBe('#808080');
   });
 });

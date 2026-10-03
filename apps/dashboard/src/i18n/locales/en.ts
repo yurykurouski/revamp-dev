@@ -648,6 +648,8 @@ export const en = {
     placeholder: 'e.g. Reviews above services, serif headings, a dark hero, pill buttons',
     hint: '{{count}}/{{max}} · Enter to apply, Shift+Enter for a new line',
     grounding: 'AI rewrites and restyles what the site already says; it never adds facts or contacts.',
+    placeholderRebuild: 'e.g. Reviews above services, hide the gallery, serif headings, more spacing',
+    groundingRebuild: 'AI reorders, hides and restyles the original page\'s sections; it never writes text.',
     apply: 'Apply',
     applying: 'Applying…',
     applied: 'Applied: {{summary}}',
@@ -658,7 +660,6 @@ export const en = {
     resetDesign: 'Reset custom design',
     designReset: 'The custom design was removed; the page is back to the look of its layout.',
     noDesign: 'The MVP has no custom design to reset.',
-    unsupported: 'Free-text changes are not available for the rebuilt original site yet. Switch to a template layout to use them.',
   },
   colorPicker: {
     brandPalette: 'Brand palette:',

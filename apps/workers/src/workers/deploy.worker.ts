@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import { IDeployJobData, ILead, IAudit, IMvpDesign, IMvpLayoutSelection, MVP_LAYOUT_MANUAL_ORIGINAL, MvpLayoutVariant } from '@revamp/shared-types';
+import { IDeployJobData, ILead, IAudit, IMvpDesign, IMvpLayoutSelection, IRebuildEdit, MVP_LAYOUT_MANUAL_ORIGINAL, MvpLayoutVariant } from '@revamp/shared-types';
 import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -89,6 +89,7 @@ type SavedMvpDesign = {
   colorPalette?: MvpPaletteOverride | null;
   design?: IMvpDesign | null;
   rebuild?: unknown;
+  rebuildEdit?: IRebuildEdit | null;
 };
 
 /**
@@ -104,6 +105,8 @@ const savedDesign = (project: SavedMvpDesign) => ({
     accent: project.colorPalette?.accent || undefined,
   },
   design: mergeDesigns(project.layout?.design, project.design),
+  // The operator's change to the rebuild (REV-111)
+  rebuildEdit: project.rebuildEdit ?? undefined,
 });
 
 /** The layout a re-publish renders: the saved one, or a fresh manual `original` pick for one that had fallen back */
@@ -118,13 +121,15 @@ const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof save
   a.palette.primary === b.palette.primary &&
   a.palette.secondary === b.palette.secondary &&
   a.palette.accent === b.palette.accent &&
-  JSON.stringify(a.design ?? null) === JSON.stringify(b.design ?? null);
+  JSON.stringify(a.design ?? null) === JSON.stringify(b.design ?? null) &&
+  JSON.stringify(a.rebuildEdit ?? null) === JSON.stringify(b.rebuildEdit ?? null);
 
 /**
- * Re-publishes an existing MVP in the layout (REV-84) and palette (REV-90) the operator saved: the
- * stored copy rendered by the deterministic template, with no LLM call, no completeness re-check and
- * no lead status change, so the page a lead is sent is the one the operator approved. Also run
- * directly by a free-text change (REV-85), which waits for the new page before it reports back.
+ * Re-publishes an existing MVP in the layout (REV-84), palette (REV-90) and edits the operator saved: the
+ * stored copy rendered by the deterministic template, with no LLM call and no lead status change, so the
+ * page a lead is sent is the one the operator approved. The completeness report is re-checked by code on
+ * the published page (REV-111), so it never describes an earlier version. Also run directly by a free-text
+ * change (REV-85), which waits for the new page before it reports back.
  */
 export async function republishSavedMvp(leadId: string) {
   const lead = await Lead.findById(leadId).exec();
@@ -157,6 +162,7 @@ export async function republishSavedMvp(leadId: string) {
   // The lead and the audit do not change between passes; the stored copy is the one the MVP was made with
   const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, project.generatedContent));
   let layout: IMvpLayoutSelection | undefined;
+  let html: string | undefined;
   for (let pass = 0; pass < MAX_RELAYOUT_PASSES; pass++) {
     const requested = savedLayout(project, design.variant);
     const rendered = renderMvp({
@@ -167,7 +173,9 @@ export async function republishSavedMvp(leadId: string) {
       derived,
       palette: design.palette,
       design: design.design,
+      rebuildEdit: design.rebuildEdit,
     });
+    html = rendered.html;
     published = await publishMvp(project.previewSlug, rendered.html, lead, audit);
     layout = rendered.layout;
 
@@ -193,7 +201,7 @@ export async function republishSavedMvp(leadId: string) {
         { $set: { layout: rendered.layout } },
       ).exec();
       // What this pass saved, so the re-read below compares against it
-      if (saved) design = savedDesign({ layout: rendered.layout, colorPalette: project.colorPalette, design: project.design });
+      if (saved) design = savedDesign({ layout: rendered.layout, colorPalette: project.colorPalette, design: project.design, rebuildEdit: project.rebuildEdit });
     }
 
     const latest = await MvpProject.findById(project._id).exec();
@@ -202,6 +210,13 @@ export async function republishSavedMvp(leadId: string) {
     if (sameDesign(latestDesign, design)) break;
     project = latest;
     design = latestDesign;
+  }
+
+  // The report follows the published page (REV-111): code only, no LLM call on a re-publish; never throws
+  if (html) {
+    const completenessReport = mvpCompletenessService.check(html, leadData, auditData);
+    await MvpProject.findByIdAndUpdate(project._id, { $set: { completenessReport } }).exec();
+    console.log(`[DeployWorker] Completeness re-checked (deterministic): ${completenessReport.status}`);
   }
 
   console.log(
@@ -235,7 +250,7 @@ export const createDeployWorker = (): Worker => {
 
       // 1. Preview slug. An existing project keeps its slug, so a regeneration (REV-31) overwrites
       // the same objects in the demos bucket and the preview URL already shared stays valid.
-      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout rebuild').exec();
+      const existingProject = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug design layout rebuild rebuildEdit').exec();
       const transliterated = transliterate(lead.businessName || lead.domain || 'demo');
       const rawSlug = transliterated
         .replace(/[^a-z0-9]+/g, '-')
@@ -253,6 +268,13 @@ export const createDeployWorker = (): Worker => {
       const requested = picked ? manualMvpLayout(derived, picked) : rebuildLayout(derived);
       // The operator's custom design survives a regeneration (REV-92); the palette comes from the new
       // audit run (the rebuild takes the site's own button color itself)
+      // The operator's change to the rebuild (REV-111) names this audit's sections: kept for the same audit,
+      // dropped when the generation reads a newer one
+      const savedEdit = existingProject?.rebuildEdit ?? undefined;
+      const rebuildEdit = savedEdit?.auditId === audit._id.toString() ? savedEdit : undefined;
+      if (savedEdit && !rebuildEdit) {
+        console.log(`[DeployWorker] Rebuild edit for audit ${savedEdit.auditId} dropped: the MVP is generated from audit ${audit._id.toString()}`);
+      }
       const rendered = renderMvp({
         lead: leadData,
         audit: auditData,
@@ -260,6 +282,7 @@ export const createDeployWorker = (): Worker => {
         layout: requested,
         derived,
         design: mergeDesigns(requested.design, existingProject?.design),
+        rebuildEdit,
       });
       const { html, layout } = rendered;
       console.log(`[DeployWorker] Layout: ${layout.variant} (${layout.reasons.join(', ')})`);
@@ -296,6 +319,7 @@ export const createDeployWorker = (): Worker => {
       const unset = {
         ...(generationSource && !generationSource.requestedProvider ? { requestedProvider: '', requestedModel: '' } : {}),
         ...(rendered.rebuild ? {} : { rebuild: '' }),
+        ...(savedEdit && !rebuildEdit ? { rebuildEdit: '' } : {}),
       };
       // The rebuild's CTAs default to the site's own button color (REV-110)
       const rebuildPrimary = layout.variant === 'original' ? defaultRebuildPrimary(auditData) : undefined;

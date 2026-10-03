@@ -5,6 +5,7 @@ import { MvpProject } from '../../models/MvpProject.model.js';
 import { findGenerationAudit } from '../../services/audit-lookup.js';
 import { republishSavedMvp } from '../deploy.worker.js';
 import type { MvpEditPlan, MvpEditService } from '../../services/mvp-edit.service.js';
+import type { RebuildEditPlan, RebuildEditService } from '../../services/rebuild-edit.service.js';
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
@@ -292,5 +293,88 @@ describe('mvp edit worker (REV-85)', () => {
     it('offers the presets when there is no current or brand color', () => {
       expect(colorCandidates(undefined, undefined).map((c) => c.hex)).toEqual(MVP_COLOR_PRESETS.map((p) => p.hex));
     });
+  });
+});
+
+describe('mvp edit worker on the rebuilt MVP (REV-111)', () => {
+  const siteSections = { sections: [], skipped: [], coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] } };
+  const rebuilt = { ...project, layout: { variant: 'original', reasons: ['rule:rebuild', 'images:3'] }, design: { theme: { font: 'serif' } } };
+  const rebuildReturning = (plan: RebuildEditPlan) =>
+    ({ interpret: vi.fn().mockResolvedValue(plan) }) as unknown as RebuildEditService & { interpret: ReturnType<typeof vi.fn> };
+  const bento = () => ({ interpret: vi.fn() }) as unknown as MvpEditService & { interpret: ReturnType<typeof vi.fn> };
+  const edit = { hidden: ['s-3'], theme: { font: 'serif' as const } };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(MvpProject.findById).mockReturnValue(exec(rebuilt));
+    vi.mocked(MvpProject.findByIdAndUpdate).mockReturnValue(exec(rebuilt));
+    vi.mocked(Lead.findById).mockReturnValue(exec(lead));
+    vi.mocked(findGenerationAudit).mockResolvedValue({ ...audit, siteSections } as any);
+    vi.mocked(republishSavedMvp).mockResolvedValue({ success: true } as any);
+  });
+
+  it('asks the rebuild agent, not the Bento one, with the page and the current edit of this audit', async () => {
+    const saved = { ...rebuilt, rebuildEdit: { auditId, ...edit } };
+    vi.mocked(MvpProject.findById).mockReturnValue(exec(saved));
+    const service = bento();
+    const rebuild = rebuildReturning({ summary: 'Nothing', changes: [] });
+    const result = await processMvpEditJob(job(), service, Date.now, rebuild);
+    expect(service.interpret).not.toHaveBeenCalled();
+    const request = rebuild.interpret.mock.calls[0]![0];
+    expect(request).toMatchObject({ instruction: 'Punchier headline', siteSections, current: { edit, primaryColor: '#4F46E5' } });
+    expect(request.colorCandidates[0]).toEqual({ hex: '#4F46E5', source: 'current' });
+    expect(result).toEqual({ applied: false, summary: 'Nothing', changes: [] });
+    expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it('does not offer an edit made for another audit as the current one', async () => {
+    vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...rebuilt, rebuildEdit: { auditId: 'ffffffffffffffffffffffff', ...edit } }));
+    const rebuild = rebuildReturning({ summary: 'Nothing', changes: [] });
+    await processMvpEditJob(job(), bento(), Date.now, rebuild);
+    expect(rebuild.interpret.mock.calls[0]![0].current).toEqual({ primaryColor: '#4F46E5' });
+  });
+
+  it('saves the edit with its audit, the color and a template pick, then re-publishes', async () => {
+    const rebuild = rebuildReturning({ summary: 'Done', edit, primaryColor: '#D97706', layout: 'split', changes: ['design', 'palette', 'layout'] });
+    const result = await processMvpEditJob(job(), bento(), Date.now, rebuild);
+    expect(result).toEqual({ applied: true, summary: 'Done', changes: ['design', 'palette', 'layout'] });
+    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$set.rebuildEdit).toEqual({ ...edit, auditId });
+    expect(update.$set['colorPalette.primary']).toBe('#D97706');
+    expect(update.$set.layout).toEqual({ variant: 'split', reasons: ['rule:manual', 'images:3'] });
+    expect(update.$set.editedAt).toBeInstanceOf(Date);
+    expect(update.$set).not.toHaveProperty('design');
+    expect(update.$unset).toBeUndefined();
+    expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
+  });
+
+  it('unsets the edit when the agent drops it', async () => {
+    const rebuild = rebuildReturning({ summary: 'Reset', edit: {}, changes: ['design'] });
+    await processMvpEditJob(job(), bento(), Date.now, rebuild);
+    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$unset).toEqual({ rebuildEdit: '' });
+    expect(update.$set).not.toHaveProperty('rebuildEdit');
+  });
+
+  it('fails without a reading of the original page', async () => {
+    vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
+    await expect(processMvpEditJob(job(), bento(), Date.now, rebuildReturning({ summary: 'x', changes: [] }))).rejects.toThrow('no reading of the original page');
+  });
+
+  it('resets the rebuild edit only, leaving the Bento design, without asking a model', async () => {
+    vi.mocked(MvpProject.findById).mockReturnValue(exec({ ...rebuilt, rebuildEdit: { auditId, ...edit } }));
+    const rebuild = rebuildReturning({ summary: 'x', changes: [] });
+    const result = await processMvpEditJob({ ...job(), action: 'reset-design' }, bento(), Date.now, rebuild);
+    expect(result).toEqual({ applied: true, summary: 'The custom design was removed.', changes: ['design'] });
+    expect(rebuild.interpret).not.toHaveBeenCalled();
+    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as any;
+    expect(update.$unset).toEqual({ rebuildEdit: '' });
+    expect(republishSavedMvp).toHaveBeenCalledWith(leadId);
+  });
+
+  it('has nothing to reset on a rebuild without an edit, even with a Bento design saved', async () => {
+    const result = await processMvpEditJob({ ...job(), action: 'reset-design' }, bento(), Date.now, rebuildReturning({ summary: 'x', changes: [] }));
+    expect(result).toEqual({ applied: false, summary: 'The MVP has no custom design.', changes: [] });
+    expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
   });
 });

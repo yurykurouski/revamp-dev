@@ -1758,22 +1758,25 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.mocked(runMvpEditJob).mockClear();
     });
 
-    it('refuses a free-text change on the rebuild', async () => {
+    it('runs a free-text change on the rebuild through the workers (REV-111)', async () => {
       mockProject('original');
       mockLead('NEEDS_APPROVAL');
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Make it blue' });
-      expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('MVP_EDIT_UNSUPPORTED');
-      expect(runMvpEditJob).not.toHaveBeenCalled();
+      const result = { applied: true, summary: 'Moved the reviews up', changes: ['design'] };
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
+      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Reviews first' });
+      expect(res.status).toBe(200);
+      expect(res.body.data).toMatchObject(result);
+      expect(runMvpEditJob).toHaveBeenCalledWith({ mvpProjectId: projectId, instruction: 'Reviews first' });
     });
 
-    it('refuses a design reset on the rebuild', async () => {
+    it('runs a design reset on the rebuild through the workers (REV-111)', async () => {
       mockProject('original');
       mockLead('NEEDS_APPROVAL');
+      const result = { applied: true, summary: 'The custom design was removed.', changes: ['design'] };
+      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
       const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
-      expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('MVP_EDIT_UNSUPPORTED');
-      expect(runMvpEditJob).not.toHaveBeenCalled();
+      expect(res.status).toBe(200);
+      expect(runMvpEditJob).toHaveBeenCalledWith(expect.objectContaining({ mvpProjectId: projectId, action: 'reset-design' }));
     });
 
     it('refuses a switch to original when the audit has no read sections (pre-REV-109 audit)', async () => {

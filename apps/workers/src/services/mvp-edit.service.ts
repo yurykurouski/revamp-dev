@@ -72,9 +72,9 @@ export interface MvpEditServiceOptions {
 }
 
 /** How long an HTTP provider may take to answer; the CLI has its own timeout */
-const EDIT_LLM_TIMEOUT_MS = 90_000;
+export const EDIT_LLM_TIMEOUT_MS = 90_000;
 
-const LAYOUT_DESCRIPTIONS: Record<BentoLayoutVariant, string> = {
+export const LAYOUT_DESCRIPTIONS: Record<BentoLayoutVariant, string> = {
   bento: 'a grid of service cards',
   split: 'copy beside a large photo',
   editorial: 'a typographic, text-led page',
@@ -139,7 +139,7 @@ function copyTexts(content: MvpContentOutput): string[] {
 }
 
 /** Key-order independent JSON, so copy read back from Mongo compares equal to the same copy */
-function stableJson(value: unknown): string {
+export function stableJson(value: unknown): string {
   return JSON.stringify(value, (_key, field: unknown) =>
     field && typeof field === 'object' && !Array.isArray(field)
       ? Object.fromEntries(Object.entries(field).sort(([a], [b]) => a.localeCompare(b)))
@@ -147,7 +147,7 @@ function stableJson(value: unknown): string {
   );
 }
 
-const normalizeHex = (hex: string): string => hex.trim().toUpperCase();
+export const normalizeHex = (hex: string): string => hex.trim().toUpperCase();
 
 /**
  * The MVP edit agent (REV-85): turns an operator's free-text change into new copy, a primary color

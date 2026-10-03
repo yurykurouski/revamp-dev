@@ -16,7 +16,8 @@ export function contrastRatio(a: string, b: string): number {
 
 const AA = 4.5;
 const toHex = (n: number) => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
-const mix = (hex: string, target: number, share: number) =>
+/** The color moved toward a gray level (0 black, 255 white) by `share` */
+export const mix = (hex: string, target: number, share: number) =>
   `#${[0, 1, 2].map((i) => toHex(channel(hex, i) * 255 * (1 - share) + target * share)).join('')}`;
 
 /** Near-black or white, whichever reads better on the background */

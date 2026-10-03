@@ -1,5 +1,7 @@
 import type {
   IMvpRebuildSummary,
+  IRebuildEditAnswer,
+  IRebuildSectionEdit,
   IRebuildBlock,
   IRebuildImage,
   IRebuildItem,
@@ -15,7 +17,9 @@ import type {
 import { z } from 'zod';
 import { REBUILD_IFRAME_HOSTS, REBUILD_SUMMARY_LIMITS, SITE_SECTIONS_LIMITS } from '@revamp/validation';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
-import { BANNER_OVERLAY, clampPadding, fontStack, onColor, readableText, typeScale } from './rebuild-tuning.js';
+import { FONT_STACKS } from '../templates/design.js';
+import { UnsafeCssError, sanitizeMvpCss } from '../templates/css-sanitizer.js';
+import { BANNER_OVERLAY, clampPadding, fontStack, mix, onColor, readableText, typeScale } from './rebuild-tuning.js';
 
 // The rebuild's decisions (REV-110): which sections, links, embeds and fixes. Pure; the renderer only
 // turns the plan into markup, and nothing here adds a fact the original page does not have.
@@ -29,6 +33,8 @@ export interface RebuildInput {
   logoUrl?: string;
   primary: string;
   year: number;
+  /** The operator's change (REV-111), its ids already checked against these sections */
+  edit?: IRebuildEditAnswer;
 }
 
 /** A `text` section longer than this puts its body in a collapsed <details> */
@@ -36,6 +42,12 @@ export const COLLAPSE_CHARS = 1200;
 /** Booking and appointment hosts: a link there becomes the page's own booking form */
 export const BOOKING_HOSTS = /(^|\.)(booksy\.com|znanylekarz\.pl|docplanner\.[a-z.]+|medfile\.pl|calendly\.com|reservio\.[a-z.]+)$/i;
 const PAGE_BACKGROUND = '#ffffff';
+/** The rebuild edit's values (REV-111): section padding per density, radius per corner style, the dark background */
+export const DENSITY_PADDING = { compact: 48, comfortable: 72, airy: 112 } as const;
+export const CORNER_RADIUS = { sharp: 0, soft: 6, rounded: 12, 'extra-round': 999 } as const;
+export const DARK_BACKGROUND = '#111827';
+/** A tint is this share of the primary over white */
+const TINT_SHARE = 0.08;
 
 const LIMITS = SITE_SECTIONS_LIMITS;
 const EmailSchema = z.string().email().max(254);
@@ -218,12 +230,37 @@ const textLength = (section: ISiteSection) =>
  * One section's plan. Its section-level fixes (overlay, contrast, collapse) go into `fixes`, recorded by the caller
  * only when the section is rendered.
  */
+interface Look {
+  primary: string;
+  sections: Record<string, IRebuildSectionEdit>;
+  density?: keyof typeof DENSITY_PADDING;
+  radius?: number;
+}
+
+/** A section's background as the operator picked it, else as read */
+function editedBackground(pick: IRebuildSectionEdit['background'], read: string | undefined, primary: string): string | undefined {
+  switch (pick) {
+    case 'page':
+      return PAGE_BACKGROUND;
+    case 'tinted':
+      return mix(primary, 255, 1 - TINT_SHARE);
+    case 'brand':
+      return primary;
+    case 'dark':
+      return DARK_BACKGROUND;
+    default:
+      return read;
+  }
+}
+
 function planSection(
   section: ISiteSection,
-  ctx: { rec: Recorder; t: ReturnType<typeof getMvpStrings>; booking: { placed: boolean }; h1: { used: boolean } },
+  ctx: { rec: Recorder; t: ReturnType<typeof getMvpStrings>; booking: { placed: boolean }; h1: { used: boolean }; look?: Look },
   fixes: string[],
 ): IRebuildSection {
   const { rec, t } = ctx;
+  const edit = ctx.look?.sections[`s-${section.index}`];
+  if (edit && Object.values(edit).some((value) => value !== undefined)) fixes.push(`edit:style:${section.index}`);
   const eager = section.role === 'hero';
   const heading = label(section.intro.heading);
   const headingLevel: 1 | 2 = section.role === 'hero' && heading && !ctx.h1.used ? 1 : 2;
@@ -246,7 +283,8 @@ function planSection(
   const photoSlides = isPhotoSlider(section);
   // Photo slides carry their own photos; the section's (the first slide's) would only sit behind them
   const photo = !photoSlides && isHttp(section.style.backgroundImage) ? section.style.backgroundImage : undefined;
-  const background = section.style.background && HEX.test(section.style.background) ? section.style.background : undefined;
+  const readBackground = section.style.background && HEX.test(section.style.background) ? section.style.background : undefined;
+  const background = ctx.look ? editedBackground(edit?.background, readBackground, ctx.look.primary) : readBackground;
   const textColor = section.style.textColor && HEX.test(section.style.textColor) ? section.style.textColor : undefined;
   let text: string;
   let overlay: number | undefined;
@@ -277,6 +315,9 @@ function planSection(
       ...(itemText ? { text: itemText.color } : {}),
     };
   }
+  // The operator's corner style rounds every section's items alike
+  if (ctx.look?.radius !== undefined) itemStyle = { ...itemStyle, radius: ctx.look.radius };
+  const density = edit?.density ?? ctx.look?.density;
 
   const collapsed = section.arrangement === 'text' && textLength(section) > COLLAPSE_CHARS;
   if (collapsed) fixes.push(`collapse:${section.index}`);
@@ -316,11 +357,39 @@ function planSection(
       ...(photo ? { backgroundImage: photo } : {}),
       text,
       ...(overlay !== undefined ? { overlay } : {}),
-      align: section.style.align ?? 'left',
-      paddingY: clampPadding(section.style.paddingY),
+      align: edit?.align ?? section.style.align ?? 'left',
+      paddingY: density ? DENSITY_PADDING[density] : clampPadding(section.style.paddingY),
       fullBleed: section.style.fullBleed ?? false,
     },
   };
+}
+
+/** The section without the paragraphs, items and extra blocks the operator left out (REV-111), each recorded */
+function withoutDropped(section: ISiteSection, dropped: Set<string>, rec: Recorder): ISiteSection {
+  const id = `s-${section.index}`;
+  const kept = (part: 't' | 'i' | 'x', n: number) => !dropped.has(`${id}.${part}${n}`);
+  if (![...dropped].some((piece) => piece.startsWith(`${id}.`))) return section;
+  section.intro.text.forEach((text, n) => kept('t', n) || rec.omit('text', 'dropped', text));
+  section.items.forEach((item, n) => kept('i', n) || rec.omit('item', 'dropped', item.title ?? item.text[0]));
+  section.extra.forEach((entry, n) => kept('x', n) || rec.omit('text', 'dropped', entry.type === 'text' ? entry.text[0] : entry.items[0]?.title));
+  return {
+    ...section,
+    intro: { ...section.intro, text: section.intro.text.filter((_, n) => kept('t', n)) },
+    items: section.items.filter((_, n) => kept('i', n)),
+    extra: section.extra.filter((_, n) => kept('x', n)),
+  };
+}
+
+/** The operator's CSS, through the sanitizer again; CSS that no longer passes is left out and recorded */
+function plannedCss(css: string | undefined, rec: Recorder): string | undefined {
+  if (!css?.trim()) return undefined;
+  try {
+    return sanitizeMvpCss(css);
+  } catch (error) {
+    if (!(error instanceof UnsafeCssError)) throw error;
+    rec.fix('edit:css-dropped');
+    return undefined;
+  }
 }
 
 /** The services and pricing item titles as booking options, each once (case and spacing ignored), in its first spelling */
@@ -348,10 +417,31 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
   const t = getMvpStrings(language);
   for (const skipped of read.skipped) rec.omit('section', skipped.reason, skipped.sample || skipped.heading);
 
-  const header = read.sections.find((s) => s.role === 'header');
-  const footer = read.sections.find((s) => s.role === 'footer');
-  const ctx = { rec, t, booking: { placed: false }, h1: { used: false } };
-  const mainSections = read.sections.filter((s) => s.role === 'hero' || s.role === 'content');
+  // The operator's edit (REV-111): hidden sections and dropped pieces leave before planning, recorded
+  const edit = input.edit;
+  const hidden = new Set(edit?.hidden ?? []);
+  const dropped = new Set(edit?.dropped ?? []);
+  const pageSections = read.sections
+    .filter((s) => {
+      if (!hidden.has(`s-${s.index}`)) return true;
+      rec.omit('section', 'hidden', s.intro.heading);
+      return false;
+    })
+    .map((s) => withoutDropped(s, dropped, rec));
+  const corners = edit?.theme?.corners;
+  const look: Look | undefined = edit
+    ? {
+        primary: input.primary,
+        sections: edit.sections ?? {},
+        ...(edit.theme?.density ? { density: edit.theme.density } : {}),
+        ...(corners ? { radius: CORNER_RADIUS[corners] } : {}),
+      }
+    : undefined;
+
+  const header = pageSections.find((s) => s.role === 'header');
+  const footer = pageSections.find((s) => s.role === 'footer');
+  const ctx = { rec, t, booking: { placed: false }, h1: { used: false }, ...(look ? { look } : {}) };
+  const mainSections = pageSections.filter((s) => s.role === 'hero' || s.role === 'content');
   for (const dropped of mainSections.slice(LIMITS.sections)) rec.omit('section', 'over_cap', dropped.intro.heading);
   const sections = mainSections
     .slice(0, LIMITS.sections)
@@ -370,6 +460,14 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
       return false;
     })
     .map(({ planned }) => planned);
+  // The operator's order; unlisted sections follow in the original order
+  if (edit?.order?.length) {
+    const rank = new Map(edit.order.map((id, i) => [id, i]));
+    const position = new Map(sections.map((s, i) => [s.id, i]));
+    const key = (s: IRebuildSection) => rank.get(s.id) ?? edit.order!.length + position.get(s.id)!;
+    sections.sort((a, b) => key(a) - key(b));
+    rec.fix('edit:order');
+  }
   rec.summary.sections = sections.length;
   if (!ctx.h1.used) rec.fix('h1:hidden');
   if (!ctx.booking.placed) rec.fix('booking:appended');
@@ -411,6 +509,9 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
 
   const scale = typeScale(read.typography);
   scale.tuning.forEach((code) => rec.fix(code));
+  const theme = themeEdit(edit?.theme, fontStack(read.typography?.heading.family), fontStack(read.typography?.body.family));
+  if (edit?.theme && Object.values(edit.theme).some((value) => value !== undefined)) rec.fix('edit:theme');
+  const customCss = plannedCss(edit?.customCss, rec);
   const button = read.typography?.button;
   const phone = input.contacts.phone?.trim().slice(0, 30) || undefined;
   const email = input.contacts.email?.trim();
@@ -426,15 +527,15 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
       onPrimary: onColor(input.primary),
       pageBackground: PAGE_BACKGROUND,
       pageText: readableText(read.typography?.body.color, PAGE_BACKGROUND).color,
-      headingFont: fontStack(read.typography?.heading.family),
-      bodyFont: fontStack(read.typography?.body.family),
+      headingFont: theme.headingFont,
+      bodyFont: theme.bodyFont,
       headingWeight: scale.headingWeight,
-      headingUppercase: scale.headingUppercase,
+      headingUppercase: edit?.theme?.headingCase ? edit.theme.headingCase === 'uppercase' : scale.headingUppercase,
       h1Size: scale.h1Size,
       h2Size: scale.h2Size,
       bodySize: scale.bodySize,
       lineHeight: scale.lineHeight,
-      buttonRadius: Math.min(999, Math.max(0, button?.radius ?? 6)),
+      buttonRadius: corners ? CORNER_RADIUS[corners] : Math.min(999, Math.max(0, button?.radius ?? 6)),
       buttonUppercase: button?.uppercase ?? false,
     },
     header: {
@@ -445,7 +546,7 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     },
     sections,
     bookingAppended: !ctx.booking.placed,
-    bookingServices: bookingServices(read.sections),
+    bookingServices: bookingServices(pageSections),
     footer: {
       ...(footerSection ? { section: footerSection } : {}),
       contacts: {
@@ -460,5 +561,23 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
         .map((link) => ({ label: label(link.platform) ?? label(hostOf(link.url)) ?? 'link', href: link.url })),
     },
     summary: rec.summary,
+    ...(customCss ? { customCss } : {}),
   };
+}
+
+/** Heading and body font stacks with the operator's font (REV-111); `system` keeps the original's */
+function themeEdit(edit: IRebuildEditAnswer['theme'], headingFont: string, bodyFont: string): { headingFont: string; bodyFont: string } {
+  switch (edit?.font) {
+    case 'humanist':
+    case 'geometric':
+    case 'rounded':
+    case 'serif':
+      return { headingFont: FONT_STACKS[edit.font], bodyFont: FONT_STACKS[edit.font] };
+    case 'serif-display':
+      return { headingFont: FONT_STACKS.display, bodyFont };
+    case 'mono-display':
+      return { headingFont: FONT_STACKS.mono, bodyFont };
+    default:
+      return { headingFont, bodyFont };
+  }
 }

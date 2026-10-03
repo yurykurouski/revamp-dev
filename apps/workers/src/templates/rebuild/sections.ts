@@ -168,6 +168,8 @@ export function renderSection(section: IRebuildSection, ctx: RenderCtx, tag: 'se
   const attrs = [
     `id="${escapeHtml(section.id)}"`,
     'class="rb-section"',
+    // The hook the operator's CSS targets a section by (REV-111), through the sanitizer's data-revamp-* rule
+    `data-revamp-section="${escapeHtml(section.id)}"`,
     `data-arrangement="${section.arrangement}"`,
     `data-kind="${section.kind}"`,
     section.mediaSide ? `data-media-side="${section.mediaSide}"` : '',
