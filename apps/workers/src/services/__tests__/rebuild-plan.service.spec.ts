@@ -3,6 +3,7 @@ import type { ISiteSection, ISiteSections } from '@revamp/shared-types';
 import { RebuildPlanSchema } from '@revamp/validation';
 import { planRebuild, RebuildInput } from '../rebuild-plan.service.js';
 import { contrastRatio } from '../rebuild-tuning.js';
+import { FONT_STACKS } from '../../templates/design.js';
 import { getMvpStrings } from '../../templates/mvp-locale.js';
 
 const section = (index: number, over: Partial<ISiteSection> = {}): ISiteSection => ({
@@ -389,5 +390,125 @@ describe('planRebuild guards and footer booking (REV-110)', () => {
       { label: 'Zapisz się', href: 'https://x.pl/b', kind: 'cta' },
     ]), hero]));
     expect(plan.header.cta.label).toBe('Zapisz się');
+  });
+});
+
+describe('planRebuild with the operator edit (REV-111)', () => {
+  const nav = section(0, {
+    role: 'header',
+    intro: { text: [], links: [{ label: 'Zespół', href: 'https://falcodent.pl/#zespol', kind: 'link' }, { label: 'Opinie', href: 'https://falcodent.pl/#opinie', kind: 'link' }] },
+  });
+  const about = section(2, { kind: 'about', intro: { heading: 'O nas', text: ['Pierwszy akapit.', 'Drugi akapit.'], links: [] },
+    extra: [{ type: 'text', text: ['Dodatkowy tekst.'] }] });
+  const services = section(3, { kind: 'services', arrangement: 'card-grid', intro: { heading: 'Zespół', text: [], links: [] },
+    items: [{ title: 'Implanty', text: [], links: [] }, { title: 'Wybielanie', text: [], links: [] }], itemStyle: { radius: 4 } });
+  const reviews = section(4, { kind: 'reviews', intro: { heading: 'Opinie', text: ['Polecam!'], links: [] } });
+  const page = [nav, hero, about, services, reviews];
+
+  it('plans exactly as without an edit when the edit changes nothing', () => {
+    const plain = planRebuild(input(page));
+    expect(planRebuild(input(page, { edit: undefined }))).toEqual(plain);
+    expect(planRebuild(input(page, { edit: {} }))).toEqual(plain);
+    expect(planRebuild(input(page, { edit: { order: [], hidden: [], dropped: [], sections: {}, theme: {} } }))).toEqual(plain);
+  });
+
+  it('leaves a hidden section out, records it, and drops the nav link to it', () => {
+    const plan = planRebuild(input(page, { edit: { hidden: ['s-3'] } }));
+    expect(plan.sections.map((s) => s.id)).toEqual(['s-1', 's-2', 's-4']);
+    expect(plan.summary.sections).toBe(3);
+    expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'hidden', sample: 'Zespół' });
+    expect(plan.header.nav.map((n) => n.href)).toEqual(['#s-4']);
+    expect(plan.bookingServices).toEqual([]);
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+
+  it('appends the booking form when the hidden section held the original form', () => {
+    const withForm = section(5, { intro: { heading: 'Kontakt', text: ['Napisz'], links: [] }, embeds: [{ kind: 'form' }] });
+    expect(planRebuild(input([hero, withForm])).bookingAppended).toBe(false);
+    const plan = planRebuild(input([hero, withForm, reviews], { edit: { hidden: ['s-5'] } }));
+    expect(plan.bookingAppended).toBe(true);
+    expect(plan.sections.some((s) => s.booking)).toBe(false);
+    expect(plan.summary.tuning).toContain('booking:appended');
+  });
+
+  it('leaves dropped paragraphs, items and extra blocks out, each recorded', () => {
+    const plan = planRebuild(input(page, { edit: { dropped: ['s-2.t0', 's-2.x0', 's-3.i1'] } }));
+    const [, planAbout, planServices] = plan.sections;
+    expect(planAbout!.intro.text).toEqual(['Drugi akapit.']);
+    expect(planAbout!.extra).toEqual([]);
+    expect(planServices!.items.map((i) => i.title)).toEqual(['Implanty']);
+    expect(plan.bookingServices).toEqual(['Implanty']);
+    expect(plan.summary.omitted).toEqual(
+      expect.arrayContaining([
+        { what: 'text', reason: 'dropped', sample: 'Pierwszy akapit.' },
+        { what: 'text', reason: 'dropped', sample: 'Dodatkowy tekst.' },
+        { what: 'item', reason: 'dropped', sample: 'Wybielanie' },
+      ]),
+    );
+  });
+
+  it('omits a section left with nothing once its pieces are dropped', () => {
+    const bare = section(5, { intro: { text: ['Tylko tekst.'], links: [] } });
+    const plan = planRebuild(input([hero, bare], { edit: { dropped: ['s-5.t0'] } }));
+    expect(plan.sections.map((s) => s.id)).toEqual(['s-1']);
+    expect(plan.summary.omitted).toContainEqual({ what: 'section', reason: 'empty' });
+  });
+
+  it('puts the listed sections first, in that order, and the rest after in the original order', () => {
+    const plan = planRebuild(input(page, { edit: { order: ['s-1', 's-4', 's-2'] } }));
+    expect(plan.sections.map((s) => s.id)).toEqual(['s-1', 's-4', 's-2', 's-3']);
+    expect(plan.summary.tuning).toContain('edit:order');
+    expect(plan.sections[0]!.headingLevel).toBe(1);
+  });
+
+  it('restyles a section and keeps its text readable', () => {
+    const plan = planRebuild(input(page, { edit: { sections: { 's-2': { background: 'dark', align: 'center', density: 'airy' } } } }));
+    const style = plan.sections[1]!.style;
+    expect(style).toMatchObject({ background: '#111827', align: 'center', paddingY: 112 });
+    expect(contrastRatio(style.text, '#111827')).toBeGreaterThanOrEqual(4.5);
+    expect(plan.summary.tuning).toContain('edit:style:2');
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+
+  it.each([
+    ['page', '#ffffff'],
+    ['brand', '#0e7490'],
+    ['tinted', '#ecf4f6'],
+  ] as const)('gives a %s background', (background, hex) => {
+    const plan = planRebuild(input(page, { edit: { sections: { 's-4': { background } } } }));
+    expect(plan.sections[3]!.style.background).toBe(hex);
+    expect(contrastRatio(plan.sections[3]!.style.text, hex)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('keeps a photo section photo, overlay and white text under a background pick', () => {
+    const plan = planRebuild(input(page, { edit: { sections: { 's-1': { background: 'brand' } } } }));
+    expect(plan.sections[0]!.style).toMatchObject({ backgroundImage: 'https://falcodent.pl/hero.jpg', overlay: 0.55, text: '#ffffff', background: '#0e7490' });
+  });
+
+  it('applies the theme: font, corners, spacing and heading case', () => {
+    const plan = planRebuild(input(page, { edit: { theme: { font: 'serif', corners: 'extra-round', density: 'compact', headingCase: 'uppercase' }, sections: { 's-4': { density: 'airy' } } } }));
+    expect(plan.theme).toMatchObject({ headingFont: FONT_STACKS.serif, bodyFont: FONT_STACKS.serif, buttonRadius: 999, headingUppercase: true });
+    expect(plan.sections.map((s) => s.style.paddingY)).toEqual([48, 48, 48, 112]);
+    expect(plan.sections.every((s) => s.itemStyle?.radius === 999)).toBe(true);
+    expect(plan.summary.tuning).toContain('edit:theme');
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+
+  it('changes only the headings for a display font, and nothing for the system font', () => {
+    const plain = planRebuild(input(page));
+    const display = planRebuild(input(page, { edit: { theme: { font: 'serif-display' } } }));
+    expect(display.theme).toMatchObject({ headingFont: FONT_STACKS.display, bodyFont: plain.theme.bodyFont });
+    const system = planRebuild(input(page, { edit: { theme: { font: 'system' } } }));
+    expect(system.theme).toMatchObject({ headingFont: plain.theme.headingFont, bodyFont: plain.theme.bodyFont });
+  });
+
+  it('carries custom CSS through the sanitizer, and drops CSS that fails it', () => {
+    const css = '.rb-heading { letter-spacing: .02em; }';
+    const plan = planRebuild(input(page, { edit: { customCss: css } }));
+    expect(plan.customCss).toContain('letter-spacing');
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+    const unsafe = planRebuild(input(page, { edit: { customCss: 'body { display: none; }' } }));
+    expect(unsafe.customCss).toBeUndefined();
+    expect(unsafe.summary.tuning).toContain('edit:css-dropped');
   });
 });
