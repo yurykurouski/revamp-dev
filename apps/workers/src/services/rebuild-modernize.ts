@@ -1,5 +1,5 @@
 import type { IAudit, IRebuildModernize, IRebuildModernizeAnswer, IRebuildSectionEdit, ISiteSection, ISiteSections } from '@revamp/shared-types';
-import { SITE_SECTIONS_LIMITS, cardRun, checkRebuildEdit, rebuildH1Section } from '@revamp/validation';
+import { REBUILD_BANNER_MIN_WIDTH, SITE_SECTIONS_LIMITS, cardRun, checkRebuildEdit, rebuildH1Section } from '@revamp/validation';
 
 // The modernize layer's deterministic default (REV-114): the design a dated site gets when the model is not
 // used or its answer is rejected. It is also the model's starting point. Ids and fixed values only.
@@ -34,7 +34,8 @@ export function defaultModernDesign(read: ISiteSections): IRebuildModernizeAnswe
     for (const s of main.slice(main.indexOf(h1) + 1, main.indexOf(h1) + 1 + HERO_PHOTO_SEARCH)) {
       const n = s.images.findIndex((image) => isHttp(image.src) && (image.width ?? 0) >= HERO_PHOTO_MIN_WIDTH);
       if (n < 0) continue;
-      hero = { photo: `${id(s)}.m${n}`, style: 'split' };
+      // A photo wide enough fills the hero behind its text, a smaller one sits beside it
+      hero = { photo: `${id(s)}.m${n}`, style: (s.images[n]!.width ?? 0) >= REBUILD_BANNER_MIN_WIDTH ? 'banner' : 'split' };
       // A section left without its only photo keeps no photo settings
       heroSource = s.images.length === 1 ? { section: s } : undefined;
       break;
@@ -45,7 +46,9 @@ export function defaultModernDesign(read: ISiteSections): IRebuildModernizeAnswe
   let tinted = false;
   const afterHero = h1 ? main.indexOf(h1) : -1;
   main.forEach((s, i) => {
-    edit(s).align = 'left';
+    // Text over a photo keeps the original's alignment: a hero with its own photo behind it, or a banner hero
+    const overPhoto = (s === h1 || s.role === 'hero') && (hasPhotoBackground(s) || (s === h1 && hero?.style === 'banner'));
+    if (!overPhoto) edit(s).align = 'left';
     if (s.role !== 'content') return;
     if (s.arrangement === 'text' && cardRun(s.intro.text)) edit(s).arrangement = 'card-grid';
     else if (s.arrangement === 'list' && s.items.length >= 3) edit(s).arrangement = 'card-grid';

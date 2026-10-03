@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { IRebuildPlan, ISiteSection, ISiteSections } from '@revamp/shared-types';
-import { RebuildPlanSchema, type SiteGroupingAnswer } from '@revamp/validation';
+import { RebuildPlanSchema, SITE_SECTIONS_LIMITS, type SiteGroupingAnswer } from '@revamp/validation';
 import { mergeRebuildEdits, planRebuild, RebuildInput } from '../rebuild-plan.service.js';
 import { BANNER_OVERLAY, contrastRatio } from '../rebuild-tuning.js';
 import { readGroupedSections } from '../site-grouping.js';
@@ -625,6 +625,21 @@ describe('modernize (REV-114)', () => {
       // Without paragraphs after the run nothing is pushed out, so the cards are made
       const short = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.'], links: [] }, extra: full });
       expect(byId(planRebuild(input([hero, short], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')).toMatchObject({ arrangement: 'card-grid' });
+    });
+
+    it('leaves a section as text when the cards would push its items past the cap', () => {
+      const items = (n: number) => Array.from({ length: n }, (_, i) => ({ title: `Punkt ${i}`, text: [], links: [] }));
+      const paragraphs = { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.'], links: [] };
+      const over = section(4, { intro: paragraphs, items: items(SITE_SECTIONS_LIMITS.items - 2) });
+      const plan = valid(planRebuild(input([hero, over], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+      expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'text' });
+      expect(byId(plan, 's-4')!.intro.text).toEqual(['Jeden.', 'Dwa.', 'Trzy.']);
+      expect(plan.summary.tuning.some((code) => code.includes('cards:'))).toBe(false);
+      // Exactly at the cap the cards are made
+      const at = section(4, { intro: paragraphs, items: items(SITE_SECTIONS_LIMITS.items - 3) });
+      const fits = byId(planRebuild(input([hero, at], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')!;
+      expect(fits.arrangement).toBe('card-grid');
+      expect(fits.items).toHaveLength(SITE_SECTIONS_LIMITS.items);
     });
 
     it('leaves a section that does not fit as text, with no code', () => {

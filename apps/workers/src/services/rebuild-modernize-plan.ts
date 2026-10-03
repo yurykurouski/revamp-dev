@@ -72,6 +72,8 @@ export function arrangedSection(section: ISiteSection, arrangement: IRebuildSect
   const after = paragraphs.slice(run.end);
   // The paragraphs after the cards take an extra block; with the extra blocks full one would be lost, so it does not fit
   if (after.length && section.extra.length >= SITE_SECTIONS_LIMITS.extra) return section;
+  // The same for the items: cards past the cap would be cut, so it does not fit
+  if (carded.length + section.items.length > SITE_SECTIONS_LIMITS.items) return section;
   const longest = Math.max(...carded.map((p) => p.length));
   return {
     ...section,

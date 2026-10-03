@@ -54,6 +54,17 @@ describe('readSiteEra (REV-114)', () => {
     expect(flagged('Montserrat')).toBe(false);
   });
 
+  it('reads the body font only, not the heading font', () => {
+    const flagged = (heading: string, body: string) =>
+      readSiteEra({
+        html: MODERN,
+        typography: { heading: { family: heading, size: 32, weight: 700, uppercase: false }, body: { family: body, size: 16, weight: 400 } },
+        now,
+      }).signs.includes('default_font');
+    expect(flagged('Times New Roman', 'Montserrat')).toBe(false);
+    expect(flagged('Montserrat', 'Times New Roman')).toBe(true);
+  });
+
   it('flags a stale copyright year', () => {
     const era = readSiteEra({ html: MODERN.replace('Hello', '© 2015 Acme'), now });
     expect(era.signs).toEqual(['stale_copyright']);

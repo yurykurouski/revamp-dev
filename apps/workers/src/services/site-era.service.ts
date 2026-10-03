@@ -48,8 +48,9 @@ export function readSiteEra(input: SiteEraInput): ISiteEra {
     found.add('narrow_fixed');
   }
   if (signals.hasLegacyTags) found.add('legacy_tags');
-  const families = [input.typography?.body?.family, input.typography?.heading?.family];
-  if (families.some((f) => f !== undefined && DEFAULT_FONTS.has(firstFamily(f)))) found.add('default_font');
+  // The body font only: a site that styles its headings but leaves the text in the browser default still looks dated
+  const body = input.typography?.body?.family;
+  if (body !== undefined && DEFAULT_FONTS.has(firstFamily(body))) found.add('default_font');
   if (signals.hasOldJquery) found.add('old_jquery');
   if (signals.copyrightYear !== undefined && input.now.getUTCFullYear() - signals.copyrightYear >= STALE_COPYRIGHT_YEARS) {
     found.add('stale_copyright');

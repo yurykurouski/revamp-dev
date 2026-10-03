@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 import type { IAudit, IRebuildModernize, ISiteSection, ISiteSections } from '@revamp/shared-types';
-import { RebuildModernizeAnswerSchema, checkRebuildEdit } from '@revamp/validation';
+import { REBUILD_BANNER_MIN_WIDTH, RebuildModernizeAnswerSchema, checkRebuildEdit } from '@revamp/validation';
 import { readGroupedSections } from '../site-grouping.js';
 import { defaultModernDesign, modernizeForAudit } from '../rebuild-modernize.js';
 
@@ -61,6 +61,49 @@ describe('defaultModernDesign (REV-114)', () => {
     }
     expect(RebuildModernizeAnswerSchema.safeParse(d).success).toBe(true);
     expect(checkRebuildEdit(d, falco)).toEqual({ ok: true });
+  });
+
+  it('falcodent: the photo-slider hero keeps its own alignment, the other sections align left', () => {
+    const falco = load('falcodent');
+    const hero = falco.sections.find((s) => s.role === 'hero')!;
+    expect(hero.arrangement).toBe('slider');
+    const d = defaultModernDesign(falco);
+    expect(d.sections?.[`s-${hero.index}`]?.align).toBeUndefined();
+    const others = falco.sections.filter((s) => s.role === 'content');
+    expect(others.length).toBeGreaterThan(0);
+    for (const s of others) expect(d.sections?.[`s-${s.index}`]?.align).toBe('left');
+    expect(checkRebuildEdit(d, falco)).toEqual({ ok: true });
+  });
+
+  describe('hero style by photo width', () => {
+    const sec = (index: number, over: Partial<ISiteSection>): ISiteSection => ({
+      index, role: 'content', kind: 'other', arrangement: 'text', intro: { heading: `H${index}`, text: [], links: [] },
+      items: [], extra: [], images: [], embeds: [], style: {}, ...over,
+    });
+    const page = (width: number): ISiteSections => ({
+      sections: [
+        sec(0, { role: 'hero', intro: { heading: 'Welcome', headingLevel: 1, text: [], links: [] } }),
+        sec(1, { arrangement: 'media-beside-text', intro: { heading: 'About', text: ['We help.'], links: [] }, images: [{ src: 'https://x.test/a.jpg', width }, { src: 'https://x.test/b.jpg', width: 400 }] }),
+      ],
+      skipped: [], coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
+    });
+
+    it('a photo at least REBUILD_BANNER_MIN_WIDTH wide makes a banner hero, which keeps its alignment', () => {
+      const read = page(REBUILD_BANNER_MIN_WIDTH);
+      const d = defaultModernDesign(read);
+      expect(d.hero).toEqual({ photo: 's-1.m0', style: 'banner' });
+      expect(d.sections?.['s-0']?.align).toBeUndefined();
+      expect(d.sections?.['s-1']?.align).toBe('left');
+      expect(checkRebuildEdit(d, read)).toEqual({ ok: true });
+    });
+
+    it('a narrower photo makes a split hero, aligned left', () => {
+      const read = page(REBUILD_BANNER_MIN_WIDTH - 1);
+      const d = defaultModernDesign(read);
+      expect(d.hero).toEqual({ photo: 's-1.m0', style: 'split' });
+      expect(d.sections?.['s-0']?.align).toBe('left');
+      expect(checkRebuildEdit(d, read)).toEqual({ ok: true });
+    });
   });
 
   it('turns a list of three items into cards and keeps a small image out of the hero', () => {
