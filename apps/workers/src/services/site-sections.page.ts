@@ -121,6 +121,10 @@ export interface RawSiteSections {
   outline?: RawPageOutline;
   /** Outline pieces the vision model placed nowhere (REV-113) */
   leftOut?: RawLeftOut[];
+  /** Median width in px of the tagged content blocks (REV-114); absent without blocks */
+  contentWidth?: number;
+  /** Share of the tagged blocks that span at least 95% of the viewport (REV-114) */
+  fullBleedShare?: number;
 }
 
 export type RawOutlinePieceType = 'heading' | 'text' | 'list' | 'links' | 'image' | 'background' | 'embed';
@@ -1223,9 +1227,16 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     return { pieces, bodySize, pageHeight: Math.round(document.documentElement.scrollHeight), truncated };
   })();
 
+  // Width of the content blocks, for the dated-site check (REV-114)
+  const blockWidths = blocks.map((el) => Math.round(el.getBoundingClientRect().width)).sort((a, b) => a - b);
+  const mid = Math.floor(blockWidths.length / 2);
+  const contentWidth = blockWidths.length === 0 ? undefined : blockWidths.length % 2 ? blockWidths[mid]! : Math.round((blockWidths[mid - 1]! + blockWidths[mid]!) / 2);
+  const fullBleedShare = blockWidths.length === 0 ? undefined : blockWidths.filter((w) => w >= vw * 0.95).length / blockWidths.length;
+
   return {
     viewportWidth: vw,
     viewportHeight: vh,
+    ...(contentWidth !== undefined ? { contentWidth, fullBleedShare } : {}),
     ...(headerEl ? { header: withBars(readBlock(headerEl, 'header', undefined, []), headerBars.map((bar) => readBlock(bar, 'header', undefined, []))) } : {}),
     blocks: blocks.map((el) => readBlock(el, 'content', Number(el.getAttribute('data-revamp-block')), chrome)),
     ...(footerEl ? { footer: readBlock(footerEl, 'footer', undefined, []) } : {}),
