@@ -1,11 +1,11 @@
 /**
  * One place for the workers' LLM provider calls (REV-37): Anthropic, OpenAI, Gemini and the local
- * Claude Code CLI. Callers pass a system and a user prompt and get the model's raw text back;
- * parsing and validating it stays with the caller.
+ * Claude Code CLI. Callers pass a system and a user prompt (and, for a vision model, images; REV-113)
+ * and get the model's raw text back; parsing and validating it stays with the caller.
  */
 import { LlmProviderId, findLlmProvider } from '@revamp/shared-types';
 import { env } from '../config/env.js';
-import { ClaudeCliRunner, createClaudeCliRunner } from './claude-cli.js';
+import { ClaudeCliRunner, ClaudeCliVisionRunner, createClaudeCliRunner, createClaudeCliVisionRunner } from './claude-cli.js';
 
 export type LlmProvider = LlmProviderId;
 
@@ -22,6 +22,26 @@ export interface LlmClientOptions {
   customFetcher?: typeof fetch;
   /** Replaces the local Claude Code CLI call for the 'claude-cli' provider */
   claudeCliRunner?: ClaudeCliRunner;
+  /** Replaces the CLI call that carries images (REV-113) */
+  claudeCliVisionRunner?: ClaudeCliVisionRunner;
+}
+
+/** An image sent with the prompt (REV-113) */
+export interface LlmImage {
+  mediaType: 'image/webp' | 'image/png' | 'image/jpeg';
+  data: Buffer;
+}
+
+export interface LlmUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+/** The model's text and, when the provider reports it, the tokens it used */
+export interface LlmCompletion {
+  text: string;
+  usage?: LlmUsage;
 }
 
 export interface LlmCompletionRequest {
@@ -31,7 +51,18 @@ export interface LlmCompletionRequest {
   maxTokens?: number;
   /** Aborts HTTP provider calls after this long; the CLI has its own timeout */
   timeoutMs?: number;
+  /** Sent after the text, in order; calls without images behave as before (REV-113) */
+  images?: LlmImage[];
 }
+
+/** Token counts as LlmUsage; undefined when the provider reported none */
+const usageOf = (prompt: number | undefined, completion: number | undefined, total?: number): LlmUsage | undefined => {
+  const promptTokens = prompt ?? 0;
+  const completionTokens = completion ?? 0;
+  if (promptTokens === 0 && completionTokens === 0) return undefined;
+  return { promptTokens, completionTokens, totalTokens: total ?? promptTokens + completionTokens };
+};
+const base64 = (image: LlmImage) => image.data.toString('base64');
 
 /**
  * The provider a client uses when none is passed: MVP_LLM_PROVIDER, else the first API key set.
@@ -75,6 +106,7 @@ export class LlmClient {
   private readonly geminiApiKey?: string;
   private readonly fetcher: typeof fetch;
   private readonly claudeCliRunner: ClaudeCliRunner;
+  private readonly claudeCliVisionRunner: ClaudeCliVisionRunner;
 
   constructor(options: LlmClientOptions = {}) {
     this.anthropicApiKey = options.anthropicApiKey ?? env.ANTHROPIC_API_KEY;
@@ -84,6 +116,13 @@ export class LlmClient {
     this.claudeCliRunner =
       options.claudeCliRunner ??
       createClaudeCliRunner({
+        cliPath: env.CLAUDE_CLI_PATH,
+        model: env.CLAUDE_CLI_MODEL,
+        timeoutMs: env.CLAUDE_CLI_TIMEOUT_MS,
+      });
+    this.claudeCliVisionRunner =
+      options.claudeCliVisionRunner ??
+      createClaudeCliVisionRunner({
         cliPath: env.CLAUDE_CLI_PATH,
         model: env.CLAUDE_CLI_MODEL,
         timeoutMs: env.CLAUDE_CLI_TIMEOUT_MS,
@@ -131,14 +170,29 @@ export class LlmClient {
   }
 
   async complete(request: LlmCompletionRequest): Promise<string> {
+    return (await this.completeWithUsage(request)).text;
+  }
+
+  /** The model's text and the tokens it used (REV-113) */
+  async completeWithUsage(request: LlmCompletionRequest): Promise<LlmCompletion> {
     switch (this.provider) {
       case 'claude-cli':
         // The CLI has no temperature setting
-        return this.claudeCliRunner({
-          systemPrompt: request.systemPrompt,
-          userPrompt: request.userPrompt,
-          model: this.model,
-        });
+        if (request.images?.length) {
+          return this.claudeCliVisionRunner({
+            systemPrompt: request.systemPrompt,
+            userPrompt: request.userPrompt,
+            images: request.images,
+            model: this.model,
+          });
+        }
+        return {
+          text: await this.claudeCliRunner({
+            systemPrompt: request.systemPrompt,
+            userPrompt: request.userPrompt,
+            model: this.model,
+          }),
+        };
       case 'anthropic':
         return this.callAnthropic(request);
       case 'gemini':
@@ -154,7 +208,7 @@ export class LlmClient {
     return request.timeoutMs ? AbortSignal.timeout(request.timeoutMs) : undefined;
   }
 
-  private async callAnthropic(request: LlmCompletionRequest): Promise<string> {
+  private async callAnthropic(request: LlmCompletionRequest): Promise<LlmCompletion> {
     const response = await this.fetcher('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -168,7 +222,17 @@ export class LlmClient {
         max_tokens: request.maxTokens ?? 16000,
         ...(ANTHROPIC_NO_SAMPLING.test(this.model) ? {} : { temperature: request.temperature }),
         system: request.systemPrompt,
-        messages: [{ role: 'user', content: request.userPrompt }],
+        messages: [
+          {
+            role: 'user',
+            content: request.images?.length
+              ? [
+                  { type: 'text', text: request.userPrompt },
+                  ...request.images.map((image) => ({ type: 'image', source: { type: 'base64', media_type: image.mediaType, data: base64(image) } })),
+                ]
+              : request.userPrompt,
+          },
+        ],
       }),
       signal: this.signal(request),
     });
@@ -179,11 +243,17 @@ export class LlmClient {
     }
 
     // A thinking block may come before the answer
-    const data = (await response.json()) as { content?: Array<{ type?: string; text?: string }> };
-    return data?.content?.find((block) => block.type === 'text' || (!block.type && block.text))?.text || '';
+    const data = (await response.json()) as {
+      content?: Array<{ type?: string; text?: string }>;
+      usage?: { input_tokens?: number; output_tokens?: number };
+    };
+    return {
+      text: data?.content?.find((block) => block.type === 'text' || (!block.type && block.text))?.text || '',
+      usage: usageOf(data?.usage?.input_tokens, data?.usage?.output_tokens),
+    };
   }
 
-  private async callOpenAi(request: LlmCompletionRequest): Promise<string> {
+  private async callOpenAi(request: LlmCompletionRequest): Promise<LlmCompletion> {
     const response = await this.fetcher('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -197,7 +267,15 @@ export class LlmClient {
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: request.systemPrompt },
-          { role: 'user', content: request.userPrompt },
+          {
+            role: 'user',
+            content: request.images?.length
+              ? [
+                  { type: 'text', text: request.userPrompt },
+                  ...request.images.map((image) => ({ type: 'image_url', image_url: { url: `data:${image.mediaType};base64,${base64(image)}` } })),
+                ]
+              : request.userPrompt,
+          },
         ],
       }),
       signal: this.signal(request),
@@ -210,11 +288,15 @@ export class LlmClient {
 
     const data = (await response.json()) as {
       choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
     };
-    return data?.choices?.[0]?.message?.content || '';
+    return {
+      text: data?.choices?.[0]?.message?.content || '',
+      usage: usageOf(data?.usage?.prompt_tokens, data?.usage?.completion_tokens, data?.usage?.total_tokens),
+    };
   }
 
-  private async callGemini(request: LlmCompletionRequest): Promise<string> {
+  private async callGemini(request: LlmCompletionRequest): Promise<LlmCompletion> {
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:generateContent?key=${this.geminiApiKey!}`;
 
     const response = await this.fetcher(url, {
@@ -225,7 +307,10 @@ export class LlmClient {
       body: JSON.stringify({
         contents: [
           {
-            parts: [{ text: `${request.systemPrompt}\n\nContext:\n${request.userPrompt}` }],
+            parts: [
+              { text: `${request.systemPrompt}\n\nContext:\n${request.userPrompt}` },
+              ...(request.images ?? []).map((image) => ({ inline_data: { mime_type: image.mediaType, data: base64(image) } })),
+            ],
           },
         ],
         generationConfig: {
@@ -244,16 +329,43 @@ export class LlmClient {
 
     const data = (await response.json()) as {
       candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number };
     };
-    return data?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    return {
+      text: data?.candidates?.[0]?.content?.parts?.[0]?.text || '',
+      usage: usageOf(data?.usageMetadata?.promptTokenCount, data?.usageMetadata?.candidatesTokenCount),
+    };
   }
 }
 
-/** Extracts the first JSON object from a model's text answer */
+/** The first balanced {...} from `start`, skipping braces inside strings; undefined when it never closes */
+function balancedObject(text: string, start: number): string | undefined {
+  let depth = 0;
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inString) {
+      if (ch === '\\') i++;
+      else if (ch === '"') inString = false;
+    } else if (ch === '"') inString = true;
+    else if (ch === '{') depth++;
+    else if (ch === '}' && --depth === 0) return text.slice(start, i + 1);
+  }
+  return undefined;
+}
+
+/** Extracts the first JSON object from a model's text answer, also when more text (with braces) follows it */
 export function extractJsonObject(rawText: string): unknown {
-  const jsonMatch = rawText.trim().match(/\{[\s\S]*\}/);
+  const text = rawText.trim();
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
   if (!jsonMatch) {
     throw new Error('LLM response did not contain a valid JSON object.');
   }
-  return JSON.parse(jsonMatch[0]);
+  try {
+    return JSON.parse(jsonMatch[0]);
+  } catch (err) {
+    const first = balancedObject(text, jsonMatch.index ?? 0);
+    if (first === undefined || first === jsonMatch[0]) throw err;
+    return JSON.parse(first);
+  }
 }

@@ -77,6 +77,27 @@ export class ImageService {
     return pipeline.webp({ quality, effort: 4 }).toBuffer();
   }
 
+  /** A full-page capture cut into page slices for a vision model (REV-113), top first */
+  static async tilesForVision(
+    png: Buffer,
+    options: { tileHeight?: number; maxTiles?: number; width?: number } = {},
+  ): Promise<{ data: Buffer; top: number; bottom: number }[]> {
+    const tileHeight = options.tileHeight ?? 1800;
+    const maxTiles = options.maxTiles ?? 6;
+    const { width = 0, height = 0 } = await sharp(png, { limitInputPixels: false }).metadata();
+    const tiles: { data: Buffer; top: number; bottom: number }[] = [];
+    for (let top = 0; top < height && tiles.length < maxTiles; top += tileHeight) {
+      const bottom = Math.min(height, top + tileHeight);
+      const data = await sharp(png, { limitInputPixels: false })
+        .extract({ left: 0, top, width, height: bottom - top })
+        .resize({ width: options.width ?? 1024, withoutEnlargement: true })
+        .webp({ quality: 70, effort: 4 })
+        .toBuffer();
+      tiles.push({ data, top, bottom });
+    }
+    return tiles;
+  }
+
   /**
    * Creates a professional 1200x630 "Before / After" marketing comparison collage
    * for cold email outreach and operator dashboard side-by-side inspection.

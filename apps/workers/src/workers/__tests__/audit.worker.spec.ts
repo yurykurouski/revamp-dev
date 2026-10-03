@@ -9,6 +9,9 @@ import { storageService } from '../../services/storage.service.js';
 import { designCritiqueService } from '../../services/design-critique.service.js';
 import { UnrecoverableError } from 'bullmq';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
+import { readPageSections } from '../../services/site-grouping.service.js';
+import { readSiteSections } from '../../services/site-sections.service.js';
+import type { ISiteSections } from '@revamp/shared-types';
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
@@ -17,6 +20,7 @@ vi.mock('../../services/browser.service.js');
 vi.mock('../../services/image.service.js');
 vi.mock('../../services/storage.service.js');
 vi.mock('../../services/design-critique.service.js');
+vi.mock('../../services/site-grouping.service.js', () => ({ readPageSections: vi.fn() }));
 vi.mock('../../queues/ai.queue.js', () => ({
   addAiGenerationJob: vi.fn().mockResolvedValue({ id: 'mock-ai-job' }),
 }));
@@ -52,6 +56,11 @@ describe('AuditWorker (@revamp/workers)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedProcessor = null;
+    vi.mocked(ImageService.tilesForVision).mockResolvedValue([{ data: Buffer.from('t'), top: 0, bottom: 1800 }]);
+    // The rules reading, as when no vision model groups the page (REV-113)
+    vi.mocked(readPageSections).mockImplementation(async ({ raw, rawError, layoutBlocks }) => ({
+      reading: raw ? readSiteSections(raw, layoutBlocks) : { error: rawError ?? 'No section facts' },
+    }));
   });
 
   it('should initialize worker for AUDIT queue', () => {
@@ -1016,6 +1025,101 @@ describe('AuditWorker (@revamp/workers)', () => {
         expect.objectContaining({ status: 'AUDITED' }),
       );
       expect(addAiGenerationJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('section grouping by the vision model (REV-113)', () => {
+    const llmReading: ISiteSections = {
+      sections: [
+        {
+          index: 0,
+          role: 'hero',
+          kind: 'other',
+          arrangement: 'text',
+          intro: { heading: 'Gabinet', headingLevel: 1, text: ['Witamy.'], links: [] },
+          items: [],
+          extra: [],
+          images: [],
+          embeds: [],
+          style: {},
+        },
+      ],
+      skipped: [],
+      coverage: { pageChars: 14, capturedChars: 14, ratio: 1, uncaptured: [] },
+      source: 'llm',
+    } as unknown as ISiteSections;
+
+    const runJob = async () => {
+      createAuditWorker();
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ businessName: 'Gabinet', contactEmail: 'a@b.pl', tags: [] }) } as any);
+      vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
+      vi.mocked(browserService.captureFullAudit).mockResolvedValue({
+        desktopBuffer: Buffer.from('d'),
+        siteLayout: { error: 'Layout not collected in this test' },
+        siteSections: { raw: { viewportWidth: 1440, viewportHeight: 900, blocks: [], typography: {}, pageChars: 14, uncaptured: [] } },
+        mobileBuffer: Buffer.from('m'),
+        desktopFullBuffer: Buffer.from('df'),
+        mobileFullBuffer: Buffer.from('mf'),
+        a11yResult: { a11yScore: 90, errors: [] },
+        vitalsResult: { webVitals: {}, errors: [], performanceScore: 80, standardsScore: 70 },
+        rawBrandData: { colors: ['rgb(79, 70, 229)'], fontFamilies: [], socialLinks: [], services: [] },
+      } as any);
+      vi.mocked(ImageService.compressToWebp).mockResolvedValue(Buffer.from('webp'));
+      vi.mocked(ImageService.compressFullPageToWebp).mockResolvedValue(Buffer.from('webp-full'));
+      vi.mocked(storageService.uploadScreenshot).mockResolvedValue('http://localhost:9000/shot.webp');
+      vi.mocked(designCritiqueService.analyzeDesign).mockResolvedValue({
+        critique: { visualHierarchyRating: 60, mobileFriendlinessRating: 70, primaryCtaFound: true, datedDesignFactors: [], criticalFlaws: [], quickWins: [] },
+        aiFallbackUsed: false,
+        modelUsed: 'test-model',
+        attempts: 1,
+      } as any);
+      await capturedProcessor!({ id: 'job-sections', data: { leadId: 'lead-sections', url: 'https://example.com', niche: 'dental' } });
+      return vi
+        .mocked(Audit.findOneAndUpdate)
+        .mock.calls.map((call) => call[1] as Record<string, any>)
+        .find((update) => update.status === 'COMPLETED')!;
+    };
+
+    it('stores the model-grouped sections and logs the grouping tokens', async () => {
+      vi.mocked(readPageSections).mockResolvedValue({
+        reading: { sections: llmReading },
+        modelUsed: 'stub',
+        usage: { promptTokens: 20000, completionTokens: 900, totalTokens: 20900 },
+      });
+      const completed = await runJob();
+      expect(ImageService.tilesForVision).toHaveBeenCalledWith(Buffer.from('df'));
+      expect(readPageSections).toHaveBeenCalledWith(
+        expect.objectContaining({ url: 'https://example.com', niche: 'dental', tiles: [expect.objectContaining({ top: 0 })], layoutBlocks: [] }),
+      );
+      expect((completed.siteSections as ISiteSections).source).toBe('llm');
+      expect(completed.measurementErrors).toEqual([]);
+      expect(AnalyticsEvent.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          leadId: 'lead-sections',
+          eventType: 'token_usage',
+          metadata: expect.objectContaining({ model: 'stub', stage: 'audit_section_grouping', totalTokens: 20900 }),
+        }),
+      );
+    });
+
+    it('stores the rules reading and records a sections measurement error when the grouping fails', async () => {
+      vi.mocked(readPageSections).mockResolvedValue({
+        reading: { sections: { ...llmReading, source: 'rules' } },
+        measurementError: { measurement: 'sections', message: 'No vision model' },
+      });
+      const completed = await runJob();
+      expect((completed.siteSections as ISiteSections).source).toBe('rules');
+      expect(completed.measurementErrors).toContainEqual({ measurement: 'sections', message: 'No vision model' });
+      // The grouping is not scored
+      expect(completed.scores).toEqual(expect.objectContaining({ total: expect.any(Number), design: 65 }));
+    });
+
+    it('still groups the page from the outline when the screenshot cannot be cut into tiles', async () => {
+      vi.mocked(ImageService.tilesForVision).mockRejectedValue(new Error('bad png'));
+      await runJob();
+      expect(readPageSections).toHaveBeenCalledWith(expect.objectContaining({ tiles: [] }));
     });
   });
 });

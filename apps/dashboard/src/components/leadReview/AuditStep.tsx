@@ -67,6 +67,9 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color, hint }) => (
  */
 export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, error }) => {
   const { t } = useTranslation();
+  // The total score counts only the scored measurements; the page's sections are not one (REV-113)
+  const scoredErrors = audit?.measurementErrors.filter((f) => f.measurement !== 'sections') ?? [];
+  const sectionsError = audit?.measurementErrors.find((f) => f.measurement === 'sections');
   const [device, setDevice] = useState<ScreenshotDevice>('desktop');
   // Screenshot URL that failed to load; the viewer then says so instead of showing another image
   const [brokenScreenshotUrl, setBrokenScreenshotUrl] = useState<string | null>(null);
@@ -209,18 +212,24 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
         </Box>
 
         {/* Measurements that failed are named with their reason instead of shown as a number (REV-100) */}
-        {audit && audit.measurementErrors.length > 0 && (
+        {scoredErrors.length > 0 && (
           <Alert severity="warning" data-testid="measurement-errors">
             <Typography variant="body2" sx={{ fontWeight: 600, mb: 0.5 }}>
               {t('inspector.measurementErrors')}
             </Typography>
             <Box component="ul" sx={{ m: 0, pl: 2 }}>
-              {audit.measurementErrors.map((failure) => (
+              {scoredErrors.map((failure) => (
                 <Typography component="li" variant="caption" key={failure.measurement} sx={{ display: 'list-item' }}>
                   <strong>{t(`inspector.measurement.${failure.measurement}`)}</strong>: {failure.message}
                 </Typography>
               ))}
             </Box>
+          </Alert>
+        )}
+        {/* The page's sections are not scored: the rules reading stood in for the vision model's (REV-113) */}
+        {sectionsError && (
+          <Alert severity="info" data-testid="sections-by-rules">
+            {t('inspector.sectionsByRules')}: {sectionsError.message}
           </Alert>
         )}
 

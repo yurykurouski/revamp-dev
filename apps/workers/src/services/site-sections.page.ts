@@ -1,9 +1,12 @@
+import type { SiteSectionArrangement, SiteSectionKind } from '@revamp/shared-types';
+
 /**
  * In-page half of the site section reader (REV-109). `collectSiteSectionsInPage` runs inside the
  * crawled page via page.evaluate(), so it must stay fully self-contained: no imports, no references
  * to module-level values. It reads the header, the blocks REV-104's layout walk tagged with
  * `data-revamp-block`, and the footer, and only reports raw DOM facts; `readSiteSections`
- * (site-sections.service.ts) makes every decision in Node. No LLM is involved at any step.
+ * (site-sections.service.ts) makes every decision in Node. The page outline (REV-113) is collected here
+ * too, for the vision model that groups its pieces by id; no model sees or writes anything in the page.
  */
 
 /** A box in page coordinates, px */
@@ -81,6 +84,15 @@ export interface RawSiteBlock {
   style: { background: string; color: string; textAlign: string; paddingTop: number; paddingBottom: number };
   /** Computed style of the first item's card */
   itemStyle?: { background: string; radius: number; borderWidth: number; boxShadow: string; textAlign: string };
+  /** The vision model's kind and arrangement for a grouped section (REV-113); the reader checks them against the content */
+  hint?: { kind: SiteSectionKind; arrangement: SiteSectionArrangement };
+}
+
+/** Pieces the vision model placed in no section, one run each (REV-113) */
+export interface RawLeftOut {
+  /** Position in page order (header, blocks, footer) the run sits before */
+  index: number;
+  text: string;
 }
 
 /** Text outside every section, with its offset from the top of the page */
@@ -105,6 +117,54 @@ export interface RawSiteSections {
   /** Characters of page text (visible text, plus hidden text inside sections) */
   pageChars: number;
   uncaptured: RawTextRun[];
+  /** The page outline for the vision model's grouping (REV-113) */
+  outline?: RawPageOutline;
+  /** Outline pieces the vision model placed nowhere (REV-113) */
+  leftOut?: RawLeftOut[];
+}
+
+export type RawOutlinePieceType = 'heading' | 'text' | 'list' | 'links' | 'image' | 'background' | 'embed';
+
+/** One numbered piece of the page outline the vision model groups by id (REV-113) */
+export interface RawOutlinePiece {
+  /** 1..n in document order */
+  id: number;
+  type: RawOutlinePieceType;
+  /** Tag of the nearest element */
+  tag: string;
+  /** Page coordinates; zero for hidden text */
+  box: RawBox;
+  font?: { size: number; weight: number; uppercase: boolean; color: string };
+  /** Opaque color behind the piece */
+  background?: string;
+  align?: string;
+  /** Kept hidden text: an accordion answer, a tab panel, a slide */
+  hidden?: boolean;
+  /** heading, text */
+  text?: string;
+  /** heading from h1..h6 */
+  level?: number;
+  /** A heading that is not an h tag (bold, larger or uppercase line) */
+  styled?: boolean;
+  /** list: one line per entry */
+  lines?: string[];
+  links?: RawSiteLink[];
+  image?: RawSiteImage;
+  /** background: absolute URL */
+  src?: string;
+  embed?: RawSiteEmbed;
+  /** The piece sits on slide `index` (1..) of slider `slider` (1.., page order) */
+  slide?: { slider: number; index: number };
+}
+
+/** The page cut into small numbered pieces in document order (REV-113) */
+export interface RawPageOutline {
+  pieces: RawOutlinePiece[];
+  /** The font size carrying the most text, px */
+  bodySize: number;
+  pageHeight: number;
+  /** More than OUTLINE_LIMITS.pieces; the rest were not collected */
+  truncated: boolean;
 }
 
 export function collectSiteSectionsInPage(): RawSiteSections {
@@ -911,6 +971,258 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     if (uncaptured.length < MAX_RUNS) uncaptured.push({ text: run.text.slice(0, 300), top: boxOf(run.el).top });
   }
 
+  // Page outline (REV-113): small numbered pieces a vision model groups into sections by id. Text is
+  // cut at <br> and block edges, so a table cell of <font><big><b> headings becomes headings and paragraphs.
+  const outline = ((): RawPageOutline => {
+    const MAX_PIECES = 600;
+    const pieces: RawOutlinePiece[] = [];
+    let truncated = false;
+    const addPiece = (piece: Omit<RawOutlinePiece, 'id'>) => {
+      if (pieces.length >= MAX_PIECES) {
+        truncated = true;
+        return;
+      }
+      pieces.push({ id: pieces.length + 1, ...piece });
+    };
+    // The body size: the font size that carries the most text
+    const charsBySize = new Map<number, number>();
+    {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        const length = clean(node.nodeValue).length;
+        if (!parent || !length || excluded(parent)) continue;
+        const size = Math.round(parseFloat(window.getComputedStyle(parent).fontSize) || 0);
+        charsBySize.set(size, (charsBySize.get(size) ?? 0) + length);
+      }
+    }
+    const bodySize = Array.from(charsBySize).sort((a, b) => b[1] - a[1])[0]?.[0] ?? 16;
+    const fontFacts = (el: Element) => {
+      const s = window.getComputedStyle(el);
+      return { size: Math.round(parseFloat(s.fontSize) || 0), weight: Number(s.fontWeight) || 400, uppercase: s.textTransform === 'uppercase', color: s.color };
+    };
+    const shared = (el: Element) => ({ tag: el.tagName.toLowerCase(), font: fontFacts(el), background: backgroundOf(el), align: window.getComputedStyle(el).textAlign });
+    // Closed menus in the header, the nav and the footer are not page text (the rules reader skips them too)
+    const closedChrome = (el: Element) => {
+      const chromeRoot = el.closest('header, nav, footer, [role="navigation"], [role="banner"], [role="contentinfo"]');
+      if (!chromeRoot) return false;
+      for (let node: Element | null = el; node && node !== chromeRoot.parentElement; node = node.parentElement) if (closedStyle(node)) return true;
+      return false;
+    };
+    const skipText = (el: Element) => excluded(el) || inFormUi(el) || closedChrome(el);
+    // Slides of the common slider libraries; a piece on one is marked with its slider and slide number
+    const SLIDE = '.swiper-slide, .slick-slide, .owl-item, .carousel-item, .splide__slide, .glide__slide, .flickity-cell, rs-slide';
+    // Loop clones of the libraries EXCLUDED does not cover; a clone repeats a slide, so it is not read
+    const SLIDE_CLONE = '.owl-item.cloned, .splide__slide--clone, .glide__slide--clone';
+    const sliders = new Map<Element, number>();
+    const slideFact = (el: Element): { slide?: { slider: number; index: number } } => {
+      const slideEl = el.closest(SLIDE);
+      const track = slideEl?.parentElement;
+      if (!slideEl || !track) return {};
+      if (!sliders.has(track)) sliders.set(track, sliders.size + 1);
+      const slides = Array.from(track.children).filter((child) => child.matches(SLIDE) && !child.matches(SLIDE_CLONE));
+      return { slide: { slider: sliders.get(track)!, index: slides.indexOf(slideEl) + 1 } };
+    };
+    const ZERO_BOX: RawBox = { top: 0, left: 0, width: 0, height: 0 };
+    // Kept hidden text (a closed <details>, a tab panel) still measures in Chrome: its box is zeroed. Opacity is not
+    // checked: scroll-in animations leave real copy at opacity 0
+    const notDrawn = (el: Element): boolean =>
+      typeof el.checkVisibility === 'function' ? !el.checkVisibility({ visibilityProperty: true }) : !shown(el);
+    const placed = (el: Element, box: RawBox): { box: RawBox; hidden?: true } =>
+      notDrawn(el) || box.width === 0 || box.height === 0 ? { box: ZERO_BOX, hidden: true } : { box };
+
+    type Fragment = { node: Text; el: Element };
+    let line: Fragment[] = [];
+    let lines: Fragment[][] = [];
+    let blankPending = false;
+    const lineText = (frags: Fragment[]) => clean(frags.map((f) => f.node.nodeValue).join(' '));
+    const lineBox = (frags: Fragment[]): RawBox => {
+      const range = document.createRange();
+      range.setStartBefore(frags[0]!.node);
+      range.setEndAfter(frags[frags.length - 1]!.node);
+      const r = range.getBoundingClientRect();
+      return { top: Math.round(r.top + window.scrollY), left: Math.round(r.left + window.scrollX), width: Math.round(r.width), height: Math.round(r.height) };
+    };
+    const linksOfFrags = (frags: Fragment[]) =>
+      Array.from(new Set(frags.map((f) => f.el.closest('a[href]')).filter((a): a is Element => a !== null)))
+        .map(linkOf)
+        .filter((link): link is RawSiteLink => link !== undefined);
+    const LETTERS = /\p{L}/gu;
+    const styledHeading = (frags: Fragment[]): boolean => {
+      const text = lineText(frags);
+      if (text.length < 1 || text.length > 120 || /[,;]$/.test(text)) return false;
+      return frags
+        .filter((f) => clean(f.node.nodeValue))
+        .every((f) => {
+          const s = window.getComputedStyle(f.el);
+          const own = clean(f.node.nodeValue);
+          const upperText = (own.match(LETTERS) ?? []).length >= 4 && own === own.toUpperCase() && own !== own.toLowerCase();
+          return Number(s.fontWeight) >= 600 || (parseFloat(s.fontSize) || 0) >= bodySize * 1.2 || s.textTransform === 'uppercase' || upperText;
+        });
+    };
+    const endLine = () => {
+      if (line.length) lines.push(line);
+      line = [];
+    };
+    const flushText = (pending: Fragment[][]) => {
+      const frags = pending.flat();
+      if (!frags.length) return;
+      const box = unionOf(pending.map(lineBox)) ?? ZERO_BOX;
+      addPiece({ type: 'text', ...shared(frags[0]!.el), ...placed(frags[0]!.el, box), text: lineText(frags), links: linksOfFrags(frags), ...slideFact(frags[0]!.el) });
+    };
+    /** Ends the paragraph: heading lines become headings, the lines between them one text piece each */
+    const flushParagraph = () => {
+      endLine();
+      let pending: Fragment[][] = [];
+      for (const frags of lines) {
+        if (styledHeading(frags)) {
+          flushText(pending);
+          pending = [];
+          addPiece({ type: 'heading', ...shared(frags[0]!.el), ...placed(frags[0]!.el, lineBox(frags)), text: lineText(frags), styled: true, links: linksOfFrags(frags), ...slideFact(frags[0]!.el) });
+        } else pending.push(frags);
+      }
+      flushText(pending);
+      lines = [];
+      blankPending = false;
+    };
+    const lineBreak = () => {
+      if (line.length) {
+        endLine();
+        blankPending = false;
+      } else if (lines.length && !blankPending) {
+        // <br><br>: a blank line ends the paragraph
+        flushParagraph();
+        blankPending = true;
+      }
+    };
+
+    const addImage = (el: Element) => {
+      if (excluded(el)) return;
+      const image = imageOf(el);
+      if (!image) return;
+      const { width, height } = image.box;
+      if ((width > 0 || height > 0) && width < 40 && height < 40) return;
+      addPiece({ type: 'image', tag: 'img', ...placed(el, image.box), image, ...slideFact(el) });
+    };
+    const embedOf = (el: Element): RawSiteEmbed => {
+      if (el.tagName === 'FORM') {
+        const action = absolute(el.getAttribute('action'));
+        return { kind: 'form', ...(action ? { src: action } : {}), box: boxOf(el) };
+      }
+      const src = absolute(el.getAttribute('src') || el.getAttribute('data-src') || el.querySelector('source')?.getAttribute('src'));
+      if (el.tagName === 'IFRAME') return { kind: src && MAP_SRC.test(src) ? 'map' : src && VIDEO_SRC.test(src) ? 'video' : 'widget', ...(src ? { src } : {}), box: boxOf(el) };
+      if (el.tagName === 'VIDEO') return { kind: 'video', ...(src ? { src } : {}), box: boxOf(el) };
+      return { kind: 'map', box: boxOf(el) };
+    };
+    const EMBED = 'iframe, video, form, .leaflet-container, .gm-style';
+    /** Every text node under the element sits in a link, and it holds no photo: a menu, a button row */
+    const allLinks = (el: Element): boolean => {
+      const photo = Array.from(el.querySelectorAll('img')).some((img) => {
+        const r = img.getBoundingClientRect();
+        return r.width >= 40 || r.height >= 40;
+      });
+      if (photo) return false;
+      // A linked card (a link around a heading or paragraphs) is copy, read piece by piece, as the rules reader does
+      if (el.querySelector('a[href] :is(p, h1, h2, h3, h4, h5, h6, li)')) return false;
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      let any = false;
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (!parent || !clean(node.nodeValue) || skipText(parent)) continue;
+        if (!parent.closest('a[href]')) {
+          // Separators between menu links ("|", "·") are not copy
+          if (/^[|·•/\\\-–—\s]+$/.test(node.nodeValue || '')) continue;
+          return false;
+        }
+        any = true;
+      }
+      return any;
+    };
+    const plainList = (el: Element) =>
+      (el.tagName === 'UL' || el.tagName === 'OL') &&
+      Array.from(el.children).every(
+        (li) => li.tagName === 'LI' && !li.querySelector('img, h1, h2, h3, h4, h5, h6') && Array.from(li.querySelectorAll('*')).every((d) => !isBlock(d)),
+      );
+
+    let visited = 0;
+    const visit = (el: Element): void => {
+      if (++visited > 20000 || pieces.length >= MAX_PIECES) {
+        if (pieces.length >= MAX_PIECES) truncated = true;
+        return;
+      }
+      if (el !== document.body && (excluded(el) || el.matches(SLIDE_CLONE))) return;
+      if (el.tagName === 'IMG') {
+        // A photo ends the paragraph before it, so the pieces stay in page order
+        flushParagraph();
+        addImage(el);
+        return;
+      }
+      // A form that wraps page content (ASP.NET's page-wide form) is the page, not an embed (as `inFormUi` reads it)
+      const pageForm = el.tagName === 'FORM' && el.querySelector('[data-revamp-block], h1, h2, header, footer, main') !== null;
+      if (el.matches(EMBED) && !pageForm) {
+        flushParagraph();
+        const embed = embedOf(el);
+        addPiece({ type: 'embed', tag: el.tagName.toLowerCase(), box: embed.box, embed, ...slideFact(el) });
+        return;
+      }
+      if (el !== document.body && el !== document.documentElement) {
+        const match = window.getComputedStyle(el).backgroundImage.match(/url\(["']?(.*?)["']?\)/);
+        const r = el.getBoundingClientRect();
+        const src = match ? absolute(match[1]) : undefined;
+        if (src && r.width >= 200 && r.height >= 100) {
+          flushParagraph();
+          addPiece({ type: 'background', tag: el.tagName.toLowerCase(), box: boxOf(el), src, ...slideFact(el) });
+        }
+      }
+      if (/^H[1-6]$/.test(el.tagName)) {
+        flushParagraph();
+        const text = textOf(el);
+        if (text && !skipText(el)) {
+          addPiece({ type: 'heading', ...shared(el), ...placed(el, boxOf(el)), text, level: Number(el.tagName[1]), links: linksIn(el, []).links, ...slideFact(el) });
+        }
+        el.querySelectorAll('img').forEach(addImage);
+        return;
+      }
+      if (el !== document.body && isBlock(el) && allLinks(el)) {
+        flushParagraph();
+        const links = Array.from(el.querySelectorAll('a[href]'))
+          .filter((a) => !skipText(a))
+          .map(linkOf)
+          .filter((l): l is RawSiteLink => l !== undefined);
+        if (links.length) {
+          addPiece({ type: 'links', ...shared(el), box: boxOf(el), links, ...slideFact(el) });
+          return;
+        }
+        // Links that go nowhere ("#"): their text is still copy, read below
+      }
+      if (plainList(el) && !skipText(el)) {
+        flushParagraph();
+        const items = Array.from(el.children).map((li) => textOf(li)).filter(Boolean);
+        if (items.length) addPiece({ type: 'list', ...shared(el), ...placed(el, boxOf(el)), lines: items, links: linksIn(el, []).links, ...slideFact(el) });
+        return;
+      }
+      const block = isBlock(el);
+      if (block) flushParagraph();
+      for (const child of Array.from(el.childNodes)) {
+        if (child.nodeType === Node.TEXT_NODE) {
+          if (clean(child.nodeValue) && !skipText(el)) {
+            line.push({ node: child as Text, el });
+            blankPending = false;
+          }
+          continue;
+        }
+        if (child.nodeType !== Node.ELEMENT_NODE) continue;
+        const childEl = child as Element;
+        if (childEl.tagName === 'BR') lineBreak();
+        else visit(childEl);
+      }
+      if (block) flushParagraph();
+    };
+    visit(document.body);
+    flushParagraph();
+    return { pieces, bodySize, pageHeight: Math.round(document.documentElement.scrollHeight), truncated };
+  })();
+
   return {
     viewportWidth: vw,
     viewportHeight: vh,
@@ -920,5 +1232,6 @@ export function collectSiteSectionsInPage(): RawSiteSections {
     typography,
     pageChars,
     uncaptured,
+    outline,
   };
 }

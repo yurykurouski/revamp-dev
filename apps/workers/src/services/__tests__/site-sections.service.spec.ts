@@ -415,3 +415,35 @@ describe('toTypography (REV-109)', () => {
     expect(toTypography({ heading: { family: 'A', size: 30, weight: 700, transform: 'none', color: '' }, body: { family: 'B', size: 16, weight: 400, lineHeight: 'normal', color: '' } })!.body.lineHeight).toBeUndefined();
   });
 });
+
+describe('model hints and left-out pieces (REV-113)', () => {
+  const rawOf = (blocks: RawSiteBlock[], extra: Partial<RawSiteSections> = {}) => raw({ blocks, pageChars: 400, ...extra });
+
+  it('takes the hinted kind, and the hinted arrangement when the content allows it', () => {
+    const cards = rawBlock({
+      block: undefined,
+      intro: { heading: 'Oferta', text: [], links: [] },
+      group: { items: [item({ title: 'A' }), item({ title: 'B', box: box(1100, 540, 320, 300) })] },
+      hint: { kind: 'services', arrangement: 'card-grid' },
+    });
+    const s = readSiteSections(rawOf([cards]), [], 'llm').sections!;
+    expect(s.source).toBe('llm');
+    expect(s.sections[0]).toMatchObject({ kind: 'services', arrangement: 'card-grid', columns: 2 });
+  });
+
+  it('falls back to the measured arrangement when the hint does not fit the content', () => {
+    const one = rawBlock({ block: undefined, intro: { heading: 'O nas', text: ['Tekst sekcji o nas.'], links: [] }, hint: { kind: 'about', arrangement: 'gallery' } });
+    expect(readSiteSections(rawOf([one])).sections!.sections[0]).toMatchObject({ kind: 'about', arrangement: 'text' });
+  });
+
+  it('records left-out runs as unassigned skips that do not count as captured', () => {
+    const b = rawBlock({ block: undefined, intro: { heading: 'O nas', text: ['x'.repeat(100)], links: [] } });
+    const s = readSiteSections(rawOf([b], { pageChars: 205, leftOut: [{ index: 1, text: 'y'.repeat(100) }] }), [], 'llm').sections!;
+    expect(s.skipped).toContainEqual({ index: 1, reason: 'unassigned', sample: 'y'.repeat(100) });
+    expect(s.coverage.capturedChars).toBe(105);
+  });
+
+  it('marks a rules reading as such', () => {
+    expect(readSiteSections(rawOf([rawBlock()])).sections!.source).toBe('rules');
+  });
+});

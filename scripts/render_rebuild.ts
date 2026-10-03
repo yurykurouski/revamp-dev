@@ -2,11 +2,15 @@
  * Rebuilds real home pages from their sections and writes the HTML to a local folder (REV-110).
  * Read-only: nothing is written to MongoDB or MinIO. Usage:
  *   npx tsx scripts/render_rebuild.ts <out-dir> https://falcodent.pl/ https://www.dentalux.pl/ https://www.elefant.med.pl/
+ * With --llm (anywhere in the arguments) the sections come from the vision model's grouping with the rules
+ * fallback, as the audit stores them (REV-113).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
-import { EVALUATE_NAME_SHIM } from '../apps/workers/src/services/browser.service.js';
+import { EVALUATE_NAME_SHIM, FULL_PAGE_MAX_HEIGHT, browserService } from '../apps/workers/src/services/browser.service.js';
 import { cookieConsentService } from '../apps/workers/src/services/cookie-consent.service.js';
+import { ImageService } from '../apps/workers/src/services/image.service.js';
+import { readPageSections } from '../apps/workers/src/services/site-grouping.service.js';
 import { planRebuild } from '../apps/workers/src/services/rebuild-plan.service.js';
 import { collectSiteLayoutInPage } from '../apps/workers/src/services/site-layout.service.js';
 import { collectSiteSectionsInPage } from '../apps/workers/src/services/site-sections.page.js';
@@ -14,10 +18,10 @@ import { readSiteSections } from '../apps/workers/src/services/site-sections.ser
 import { renderRebuild } from '../apps/workers/src/templates/rebuild/index.js';
 import { RebuildPlanSchema, rebuildEligibility } from '../packages/validation/src/index.js';
 
-const outDir = process.argv[2];
-const urls = process.argv.slice(3);
+const llm = process.argv.includes('--llm');
+const [outDir, ...urls] = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
 if (!outDir || urls.length === 0) {
-  console.error('Usage: npx tsx scripts/render_rebuild.ts <out-dir> <url> [url...]');
+  console.error('Usage: npx tsx scripts/render_rebuild.ts [--llm] <out-dir> <url> [url...]');
   process.exit(1);
 }
 
@@ -38,9 +42,17 @@ try {
         }
         window.scrollTo(0, 0);
       });
+      // The audit takes the full-page capture before it reads the page; so does this
+      const png = llm ? await browserService.captureFullPageScreenshot(page, FULL_PAGE_MAX_HEIGHT.desktop) : undefined;
       const layout = await page.evaluate(collectSiteLayoutInPage);
-      const reading = readSiteSections(await page.evaluate(collectSiteSectionsInPage), layout.blocks);
+      const raw = await page.evaluate(collectSiteSectionsInPage);
       const host = new URL(url).hostname;
+      let reading = readSiteSections(raw, layout.blocks);
+      if (png) {
+        const result = await readPageSections({ raw, layoutBlocks: layout.blocks, tiles: await ImageService.tilesForVision(png), url });
+        reading = result.reading;
+        console.log(`${host}: source ${reading.sections?.source ?? '-'}${result.measurementError ? ` (${result.measurementError.message})` : ''}`);
+      }
       const eligible = rebuildEligibility({ siteSections: reading.sections, siteSectionsError: reading.error });
       if (!eligible.ok) {
         console.log(`${host}: FALLBACK ${eligible.reason} ${eligible.facts.join(' ')}`);

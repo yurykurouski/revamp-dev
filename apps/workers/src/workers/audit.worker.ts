@@ -1,5 +1,6 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { IAuditJobData, IMeasurementError } from '@revamp/shared-types';
+import type { LlmUsage } from '../services/llm-client.js';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Audit } from '../models/Audit.model.js';
@@ -13,7 +14,7 @@ import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
 import { readSiteLayout } from '../services/site-layout.service.js';
-import { readSiteSections } from '../services/site-sections.service.js';
+import { readPageSections } from '../services/site-grouping.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
@@ -73,11 +74,6 @@ export const createAuditWorker = (): Worker => {
         // The original layout the MVP layout is derived from (REV-104), or why it could not be read
         const siteLayout = rawSiteLayout.raw ? readSiteLayout(rawSiteLayout.raw) : { error: rawSiteLayout.error ?? 'No layout facts' };
         if (siteLayout.error) console.warn(`[AuditWorker] Original layout not read for lead ${leadId}: ${siteLayout.error}`);
-        // The original page section by section (REV-109), or why it could not be read; never fails the audit
-        const siteSections = rawSiteSections.raw
-          ? readSiteSections(rawSiteSections.raw, rawSiteLayout.raw?.blocks ?? [])
-          : { error: rawSiteSections.error ?? 'No section facts' };
-        if (siteSections.error) console.warn(`[AuditWorker] Original sections not read for lead ${leadId}: ${siteSections.error}`);
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
@@ -104,35 +100,58 @@ export const createAuditWorker = (): Worker => {
         const businessName = existingLead?.businessName || 'Business';
         const brandResult = BrandExtractorService.processBrandData(rawBrandData, businessName);
 
-        // 7. Vision LLM UX/UI Critique (DesignCritiqueAgent - REV-9)
-        console.log(`[AuditWorker] Running Vision UX/UI analysis for lead ${leadId}...`);
-        const critiqueResult = await designCritiqueService.analyzeDesign({
-          mobileScreenshotWebp: mobileWebp,
-          desktopScreenshotWebp: desktopWebp,
-          niche,
-          a11yScore: a11yResult.a11yScore,
-          lcpSeconds: vitalsResult.lcpSeconds,
-          originalUrl: url,
-        });
+        // 7. Vision LLM critique (DesignCritiqueAgent, REV-9) and the page's sections grouped by the vision
+        // model (SectionGroupingAgent, REV-113), side by side. The grouping falls back to the rules reading
+        // (REV-109) and never fails the audit; a tile failure leaves the model the outline alone
+        console.log(`[AuditWorker] Running Vision UX/UI analysis and section grouping for lead ${leadId}...`);
+        let tiles: Awaited<ReturnType<typeof ImageService.tilesForVision>> = [];
+        try {
+          tiles = await ImageService.tilesForVision(desktopFullBuffer);
+        } catch (tileErr) {
+          console.warn(`[AuditWorker] Could not cut the page into tiles for lead ${leadId}:`, tileErr);
+        }
+        const [critiqueResult, sectionsResult] = await Promise.all([
+          designCritiqueService.analyzeDesign({
+            mobileScreenshotWebp: mobileWebp,
+            desktopScreenshotWebp: desktopWebp,
+            niche,
+            a11yScore: a11yResult.a11yScore,
+            lcpSeconds: vitalsResult.lcpSeconds,
+            originalUrl: url,
+          }),
+          readPageSections({
+            raw: rawSiteSections.raw,
+            rawError: rawSiteSections.error,
+            layoutBlocks: rawSiteLayout.raw?.blocks ?? [],
+            tiles,
+            url,
+            niche,
+          }),
+        ]);
+        const siteSections = sectionsResult.reading;
+        if (siteSections.error) console.warn(`[AuditWorker] Original sections not read for lead ${leadId}: ${siteSections.error}`);
 
-        // Record token usage event if available
-        if (critiqueResult.tokenUsage) {
+        // Record each model call's token usage when the provider reports it
+        const recordTokens = async (stage: string, model: string | undefined, usage: LlmUsage | undefined) => {
+          if (!usage) return;
           try {
             await AnalyticsEvent.create({
               leadId,
               eventType: 'token_usage',
               metadata: {
-                model: critiqueResult.modelUsed,
-                promptTokens: critiqueResult.tokenUsage.promptTokens,
-                completionTokens: critiqueResult.tokenUsage.completionTokens,
-                totalTokens: critiqueResult.tokenUsage.totalTokens,
-                stage: 'audit_vision_critique',
+                model,
+                promptTokens: usage.promptTokens,
+                completionTokens: usage.completionTokens,
+                totalTokens: usage.totalTokens,
+                stage,
               },
             });
           } catch (eventErr) {
             console.warn(`[AuditWorker] Failed to record token_usage event for lead ${leadId}:`, eventErr);
           }
-        }
+        };
+        await recordTokens('audit_vision_critique', critiqueResult.modelUsed, critiqueResult.tokenUsage);
+        await recordTokens('audit_section_grouping', sectionsResult.modelUsed, sectionsResult.usage);
 
         // 8. Calculate Composite Scores (Formula: 0.35 Design + 0.25 Perf + 0.20 A11y + 0.20 Standards)
         // A templated fallback critique is not a measurement, so its ratings are not scored (REV-101)
@@ -154,6 +173,8 @@ export const createAuditWorker = (): Worker => {
             message: critiqueResult.fallbackReason ?? 'The Vision model gave no critique; the critique shown is a template',
           });
         }
+        // The page's sections were read by the rules instead of the vision model; not scored (REV-113)
+        if (sectionsResult.measurementError) measurementErrors.push(sectionsResult.measurementError);
         for (const failure of measurementErrors) {
           console.warn(`[AuditWorker] ${failure.measurement} not measured for lead ${leadId}: ${failure.message}`);
         }

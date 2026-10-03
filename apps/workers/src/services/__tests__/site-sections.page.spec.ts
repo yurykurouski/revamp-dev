@@ -2,7 +2,7 @@ import { describe, it, expect, afterAll, beforeEach, afterEach } from 'vitest';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { EVALUATE_NAME_SHIM } from '../browser.service.js';
 import { collectSiteLayoutInPage } from '../site-layout.service.js';
-import { collectSiteSectionsInPage } from '../site-sections.page.js';
+import { collectSiteSectionsInPage, type RawPageOutline } from '../site-sections.page.js';
 import { readSiteSections } from '../site-sections.service.js';
 
 let browser: Browser | null = null;
@@ -694,5 +694,131 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
     expect(s.intro.eyebrow).toBe('Umów wizytę');
     expect(s.items).toHaveLength(3);
     expect(s.extra).toEqual([{ type: 'text', text: ['Umów wizytę'] }]);
+  });
+
+  const outlineOf = async (html: string) => {
+    await page.setContent(html);
+    await page.evaluate(collectSiteLayoutInPage);
+    return (await page.evaluate(collectSiteSectionsInPage)).outline!;
+  };
+  const brief = (o: RawPageOutline) =>
+    o.pieces.map((p) => `${p.type}:${p.text ?? p.lines?.join('|') ?? p.links?.map((l) => l.label).join('|') ?? p.image?.alt ?? p.src ?? p.embed?.kind}`);
+
+  describe('outline (REV-113)', () => {
+    it('cuts a table cell of <font><big><b> headings and <br> paragraphs into pieces in order', async () => {
+      const o = await outlineOf(pageOf(`<table width="900" align="center"><tr>
+        <td width="367"><img src="https://img.test/logo.png" alt="ANIDENT" width="367" height="179"></td>
+        <td><a href="/">Start</a> | <a href="/oferta">Oferta</a> | <a href="/kontakt">Kontakt</a></td></tr>
+        <tr><td colspan="2" width="460"><font face="Verdana" size="2"><big><b>IMPLANTY ZĘBÓW</b></big><br>
+        Implanty to najlepsza metoda uzupełnienia braków zębowych, trwała i wygodna.<br>Zabieg trwa godzinę.<br><br>
+        <img src="https://img.test/implant.jpg" alt="Implanty" width="350" height="233" align="right">
+        <big><b>LICÓWKI</b></big><br>Licówki bez szlifowania zmieniają uśmiech w jeden dzień.</font></td></tr></table>`));
+      expect(brief(o)).toEqual([
+        'image:ANIDENT',
+        'links:Start|Oferta|Kontakt',
+        'heading:IMPLANTY ZĘBÓW',
+        'text:Implanty to najlepsza metoda uzupełnienia braków zębowych, trwała i wygodna. Zabieg trwa godzinę.',
+        'image:Implanty',
+        'heading:LICÓWKI',
+        'text:Licówki bez szlifowania zmieniają uśmiech w jeden dzień.',
+      ]);
+      expect(o.pieces.map((p) => p.id)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+      const implanty = o.pieces[2]!;
+      expect(implanty).toMatchObject({ styled: true, font: { weight: 700 } });
+      expect(implanty.level).toBeUndefined();
+      expect(implanty.box.width).toBeGreaterThan(0);
+    });
+
+    it('finds styled headings by weight, size or case, and not a bold lead-in, a long bold line or a line ending in a comma', async () => {
+      const o = await outlineOf(pageOf(`<div style="width:600px">
+        <p><span style="font-size:24px">Nasze usługi</span></p>
+        <p><span style="text-transform:uppercase">cennik zabiegów</span></p>
+        <p>KONTAKT</p>
+        <p><b>Uwaga:</b> przyjmujemy tylko po rejestracji telefonicznej w godzinach pracy.</p>
+        <p><b>${'Bardzo długa pogrubiona linia, '.repeat(5)}</b></p>
+        <p><b>Szanowni Państwo,</b></p>
+        <h3>Godziny otwarcia</h3></div>`));
+      const heads = o.pieces.filter((p) => p.type === 'heading').map((p) => [p.text, p.styled ?? false, p.level]);
+      expect(heads).toEqual([
+        ['Nasze usługi', true, undefined],
+        ['cennik zabiegów', true, undefined],
+        ['KONTAKT', true, undefined],
+        ['Godziny otwarcia', false, 3],
+      ]);
+    });
+
+    it('splits a flat run of siblings with no wrappers into pieces', async () => {
+      const o = await outlineOf(pageOf(`<div id="c" style="width:700px"><b>O NAS</b><br>Jesteśmy kliniką od 1995 roku.<br><br>
+        <b>ZESPÓŁ</b><br>Pięciu lekarzy, trzy gabinety.<img src="https://img.test/team.jpg" alt="Zespół" width="300" height="200"></div>`));
+      expect(brief(o)).toEqual(['heading:O NAS', 'text:Jesteśmy kliniką od 1995 roku.', 'heading:ZESPÓŁ', 'text:Pięciu lekarzy, trzy gabinety.', 'image:Zespół']);
+    });
+
+    it('reads a menu as one links piece, a plain list as one list piece, and leaves out spacers and bullets', async () => {
+      const o = await outlineOf(pageOf(`${HEADER}<section><h2>Oferta</h2>
+        <img src="https://img.test/spacer.gif" width="1" height="23"><img src="https://img.test/dot.png" width="11" height="11">
+        <ul><li>Implanty</li><li>Protetyka</li><li>Ortodoncja</li></ul></section>${FOOTER}`));
+      const types = brief(o);
+      expect(types).toContain('links:Start|Oferta|Kontakt');
+      expect(types).toContain('list:Implanty|Protetyka|Ortodoncja');
+      expect(types.filter((t) => t.startsWith('image:'))).toEqual(['image:Falco-Dent']);
+    });
+
+    it('records background photos and embeds as pieces, and marks kept hidden text', async () => {
+      const o = await outlineOf(pageOf(`<section style="height:400px;background:url(https://img.test/hero.jpg) center/cover"><h1>Witamy</h1></section>
+        <section><h2>FAQ</h2><details><summary>Czy boli?</summary><p>Nie, zabieg jest w znieczuleniu.</p></details>
+        <iframe src="https://www.google.com/maps/embed?pb=1" width="600" height="300"></iframe></section>`));
+      expect(o.pieces.find((p) => p.type === 'background')?.src).toBe('https://img.test/hero.jpg');
+      expect(o.pieces.find((p) => p.type === 'embed')?.embed?.kind).toBe('map');
+      expect(o.pieces.find((p) => p.text === 'Nie, zabieg jest w znieczuleniu.')?.hidden).toBe(true);
+    });
+
+    it('stops at the piece cap and says so', async () => {
+      const o = await outlineOf(pageOf(Array.from({ length: 700 }, (_, i) => `<p>Akapit numer ${i} z treścią.</p>`).join('')));
+      expect(o.pieces).toHaveLength(600);
+      expect(o.truncated).toBe(true);
+    });
+
+    it('marks the pieces of each slide with their slider and slide number', async () => {
+      const slide = (title: string, photo: string) =>
+        `<div class="swiper-slide" style="width:1440px;flex:none;height:400px;background:url(https://img.test/${photo}.jpg) center/cover"><h2>${title}</h2><p>Opis slajdu ${title}.</p></div>`;
+      const o = await outlineOf(pageOf(`<div class="swiper" style="overflow:hidden"><div class="swiper-wrapper" style="display:flex">${slide('Pierwszy', 'a')}${slide('Drugi', 'b')}</div></div>
+        <section><h2>Poza sliderem</h2><p>Zwykły tekst.</p></section>`));
+      const facts = o.pieces.map((p) => `${p.type}:${p.text ?? p.src}:${p.slide ? `${p.slide.slider}.${p.slide.index}` : '-'}`);
+      expect(facts).toEqual([
+        'background:https://img.test/a.jpg:1.1',
+        'heading:Pierwszy:1.1',
+        'text:Opis slajdu Pierwszy.:1.1',
+        'background:https://img.test/b.jpg:1.2',
+        'heading:Drugi:1.2',
+        'text:Opis slajdu Drugi.:1.2',
+        'heading:Poza sliderem:-',
+        'text:Zwykły tekst.:-',
+      ]);
+    });
+
+    it('reads linked cards as headings and text, also when they link nowhere', async () => {
+      const card = (href: string, title: string, text: string) => `<a href="${href}" style="display:block"><h3>${title}</h3><p>${text}</p></a>`;
+      for (const href of ['/implanty', '#']) {
+        const o = await outlineOf(pageOf(`<section><h2>Nasze usługi</h2>${card(href, 'Implanty', 'Trwałe uzupełnienie braków.')}${card(href, 'Licówki', 'Piękny uśmiech.')}</section>`));
+        expect(brief(o), href).toEqual(['heading:Nasze usługi', 'heading:Implanty', 'text:Trwałe uzupełnienie braków.', 'heading:Licówki', 'text:Piękny uśmiech.']);
+      }
+    });
+
+    it('reads a page-wide form (ASP.NET) as the page, not as one embed', async () => {
+      const o = await outlineOf(pageOf(`<form action="/Default.aspx"><div><h1>Gabinet</h1><p>Leczymy od lat.</p><h2>Oferta</h2><p>Implanty i protetyka.</p></div></form>`));
+      expect(brief(o)).toEqual(['heading:Gabinet', 'text:Leczymy od lat.', 'heading:Oferta', 'text:Implanty i protetyka.']);
+    });
+
+    it('leaves out the loop clones of a slider', async () => {
+      const item = (cls: string, title: string) => `<div class="owl-item ${cls}" style="width:1440px;flex:none"><h2>${title}</h2></div>`;
+      const o = await outlineOf(pageOf(`<div class="owl-carousel" style="overflow:hidden"><div class="owl-stage" style="display:flex">
+        ${item('cloned', 'Slajd 2')}${item('active', 'Slajd 1')}${item('', 'Slajd 2')}${item('cloned', 'Slajd 1')}</div></div>`));
+      expect(o.pieces.map((p) => `${p.text}:${p.slide?.index}`)).toEqual(['Slajd 1:1', 'Slajd 2:2']);
+    });
+
+    it('reports the body size from the text it carries', async () => {
+      const o = await outlineOf(pageOf(`<p>${'Zwykły tekst akapitu. '.repeat(20)}</p><h2>Duży</h2>`));
+      expect(o.bodySize).toBe(16);
+    });
   });
 });
