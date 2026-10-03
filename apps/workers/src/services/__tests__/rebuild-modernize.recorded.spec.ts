@@ -25,17 +25,42 @@ const plan = (siteSections: ISiteSections, modernize?: IRebuildModernizeAnswer):
     }),
   ) as IRebuildPlan;
 
-/** Every piece of page text in a plan's sections and footer: headings, eyebrows, titles and paragraphs */
-const texts = (p: IRebuildPlan): string[] => {
+/**
+ * Every piece of page content in a plan's sections and footer, tagged by kind: headings, eyebrows, titles,
+ * subtitles, every paragraph, link labels and image sources (a photo is counted wherever it is shown: an
+ * image, an item's image, or a background), so a moved piece counts once and a lost or added one shows
+ */
+const pieces = (p: IRebuildPlan): string[] => {
   const out: string[] = [];
   const walk = (value: unknown, key = ''): void => {
     if (typeof value === 'string') {
-      if (['text', 'heading', 'eyebrow', 'title'].includes(key) && value.trim()) out.push(value);
+      if (!value.trim()) return;
+      if (['text', 'heading', 'eyebrow', 'title', 'subtitle', 'label'].includes(key)) out.push(`${key === 'label' ? 'label' : 'text'}:${value}`);
+      else if (key === 'backgroundImage') out.push(`image:${value}`);
     } else if (Array.isArray(value)) value.forEach((v) => walk(v, key));
-    else if (value && typeof value === 'object') Object.entries(value).forEach(([k, v]) => walk(v, k));
+    else if (value && typeof value === 'object') {
+      // A section's or an item's style holds colors, not copy: only its background photo counts
+      if (key === 'style' || key === 'itemStyle') return walk((value as { backgroundImage?: unknown }).backgroundImage, 'backgroundImage');
+      Object.entries(value).forEach(([k, v]) => {
+        // Image sources only: an embed's src is not a photo
+        if (k === 'src' && (key === 'image' || key === 'images') && typeof v === 'string') out.push(`image:${v}`);
+        else walk(v, k);
+      });
+    }
   };
   walk({ sections: p.sections, footer: p.footer.section });
   return out;
+};
+
+/** The entries of `a` not matched one for one in `b` */
+const minus = (a: string[], b: string[]): string[] => {
+  const left = new Map<string, number>();
+  for (const x of b) left.set(x, (left.get(x) ?? 0) + 1);
+  return a.filter((x) => {
+    const n = left.get(x) ?? 0;
+    if (n > 0) left.set(x, n - 1);
+    return n === 0;
+  });
 };
 
 describe.each(['anident', 'falcodent'])('recorded modernize answer: %s.pl (REV-114)', (name) => {
@@ -55,9 +80,14 @@ describe.each(['anident', 'falcodent'])('recorded modernize answer: %s.pl (REV-1
     const gone = faithful.sections.filter((s) => !ids.has(s.id));
     expect(gone.length).toBeLessThanOrEqual(empties(modern) - empties(faithful));
     expect(gone.length).toBeLessThanOrEqual(answer.hero ? 1 : 0);
-    const all = JSON.stringify(modern);
-    const missing = texts(faithful).filter((t) => !all.includes(JSON.stringify(t).slice(1, -1)));
-    expect(missing).toEqual([]);
+    // The same content, piece for piece; the one allowed addition is the hero's booking CTA (modernize:hero-cta)
+    const before = pieces(faithful);
+    const after = pieces(modern);
+    expect(minus(before, after)).toEqual([]);
+    const heroCta = modern.summary.tuning.includes('modernize:hero-cta');
+    const h1 = modern.sections.find((s) => s.headingLevel === 1);
+    const added = heroCta ? [`label:${h1?.intro.links.find((l) => l.kind === 'booking')?.label}`] : [];
+    expect(minus(after, before)).toEqual(added);
   });
 
   it('applies the modern look', () => {

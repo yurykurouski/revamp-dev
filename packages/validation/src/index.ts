@@ -214,10 +214,6 @@ export type SiteComplexityDto = z.infer<typeof SiteComplexitySchema>;
 /** Most sections a home page layout keeps; longer pages are cut, the order of the rest is enough */
 export const SITE_LAYOUT_MAX_SECTIONS = 20;
 
-/**
- * The original home page's layout as the audit read it from the DOM: its sections in page order, the
- * first screen's arrangement, the header and the white space. Every value comes from code, never a model.
- */
 /** Score at which a site counts as dated (REV-114) */
 export const SITE_DATED_THRESHOLD = 3;
 /** A hero banner needs a photo at least this wide, in px (REV-114) */
@@ -232,6 +228,10 @@ export const SiteEraSchema = z
   })
   .strict();
 
+/**
+ * The original home page's layout as the audit read it from the DOM: its sections in page order, the
+ * first screen's arrangement, the header and the white space. Every value comes from code, never a model.
+ */
 export const SiteLayoutSchema = z.object({
   sections: z
     .array(

@@ -7,8 +7,8 @@
  * --level faithful|modern|auto (default auto) picks the rebuild level (REV-114): auto reads the site's era from the
  * page's HTML and its content width, as the audit does, and is modern for a dated site. At modern the look comes
  * from the modernize model call (with --llm) or the code's default, and <host>.modern.html is written next to the
- * faithful <host>.html. --record <dir> writes { siteSections, answer } per host for the recorded-answer tests
- * (the modern design is chosen for it whatever the level).
+ * faithful <host>.html. --record <dir> (needs --llm) writes { siteSections, answer } per host for the
+ * recorded-answer tests (the modern design is chosen for it whatever the level).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
@@ -37,6 +37,11 @@ const llm = args.includes('--llm');
 const [outDir, ...urls] = args.filter((arg) => !arg.startsWith('--'));
 if (!outDir || urls.length === 0 || !['faithful', 'modern', 'auto'].includes(levelArg) || args.includes('--record') || args.includes('--level')) {
   console.error('Usage: npx tsx scripts/render_rebuild.ts [--llm] [--level faithful|modern|auto] [--record <dir>] <out-dir> <url> [url...]');
+  process.exit(1);
+}
+// A recorded answer stands for the model's: the code's default saved as one would make the recorded tests meaningless
+if (recordDir && !llm) {
+  console.error('--record needs --llm: the recorded-answer tests replay the model\'s modern design, not the code\'s default.');
   process.exit(1);
 }
 
@@ -88,7 +93,7 @@ try {
             : { source: 'default' as const, design: defaultModernDesign(read) }
           : undefined;
       console.log(
-        `${host}: era score=${era.score} signs=${era.signs.join(',') || '-'} level=${level} source=${choice?.source ?? '-'}${choice && 'error' in choice && choice.error ? ` (${choice.error})` : ''}`,
+        `${host}: level=${level} source=${choice?.source ?? '-'}${choice && 'error' in choice && choice.error ? ` (${choice.error})` : ''}`,
       );
       if (recordDir && choice) {
         mkdirSync(recordDir, { recursive: true });

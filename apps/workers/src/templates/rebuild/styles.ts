@@ -26,7 +26,9 @@ export function rebuildCss(plan: IRebuildPlan): string {
 ${STATIC_CSS}${plan.customCss ? `\n/* The operator's CSS (REV-111), sanitized */\n${plan.customCss}` : ''}`;
 }
 
-// Driven only by data-* attributes and the plan's variables; never per-site CSS
+// Driven only by data-* attributes and the plan's variables; never per-site CSS.
+// The fill rule ([data-media-fit=fill], REV-114) deliberately lets a photo grow past its natural width, up to
+// 2x, capped by --rb-media-max; the note lives here so the published CSS does not carry it
 const STATIC_CSS = `*, *::before, *::after { box-sizing: border-box; }
 html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
 body { margin: 0; font-family: var(--rb-body-font); font-size: var(--rb-body-size); line-height: var(--rb-line); color: var(--rb-page-text); background: var(--rb-page-bg); overflow-wrap: break-word; }
@@ -88,7 +90,6 @@ h4 { font-size: 1.1em; }
 [data-arrangement=media-beside-text][data-has-media] .rb-container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--rb-split, 50%)); gap: 48px; align-items: center; }
 [data-arrangement=media-beside-text][data-has-media][data-media-side=left] .rb-container { grid-template-columns: minmax(0, var(--rb-split, 50%)) minmax(0, 1fr); }
 [data-media-side=left] .rb-media { order: -1; }
-/* Fill (REV-114) deliberately lets a photo grow past its natural width, up to 2x, capped by --rb-media-max */
 [data-media-fit=fill] .rb-media img { inline-size: 100%; max-inline-size: var(--rb-media-max, 100%); aspect-ratio: 4/3; object-fit: cover; }
 [data-arrangement=media-beside-text] .rb-embed { grid-column: 1 / -1; }
 [data-arrangement=media-beside-text] .rb-media .rb-embed { margin-top: 0; }
