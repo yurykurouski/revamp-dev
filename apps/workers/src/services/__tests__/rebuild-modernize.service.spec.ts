@@ -2,7 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import type { ISiteSection, ISiteSections } from '@revamp/shared-types';
 import { REBUILD_EDIT_ARRANGEMENTS, REBUILD_EDIT_BACKGROUNDS, REBUILD_HERO_STYLES, REBUILD_MEDIA_FITS, REBUILD_TYPE_SCALES } from '@revamp/shared-types';
 import { defaultModernDesign } from '../rebuild-modernize.js';
-import { REBUILD_MODERNIZE_SYSTEM_PROMPT, RebuildModernizeService } from '../rebuild-modernize.service.js';
+import { REBUILD_MODERNIZE_SYSTEM_PROMPT, RebuildModernizeService, fittingArrangements, modernizeOutline } from '../rebuild-modernize.service.js';
+import { checkRebuildEdit } from '@revamp/validation';
 
 const section = (index: number, over: Partial<ISiteSection> = {}): ISiteSection => ({
   index, role: 'content', kind: 'other', arrangement: 'text',
@@ -76,5 +77,41 @@ describe('RebuildModernizeService (REV-114)', () => {
     }
     expect(REBUILD_MODERNIZE_SYSTEM_PROMPT).toContain('{"design"');
     expect(REBUILD_MODERNIZE_SYSTEM_PROMPT).toContain('1000');
+  });
+
+  it('tells the model which sections fit another arrangement and which show a photo beside their text', async () => {
+    const runner = vi.fn().mockResolvedValue(JSON.stringify({ design }));
+    await serviceWith(runner).choose(input);
+    const page = JSON.parse(runner.mock.calls[0]![0].userPrompt).page;
+    expect(page.find((s: { id: string }) => s.id === 's-2')).toMatchObject({ arrangeAs: [], photoBeside: true });
+    expect(page.find((s: { id: string }) => s.id === 's-3')).toMatchObject({ arrangeAs: [], photoBeside: false });
+    expect(REBUILD_MODERNIZE_SYSTEM_PROMPT).toContain('"arrangeAs"');
+    expect(REBUILD_MODERNIZE_SYSTEM_PROMPT).toContain('"photoBeside"');
+  });
+});
+
+describe('fittingArrangements (REV-114)', () => {
+  const short = ['Jeden.', 'Dwa.', 'Trzy.'];
+  const item = { text: ['Punkt.'], links: [] };
+  const cases: [string, ISiteSection][] = [
+    ['a text run of 3 short paragraphs', section(1, { intro: { text: short, links: [] } })],
+    ['a text section of 2 paragraphs', section(1, { intro: { text: short.slice(0, 2), links: [] } })],
+    ['a list of 3 items', section(1, { arrangement: 'list', items: [item, item, item] })],
+    ['a list of 2 items', section(1, { arrangement: 'list', items: [item, item] })],
+    ['media beside 3 short paragraphs', section(1, { arrangement: 'media-beside-text', intro: { text: short, links: [] }, images: [{ src: 'https://x.test/a.jpg', width: 300 }] })],
+  ];
+
+  it.each(cases)('agrees with checkRebuildEdit: %s', (_, s) => {
+    const page = { sections: [section(0, { role: 'hero' }), s] };
+    const fits = fittingArrangements(s);
+    for (const arrangement of ['card-grid', 'list'] as const) {
+      if (arrangement === s.arrangement) continue;
+      const ok = checkRebuildEdit({ sections: { 's-1': { arrangement } } }, page).ok;
+      expect(fits.includes(arrangement)).toBe(ok);
+    }
+  });
+
+  it('lists the outline of the hero and content sections only', () => {
+    expect(modernizeOutline(read).map((s) => s.id)).toEqual(['s-1', 's-2', 's-3']);
   });
 });

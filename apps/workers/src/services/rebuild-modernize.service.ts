@@ -1,6 +1,7 @@
 import {
   IRebuildModernize,
   IRebuildModernizeAnswer,
+  ISiteSection,
   ISiteSections,
   MVP_DESIGN_CORNERS,
   MVP_DESIGN_DENSITIES,
@@ -12,7 +13,7 @@ import {
   REBUILD_MEDIA_FITS,
   REBUILD_TYPE_SCALES,
 } from '@revamp/shared-types';
-import { REBUILD_BANNER_MIN_WIDTH, REBUILD_CARD_MAX_CHARS, RebuildModernizeAnswerSchema, checkRebuildEdit } from '@revamp/validation';
+import { REBUILD_BANNER_MIN_WIDTH, REBUILD_CARD_MAX_CHARS, RebuildModernizeAnswerSchema, cardRun, checkRebuildEdit } from '@revamp/validation';
 import { LlmClient, LlmUsage, extractJsonObject } from './llm-client.js';
 import { EDIT_LLM_TIMEOUT_MS, MvpEditServiceOptions } from './mvp-edit.service.js';
 import { buildRebuildOutline } from './rebuild-edit.service.js';
@@ -34,8 +35,8 @@ FUNDAMENTAL RULES:
 Answer { "design": { ... } }; every field is optional:
 - hero: { photo: an id from "images" of one of the next sections after the opening one (s-<i>.m<n>), style: ${list(REBUILD_HERO_STYLES)} } opens the page with that photo. Only when the opening section has no photo of its own. "banner" only for a photo at least ${REBUILD_BANNER_MIN_WIDTH} px wide; "split" puts it beside the opening text.
 - sections: per section id, {
-  arrangement: ${list(REBUILD_EDIT_ARRANGEMENTS)} (cards only where a section has 3 or more short paragraphs or items, each at most ${REBUILD_CARD_MAX_CHARS} characters, see "paragraphs" and "longestParagraph"; "list" shows paragraphs as a list),
-  mediaSide: left | right and media: ${list(REBUILD_MEDIA_FITS)} (only for a section that has "images" and shows its photo beside the text; "fill" stretches the photo to its column),
+  arrangement: ${list(REBUILD_EDIT_ARRANGEMENTS)} (only a value from the section's "arrangeAs", which lists what its content fits: cards or a list for a run of 3 or more paragraphs of at most ${REBUILD_CARD_MAX_CHARS} characters, cards for 3 or more items; leave it out when "arrangeAs" is empty),
+  mediaSide: left | right and media: ${list(REBUILD_MEDIA_FITS)} (only for a section with "photoBeside": true; "fill" stretches the photo to its column),
   background: ${list(REBUILD_EDIT_BACKGROUNDS)} ("original" is the one read from the site, "page" white, "tinted" a light tint of the primary color, "brand" the primary color, "dark" near-black; text color is adjusted for contrast; alternate page and tinted for rhythm, and leave a section with its own photo behind it alone),
   align: ${list(REBUILD_EDIT_ALIGNS)},
   density: ${list(MVP_DESIGN_DENSITIES)} (vertical spacing) }.
@@ -43,6 +44,28 @@ Answer { "design": { ... } }; every field is optional:
 
 Respond with a raw JSON object only, with no preamble and no markdown, in exactly this shape:
 {"design":object}`;
+
+/**
+ * The arrangements a section's content fits besides its own (REV-114), by the rules `checkRebuildEdit` applies:
+ * a `text` section with a run of short paragraphs takes cards or a list, a `list` of 3 or more items takes cards
+ */
+export function fittingArrangements(section: ISiteSection): (typeof REBUILD_EDIT_ARRANGEMENTS)[number][] {
+  if (section.arrangement === 'text') return cardRun(section.intro.text) ? ['card-grid', 'list'] : [];
+  return section.arrangement === 'list' && section.items.length >= 3 ? ['card-grid'] : [];
+}
+
+/** The page the model sees: the edit outline, with what each section's content fits */
+export function modernizeOutline(read: ISiteSections) {
+  const byId = new Map(read.sections.map((s) => [`s-${s.index}`, s]));
+  return buildRebuildOutline(read).map((entry) => {
+    const section = byId.get(entry.id)!;
+    return {
+      ...entry,
+      arrangeAs: fittingArrangements(section),
+      photoBeside: section.arrangement === 'media-beside-text' && section.images.length > 0,
+    };
+  });
+}
 
 export interface RebuildModernizeInput {
   /** The audit's reading of the original page, the source of every id */
@@ -72,7 +95,7 @@ export class RebuildModernizeService {
     const unavailable = this.llm.unavailableReason();
     if (!this.llm.provider || unavailable) return fallback('not_configured');
 
-    const page = buildRebuildOutline(input.siteSections);
+    const page = modernizeOutline(input.siteSections);
     let usage: LlmUsage | undefined;
     let rejected: string | undefined;
     for (let attempt = 0; attempt < 2; attempt++) {
