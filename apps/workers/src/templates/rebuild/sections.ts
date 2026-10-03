@@ -148,6 +148,7 @@ export function renderSection(section: IRebuildSection, ctx: RenderCtx, tag: 'se
     s.backgroundImage ? `--rb-bg-image: url('${cssUrl(s.backgroundImage)}')` : '',
     s.overlay !== undefined ? `--rb-overlay: ${s.overlay}` : '',
     section.split !== undefined ? `--rb-split: ${Math.round(section.split * 100)}%` : '',
+    section.mediaMax !== undefined ? `--rb-media-max: ${section.mediaMax}px` : '',
     itemStyle?.radius !== undefined ? `--rb-item-radius: ${itemStyle.radius}px` : '',
     itemStyle?.background ? `--rb-item-bg: ${itemStyle.background}` : '',
     itemStyle?.text ? `--rb-item-text: ${itemStyle.text}` : '',
@@ -173,6 +174,8 @@ export function renderSection(section: IRebuildSection, ctx: RenderCtx, tag: 'se
     `data-arrangement="${section.arrangement}"`,
     `data-kind="${section.kind}"`,
     section.mediaSide ? `data-media-side="${section.mediaSide}"` : '',
+    // A photo stretched to its column (REV-114), up to --rb-media-max
+    section.mediaFit === 'fill' ? 'data-media-fit="fill"' : '',
     `data-align="${s.align}"`,
     s.fullBleed ? 'data-full-bleed' : '',
     section.photoSlides ? 'data-photo-slides' : '',

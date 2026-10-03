@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { SITE_SECTION_ARRANGEMENTS } from '@revamp/shared-types';
 import type { IRebuildPlan, IRebuildSection } from '@revamp/shared-types';
 import { renderRebuild } from '../rebuild/index.js';
+import { rebuildCss } from '../rebuild/styles.js';
 
 const item = (title: string) => ({ title, subtitle: 'Rola', text: [`O ${title}`], image: { src: `https://x.pl/${title}.jpg`, alt: title }, price: 'od 150 zł', rating: 5, links: [] });
 const section = (index: number, over: Partial<IRebuildSection> = {}): IRebuildSection => ({
@@ -399,5 +400,25 @@ describe('renderRebuild with the operator edit (REV-111)', () => {
     expect(html.indexOf(css)).toBeGreaterThan(html.indexOf('.rb-section {'));
     expect(html.indexOf(css)).toBeLessThan(html.indexOf('</style>'));
     expect(renderRebuild(plan([section(1)]))).not.toContain("The operator's CSS");
+  });
+});
+
+describe('renderRebuild with the modernize fields (REV-114)', () => {
+  const photo = { src: 'https://x.pl/gabinet.jpg', alt: 'Gabinet', width: 352, height: 235 };
+
+  it('marks a filled media column and its maximum width', () => {
+    const html = renderRebuild(plan([section(1, { arrangement: 'media-beside-text', images: [photo], mediaFit: 'fill', mediaMax: 704 })]));
+    expect(html).toContain('data-media-fit="fill"');
+    expect(html).toContain('--rb-media-max: 704px');
+  });
+
+  it('renders neither without them', () => {
+    const html = renderRebuild(plan([section(1, { arrangement: 'media-beside-text', images: [photo] })]));
+    expect(html).not.toContain('data-media-fit="');
+    expect(html).not.toContain('--rb-media-max:');
+  });
+
+  it('styles a filled media column in the static CSS', () => {
+    expect(rebuildCss(plan([section(1)]))).toContain('[data-media-fit=fill] .rb-media img');
   });
 });
