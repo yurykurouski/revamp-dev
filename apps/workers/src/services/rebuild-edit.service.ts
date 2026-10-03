@@ -2,14 +2,19 @@ import {
   BENTO_LAYOUT_VARIANTS,
   BentoLayoutVariant,
   IRebuildEditAnswer,
+  IRebuildModernizeAnswer,
   ISiteSections,
   MVP_DESIGN_CORNERS,
   MVP_DESIGN_DENSITIES,
   MVP_DESIGN_FONTS,
   MvpEditChange,
   REBUILD_EDIT_ALIGNS,
+  REBUILD_EDIT_ARRANGEMENTS,
   REBUILD_EDIT_BACKGROUNDS,
   REBUILD_EDIT_HEADING_CASES,
+  REBUILD_HERO_STYLES,
+  REBUILD_MEDIA_FITS,
+  REBUILD_TYPE_SCALES,
 } from '@revamp/shared-types';
 import { OUTLINE_LIMITS, RebuildEditOutputSchema, checkRebuildEdit, hasRebuildEdit } from '@revamp/validation';
 import { MVP_CUSTOM_CSS_MAX, REBUILD_CSS_HOOKS, UnsafeCssError, sanitizeMvpCss } from '../templates/css-sanitizer.js';
@@ -28,6 +33,14 @@ export interface RebuildOutlineSection {
   heading?: string;
   /** Paragraphs (`.t<n>`), items (`.i<n>`) and extra blocks (`.x<n>`) the edit may drop */
   pieces: { id: string; preview: string }[];
+  /** The section's photos; `s-<i>.m<n>` may open the page (REV-114) */
+  images: { id: string; width?: number; height?: number }[];
+  /** Intro paragraphs and the longest one's length, for the card rule */
+  paragraphs: number;
+  longestParagraph: number;
+  /** As read from the site */
+  background?: string;
+  align?: string;
 }
 
 export interface RebuildEditInput {
@@ -35,7 +48,7 @@ export interface RebuildEditInput {
   instruction: string;
   /** The audit's reading of the original page, the source of every id */
   siteSections: ISiteSections;
-  current: { edit?: IRebuildEditAnswer; primaryColor?: string };
+  current: { edit?: IRebuildEditAnswer; /** The modernize look under the edit (REV-114) */ modernize?: IRebuildModernizeAnswer; primaryColor?: string };
   /** The only primary colors the edit may pick */
   colorCandidates: MvpColorCandidate[];
 }
@@ -73,6 +86,15 @@ export function buildRebuildOutline(read: ISiteSections): RebuildOutlineSection[
           ...s.items.map((item, n) => ({ id: `${id}.i${n}`, preview: preview(item.title ?? item.text[0] ?? item.subtitle ?? item.price ?? item.image?.alt) })),
           ...s.extra.map((entry, n) => ({ id: `${id}.x${n}`, preview: preview(entry.type === 'text' ? entry.text[0] : entry.items[0]?.title ?? entry.items[0]?.text[0]) })),
         ],
+        images: s.images.map((image, n) => ({
+          id: `${id}.m${n}`,
+          ...(image.width ? { width: image.width } : {}),
+          ...(image.height ? { height: image.height } : {}),
+        })),
+        paragraphs: s.intro.text.length,
+        longestParagraph: Math.max(0, ...s.intro.text.map((text) => text.length)),
+        ...(s.style.background ? { background: s.style.background } : {}),
+        ...(s.style.align ? { align: s.style.align } : {}),
       };
     });
 }
@@ -92,13 +114,14 @@ Edit ("edit"): a JSON object; every field is optional and anything left out keep
 - order: section ids in the new page order. Listed sections come first in that order; unlisted ones follow in their original order.
 - hidden: section ids to leave out.
 - dropped: piece ids to leave out of their section (ids ending .t<n> are paragraphs, .i<n> items, .x<n> extra blocks).
-- sections: per section id, { background: ${REBUILD_EDIT_BACKGROUNDS.join(' | ')} ("original" is the one read from the site, "page" white, "tinted" a light tint of the primary color, "brand" the primary color, "dark" near-black; the text color is adjusted for contrast), align: ${REBUILD_EDIT_ALIGNS.join(' | ')}, density: ${MVP_DESIGN_DENSITIES.join(' | ')} (vertical spacing) }.
-- theme: { font: ${MVP_DESIGN_FONTS.join(' | ')} (system keeps the original's fonts; serif-display and mono-display change headings only), density: ${MVP_DESIGN_DENSITIES.join(' | ')} (spacing of every section without its own), corners: ${MVP_DESIGN_CORNERS.join(' | ')} (buttons and cards), headingCase: ${REBUILD_EDIT_HEADING_CASES.join(' | ')} }.
+- sections: per section id, { background: ${REBUILD_EDIT_BACKGROUNDS.join(' | ')} ("original" is the one read from the site, "page" white, "tinted" a light tint of the primary color, "brand" the primary color, "dark" near-black; the text color is adjusted for contrast), align: ${REBUILD_EDIT_ALIGNS.join(' | ')}, density: ${MVP_DESIGN_DENSITIES.join(' | ')} (vertical spacing), arrangement: ${REBUILD_EDIT_ARRANGEMENTS.join(' | ')} (shows a section's 3 or more short paragraphs or items as cards, or paragraphs as a list; only when "paragraphs" and "longestParagraph" show they fit: at most 300 characters each), mediaSide: left | right and media: ${REBUILD_MEDIA_FITS.join(' | ')} (the side of a section's photo and whether it fills its column; only for a section that has "images") }.
+- hero: { photo: an image id from "images" of a later section (s-<i>.m<n>), style: ${REBUILD_HERO_STYLES.join(' | ')} } opens the page with that photo, only when the opening section has no photo of its own; banner needs a photo at least 1000 px wide.
+- theme: { font: ${MVP_DESIGN_FONTS.join(' | ')} (system keeps the original's fonts; serif-display and mono-display change headings only), density: ${MVP_DESIGN_DENSITIES.join(' | ')} (spacing of every section without its own), corners: ${MVP_DESIGN_CORNERS.join(' | ')} (buttons and cards), headingCase: ${REBUILD_EDIT_HEADING_CASES.join(' | ')}, typeScale: ${REBUILD_TYPE_SCALES.join(' | ')} (modern sets larger headings and body text) }.
 - customCss: plain CSS, only for a look none of the fields above can express (e.g. a gradient on buttons, an accent line under headings). Prefer the fields above whenever one fits. Rules: target only these hooks and classes: ${list(REBUILD_CSS_HOOKS)} (a section by its id, e.g. [data-revamp-section="s-3"]; combined with descendant elements, pseudo-classes, ::before and ::after as needed); no attribute selectors but data-revamp-*; no url(), @import, @font-face or other at-rules except @media, @supports and @keyframes; never hide, shrink, cover or move content off the page (no display:none, visibility, opacity below 0.2, zero sizes, clip or mask), no text through content (only content: ""), position fixed or sticky only on .rb-header; use variables such as var(--rb-primary), var(--rb-on-primary), var(--rb-page-text); add !important to override the page's styles; at most ${MVP_CUSTOM_CSS_MAX} characters. CSS that breaks a rule rejects the whole change.
 
 Output:
 - summary: one sentence (up to 300 characters) telling the operator what you changed, or why you changed nothing. Write it in the language of the operator's instruction.
-- edit: the complete new edit, starting from "current.edit" and keeping every earlier choice the operator did not ask to change; {} removes the edit; null keeps it as it is.
+- edit: the complete new edit, starting from "current.edit" and keeping every earlier choice the operator did not ask to change ("current.modernize" is the look the page already has underneath the edit; do not copy it into the edit, only override what the operator asks to change); {} removes the edit; null keeps it as it is.
 - primaryColor: the new primary color, or null to keep the current one.
 - layout: the new layout, or null to keep this rebuild.
 
@@ -195,7 +218,12 @@ export class RebuildEditService {
       {
         instruction: input.instruction,
         page: buildRebuildOutline(input.siteSections),
-        current: { edit: input.current.edit ?? {}, primaryColor: input.current.primaryColor ?? null, layout: 'original' },
+        current: {
+          edit: input.current.edit ?? {},
+          ...(input.current.modernize ? { modernize: input.current.modernize } : {}),
+          primaryColor: input.current.primaryColor ?? null,
+          layout: 'original',
+        },
         allowedColors: input.colorCandidates,
         allowedLayouts: [
           { id: 'original', description: 'this rebuild of the original page' },

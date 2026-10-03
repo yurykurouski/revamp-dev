@@ -14,7 +14,7 @@ const siteSections: ISiteSections = {
   sections: [
     section(0, { role: 'header' }),
     section(1, { role: 'hero', intro: { heading: 'Stomatologia estetyczna', text: ['Witamy w gabinecie.'], links: [] } }),
-    section(2, { kind: 'services', arrangement: 'card-grid', intro: { heading: 'Usługi', text: [], links: [] },
+    section(2, { kind: 'services', arrangement: 'card-grid', images: [{ src: 'https://x.test/a.jpg', width: 352 }], style: { background: '#112233', align: 'left' }, intro: { heading: 'Usługi', text: [], links: [] },
       items: [{ title: 'Implanty', text: [], links: [] }, { text: ['Wybielanie zębów laserem'], links: [] }],
       extra: [{ type: 'text', text: ['Ceny od 150 zł.'] }] }),
     section(3, { kind: 'reviews', intro: { heading: 'Opinie', text: ['x'.repeat(400)], links: [] } }),
@@ -48,6 +48,7 @@ describe('buildRebuildOutline (REV-111)', () => {
     expect(outline.map((s) => s.id)).toEqual(['s-1', 's-2', 's-3']);
     expect(outline[1]).toEqual({
       id: 's-2', role: 'content', kind: 'services', arrangement: 'card-grid', heading: 'Usługi',
+      images: [{ id: 's-2.m0', width: 352 }], paragraphs: 0, longestParagraph: 0, background: '#112233', align: 'left',
       pieces: [
         { id: 's-2.i0', preview: 'Implanty' },
         { id: 's-2.i1', preview: 'Wybielanie zębów laserem' },
@@ -55,6 +56,9 @@ describe('buildRebuildOutline (REV-111)', () => {
       ],
     });
     expect(outline[2]!.pieces[0]!.preview).toHaveLength(160);
+    expect(outline[0]).toMatchObject({ images: [], paragraphs: 1, longestParagraph: 19 });
+    expect(outline[2]).toMatchObject({ paragraphs: 1, longestParagraph: 400 });
+    expect(outline[0]).not.toHaveProperty('background');
   });
 });
 
@@ -70,6 +74,19 @@ describe('RebuildEditService (REV-111)', () => {
     expect(prompt.current).toEqual({ edit: { hidden: ['s-3'] }, primaryColor: '#0E7490', layout: 'original' });
     expect(prompt.allowedLayouts.map((l: { id: string }) => l.id)).toEqual(['original', 'bento', 'split', 'editorial', 'compact']);
     expect(userPrompt).not.toContain('+48');
+  });
+
+  it('shows the model the modernize look the operator sees', async () => {
+    const { runner, service } = serviceAnswering({ summary: 'Nothing', edit: null });
+    const modernize = { theme: { typeScale: 'modern' as const }, sections: { 's-2': { align: 'left' as const } } };
+    await service.interpret(input({ current: { modernize, primaryColor: '#0E7490' } }));
+    expect(JSON.parse(runner.mock.calls[0]![0].userPrompt).current).toEqual({ edit: {}, modernize, primaryColor: '#0E7490', layout: 'original' });
+  });
+
+  it('names the modernize fields in the prompt', () => {
+    for (const word of ['hero', 'arrangement', 'mediaSide', 'media', 'typeScale', 'card-grid']) {
+      expect(REBUILD_EDIT_SYSTEM_PROMPT).toContain(word);
+    }
   });
 
   it('builds the prompt from the shared vocabulary', () => {
