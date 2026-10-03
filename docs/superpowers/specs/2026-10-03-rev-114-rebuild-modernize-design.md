@@ -174,7 +174,7 @@ Card grids, the banner and media-beside-text use the existing renderers. No new 
 
 ## 5. The modern design
 
-### 5.1. Deterministic default: `defaultModernDesign(siteSections, primary)`
+### 5.1. Deterministic default: `defaultModernDesign(siteSections)`
 
 A pure function in `apps/workers/src/services/rebuild-modernize.ts`. It returns an answer that always passes `checkRebuildEdit`:
 
