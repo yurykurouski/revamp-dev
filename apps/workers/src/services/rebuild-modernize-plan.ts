@@ -1,5 +1,5 @@
 import type { IRebuildEditAnswer, IRebuildModernizeAnswer, IRebuildSectionEdit, ISiteSection } from '@revamp/shared-types';
-import { cardRun } from '@revamp/validation';
+import { SITE_SECTIONS_LIMITS, cardRun } from '@revamp/validation';
 
 // The modernize layer under the operator's edit (REV-114): how the two are merged, and the card shape a
 // section's paragraphs take. Pure; the planner applies the result.
@@ -67,6 +67,8 @@ export function arrangedSection(section: ISiteSection, arrangement: IRebuildSect
   if (!run) return section;
   const carded = paragraphs.slice(run.start, run.end);
   const after = paragraphs.slice(run.end);
+  // The paragraphs after the cards take an extra block; with the extra blocks full one would be lost, so it does not fit
+  if (after.length && section.extra.length >= SITE_SECTIONS_LIMITS.extra) return section;
   const longest = Math.max(...carded.map((p) => p.length));
   return {
     ...section,

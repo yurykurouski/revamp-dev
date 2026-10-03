@@ -88,6 +88,7 @@ h4 { font-size: 1.1em; }
 [data-arrangement=media-beside-text][data-has-media] .rb-container { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, var(--rb-split, 50%)); gap: 48px; align-items: center; }
 [data-arrangement=media-beside-text][data-has-media][data-media-side=left] .rb-container { grid-template-columns: minmax(0, var(--rb-split, 50%)) minmax(0, 1fr); }
 [data-media-side=left] .rb-media { order: -1; }
+/* Fill (REV-114) deliberately lets a photo grow past its natural width, up to 2x, capped by --rb-media-max */
 [data-media-fit=fill] .rb-media img { inline-size: 100%; max-inline-size: var(--rb-media-max, 100%); aspect-ratio: 4/3; object-fit: cover; }
 [data-arrangement=media-beside-text] .rb-embed { grid-column: 1 / -1; }
 [data-arrangement=media-beside-text] .rb-media .rb-embed { margin-top: 0; }

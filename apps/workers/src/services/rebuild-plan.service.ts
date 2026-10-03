@@ -272,12 +272,12 @@ function editedBackground(pick: IRebuildSectionEdit['background'], read: string 
   }
 }
 
-/** The h1 section given a photo from a later section (REV-114), with its codes and, when it has no link, the CTA */
+/** The h1 section given a photo from a later section (REV-114), with its codes and the CTA it gets when no link of its survives */
 interface HeroPhoto {
   index: number;
   style: 'split' | 'banner';
   codes: string[];
-  cta?: IRebuildLink;
+  cta: { link: IRebuildLink; code: string };
 }
 
 function planSection(
@@ -357,6 +357,13 @@ function planSection(
   const collapsed = section.arrangement === 'text' && textLength(section) > COLLAPSE_CHARS;
   if (collapsed) fixes.push(`collapse:${section.index}`);
 
+  // A hero given a photo gets the header's CTA when none of its own links survives planning (REV-114)
+  const introLinks = planLinks(section.intro.links, rec);
+  if (hero && !introLinks.length) {
+    introLinks.push(hero.cta.link);
+    fixes.push(hero.cta.code);
+  }
+
   const extra: IRebuildBlock[] = section.extra
     .slice(0, LIMITS.extra)
     .map((entry): IRebuildBlock => (entry.type === 'text' ? { type: 'text', text: texts(entry.text) } : { type: 'items', arrangement: entry.arrangement, items: planItems(entry.items, rec, false) }));
@@ -391,7 +398,7 @@ function planSection(
       ...(label(section.intro.eyebrow) ? { eyebrow: label(section.intro.eyebrow) } : {}),
       ...(heading ? { heading } : {}),
       text: texts(section.intro.text),
-      links: [...planLinks(section.intro.links, rec), ...(hero?.cta ? [hero.cta] : [])],
+      links: introLinks,
     },
     items: planItems(section.items, rec, eager, photoSlides),
     ...(itemStyle ? { itemStyle } : {}),
@@ -526,8 +533,8 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
       ? {
           index: moved.h1.index,
           style: edit.hero.style,
-          codes: [`${from('hero')}:hero-photo:${edit.hero.photo}`, ...(moved.h1.intro.links.length ? [] : [`${from('hero')}:hero-cta`])],
-          ...(moved.h1.intro.links.length ? {} : { cta: { label: cta, href: '#booking', kind: 'booking' as const } }),
+          codes: [`${from('hero')}:hero-photo:${edit.hero.photo}`],
+          cta: { link: { label: cta, href: '#booking', kind: 'booking' }, code: `${from('hero')}:hero-cta` },
         }
       : undefined;
   const ctx = { rec, t, booking: { placed: false }, h1: { used: false }, ...(look ? { look } : {}), ...(heroPhoto ? { hero: heroPhoto } : {}) };

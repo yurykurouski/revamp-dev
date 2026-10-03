@@ -611,6 +611,18 @@ describe('modernize (REV-114)', () => {
       expect(list.columns).toBeUndefined();
     });
 
+    it('leaves a section as text when the paragraphs after the cards would push an extra block past the cap', () => {
+      const full = Array.from({ length: 20 }, (_, n) => ({ type: 'text' as const, text: [`Blok ${n}.`] }));
+      const text = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.', 'E'.repeat(320)], links: [] }, extra: full });
+      const plan = valid(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
+      expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'text', items: [] });
+      expect(byId(plan, 's-4')!.extra).toHaveLength(20);
+      expect(plan.summary.tuning.some((code) => code.includes('cards:'))).toBe(false);
+      // Without paragraphs after the run nothing is pushed out, so the cards are made
+      const short = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.', 'Trzy.'], links: [] }, extra: full });
+      expect(byId(planRebuild(input([hero, short], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')).toMatchObject({ arrangement: 'card-grid' });
+    });
+
     it('leaves a section that does not fit as text, with no code', () => {
       const text = section(4, { intro: { heading: 'Atuty', text: ['Jeden.', 'Dwa.'], links: [] } });
       const plan = valid(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
@@ -647,8 +659,9 @@ describe('modernize (REV-114)', () => {
       expect(s1.images[0]).toMatchObject({ src: photo, eager: true });
       expect(byId(plan, 's-2')!.images.map((i) => i.src)).not.toContain(photo);
       expect(plan.summary.tuning).toContain('modernize:hero-photo:s-2.m0');
-      // The anident hero has links of its own (to other pages): no CTA is added
-      expect(plan.summary.tuning.some((code) => code.endsWith('hero-cta'))).toBe(false);
+      // The anident hero's own links all go to other pages and are dropped: it gets the header's CTA
+      expect(s1.intro.links).toEqual([{ label: t.sendRequest, href: '#booking', kind: 'booking' }]);
+      expect(plan.summary.tuning).toContain('modernize:hero-cta');
       expect(JSON.stringify(base.siteSections)).toBe(before);
     });
 
@@ -670,6 +683,14 @@ describe('modernize (REV-114)', () => {
       const plan = valid(planRebuild(input([header, linked, gallery(600)], { modernize: { hero: { photo: 's-3.m0', style: 'split' } } })));
       expect(byId(plan, 's-1')!.intro.links.map((l) => l.kind)).toEqual(['phone']);
       expect(plan.summary.tuning.some((code) => code.endsWith('hero-cta'))).toBe(false);
+    });
+
+    it('gives a hero whose only link goes to another page the call to action', () => {
+      const away = { ...opening, intro: { ...opening.intro, links: [{ label: 'Cennik', href: 'https://falcodent.pl/cennik/', kind: 'link' as const }] } };
+      const plan = valid(planRebuild(input([header, away, gallery(600)], { modernize: { hero: { photo: 's-3.m0', style: 'split' } } })));
+      expect(byId(plan, 's-1')!.intro.links).toEqual([{ label: 'Umów wizytę', href: '#booking', kind: 'booking' }]);
+      expect(plan.summary.tuning).toContain('modernize:hero-cta');
+      expect(plan.summary.omitted).toContainEqual({ what: 'link', reason: 'other_page', sample: 'Cennik' });
     });
 
     it('lays a wide photo behind the hero as a banner', () => {
