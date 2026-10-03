@@ -14,6 +14,7 @@ import { MvpProject } from '../models/MvpProject.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpColorCandidate, MvpEditService, mvpEditService } from '../services/mvp-edit.service.js';
 import { RebuildEditService, rebuildEditService } from '../services/rebuild-edit.service.js';
+import { editForAudit } from '../services/rebuild-template.service.js';
 import { republishSavedMvp } from './deploy.worker.js';
 import { hasDesign, mergeDesigns } from '../templates/design.js';
 
@@ -117,12 +118,11 @@ export async function processMvpEditJob(
     if (!audit.siteSections) throw new Error(`The audit of lead ${leadId} has no reading of the original page.`);
     const auditKey = audit._id.toString();
     // An edit for another audit run names other sections, so it is not offered as the current one
-    const saved = project.rebuildEdit?.auditId === auditKey ? project.rebuildEdit : undefined;
-    const { auditId: _ignored, ...currentEdit } = saved ?? { auditId: '' };
+    const currentEdit = editForAudit(project.rebuildEdit, { _id: auditKey });
     const plan = await rebuildService.interpret({
       instruction: data.instruction,
       siteSections: audit.siteSections,
-      current: { ...(saved ? { edit: currentEdit } : {}), primaryColor: project.colorPalette?.primary },
+      current: { ...(currentEdit ? { edit: currentEdit } : {}), primaryColor: project.colorPalette?.primary },
       colorCandidates: colorCandidates(project.colorPalette?.primary, audit.extractedBrandTokens),
     });
     if (plan.changes.length === 0) {
