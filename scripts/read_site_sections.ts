@@ -93,10 +93,11 @@ try {
           console.log('not recorded: the model gave no valid answer');
           continue;
         }
-        const { blocks: _blocks, header: _header, footer: _footer, uncaptured: _uncaptured, ...rest } = raw;
+        // The raw reading without the rules reader's blocks: what readGroupedSections needs
+        const { viewportWidth, viewportHeight, typography, pageChars, outline } = raw;
         mkdirSync(recordDir, { recursive: true });
         const file = `${recordDir}/${new URL(url).hostname.replace(/^www\./, '').replace(/\.[a-z]+$/, '')}.json`;
-        writeFileSync(file, JSON.stringify({ url, recordedAt: new Date().toISOString(), model: result.modelUsed, ...rest, answer: result.answer }, null, 1));
+        writeFileSync(file, JSON.stringify({ url, recordedAt: new Date().toISOString(), model: result.modelUsed, viewportWidth, viewportHeight, pageChars, typography, outline, answer: result.answer }, null, 1));
         console.log(`recorded ${file}`);
       }
     } finally {
