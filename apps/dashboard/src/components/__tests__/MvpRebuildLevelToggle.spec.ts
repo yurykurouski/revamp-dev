@@ -13,6 +13,7 @@ import { apiClient, IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api
 import { getTheme } from '../../theme/theme.js';
 import { PrototypeStep } from '../leadReview/PrototypeStep.js';
 import { useMvpQuery } from '../../hooks/useLeads.js';
+import { LEVEL_RERENDER_WAIT_MS } from '../../hooks/useLiveMvpLayout.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -207,6 +208,37 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
     await tick(2000);
     await vi.waitFor(() => expect(rerendering()).toBe(false));
     expect(pressed()).toEqual(['modern']);
+  });
+
+  it('keeps waiting for a level pick past 90 s, as the model may be asked twice, until the page is at the picked level', async () => {
+    expect(LEVEL_RERENDER_WAIT_MS).toBeGreaterThanOrEqual(2 * 90_000 + 30_000);
+    render(mvpWith('original', { renderedLevel: 'faithful' }));
+    vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
+    act(() => levelButton('modern').click());
+    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
+
+    await tick(120_000);
+    expect(rerendering()).toBe(true);
+
+    vi.mocked(apiClient.getMvp).mockResolvedValue(
+      mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'modern', editedAt: '2026-10-03T12:00:00.000Z' }),
+    );
+    await tick(2000);
+    await vi.waitFor(() => expect(rerendering()).toBe(false));
+    expect(pressed()).toEqual(['modern']);
+  });
+
+  it('stops waiting for a level pick that never arrives after LEVEL_RERENDER_WAIT_MS', async () => {
+    render(mvpWith('original', { renderedLevel: 'faithful' }));
+    vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
+    act(() => levelButton('modern').click());
+    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
+    await tick(LEVEL_RERENDER_WAIT_MS - 10_000);
+    expect(rerendering()).toBe(true);
+    await tick(14_000);
+    await vi.waitFor(() => expect(rerendering()).toBe(false));
   });
 
   it('counts an older MVP without a rendered level as faithful', async () => {
