@@ -647,6 +647,8 @@ export const lt: Translation = {
     placeholder: 'Pvz.: atsiliepimai virš paslaugų, antraštės su užraitais, tamsus pirmas ekranas, apvalūs mygtukai',
     hint: '{{count}}/{{max}} · Enter — pritaikyti, Shift+Enter — nauja eilutė',
     grounding: 'DI perrašo ir pertvarko tai, kas jau yra svetainėje; jis niekada neprideda faktų ar kontaktų.',
+    placeholderRebuild: 'Pvz.: atsiliepimai virš paslaugų, paslėpti galeriją, antraštės su užraitais, daugiau erdvės',
+    groundingRebuild: 'DI pertvarko, slepia ir perdažo originalaus puslapio skyrius; teksto jis nerašo.',
     apply: 'Pritaikyti',
     applying: 'Taikoma…',
     applied: 'Pritaikyta: {{summary}}',
@@ -657,7 +659,6 @@ export const lt: Translation = {
     resetDesign: 'Atkurti numatytąjį dizainą',
     designReset: 'Savas dizainas pašalintas: puslapis vėl atrodo kaip pasirinktame makete.',
     noDesign: 'MVP neturi savo dizaino, nėra ko atkurti.',
-    unsupported: 'Laisvo teksto pakeitimai dar negalimi atkurtai svetainei. Perjunkite į šablono išdėstymą, kad galėtumėte juos naudoti.',
   },
   colorPicker: {
     brandPalette: 'Prekės ženklo paletė:',

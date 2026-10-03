@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
 import { apiClient, ILeadItem, IEmailDraft, IMvpProjectDetail } from '../api/client.js';
-import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
+import { QuickAddLeadInput, hasRebuildEdit, mvpGenerationMode } from '@revamp/validation';
 import { ILeadStats, LeadStatus, LlmProviderId, MvpLayoutVariant } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
@@ -191,9 +191,12 @@ export const useResetMvpDesignMutation = () => {
   });
 };
 
-/** Whether the MVP has a custom design the operator can reset (REV-92) */
-export const mvpHasCustomDesign = (mvp: Pick<IMvpProjectDetail, 'design'> | null | undefined): boolean =>
-  Boolean(mvp?.design && Object.keys(mvp.design).length > 0);
+/**
+ * Whether the MVP has a custom design the operator can reset: the rebuild edit on a rebuilt page (REV-111),
+ * else the Bento design (REV-92); each applies only to its own renderer, as the workers reset it
+ */
+export const mvpHasCustomDesign = (mvp: Pick<IMvpProjectDetail, 'design' | 'rebuildEdit' | 'layout'> | null | undefined): boolean =>
+  mvp?.layout?.variant === 'original' ? hasRebuildEdit(mvp.rebuildEdit) : Boolean(mvp?.design && Object.keys(mvp.design).length > 0);
 
 export interface GenerateMvpVariables {
   auditId: string;

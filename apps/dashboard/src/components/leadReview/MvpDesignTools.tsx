@@ -167,8 +167,7 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, locked })
   // pickers while a free-text change is being applied, which saves the palette and layout too (REV-85)
   const disabled = !liveLayout.canChange || locked;
   const pickersDisabled = disabled || tools.edit.isPending;
-  // The rebuilt original site (REV-110) has no free-text changes yet; the layout picker stays open so the
-  // operator can switch to a template to use them
+  // The rebuilt original site (REV-110) is changed through its own id-only edit (REV-111): the prompt says so
   const rebuilt = liveLayout.layout === 'original';
 
   return (
@@ -196,11 +195,7 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, locked })
           </Typography>
         )}
         {tools.hasMvp && (
-          <MvpEditPrompt
-            edit={tools.edit}
-            disabled={disabled || rebuilt}
-            disabledReason={disabled ? t('mvpEdit.locked') : t('mvpEdit.unsupported')}
-          />
+          <MvpEditPrompt edit={tools.edit} rebuilt={rebuilt} disabled={disabled} disabledReason={t('mvpEdit.locked')} />
         )}
       </FloatingToolsPanel>
 

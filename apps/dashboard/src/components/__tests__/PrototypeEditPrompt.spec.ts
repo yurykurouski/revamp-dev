@@ -277,12 +277,35 @@ describe('Prototype step free-text change (REV-85)', () => {
     expect(prompt().getAttribute('aria-disabled')).toBe('true');
   });
 
-  it('is unavailable on the rebuilt original site and says why, while the layout can still be switched (REV-110)', () => {
-    render({}, { ...mvp, layout: { variant: 'original', reasons: ['rule:rebuild'] } });
-    expect(textarea().disabled).toBe(true);
-    expect(applyButton().disabled).toBe(true);
-    expect(prompt().getAttribute('aria-disabled')).toBe('true');
-    expect(container.querySelector(`[aria-label="${en.mvpEdit.unsupported}"]`)?.contains(prompt())).toBe(true);
-    expect(layoutButtons().every((el) => !el.disabled)).toBe(true);
+  describe('on the rebuilt original site (REV-111)', () => {
+    const rebuilt: IMvpProjectDetail = { ...mvp, layout: { variant: 'original', reasons: ['rule:rebuild'] } };
+    const rebuildEdit = { auditId: '0123456789abcdef01234567', hidden: ['s-3'] };
+    const resetButton = () =>
+      Array.from(prompt().querySelectorAll('button')).find((button) => button.textContent === en.mvpEdit.resetDesign);
+
+    it('is available and says the sections are rearranged, never rewritten', () => {
+      render({}, rebuilt);
+      expect(textarea().disabled).toBe(false);
+      expect(prompt().getAttribute('aria-disabled')).toBeNull();
+      expect(textarea().getAttribute('placeholder')).toBe(en.mvpEdit.placeholderRebuild);
+      expect(prompt().textContent).toContain(en.mvpEdit.groundingRebuild);
+      expect(prompt().textContent).not.toContain(en.mvpEdit.grounding);
+      expect(layoutButtons().every((el) => !el.disabled)).toBe(true);
+    });
+
+    it('offers a reset for the rebuild edit, not for a Bento design kept for a template', () => {
+      render({}, { ...rebuilt, design: { theme: { font: 'serif' } } });
+      expect(resetButton()).toBeUndefined();
+      act(() => root.unmount());
+      root = createRoot(container);
+      render({}, { ...rebuilt, rebuildEdit });
+      expect(resetButton()).toBeDefined();
+    });
+
+    it('still uses the Bento design for a template layout', () => {
+      render({}, { ...mvp, rebuildEdit });
+      expect(resetButton()).toBeUndefined();
+      expect(textarea().getAttribute('placeholder')).toBe(en.mvpEdit.placeholder);
+    });
   });
 });

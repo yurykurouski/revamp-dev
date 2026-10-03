@@ -11,6 +11,8 @@ const MIN_INSTRUCTION_LENGTH = 3;
 
 interface MvpEditPromptProps {
   edit: MvpEditState;
+  /** The MVP is the rebuilt original site (REV-111): sections are reordered, hidden and restyled, never rewritten */
+  rebuilt?: boolean;
   disabled: boolean;
   /** Why the prompt is disabled, shown as its tooltip */
   disabledReason: string;
@@ -21,7 +23,7 @@ interface MvpEditPromptProps {
  * The workers' LLM applies it to the copy, palette and/or layout without inventing facts; the answer
  * tells the operator what changed, or why nothing did.
  */
-export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, disabled, disabledReason }) => {
+export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, rebuilt = false, disabled, disabledReason }) => {
   const { t } = useTranslation();
   const [instruction, setInstruction] = useState('');
   const trimmed = instruction.trim();
@@ -70,7 +72,7 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, disabled, di
         fullWidth
         value={instruction}
         disabled={disabled || edit.isPending}
-        placeholder={t('mvpEdit.placeholder')}
+        placeholder={t(rebuilt ? 'mvpEdit.placeholderRebuild' : 'mvpEdit.placeholder')}
         onChange={(event) => setInstruction(event.target.value.slice(0, MVP_EDIT_INSTRUCTION_MAX))}
         onKeyDown={(event) => {
           // Enter sends, Shift+Enter starts a new line
@@ -83,7 +85,7 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, disabled, di
         inputProps={{ maxLength: MVP_EDIT_INSTRUCTION_MAX }}
       />
       <Typography variant="caption" color="text.secondary">
-        {t('mvpEdit.grounding')}
+        {t(rebuilt ? 'mvpEdit.groundingRebuild' : 'mvpEdit.grounding')}
       </Typography>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         {/* The layout, sections and styles the agent set (REV-92) can be dropped in one go */}
