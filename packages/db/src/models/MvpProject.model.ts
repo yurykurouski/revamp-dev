@@ -81,6 +81,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     rebuild: { type: Schema.Types.Mixed },
     // REV-111: the operator's change to the rebuilt page (ids and fixed values), applied on every rebuild render
     rebuildEdit: { type: Schema.Types.Mixed },
+    // REV-114: the modernize level's design (ids and fixed values), applied under the operator's edit
+    modernize: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,
