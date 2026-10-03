@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { IAudit, ISiteSections } from '@revamp/shared-types';
-import { RebuildUnavailable, defaultRebuildPrimary, rebuildTemplateService } from '../rebuild-template.service.js';
+import { RebuildUnavailable, defaultRebuildPrimary, editForAudit, rebuildTemplateService } from '../rebuild-template.service.js';
 
 const siteSections = (ratio = 0.98): ISiteSections => ({
   sections: [{ index: 1, role: 'hero', kind: 'other', arrangement: 'banner', intro: { heading: 'Witamy', text: ['Tekst'], links: [] }, items: [], extra: [], images: [], embeds: [], style: {} }],
@@ -11,7 +11,7 @@ const audit = (over: Partial<IAudit> = {}): Partial<IAudit> => ({ siteSections: 
 
 describe('rebuildTemplateService (REV-110)', () => {
   it('renders the rebuild and returns its summary', () => {
-    const { html, summary } = rebuildTemplateService.renderFromAudit({ businessName: 'Falco-Dent' }, audit(), undefined, new Date('2026-09-30'));
+    const { html, summary } = rebuildTemplateService.renderFromAudit({ businessName: 'Falco-Dent' }, audit(), undefined, undefined, new Date('2026-09-30'));
     expect(html).toContain('Witamy');
     expect(summary).toMatchObject({ coverage: 0.98, sections: 1 });
   });
@@ -34,5 +34,33 @@ describe('rebuildTemplateService (REV-110)', () => {
   it('uses a saved palette over the default', () => {
     const { html } = rebuildTemplateService.renderFromAudit({ businessName: 'X' }, audit(), { primary: '#00ff00' });
     expect(html).toContain('--rb-primary: #00ff00');
+  });
+});
+
+describe('rebuildTemplateService with the operator edit (REV-111)', () => {
+  const auditId = '0123456789abcdef01234567';
+  const withSections = () => {
+    const read = siteSections();
+    read.sections.push({ ...read.sections[0]!, index: 2, role: 'content', intro: { heading: 'O nas', text: ['Drugi'], links: [] } });
+    return audit({ _id: auditId, siteSections: read } as Partial<IAudit>);
+  };
+
+  it('applies an edit made for this audit', () => {
+    const { html, summary } = rebuildTemplateService.renderFromAudit({ businessName: 'X' }, withSections(), undefined, { auditId, hidden: ['s-2'] });
+    expect(html).not.toContain('id="s-2"');
+    expect(summary.omitted).toContainEqual({ what: 'section', reason: 'hidden', sample: 'O nas' });
+  });
+
+  it('leaves out an edit made for another audit, with a warning', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const { html } = rebuildTemplateService.renderFromAudit({ businessName: 'X' }, withSections(), undefined, { auditId: 'ffffffffffffffffffffffff', hidden: ['s-2'] });
+    expect(html).toContain('id="s-2"');
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('editForAudit strips the audit id', () => {
+    expect(editForAudit({ auditId, order: ['s-1'] }, { _id: auditId } as unknown as Partial<IAudit>)).toEqual({ order: ['s-1'] });
+    expect(editForAudit(undefined, {})).toBeUndefined();
   });
 });

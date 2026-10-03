@@ -5,6 +5,7 @@ import {
   IMvpGeneratedContent,
   IMvpLayoutSelection,
   IMvpRebuildSummary,
+  IRebuildEdit,
   MVP_LAYOUT_MANUAL_ORIGINAL,
   MVP_LAYOUT_MANUAL_REASON,
   MVP_LAYOUT_REBUILD_REASON,
@@ -55,6 +56,8 @@ export function renderMvp(args: {
   derived: IMvpLayoutSelection;
   palette?: MvpPaletteOverride;
   design?: IMvpDesign;
+  /** The operator's change to the rebuild (REV-111); not used by Bento */
+  rebuildEdit?: IRebuildEdit | null;
 }): MvpRender {
   const bento = (layout: IMvpLayoutSelection): MvpRender => ({
     html: bentoTemplateService.renderFromAudit(args.lead, args.audit, args.generatedContent, layout.variant as BentoLayoutVariant, args.palette, args.design),
@@ -62,7 +65,7 @@ export function renderMvp(args: {
   });
   if (args.layout.variant !== 'original') return bento(args.layout);
   try {
-    const { html, summary } = rebuildTemplateService.renderFromAudit(args.lead, args.audit, args.palette);
+    const { html, summary } = rebuildTemplateService.renderFromAudit(args.lead, args.audit, args.palette, args.rebuildEdit);
     return { html, layout: args.layout, rebuild: summary };
   } catch (error) {
     if (!(error instanceof RebuildUnavailable)) throw error;

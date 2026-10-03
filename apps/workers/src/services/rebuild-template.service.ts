@@ -1,4 +1,4 @@
-import type { IAudit, ILead, IMvpRebuildSummary, RebuildFallbackReason } from '@revamp/shared-types';
+import type { IAudit, ILead, IMvpRebuildSummary, IRebuildEdit, IRebuildEditAnswer, RebuildFallbackReason } from '@revamp/shared-types';
 import { RebuildPlanSchema, rebuildEligibility } from '@revamp/validation';
 import { env } from '../config/env.js';
 import { renderRebuild } from '../templates/rebuild/index.js';
@@ -27,17 +27,33 @@ export function defaultRebuildPrimary(audit: Partial<IAudit> | undefined): strin
   return brand && HEX.test(brand) ? brand : '#2563eb';
 }
 
+/**
+ * The operator's edit (REV-111) without its audit id, when it was made for this audit; its ids name this audit's
+ * sections only, so an edit for another audit run is left out
+ */
+export function editForAudit(edit: IRebuildEdit | null | undefined, audit: Partial<IAudit> | undefined): IRebuildEditAnswer | undefined {
+  if (!edit) return undefined;
+  const { auditId, ...answer } = edit;
+  if (auditId !== String(audit?._id ?? '')) {
+    console.warn(`[RebuildTemplate] Edit for audit ${auditId} left out: the MVP renders audit ${String(audit?._id ?? 'unknown')}`);
+    return undefined;
+  }
+  return answer;
+}
+
 export const rebuildTemplateService = {
   /** Plan → validate → render → size check; throws RebuildUnavailable for every fallback reason */
   renderFromAudit(
     lead: Partial<ILead>,
     audit: Partial<IAudit> | undefined,
     palette?: MvpPaletteOverride,
+    edit?: IRebuildEdit | null,
     now: Date = new Date(),
   ): { html: string; summary: IMvpRebuildSummary } {
     const eligible = rebuildEligibility(audit);
     if (!eligible.ok) throw new RebuildUnavailable(eligible.reason, eligible.facts);
     const contacts = audit?.extractedContacts;
+    const answer = editForAudit(edit, audit);
     const primary = palette?.primary && HEX.test(palette.primary) ? palette.primary : defaultRebuildPrimary(audit);
     const parsed = RebuildPlanSchema.safeParse(
       planRebuild({
@@ -54,6 +70,7 @@ export const rebuildTemplateService = {
         logoUrl: isHttpUrl(audit?.extractedBrandTokens?.logoUrl) ? audit!.extractedBrandTokens!.logoUrl : undefined,
         primary,
         year: now.getFullYear(),
+        ...(answer ? { edit: answer } : {}),
       }),
     );
     if (!parsed.success) throw new RebuildUnavailable('rebuild:invalid', [`invalid:${parsed.error.issues[0]?.path.join('.') ?? 'plan'}`.slice(0, 60)]);
