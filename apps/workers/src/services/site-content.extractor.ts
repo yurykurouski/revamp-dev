@@ -6,6 +6,8 @@
  * module-level values. Everything it returns is copied verbatim from the DOM, never generated.
  */
 
+import type { SiteLanguageSource } from '@revamp/shared-types';
+
 export interface RawServiceItem {
   title: string;
   description?: string;
@@ -29,6 +31,8 @@ export interface RawStructuredBusinessData {
 
 export interface RawSiteContent {
   language?: string;
+  /** Where `language` came from (REV-116); unset when the language is unknown */
+  languageSource?: SiteLanguageSource;
   title?: string;
   metaDescription?: string;
   ogImage?: string;
@@ -78,7 +82,77 @@ export function extractSiteContentInPage(): RawSiteContent {
   };
 
   // 1. Document meta
-  const language = clean(document.documentElement.getAttribute('lang')) || undefined;
+  // The language (REV-116): the most specific declaration first, then a guess from the text.
+  // A tag that is empty or malformed ("{{lang}}") counts as missing.
+  const languageTag = (raw: string | null | undefined): string | undefined => {
+    const tag = clean(raw).split(',')[0]!.trim().replace(/_/g, '-');
+    return /^[a-z]{2,3}(-[a-z0-9]{1,8})*$/i.test(tag) ? tag : undefined;
+  };
+
+  // A guess limited to the MVP's UI languages, from stop words and letters only one of them uses.
+  // Too little text, Ukrainian letters or no clear winner give no guess.
+  const guessTextLanguage = (): string | undefined => {
+    const MAX_TEXT = 20000;
+    const MIN_SCORE = 8;
+    const parts: string[] = [];
+    let length = 0;
+    if (document.body) {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node && length < MAX_TEXT; node = walker.nextNode()) {
+        const parent = node.parentElement;
+        if (!parent || inBoilerplate(parent)) continue;
+        const text = clean(node.textContent);
+        if (!text) continue;
+        parts.push(text);
+        length += text.length + 1;
+      }
+    }
+    const words = parts.join(' ').toLowerCase().match(/\p{L}+/gu) || [];
+    const STOP_WORDS: Record<string, string[]> = {
+      en: ['the', 'and', 'of', 'is', 'for', 'with', 'you', 'your', 'our', 'are', 'we', 'on', 'that', 'this', 'from', 'at', 'by'],
+      pl: ['i', 'w', 'z', 'na', 'się', 'nie', 'do', 'jest', 'oraz', 'dla', 'że', 'od', 'po', 'ze', 'jak', 'przez', 'lub', 'czy'],
+      lt: ['ir', 'yra', 'su', 'kad', 'iš', 'į', 'mes', 'jūsų', 'arba', 'bei', 'tai', 'nuo', 'kaip', 'prie', 'apie', 'dėl'],
+      ru: ['и', 'в', 'что', 'с', 'по', 'это', 'как', 'от', 'к', 'о', 'или', 'его', 'только'],
+      be: ['і', 'у', 'што', 'з', 'па', 'гэта', 'як', 'ад', 'ці', 'яго', 'толькі', 'але'],
+    };
+    const LETTERS: Record<string, RegExp> = {
+      pl: /[ćłńóśźż]/,
+      lt: /[čėįšųūž]/,
+      ru: /[иъщ]/,
+      be: /[іў]/,
+    };
+    const scores: Record<string, number> = { en: 0, pl: 0, lt: 0, ru: 0, be: 0 };
+    let ukrainian = 0;
+    for (const word of words) {
+      if (/[їєґ]/.test(word)) ukrainian++;
+      for (const code of Object.keys(scores)) {
+        if (STOP_WORDS[code]!.includes(word) || LETTERS[code]?.test(word)) scores[code]!++;
+      }
+    }
+    if (ukrainian >= 3) return undefined;
+    const [best, second] = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    if (!best || best[1] < MIN_SCORE || best[1] < 2 * (second?.[1] ?? 0)) return undefined;
+    return best[0];
+  };
+
+  let language: string | undefined;
+  let languageSource: SiteLanguageSource | undefined;
+  const htmlLanguage = languageTag(document.documentElement.getAttribute('lang'));
+  const metaLanguage = languageTag(
+    Array.from(document.querySelectorAll('meta[http-equiv]'))
+      .find((meta) => meta.getAttribute('http-equiv')?.trim().toLowerCase() === 'content-language')
+      ?.getAttribute('content'),
+  );
+  if (htmlLanguage) {
+    language = htmlLanguage;
+    languageSource = 'html';
+  } else if (metaLanguage) {
+    language = metaLanguage;
+    languageSource = 'meta';
+  } else {
+    language = guessTextLanguage();
+    languageSource = language ? 'text' : undefined;
+  }
   const title = clean(document.title) || undefined;
   const metaDescription =
     clean(document.querySelector('meta[name="description"]')?.getAttribute('content')) || undefined;
@@ -331,6 +405,7 @@ export function extractSiteContentInPage(): RawSiteContent {
 
   return {
     language,
+    languageSource,
     title,
     metaDescription,
     ogImage,

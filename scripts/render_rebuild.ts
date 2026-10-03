@@ -103,7 +103,8 @@ try {
       const links = read.sections.flatMap((s) => [...s.intro.links, ...s.items.flatMap((i) => i.links)]);
       const phone = links.find((l) => l.kind === 'phone')?.label;
       const email = links.find((l) => l.kind === 'email')?.href.replace(/^mailto:/, '');
-      const language = await page.evaluate(() => document.documentElement.lang);
+      // The language as the audit reads it: <html lang>, the content-language meta, then the text (REV-116)
+      const language = (await browserService.extractSiteContent(page))?.language;
       const renders = [{ suffix: '', modernize: undefined }, ...(choice ? [{ suffix: '.modern', modernize: choice.design }] : [])];
       for (const render of renders) {
         const parsed = RebuildPlanSchema.safeParse(

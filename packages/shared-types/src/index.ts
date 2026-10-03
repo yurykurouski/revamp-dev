@@ -253,8 +253,17 @@ export interface IExtractedContacts {
   socialLinks: ISocialLink[];
 }
 
+/**
+ * Where the original site's language was read from (REV-116), most specific first: `<html lang>`,
+ * `<meta http-equiv="content-language">`, or a deterministic guess from the page text (en/ru/be/pl/lt).
+ */
+export const SITE_LANGUAGE_SOURCES = ['html', 'meta', 'text'] as const;
+export type SiteLanguageSource = (typeof SITE_LANGUAGE_SOURCES)[number];
+
 export interface ISiteContent {
+  /** The original site's language tag ("pl-PL"); unset when it could not be determined (REV-25, REV-116) */
   language?: string;
+  languageSource?: SiteLanguageSource;
   title?: string;
   metaDescription?: string;
   ogImage?: string;
