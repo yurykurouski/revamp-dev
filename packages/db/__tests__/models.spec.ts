@@ -297,6 +297,19 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       });
       expect(doc.toObject().rebuild).toEqual({ coverage: 0.98, sections: 2, omitted: [], tuning: ['alt:1'] });
     });
+
+    it('keeps the rebuild edit (REV-111)', () => {
+      const rebuildEdit = { auditId: '0123456789abcdef01234567', hidden: ['s-2'], sections: { 's-1': { align: 'center' } } };
+      const doc = new MvpProject({
+        auditId: new mongoose.Types.ObjectId(),
+        leadId: new mongoose.Types.ObjectId(),
+        previewSlug: 's',
+        fullPreviewUrl: 'u',
+        storageHtmlPath: 'p',
+        rebuildEdit,
+      });
+      expect(doc.toObject().rebuildEdit).toEqual(rebuildEdit);
+    });
   });
 });
 
