@@ -155,10 +155,10 @@ The prompt (`REBUILD_EDIT_SYSTEM_PROMPT`) is written from the same constants as 
 After its last pass, `republishSavedMvp` computes the report:
 
 ```ts
-mvpCompletenessService.compare(html, mvpCompletenessService.buildSource(leadData, auditData))
+mvpCompletenessService.check(html, leadData, auditData)
 ```
 
-It saves it as `completenessReport`. `compare` is the existing code-only path (`method: 'deterministic'`) and never throws on a valid page. A failure is logged and the previous report kept, as at generation. The comment that says re-publishes do "no completeness re-check" is updated. No LLM call is made on a re-publish.
+It saves it as `completenessReport`. It uses `check`, the existing code-only path (`method: 'deterministic'`), which never throws. A comparison that fails is saved as `unverified`, which is the honest state of the published page. The comment that says re-publishes do "no completeness re-check" is updated. No LLM call is made on a re-publish.
 
 `buildSource` stays as it is. The source is the audit's extracted data, not `siteSections`, so the report measures the same thing for both renderers.
 
