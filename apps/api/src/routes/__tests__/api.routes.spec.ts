@@ -1742,12 +1742,24 @@ describe('API Routes Integration Tests (Supertest)', () => {
     const projectId = new mongoose.Types.ObjectId().toString();
     const leadId = new mongoose.Types.ObjectId().toString();
     const auditId = new mongoose.Types.ObjectId().toString();
-    const mockProject = (variant: string) =>
+    const mockProject = (variant: string, rebuildLevel?: string) =>
       vi.spyOn(MvpProject, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant, reasons: ['rule:derived'] } }),
+        exec: vi.fn().mockResolvedValue({
+          _id: projectId,
+          leadId,
+          auditId,
+          layout: { variant, reasons: ['rule:derived'], ...(rebuildLevel ? { rebuildLevel } : {}) },
+        }),
       } as any);
     const mockLead = (status: string) =>
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, status }) } as any);
+    const rebuildableAudit = {
+      siteSections: {
+        sections: [{ index: 1, role: 'hero' }],
+        skipped: [],
+        coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
+      },
+    };
     const mockAudit = (doc: unknown) =>
       vi.spyOn(Audit, 'findById').mockReturnValue({
         select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) }),
@@ -1844,6 +1856,75 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
       expect(res.status).toBe(200);
       expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
+    });
+
+    describe('rebuild level (REV-114)', () => {
+      const patch = (body: unknown) => request(app).patch(`/api/v1/mvp/${projectId}/layout`).send(body as object);
+
+      it('returns 400 VALIDATION_ERROR for a level on a layout other than original', async () => {
+        const find = vi.spyOn(MvpProject, 'findById');
+        find.mockClear();
+        const res = await patch({ variant: 'bento', level: 'modern' });
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        expect(find).not.toHaveBeenCalled();
+      });
+
+      it('returns 409 MVP_REBUILD_UNAVAILABLE for original at the modern level on an audit that cannot be rebuilt', async () => {
+        mockProject('split');
+        mockLead('NEEDS_APPROVAL');
+        mockAudit({});
+        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+        save.mockClear();
+        const res = await patch({ variant: 'original', level: 'modern' });
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('MVP_REBUILD_UNAVAILABLE');
+        expect(save).not.toHaveBeenCalled();
+        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      });
+
+      it.each([
+        ['an explicit faithful level on an MVP without one', undefined, { variant: 'original', level: 'faithful' }],
+        ['no level on an MVP without one', undefined, { variant: 'original' }],
+        ['the same modern level', 'modern', { variant: 'original', level: 'modern' }],
+        ['no level on a modern MVP', 'modern', { variant: 'original' }],
+      ])('answers 200 without writing or queueing for %s', async (_name, current, body) => {
+        mockProject('original', current);
+        mockLead('NEEDS_APPROVAL');
+        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+        save.mockClear();
+        const res = await patch(body);
+        expect(res.status).toBe(200);
+        expect(save).not.toHaveBeenCalled();
+        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      });
+
+      it('saves and queues a level change on the same original layout', async () => {
+        mockProject('original');
+        mockLead('NEEDS_APPROVAL');
+        mockAudit(rebuildableAudit);
+        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'original', reasons: [] } }),
+        } as any);
+        save.mockClear();
+        const res = await patch({ variant: 'original', level: 'modern' });
+        expect(res.status).toBe(200);
+        expect(save).toHaveBeenCalledTimes(1);
+        const layout = (save.mock.calls[0]![1] as any).$set.layout;
+        expect(layout.variant).toBe('original');
+        expect(layout.rebuildLevel).toBe('modern');
+        expect(layout.reasons).toEqual(expect.arrayContaining(['rule:manual', 'modernize:manual']));
+        expect(addMvpRelayoutJob).toHaveBeenCalledTimes(1);
+      });
+
+      it('returns 409 MVP_LAYOUT_CHANGE_NOT_ALLOWED outside review', async () => {
+        mockProject('original');
+        mockLead('SENT');
+        const res = await patch({ variant: 'original', level: 'modern' });
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('MVP_LAYOUT_CHANGE_NOT_ALLOWED');
+        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      });
     });
 
     it('still allows a switch away from the rebuild without reading the audit', async () => {
