@@ -1,0 +1,934 @@
+{
+  "url": "https://anident.pl",
+  "source": "llm",
+  "siteSections": {
+    "sections": [
+      {
+        "index": 0,
+        "role": "header",
+        "kind": "other",
+        "arrangement": "text",
+        "intro": {
+          "text": [],
+          "links": [
+            {
+              "label": "ZOBACZ OPINIE NASZYCH PACJENTÓW",
+              "href": "https://www.anident.pl/implanty-warszawa-opinie.html",
+              "kind": "link"
+            },
+            {
+              "label": "O NAS",
+              "href": "https://www.anident.pl/onas.html",
+              "kind": "link"
+            },
+            {
+              "label": "USŁUGI",
+              "href": "https://www.anident.pl/zakresuslug.html",
+              "kind": "link"
+            },
+            {
+              "label": "LEKARZE",
+              "href": "https://www.anident.pl/nasilekarze.html",
+              "kind": "link"
+            },
+            {
+              "label": "CENY",
+              "href": "https://www.anident.pl/ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "GALERIA",
+              "href": "https://www.anident.pl/galeria.html",
+              "kind": "link"
+            },
+            {
+              "label": "MEDIA",
+              "href": "https://www.anident.pl/anident-media.html",
+              "kind": "link"
+            },
+            {
+              "label": "BLOG",
+              "href": "https://www.anident.pl/porady.html",
+              "kind": "link"
+            },
+            {
+              "label": "DOJAZD",
+              "href": "https://www.anident.pl/jakdojechac.html",
+              "kind": "link"
+            },
+            {
+              "label": "KONTAKT",
+              "href": "https://www.anident.pl/kontakt.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [
+          {
+            "type": "text",
+            "text": [
+              "KLINIKA STOMATOLOGICZNA",
+              "ANIDENT Warszawa Ursynów",
+              "ul. Belgradzka 12",
+              "tel. 507 300 900, tel. 22 436 61 23",
+              "UMÓW WIZYTĘ - TEL. 507 300 900"
+            ]
+          }
+        ],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xfoto2.jpg.pagespeed.ic.sH55I0C1YK.webp",
+            "alt": "Klinika Stomatologiczna ANIDENT - Implanty, Protetyka, Chirurgia",
+            "width": 224,
+            "height": 179
+          },
+          {
+            "src": "https://www.anident.pl/images/xlogo.jpg.pagespeed.ic.IWKGY972mu.webp",
+            "alt": "Klinika Stomatologiczna ANIDENT Warszawa - Implanty, Protetyka, Ortodoncja",
+            "width": 367,
+            "height": 179
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#4c5c60",
+          "align": "left",
+          "paddingY": 0,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 1,
+        "role": "hero",
+        "kind": "other",
+        "arrangement": "text",
+        "intro": {
+          "heading": "DENTYSTA WARSZAWA URSYNÓW",
+          "headingLevel": 1,
+          "text": [],
+          "links": [
+            {
+              "label": "implanty",
+              "href": "https://www.anident.pl/implanty.html",
+              "kind": "link"
+            },
+            {
+              "label": "wybielanie zębów",
+              "href": "https://www.anident.pl/wybielanie-zebow.html",
+              "kind": "link"
+            },
+            {
+              "label": "pantomogram",
+              "href": "https://www.anident.pl/pantomogram.html",
+              "kind": "link"
+            },
+            {
+              "label": "protetyka",
+              "href": "https://www.anident.pl/protetyka.html",
+              "kind": "link"
+            },
+            {
+              "label": "usuwanie ósemek",
+              "href": "https://www.anident.pl/usuwanie-osemek.html",
+              "kind": "link"
+            },
+            {
+              "label": "licówki",
+              "href": "https://www.anident.pl/protetyka-licowki.html",
+              "kind": "link"
+            },
+            {
+              "label": "ortodoncja",
+              "href": "https://www.anident.pl/ortodoncja.html",
+              "kind": "link"
+            },
+            {
+              "label": "leczenie kanałowe",
+              "href": "https://www.anident.pl/leczenie-kanalowe.html",
+              "kind": "link"
+            },
+            {
+              "label": "mikroskop",
+              "href": "https://www.anident.pl/leczenie-kanalowe-pod-mikroskopem.html",
+              "kind": "link"
+            },
+            {
+              "label": "porcelanowe licówki bez szlifowania zębów",
+              "href": "https://www.anident.pl/licowki-bez-szlifowania.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 5,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 2,
+        "role": "content",
+        "kind": "about",
+        "arrangement": "media-beside-text",
+        "mediaSide": "right",
+        "intro": {
+          "eyebrow": "WITAMY NA STRONIE",
+          "heading": "KLINIKI STOMATOLOGICZNEJ ANIDENT WARSZAWA URSYNÓW",
+          "headingLevel": 2,
+          "text": [],
+          "links": []
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xanident-klinika-stomatologiczna-warszawa.jpg.pagespeed.ic.yNpcOzSGnX.webp",
+            "alt": "ANIDENT Klinika Stomatologiczna Warszawa Ursynów",
+            "width": 352,
+            "height": 235
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 13,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 3,
+        "role": "content",
+        "kind": "about",
+        "arrangement": "media-beside-text",
+        "mediaSide": "left",
+        "intro": {
+          "heading": "KIM JESTEŚMY?",
+          "headingLevel": 2,
+          "text": [
+            "Klinika Stomatologiczna ANIDENT to rodzinna firma, która powstała w latach siedemdziesiątych ubiegłego wieku i jest prowadzona już przez drugie pokolenie lekarzy dentystów. W Warszawie na Ursynowie jesteśmy obecni od 2004 roku . Klinika Stomatologiczna ANIDENT w Warszawie to cztery nowocześnie wyposażone gabinety stomatologiczne, mikroskop endodontyczny oraz pracownia RTG pantomograficznego, cefalometrycznego i stomatologicznej tomografii komputerowej wiązki stożkowej CBCT.",
+            "Zobacz również: - więcej informacji o Klinice Stomatologicznej ANIDENT - galerię zdjęć Kliniki Stomatologicznej ANIDENT - jak do nas dojechać - nasze atuty"
+          ],
+          "links": [
+            {
+              "label": "więcej informacji o Klinice Stomatologicznej ANIDENT",
+              "href": "https://www.anident.pl/onas.html",
+              "kind": "link"
+            },
+            {
+              "label": "galerię zdjęć Kliniki Stomatologicznej ANIDENT",
+              "href": "https://www.anident.pl/galeria.html",
+              "kind": "link"
+            },
+            {
+              "label": "jak do nas dojechać",
+              "href": "https://www.anident.pl/jakdojechac.html",
+              "kind": "link"
+            },
+            {
+              "label": "nasze atuty",
+              "href": "https://www.anident.pl/atuty-kliniki-stomatologicznej.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xgabinet-stomatologiczny-anident.jpg.pagespeed.ic.rvMtgEga07.webp",
+            "alt": "Gabinet Stomatologiczny ANIDENT Warszawa Ursynów",
+            "width": 115,
+            "height": 157
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 13,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 4,
+        "role": "content",
+        "kind": "services",
+        "arrangement": "media-beside-text",
+        "mediaSide": "left",
+        "intro": {
+          "heading": "CO ROBIMY?",
+          "headingLevel": 2,
+          "text": [
+            "Oferujemy pełny zakres leczenia stomatologicznego w nowoczesnym, nawyższej jakości wydaniu. W 2026 roku nasz zespół stanowi 14 lekarzy stomatologów różnych specjalności oferujących kompleksowe leczenie stomatologiczne każdego rodzaju, począwszy od standardowych zabiegów profilaktycznych i leczenia próchnicy zębów, poprzez chirurgię stomatologiczną, protetykę i ortodoncję, stomatologię estetyczną (w tym porcelanowe licówki bez szlifowania) a skończywszy na implantach i zaawansowanych zabiegach augmentacji kości.",
+            "Zobacz również: - lekarze stomatolodzy Kliniki ANIDENT - oferowane przez nas usługi - pełny cennik usług stomatologicznych - opinie pacjentów o leczeniu w Klinice ANIDENT"
+          ],
+          "links": [
+            {
+              "label": "lekarze stomatolodzy Kliniki ANIDENT",
+              "href": "https://www.anident.pl/nasilekarze.html",
+              "kind": "link"
+            },
+            {
+              "label": "oferowane przez nas usługi",
+              "href": "https://www.anident.pl/zakresuslug.html",
+              "kind": "link"
+            },
+            {
+              "label": "pełny cennik usług stomatologicznych",
+              "href": "https://www.anident.pl/ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "opinie pacjentów o leczeniu w Klinice ANIDENT",
+              "href": "https://www.anident.pl/implanty-warszawa-opinie.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xanident-gabinet-stomatologiczny-warszawa.jpg.pagespeed.ic.GKidS7WC83.webp",
+            "alt": "ANIDENT gabinet stomatologiczny Warszawa Ursynów Wilanów Kabaty",
+            "width": 352,
+            "height": 235
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 17,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 5,
+        "role": "content",
+        "kind": "services",
+        "arrangement": "media-beside-text",
+        "mediaSide": "right",
+        "intro": {
+          "eyebrow": "NASZA SPECJALNOŚĆ",
+          "heading": "IMPLANTY WARSZAWA",
+          "headingLevel": 2,
+          "text": [
+            "IMPLANTY",
+            "Naszą specjalnością są implanty stomatologiczne, które od ponad 20 lat wszczepia w Klinice Stomatologicznej ANIDENT w Warszawie dr hab. n. med. Kornel Krasny , prezes Ogólnopolskiego Stowarzyszenia Chirurgii Stomatologicznej i Implantologii (OSIS), wieloletni wykładowca akademicki Warszawskiego Uniwersytetu Medycznego i biegły sądowy z zakresu chirurgii stomatologicznej i implantologii. W ciągu ponad 20 lat w Klinice Stomatologicznej ANIDENT w Warszawie wszczepiliśmy tysiące implantów przywracając komfort i radość życia tysiącom pacjentów. Ponadto pacjentom, u których zaniki kostne uniemożliwiają wszczepienie implantów, oferujemy zaawansowane zabiegi regeneracji kości, które również przeprowadza dr hab. n. med. Kornel Krasny.",
+            "Zobacz również: - dlaczego warto wykonać implanty w Klinice ANIDENT - szczegółowy cennik implantów - wyceny różnorodnych rozwiązań implantologicznych"
+          ],
+          "links": [
+            {
+              "label": "dlaczego warto wykonać implanty w Klinice ANIDENT",
+              "href": "https://www.anident.pl/implanty-anident.html",
+              "kind": "link"
+            },
+            {
+              "label": "szczegółowy cennik implantów",
+              "href": "https://www.anident.pl/implanty-ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "wyceny różnorodnych rozwiązań implantologicznych",
+              "href": "https://www.anident.pl/protetyka-implanty.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xanident-implanty-warszawa.jpg.pagespeed.ic.W4PhlwYW8S.webp",
+            "alt": "ANIDENT Implanty Warszawa",
+            "width": 352,
+            "height": 235
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#0b17b7",
+          "align": "center",
+          "paddingY": 25,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 6,
+        "role": "content",
+        "kind": "services",
+        "arrangement": "media-beside-text",
+        "mediaSide": "left",
+        "intro": {
+          "eyebrow": "NASZA SPECJALNOŚĆ",
+          "heading": "LICÓWKI WARSZAWA",
+          "headingLevel": 2,
+          "text": [
+            "LICÓWKI BEZ SZLIFOWANIA",
+            "Naszą specjalnością są również całkowicie bezinwazyjne porcelanowe licówki bez szlifowania zębów , pozwalające na uzyskanie doskonałego efektu estestycznego i terapeutycznego bez konieczności nieodwracalnego opiłowywania zębów. Zespół Kliniki Stomatologicznej ANIDENT w Warszawie ma bogate kilkunastoletnie doświadczenie w wykonywaniu porcelanowych licówek bez szlifowania. W tym czasie wykonaliśmy tysiące porcelanowych licówek, z tego znakomita większość to licówki bez szlifowania, dzięki czemu setkom pacjentów pozwoliliśmy spełnić marzenie o pięknym, naturalnie wyglądającym, śnieżnobiałym uśmiechu.",
+            "Zobacz również: - dlaczego warto wykonać licówki w Klinice ANIDENT - zdjęcia wykonanych przez nas licówek przed i po - cennik licówek porcelanowych - opinie pacjentów o licówkach wykonanych w Klinice ANIDENT"
+          ],
+          "links": [
+            {
+              "label": "dlaczego warto wykonać licówki w Klinice ANIDENT",
+              "href": "https://www.anident.pl/licowki-warszawa.html",
+              "kind": "link"
+            },
+            {
+              "label": "zdjęcia wykonanych przez nas licówek przed i po",
+              "href": "https://www.anident.pl/licowki-zdjecia-przed-i-po.html",
+              "kind": "link"
+            },
+            {
+              "label": "cennik licówek porcelanowych",
+              "href": "https://www.anident.pl/licowki-ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "opinie pacjentów o licówkach wykonanych w Klinice ANIDENT",
+              "href": "https://www.anident.pl/licowki-warszawa-opinie.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xanident-licowki-bez-szlifowania.jpg.pagespeed.ic.54mGHqj_0O.webp",
+            "alt": "licówki bez szlifowania Warszawa",
+            "width": 352,
+            "height": 352
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#0b17b7",
+          "align": "center",
+          "paddingY": 25,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 7,
+        "role": "content",
+        "kind": "contact",
+        "arrangement": "text",
+        "intro": {
+          "heading": "STOMATOLOG URSYNÓW WILANÓW KABATY",
+          "headingLevel": 2,
+          "text": [],
+          "links": []
+        },
+        "items": [],
+        "extra": [],
+        "images": [],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#0b17b7",
+          "align": "center",
+          "paddingY": 21,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 8,
+        "role": "content",
+        "kind": "contact",
+        "arrangement": "media-beside-text",
+        "mediaSide": "right",
+        "intro": {
+          "heading": "JAK UMÓWIĆ WIZYTĘ?",
+          "headingLevel": 2,
+          "text": [
+            "Aby umówić wizytę w Klinice Stomatologicznej ANIDENT w Warszawie najlepiej skontaktować się telefonicznie z naszą recepcją pod numerami:",
+            "tel. 507 300 900",
+            "tel. 22 436 61 23",
+            "tel. 22 436 61 22",
+            "Pracujemy od poniedziałku do piątku w godzinach od 8:00 do 21:00 i w soboty od 8:00 do 14:00.",
+            "Można też napisać do nas maila na poczta@anident.pl",
+            "Zobacz również: - szczegółowe dane kontaktowe"
+          ],
+          "links": [
+            {
+              "label": "szczegółowe dane kontaktowe",
+              "href": "https://www.anident.pl/kontakt.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xanident-stomatolog-warszawa-ursynow.jpg.pagespeed.ic.R9MQB8FCQz.webp",
+            "alt": "ANIDENT stomatolog Warszawa Ursynów Wilanów Kabaty",
+            "width": 352,
+            "height": 235
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 13,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 9,
+        "role": "content",
+        "kind": "map",
+        "arrangement": "media-beside-text",
+        "mediaSide": "left",
+        "intro": {
+          "heading": "GDZIE NAS ZNALEŹĆ?",
+          "headingLevel": 2,
+          "text": [
+            "Klinika Stomatologiczna ANIDENT znajduje się w Warszawie na Ursynowie, ul. Belgradzka 12 w podwórku osiedla, w niedalekiej odległości od stacji metro Natolin (linia metra M1). Oprócz metra łatwo do nas dojechać Południową Obwodnicą Warszawy - jadąc obwodnicą zarówno od wschodu jak i od zachodu należy zjechać na węźle tuż przed wjazdem do tunelu S2 pod Ursynowem. Z tego też względu łatwo dotrzeć do nas z dowolnego punktu Warszawy, a szczególnie szybko i łatwo mogą do nas dojechać mieszkańcy Wilanowa korzystając z nowej trasy łączącej Wilanów i Ursynów przy tunelu S2 (ul. Branickiego). Znajdujemy się też w bezpośrednim sąsiedztwie warszawskich Kabat, skąd łatwo do nas przyjść nawet spacerem.",
+            "Zobacz również: - szczegółowe wskazówki dojazdu"
+          ],
+          "links": [
+            {
+              "label": "szczegółowe wskazówki dojazdu",
+              "href": "https://www.anident.pl/jakdojechac.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xanident-dentysta-warszawa-ursynow.jpg.pagespeed.ic.gHqd7zJmmR.webp",
+            "alt": "ANIDENT Dentysta Warszawa Ursynów Wilanów Kabaty",
+            "width": 352,
+            "height": 235
+          }
+        ],
+        "embeds": [
+          {
+            "kind": "map",
+            "src": "https://www.google.com/maps/embed?pb=%211m18%211m12%211m3%211d2448.6219774771007%212d21.059190716105924%213d52.141197579744244%212m3%211f0%212f0%213f0%213m2%211i1024%212i768%214f13.1%213m3%211m2%211s0x47192d779741008f%3A0x162fdbecbda53d68%212sANIDENT%215e0%213m2%211spl%212spl%214v1619609677513%215m2%211spl%212spl"
+          }
+        ],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 9,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 10,
+        "role": "content",
+        "kind": "features",
+        "arrangement": "text",
+        "intro": {
+          "heading": "DLACZEGO WARTO WYBRAĆ KLINIKĘ STOMATOLOGICZNĄ ANIDENT?",
+          "headingLevel": 2,
+          "text": [
+            "Ze względu na szereg naszych atutów:",
+            "najwyższa jakość usług",
+            "wykwalifikowani lekarze stomatolodzy",
+            "nowoczesny sprzęt stomatologiczny",
+            "pantomogram wykonywany na miejscu",
+            "nowoczesny stożkowy tomograf komputerowy (CBCT) Carestream CS 8100 SC 3D - pełna diagnostyka na miejscu",
+            "najwyższej jakości materiały stomatologiczne",
+            "implanty renomowanych światowych systemów implantologicznych iRES (implanty hybrydowe), MEGAGEN oraz Zimmer",
+            "autoryzowana klinika stomatologiczna systemu implantów MEGAGEN",
+            "autoryzowana klinika stomatologiczna systemu implantów Zimmer",
+            "autoryzowana klinika stomatologiczna systemu implantów hybrydowych iRES",
+            "nowoczesne i doświadczone laboratorium protetyczne",
+            "wykonujemy - zarówno na zębach własnych jak i na implantach - superestetyczne cyrkonowe korony pełnoceramiczne",
+            "stomatologia estetyczna według światowych standardów",
+            "unikatowe, wyjątkowo estetyczne, trwałe i bezinwazyjne porcelanowe licówki bez szlifowania zębów.",
+            "specjalistyczne leczenie kanałowe pod mikroskopem endodontycznym Carl Zeiss.",
+            "atrakcyjne ceny oraz dodatkowo okresowe rabaty na wszystkie lub wybrane zabiegi",
+            "program animacyjny dla naszych najmłodszych pacjentów",
+            "dogodna lokalizacja kliniki - Warszawa Ursynów. Łatwy dojazd samochodem i komunikacją miejską - metro M1 Natolin.",
+            "możliwość bezpłatnego zaparkowania samochodu w bezpośrednim sąsiedztwie kliniki stomatologicznej",
+            "dogodne godziny otwarcia (pracujemy również wieczorami i w soboty)",
+            "obsługa w języku angielskim i niemieckim",
+            "jesteśmy uczciwi i działamy legalnie, dlatego każda płatność jest dokumentowana paragonem fiskalnym lub na życzenie imiennym rachunkiem",
+            "paragon lub rachunek to jednocześnie gwarancja na wykonane usługi stomatologiczne",
+            "akceptujemy płatności kartami płatniczymi oraz dogodny system płatności ratalnych MEDIRATY",
+            "Klinika Stomatologiczna ANIDENT Warszawa Ursynów zapewnia swoim pacjentom kompleksowe leczenie. Nasi specjaliści zajmą się Twoim uśmiechem od początku do końca. Oferujemy pełny zakres usług stomatologicznych (m. in. implanty , ortodoncja , protetyka ( korony protetyczne , mosty protetyczne , licówki , w tym porcelanowe licówki bez szlifowania zębów, chirurgia stomatologiczna , leczenie kanałowe , stomatologia estetyczna, wybielanie zębów , biżuteria nazębna , stomatologia zachowawcza, stomatologia dziecięca)."
+          ],
+          "links": [
+            {
+              "label": "pantomogram",
+              "href": "https://www.anident.pl/pantomogram.html",
+              "kind": "link"
+            },
+            {
+              "label": "systemów implantologicznych iRES (implanty hybrydowe), MEGAGEN oraz Zimmer",
+              "href": "https://www.anident.pl/systemy-implantow.html",
+              "kind": "link"
+            },
+            {
+              "label": "implantów MEGAGEN",
+              "href": "https://www.anident.pl/systemy-implantow.html#3i",
+              "kind": "link"
+            },
+            {
+              "label": "implantów Zimmer",
+              "href": "https://www.anident.pl/systemy-implantow.html#zimmer",
+              "kind": "link"
+            },
+            {
+              "label": "implantów hybrydowych iRES",
+              "href": "https://www.anident.pl/systemy-implantow.html#ires",
+              "kind": "link"
+            },
+            {
+              "label": "cyrkonowe korony pełnoceramiczne",
+              "href": "https://www.anident.pl/korony-pelnoceramiczne-lava.html",
+              "kind": "link"
+            },
+            {
+              "label": "porcelanowe licówki bez szlifowania zębów",
+              "href": "https://www.anident.pl/licowki-bez-szlifowania.html",
+              "kind": "link"
+            },
+            {
+              "label": "leczenie kanałowe pod mikroskopem",
+              "href": "https://www.anident.pl/leczenie-kanalowe-ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "atrakcyjne ceny",
+              "href": "https://www.anident.pl/ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "rabaty",
+              "href": "https://www.anident.pl/ceny.html",
+              "kind": "link"
+            },
+            {
+              "label": "implanty",
+              "href": "https://www.anident.pl/implanty.html",
+              "kind": "link"
+            },
+            {
+              "label": "ortodoncja",
+              "href": "https://www.anident.pl/ortodoncja.html",
+              "kind": "link"
+            },
+            {
+              "label": "protetyka",
+              "href": "https://www.anident.pl/protetyka.html",
+              "kind": "link"
+            },
+            {
+              "label": "korony protetyczne",
+              "href": "https://www.anident.pl/protetyka-korony.html",
+              "kind": "link"
+            },
+            {
+              "label": "mosty protetyczne",
+              "href": "https://www.anident.pl/protetyka-mosty.html",
+              "kind": "link"
+            },
+            {
+              "label": "licówki",
+              "href": "https://www.anident.pl/protetyka-licowki.html",
+              "kind": "link"
+            },
+            {
+              "label": "chirurgia stomatologiczna",
+              "href": "https://www.anident.pl/chirurgia-stomatologiczna.html",
+              "kind": "link"
+            },
+            {
+              "label": "leczenie kanałowe",
+              "href": "https://www.anident.pl/leczenie-kanalowe.html",
+              "kind": "link"
+            },
+            {
+              "label": "wybielanie zębów",
+              "href": "https://www.anident.pl/wybielanie-zebow.html",
+              "kind": "link"
+            },
+            {
+              "label": "biżuteria nazębna",
+              "href": "https://www.anident.pl/bizuteria-nazebna.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xdvd1m.jpg.pagespeed.ic.Jqs4iCXd3G.webp",
+            "alt": "Stomatologia",
+            "width": 242,
+            "height": 182
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 14,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 11,
+        "role": "content",
+        "kind": "about",
+        "arrangement": "media-beside-text",
+        "mediaSide": "left",
+        "intro": {
+          "heading": "ANIDENT - WSZYSTKO Z UŚMIECHEM!",
+          "headingLevel": 2,
+          "text": [
+            "Jest naszą ambicją żeby strona Kliniki Stomatologicznej ANIDENT Warszawa Ursynów stanowiła istotne źródło informacji dotyczących szeroko pojętej stomatologii. Zależy nam na tym, aby przede wszystkim nasi pacjenci, ale nie tylko, znaleźli tutaj wiedzę dotyczącą szczegółowych procedur leczenia stomatologicznego, zarówno podstawowego - stomatologia zachowawcza, profilaktyka - jak i bardziej zaawansowanego - protetyka, chirurgia, ortodoncja oraz implanty. Dlatego dołożymy wszelkich starań, aby strona ta zawierała rzetelne i cenne dla pacjentów informacje na temat zdrowia jamy ustnej oraz najpowszechniejszych procedur leczenia stomatologicznego. Już dzisiaj możemy zaproponować lekturę stron obszernie opisujących zabiegi takie jak wybielanie zębów , lakowanie zębów , licówki , biżuteria nazębna , protetyka , ortodoncja , chirurgia stomatologiczna , leczenie kanałowe oraz implanty . Sukcesywnie rozbudowujemy stronę o nowe działy. Jeśli jednak znalezione tutaj informacje nie usatysfakcjonowały Cię, serdecznie zapraszamy do odwiedzenia Kliniki Stomatologicznej ANIDENT w Warszawie na Ursynowie. Z przyjemnością udzielimy Ci indywidualnej porady.",
+            "do góry"
+          ],
+          "links": [
+            {
+              "label": "wybielanie zębów",
+              "href": "https://www.anident.pl/wybielanie-zebow.html",
+              "kind": "link"
+            },
+            {
+              "label": "lakowanie zębów",
+              "href": "https://www.anident.pl/lakowanie-zebow.html",
+              "kind": "link"
+            },
+            {
+              "label": "licówki",
+              "href": "https://www.anident.pl/protetyka-licowki.html",
+              "kind": "link"
+            },
+            {
+              "label": "biżuteria nazębna",
+              "href": "https://www.anident.pl/bizuteria-nazebna.html",
+              "kind": "link"
+            },
+            {
+              "label": "protetyka",
+              "href": "https://www.anident.pl/protetyka.html",
+              "kind": "link"
+            },
+            {
+              "label": "ortodoncja",
+              "href": "https://www.anident.pl/ortodoncja.html",
+              "kind": "link"
+            },
+            {
+              "label": "chirurgia stomatologiczna",
+              "href": "https://www.anident.pl/chirurgia-stomatologiczna.html",
+              "kind": "link"
+            },
+            {
+              "label": "leczenie kanałowe",
+              "href": "https://www.anident.pl/leczenie-kanalowe.html",
+              "kind": "link"
+            },
+            {
+              "label": "implanty",
+              "href": "https://www.anident.pl/implanty.html",
+              "kind": "link"
+            }
+          ]
+        },
+        "items": [],
+        "extra": [],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xsmile.jpg.pagespeed.ic.mLkKrXrrrQ.webp",
+            "alt": "Stomatologia Stomatolog",
+            "width": 182,
+            "height": 161
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "center",
+          "paddingY": 9,
+          "fullBleed": false
+        }
+      },
+      {
+        "index": 12,
+        "role": "footer",
+        "kind": "other",
+        "arrangement": "text",
+        "intro": {
+          "text": [],
+          "links": []
+        },
+        "items": [],
+        "extra": [
+          {
+            "type": "text",
+            "text": [
+              "ANIDENT",
+              "KLINIKA STOMATOLOGICZNA",
+              "Warszawa Ursynów",
+              "ul. Belgradzka 12",
+              "metro Natolin",
+              "tel. 507 300 900",
+              "22 436 61 23",
+              "22 436 61 22",
+              "Klinika jest czynna",
+              "od poniedziałku",
+              "do piątku",
+              "w godzinach",
+              "8 00 - 21 00",
+              "w soboty",
+              "8 00 - 14 00",
+              "ZAPRASZAMY",
+              "© 2004-2026 ANIDENT Dentysta Warszawa Ursynów",
+              "Ostatnia aktualizacja strony: 31 sierpnia 2026"
+            ]
+          }
+        ],
+        "images": [
+          {
+            "src": "https://www.anident.pl/images/xlogosmall.jpg.pagespeed.ic.kQyB3beRLB.webp",
+            "width": 120,
+            "height": 45
+          },
+          {
+            "src": "https://www.anident.pl/xcorner3.jpg.pagespeed.ic.O4DhApmnwQ.webp",
+            "width": 250,
+            "height": 187
+          }
+        ],
+        "embeds": [],
+        "style": {
+          "background": "#ede4b9",
+          "textColor": "#000000",
+          "align": "left",
+          "paddingY": 0,
+          "fullBleed": false
+        }
+      }
+    ],
+    "typography": {
+      "heading": {
+        "family": "helvetica",
+        "size": 24,
+        "weight": 700,
+        "uppercase": false,
+        "color": "#0b17b7"
+      },
+      "body": {
+        "family": "Times",
+        "size": 16,
+        "weight": 400,
+        "color": "#000000"
+      }
+    },
+    "skipped": [],
+    "coverage": {
+      "pageChars": 8605,
+      "capturedChars": 8576,
+      "ratio": 0.997,
+      "uncaptured": []
+    },
+    "source": "llm"
+  },
+  "answer": {
+    "sections": {
+      "s-1": {
+        "background": "tinted",
+        "align": "left",
+        "density": "airy"
+      },
+      "s-2": {
+        "background": "page",
+        "align": "left"
+      },
+      "s-3": {
+        "background": "tinted",
+        "align": "left",
+        "mediaSide": "right",
+        "media": "natural"
+      },
+      "s-4": {
+        "background": "page",
+        "align": "left",
+        "mediaSide": "left",
+        "media": "fill"
+      },
+      "s-5": {
+        "background": "tinted",
+        "align": "left",
+        "mediaSide": "right",
+        "media": "fill"
+      },
+      "s-6": {
+        "background": "page",
+        "align": "left",
+        "mediaSide": "left",
+        "media": "fill"
+      },
+      "s-7": {
+        "background": "brand",
+        "align": "center",
+        "density": "airy"
+      },
+      "s-8": {
+        "background": "page",
+        "align": "left",
+        "mediaSide": "right",
+        "media": "fill"
+      },
+      "s-9": {
+        "background": "tinted",
+        "align": "left",
+        "mediaSide": "left",
+        "media": "fill"
+      },
+      "s-10": {
+        "background": "page",
+        "align": "left",
+        "arrangement": "card-grid"
+      },
+      "s-11": {
+        "background": "tinted",
+        "align": "left",
+        "mediaSide": "right",
+        "media": "natural"
+      }
+    },
+    "hero": {
+      "photo": "s-2.m0",
+      "style": "split"
+    },
+    "theme": {
+      "font": "humanist",
+      "density": "comfortable",
+      "corners": "soft",
+      "typeScale": "modern"
+    }
+  }
+}
