@@ -674,6 +674,8 @@ export interface IMvpProject {
   design?: IMvpDesign;
   /** What the rebuild left out and fixed (REV-110); absent when the page was rendered by the Bento template */
   rebuild?: IMvpRebuildSummary;
+  /** The operator's change to the rebuilt page (REV-111), applied by the rebuild on every render */
+  rebuildEdit?: IRebuildEdit;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -1337,7 +1339,7 @@ export const REBUILD_FALLBACK_REASONS = [
 ] as const;
 export type RebuildFallbackReason = (typeof REBUILD_FALLBACK_REASONS)[number];
 
-export const REBUILD_OMISSIONS = ['section', 'nav_link', 'link', 'embed', 'image'] as const;
+export const REBUILD_OMISSIONS = ['section', 'nav_link', 'link', 'embed', 'image', 'text', 'item'] as const;
 export type RebuildOmission = (typeof REBUILD_OMISSIONS)[number];
 
 /** What the rebuild kept out and which fixes it applied (REV-110) */
@@ -1349,6 +1351,45 @@ export interface IMvpRebuildSummary {
   omitted: { what: RebuildOmission; reason: string; sample?: string }[];
   /** Fix codes, e.g. `contrast:3`, `overlay:1`, `alt:12`, `font:body-16`, `collapse:11`, `h1:hidden` */
   tuning: string[];
+}
+
+// The rebuild edit (REV-111): the operator's change to a rebuilt MVP, by the reader's ids and fixed values only
+
+/** A section's background: the one read from the original, the page's, a tint of the primary, the primary, or dark */
+export const REBUILD_EDIT_BACKGROUNDS = ['original', 'page', 'tinted', 'brand', 'dark'] as const;
+export type RebuildEditBackground = (typeof REBUILD_EDIT_BACKGROUNDS)[number];
+export const REBUILD_EDIT_ALIGNS = ['left', 'center'] as const;
+export const REBUILD_EDIT_HEADING_CASES = ['none', 'uppercase'] as const;
+
+export interface IRebuildSectionEdit {
+  background?: RebuildEditBackground;
+  align?: (typeof REBUILD_EDIT_ALIGNS)[number];
+  /** The section's vertical padding */
+  density?: (typeof MVP_DESIGN_DENSITIES)[number];
+}
+
+/** What the model may answer: no free text but CSS that passes the sanitizer */
+export interface IRebuildEditAnswer {
+  /** Section ids (`s-<index>`) in page order; unlisted sections follow in the original order */
+  order?: string[];
+  /** Section ids left out */
+  hidden?: string[];
+  /** Piece ids left out of their section: `s-<i>.t<n>` intro paragraph, `s-<i>.i<n>` item, `s-<i>.x<n>` extra block */
+  dropped?: string[];
+  sections?: Record<string, IRebuildSectionEdit>;
+  theme?: {
+    font?: (typeof MVP_DESIGN_FONTS)[number];
+    density?: (typeof MVP_DESIGN_DENSITIES)[number];
+    corners?: (typeof MVP_DESIGN_CORNERS)[number];
+    headingCase?: (typeof REBUILD_EDIT_HEADING_CASES)[number];
+  };
+  /** Passes the workers' sanitizer (REV-93) */
+  customCss?: string;
+}
+
+/** The saved edit, with the audit its ids were read from; an edit for another audit is not applied */
+export interface IRebuildEdit extends IRebuildEditAnswer {
+  auditId: string;
 }
 
 // The rebuild plan (REV-110): every decision of the rebuild, validated before it is rendered; never stored
@@ -1466,6 +1507,8 @@ export interface IRebuildPlan {
     social: { label: string; href: string }[];
   };
   summary: IMvpRebuildSummary;
+  /** The operator's CSS (REV-111), already through the sanitizer */
+  customCss?: string;
 }
 
 export interface IBentoTemplateData {

@@ -21,6 +21,10 @@ import {
   BENTO_LAYOUT_VARIANTS,
   MVP_LAYOUT_VARIANTS,
   REBUILD_OMISSIONS,
+  REBUILD_EDIT_ALIGNS,
+  REBUILD_EDIT_BACKGROUNDS,
+  REBUILD_EDIT_HEADING_CASES,
+  IRebuildEditAnswer,
   RebuildFallbackReason,
   ISiteLink,
   ISiteSection,
@@ -1492,4 +1496,114 @@ export const RebuildPlanSchema = z.object({
     social: z.array(z.object({ label: rebuildShort, href: rebuildHttp })).max(12),
   }),
   summary: MvpRebuildSummarySchema,
+  customCss: z.string().max(MVP_CUSTOM_CSS_MAX).optional(),
 });
+
+// The rebuild edit (REV-111): ids from the reader and fixed values; the only free text is CSS for the sanitizer
+
+export const REBUILD_EDIT_LIMITS = { dropped: 200 } as const;
+const rebuildSectionId = z.string().regex(/^s-\d{1,3}$/, 'A section id is s-<index>');
+const rebuildPieceId = z.string().regex(/^s-\d{1,3}\.[tix]\d{1,3}$/, 'A piece id is s-<index>.t|i|x<n>');
+
+export const RebuildEditAnswerSchema = z
+  .object({
+    order: z.array(rebuildSectionId).max(SITE_SECTIONS_LIMITS.sections).optional(),
+    hidden: z.array(rebuildSectionId).max(SITE_SECTIONS_LIMITS.sections).optional(),
+    dropped: z.array(rebuildPieceId).max(REBUILD_EDIT_LIMITS.dropped).optional(),
+    sections: z
+      .record(
+        rebuildSectionId,
+        z
+          .object({
+            background: z.enum(REBUILD_EDIT_BACKGROUNDS).optional(),
+            align: z.enum(REBUILD_EDIT_ALIGNS).optional(),
+            density: z.enum(MVP_DESIGN_DENSITIES).optional(),
+          })
+          .strict(),
+      )
+      .optional(),
+    theme: z
+      .object({
+        font: z.enum(MVP_DESIGN_FONTS).optional(),
+        density: z.enum(MVP_DESIGN_DENSITIES).optional(),
+        corners: z.enum(MVP_DESIGN_CORNERS).optional(),
+        headingCase: z.enum(REBUILD_EDIT_HEADING_CASES).optional(),
+      })
+      .strict()
+      .optional(),
+    customCss: z.string().max(MVP_CUSTOM_CSS_MAX).optional(),
+  })
+  .strict();
+
+/** The saved edit: the answer plus the audit its ids belong to (set by the worker, never by the model) */
+export const RebuildEditSchema = RebuildEditAnswerSchema.extend({ auditId: z.string().regex(/^[a-f0-9]{24}$/i) }).strict();
+
+/** How the model applies an operator's free-text change to a rebuilt MVP; null or absent keeps that part */
+export const RebuildEditOutputSchema = z.object({
+  summary: z.string().trim().min(1).max(300),
+  /** The whole new edit; an empty object drops it */
+  edit: RebuildEditAnswerSchema.nullable().optional(),
+  primaryColor: z
+    .string()
+    .regex(/^#[A-Fa-f0-9]{6}$/)
+    .nullable()
+    .optional(),
+  layout: MvpLayoutVariantSchema.nullable().optional(),
+});
+export type RebuildEditOutput = z.infer<typeof RebuildEditOutputSchema>;
+
+/** Whether an edit changes anything */
+export function hasRebuildEdit(edit: IRebuildEditAnswer | null | undefined): boolean {
+  if (!edit) return false;
+  const some = (value: object | undefined) => Boolean(value && Object.values(value).some((v) => v !== undefined));
+  return Boolean(
+    edit.order?.length ||
+      edit.hidden?.length ||
+      edit.dropped?.length ||
+      Object.values(edit.sections ?? {}).some((section) => some(section)) ||
+      some(edit.theme) ||
+      edit.customCss?.trim(),
+  );
+}
+
+/** The section the rebuild gives the page's h1: the first hero with a heading, as the planner decides */
+export const rebuildH1Section = (sections: ISiteSection[]): ISiteSection | undefined =>
+  sections.find((s) => s.role === 'hero' && Boolean(s.intro.heading?.trim()));
+
+export type RebuildEditCheck = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Checks an edit against the page it was made for (REV-111): every id names one of its hero or content
+ * sections or a piece of one, nothing is listed twice, something stays visible, and the opening section
+ * keeps its h1 and, when it opens the page, its place.
+ */
+export function checkRebuildEdit(edit: IRebuildEditAnswer, read: Pick<ISiteSections, 'sections'>): RebuildEditCheck {
+  const main = read.sections.filter((s) => s.role === 'hero' || s.role === 'content').slice(0, SITE_SECTIONS_LIMITS.sections);
+  const byId = new Map(main.map((s) => [`s-${s.index}`, s]));
+  const fail = (reason: string): RebuildEditCheck => ({ ok: false, reason });
+  const order = edit.order ?? [];
+  const hidden = edit.hidden ?? [];
+  const dropped = edit.dropped ?? [];
+
+  for (const id of [...order, ...hidden, ...Object.keys(edit.sections ?? {})]) {
+    if (!byId.has(id)) return fail(`unknown section ${id}`);
+  }
+  const repeated = (list: string[]) => list.find((id, i) => list.indexOf(id) !== i);
+  const twice = repeated(order) ?? repeated(hidden) ?? repeated(dropped);
+  if (twice) return fail(`${twice} is listed twice`);
+  for (const id of dropped) {
+    const [, sectionId, part, n] = id.match(/^(s-\d+)\.([tix])(\d+)$/) ?? [];
+    const section = sectionId ? byId.get(sectionId) : undefined;
+    if (!section) return fail(`unknown piece ${id}`);
+    const pieces = part === 't' ? section.intro.text : part === 'i' ? section.items : section.extra;
+    if (Number(n) >= pieces.length) return fail(`unknown piece ${id}`);
+  }
+  if (main.every((s) => hidden.includes(`s-${s.index}`))) return fail('every section is hidden');
+  const h1 = rebuildH1Section(main);
+  if (h1) {
+    const h1Id = `s-${h1.index}`;
+    if (hidden.includes(h1Id)) return fail(`${h1Id} holds the page's main heading and cannot be hidden`);
+    if (main[0] === h1 && order.length && order[0] !== h1Id) return fail(`${h1Id} opens the page and must stay first`);
+  }
+  return { ok: true };
+}
