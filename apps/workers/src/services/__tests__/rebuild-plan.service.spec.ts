@@ -576,6 +576,9 @@ describe('modernize (REV-114)', () => {
       expect(paragraphs).toHaveLength(26);
       // The longest carded paragraph is 135 characters: 3 columns
       expect(s9).toMatchObject({ arrangement: 'card-grid', collapsed: false, columns: 3 });
+      // Cards made from bare paragraphs get a surface of their own, rounded by the theme's corners
+      expect(s9.itemStyle).toMatchObject({ border: true });
+      expect(byId(faithful, 's-9')!.itemStyle).toBeUndefined();
       expect(s9.items).toHaveLength(25);
       expect(s9.items.every((item, n) => item.text.length === 1 && item.text[0] === paragraphs[n] && item.links.length === 0)).toBe(true);
       expect(s9.intro.text).toEqual([]);
@@ -609,6 +612,7 @@ describe('modernize (REV-114)', () => {
       const list = byId(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'list' } } } })), 's-4')!;
       expect(list).toMatchObject({ arrangement: 'list', items: s4.items, intro: { text: [long] } });
       expect(list.columns).toBeUndefined();
+      expect(list.itemStyle).toBeUndefined();
     });
 
     it('leaves a section as text when the paragraphs after the cards would push an extra block past the cap', () => {
@@ -635,8 +639,13 @@ describe('modernize (REV-114)', () => {
     const items = ['Implanty', 'Licówki', 'Wybielanie'].map((title) => ({ title, text: [], links: [] }));
     const list = section(4, { kind: 'services', arrangement: 'list', items });
     const plan = valid(planRebuild(input([hero, list], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
-    expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'card-grid', items });
+    expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'card-grid', items, itemStyle: { border: true } });
     expect(plan.summary.tuning).toContain('modernize:cards:4');
+    // Items with a style of their own keep it
+    const styled = section(4, { kind: 'services', arrangement: 'list', items, itemStyle: { background: '#f3f4f6', radius: 8 } });
+    const kept = byId(planRebuild(input([hero, styled], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })), 's-4')!;
+    expect(kept.itemStyle).toMatchObject({ background: '#f3f4f6', radius: 8 });
+    expect(kept.itemStyle?.border).toBeUndefined();
   });
 
   it('fills the media column up to twice the photo width, and moves the photo to the left', () => {

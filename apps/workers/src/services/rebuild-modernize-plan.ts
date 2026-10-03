@@ -8,6 +8,8 @@ export type EditSource = 'modernize' | 'edit';
 
 /** Cards from paragraphs: 3 columns, or 2 when the longest carded paragraph is over this */
 export const CARD_WIDE_CHARS = 160;
+/** Cards the modernize layer makes have a surface of their own when the original items had none: a thin border */
+export const CARD_SURFACE = { border: true } as const;
 
 const defined = <T extends object>(value: T | undefined): Partial<T> =>
   Object.fromEntries(Object.entries(value ?? {}).filter(([, v]) => v !== undefined)) as Partial<T>;
@@ -55,11 +57,12 @@ export function mergeRebuildEdits(
  * The section shown as cards or a list (REV-114), or the section itself when it does not fit. A `text` section's
  * run of short paragraphs (`cardRun`) becomes one item each; longer paragraphs before it stay as intro text and
  * those after it follow the cards as a text block, so the page's order is kept. A `list` becomes a card grid as is.
+ * Cards get `CARD_SURFACE` unless the original items had a style of their own; a list keeps its items' style.
  */
 export function arrangedSection(section: ISiteSection, arrangement: IRebuildSectionEdit['arrangement']): ISiteSection {
   if (!arrangement || arrangement === section.arrangement) return section;
   if (section.arrangement === 'list' && arrangement === 'card-grid') {
-    return section.items.length >= 3 ? { ...section, arrangement } : section;
+    return section.items.length >= 3 ? { ...section, arrangement, itemStyle: section.itemStyle ?? { ...CARD_SURFACE } } : section;
   }
   if (section.arrangement !== 'text') return section;
   const paragraphs = section.intro.text;
@@ -73,7 +76,7 @@ export function arrangedSection(section: ISiteSection, arrangement: IRebuildSect
   return {
     ...section,
     arrangement,
-    ...(arrangement === 'card-grid' ? { columns: longest > CARD_WIDE_CHARS ? 2 : 3 } : {}),
+    ...(arrangement === 'card-grid' ? { columns: longest > CARD_WIDE_CHARS ? 2 : 3, itemStyle: section.itemStyle ?? { ...CARD_SURFACE } } : {}),
     intro: { ...section.intro, text: paragraphs.slice(0, run.start) },
     items: [...carded.map((p) => ({ text: [p], links: [] })), ...section.items],
     extra: [...(after.length ? [{ type: 'text' as const, text: after }] : []), ...section.extra],
