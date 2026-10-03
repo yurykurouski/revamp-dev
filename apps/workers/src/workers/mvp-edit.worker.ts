@@ -121,7 +121,7 @@ export async function processMvpEditJob(
     // An edit for another audit run names other sections, so it is not offered as the current one
     const currentEdit = editForAudit(project.rebuildEdit, { _id: auditKey });
     // A Modernized page (REV-114) has the modern look under the edit; the model is told so it keeps it
-    const modernize = project.layout?.rebuildLevel === 'modern' ? modernizeForAudit(project.modernize, audit)?.design : undefined;
+    const modernize = project.layout?.rebuildLevel === 'modern' ? modernizeForAudit(project.modernize, { _id: auditKey, siteSections: audit.siteSections })?.design : undefined;
     const plan = await rebuildService.interpret({
       instruction: data.instruction,
       siteSections: audit.siteSections,
