@@ -40,6 +40,28 @@ export const MVP_CSS_HOOKS = [
   '.site-footer',
 ] as const;
 
+/** The rebuilt page's hooks and classes (REV-111), named in the rebuild edit's prompt; the sanitizer's rules are the same */
+export const REBUILD_CSS_HOOKS = [
+  '[data-revamp-section="s-<index>"]',
+  '.rb-section',
+  '.rb-header',
+  '.rb-nav',
+  '.rb-nav-link',
+  '.rb-copy',
+  '.rb-eyebrow',
+  '.rb-heading',
+  '.rb-item',
+  '.rb-item-title',
+  '.rb-grid',
+  '.rb-list',
+  '.rb-gallery',
+  '.rb-media',
+  '.rb-cta',
+  '.rb-link',
+  '.rb-footer',
+  '.booking-section',
+] as const;
+
 export class UnsafeCssError extends Error {
   constructor(readonly problems: string[]) {
     super(`The custom CSS was not applied: ${problems.slice(0, 3).join('; ')}${problems.length > 3 ? '; …' : ''}`);
@@ -155,7 +177,7 @@ function checkDeclaration(decl: Declaration, rule: Rule | undefined, problems: s
       problems.push(`"${where}" makes text unreadable`);
     }
   }
-  if (prop === 'position' && (value === 'fixed' || value === 'sticky') && !selectors.every((s) => s.includes('.site-header'))) {
+  if (prop === 'position' && (value === 'fixed' || value === 'sticky') && !selectors.every((s) => s.includes('.site-header') || s.includes('.rb-header'))) {
     problems.push(`"${where}" is only allowed on the header`);
   }
   if (prop.startsWith('transform') || prop === 'scale') {

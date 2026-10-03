@@ -382,3 +382,22 @@ describe('renderRebuild (REV-110)', () => {
     }
   });
 });
+
+describe('renderRebuild with the operator edit (REV-111)', () => {
+  it('marks every section with its hook for custom CSS', () => {
+    const footer = section(9, { intro: { heading: 'Stopka', text: ['Pon-Pt'], links: [] } });
+    const html = renderRebuild(plan([section(1), section(2)], { footer: { ...plan([]).footer, section: footer } }));
+    expect(html).toContain('id="s-1" class="rb-section" data-revamp-section="s-1"');
+    expect(html).toContain('data-revamp-section="s-2"');
+    expect(html).toContain('data-revamp-section="s-9"');
+  });
+
+  it('puts the custom CSS once, after the shared rules, and nothing without it', () => {
+    const css = '.rb-cta { filter: none !important; }';
+    const html = renderRebuild(plan([section(1)], { customCss: css }));
+    expect(html.split(css)).toHaveLength(2);
+    expect(html.indexOf(css)).toBeGreaterThan(html.indexOf('.rb-section {'));
+    expect(html.indexOf(css)).toBeLessThan(html.indexOf('</style>'));
+    expect(renderRebuild(plan([section(1)]))).not.toContain("The operator's CSS");
+  });
+});
