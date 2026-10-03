@@ -416,6 +416,29 @@ describe('the rebuild level and the modern design (REV-114)', () => {
       expect(layout.reasons).not.toContain('modernize:dated');
     });
 
+    it('makes no call and stores no design for a dated site that cannot be rebuilt', async () => {
+      await runDeploy({ ...dated, siteSectionsError: 'the page did not load' });
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(modernizeWrites()).toEqual([]);
+      expect(lastUpsert()).not.toHaveProperty('modernize');
+    });
+
+    it.each(['call_failed: timeout', 'not_configured'])('asks again for a default stored after a temporary failure (%s)', async (error) => {
+      existingProject({ _id: projectId, layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId, source: 'default', design: {}, error } });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      expect(lastUpsert().modernize).toEqual({ auditId, source: 'llm', design });
+    });
+
+    it('reuses a default stored after an invalid answer without a call', async () => {
+      const stored = { auditId, source: 'default', design, error: 'invalid: s-9: unknown section' };
+      existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: stored });
+      await runDeploy(dated);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
+      expect(lastUpsert()).not.toHaveProperty('modernize');
+    });
+
     it('marks the default design on the layout and records the tokens the model used', async () => {
       vi.mocked(rebuildModernizeService.choose).mockResolvedValue({
         source: 'default',
@@ -479,6 +502,27 @@ describe('the rebuild level and the modern design (REV-114)', () => {
       savedProject({ layout: modernLayout, rebuild: summary(), modernize: { auditId, source: 'llm', design } });
       await republishSavedMvp(leadId);
       expect(editedAtWrites()).toHaveLength(1);
+    });
+
+    it('makes no call on a re-publish of a page that cannot be rebuilt', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary('faithful') });
+      const unread = { _id: auditId, siteSections: sectionsFixture, siteSectionsError: 'the page did not load', screenshotUrls: {}, toObject: () => unread };
+      vi.mocked(findGenerationAudit).mockResolvedValue(unread as any);
+      await republishSavedMvp(leadId);
+      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
+      expect(modernizeWrites()).toEqual([]);
+    });
+
+    it('asks again once per job for a default stored after a failed call', async () => {
+      const failed = { auditId, source: 'default', design, error: 'call_failed: timeout' };
+      vi.mocked(rebuildModernizeService.choose).mockResolvedValue({ source: 'default', design, error: 'call_failed: again' });
+      savedProject({ layout: modernLayout, rebuild: summary('modern'), modernize: failed });
+      // A second pass (the palette changed meanwhile) re-reads the design the first pass stored
+      const changed = { _id: projectId, leadId, auditId, previewSlug: 'falco-dent-456789', layout: modernLayout, colorPalette: { primary: '#00ff00' }, rebuild: summary('modern') };
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...changed, modernize: { ...failed, error: 'call_failed: again' } }) } as any);
+      await republishSavedMvp(leadId);
+      expect(storageService.uploadHtml).toHaveBeenCalledTimes(2);
+      expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
     });
 
     it('never calls the model twice for the same audit in one job', async () => {

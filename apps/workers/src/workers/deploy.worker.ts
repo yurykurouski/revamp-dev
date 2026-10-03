@@ -12,7 +12,7 @@ import {
   MvpLayoutVariant,
   RebuildLevel,
 } from '@revamp/shared-types';
-import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout } from '@revamp/validation';
+import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout, rebuildEligibility } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { env } from '../config/env.js';
@@ -125,20 +125,27 @@ async function recordModernizeTokens(leadId: unknown, choice: RebuildModernizeCh
   }
 }
 
+/** A default stored because the model could not be asked this time, not because it answered invalidly */
+const temporaryDefault = (stored: IRebuildModernize) =>
+  stored.source === 'default' && Boolean(stored.error && (stored.error.startsWith('call_failed') || stored.error === 'not_configured'));
+
 /**
  * The modernize design a render at this level uses (REV-114): at `modern`, the stored one when it was made for
  * this audit and still fits, else a fresh one from the model (or its default), saved with the audit id before
- * the page renders. Any other level keeps what is stored, unused. `changed` is true when a design was computed.
+ * the page renders. Any other level, or a page that cannot be rebuilt (it renders as Bento), keeps what is
+ * stored, unused. A default stored after a failed or unconfigured call is asked for again when `retryTemporary`
+ * (once per job); an `invalid:` default is reused. `changed` is true when a design was computed.
  */
 export async function resolveModernize(
   project: { _id?: unknown; modernize?: IRebuildModernize | null } | null | undefined,
   auditData: Partial<IAudit>,
   level: RebuildLevel,
+  options: { retryTemporary?: boolean } = {},
 ): Promise<{ modernize?: IRebuildModernize; changed: boolean }> {
   const stored = project?.modernize ?? undefined;
-  if (level !== 'modern' || !auditData.siteSections) return { modernize: stored, changed: false };
+  if (level !== 'modern' || !auditData.siteSections || !rebuildEligibility(auditData).ok) return { modernize: stored, changed: false };
   const valid = modernizeForAudit(stored, auditData);
-  if (valid) return { modernize: valid, changed: false };
+  if (valid && !(options.retryTemporary !== false && temporaryDefault(valid))) return { modernize: valid, changed: false };
 
   const choice = await rebuildModernizeService.choose({ siteSections: auditData.siteSections, brandColors: brandColors(auditData) });
   await recordModernizeTokens(auditData.leadId, choice);
@@ -248,7 +255,8 @@ export async function republishSavedMvp(leadId: string) {
     const requested = savedLayout(project, design.variant);
     const level: RebuildLevel = requested.variant === 'original' ? (requested.rebuildLevel ?? 'faithful') : 'faithful';
     const owned = project.modernize?.auditId === auditKey ? project.modernize : (computed ?? project.modernize);
-    const resolved = await resolveModernize({ _id: project._id, modernize: owned }, auditData, level);
+    // A design asked for by an earlier pass is not asked for again, even when it is a temporary default
+    const resolved = await resolveModernize({ _id: project._id, modernize: owned }, auditData, level, { retryTemporary: !computed });
     if (resolved.changed) computed = resolved.modernize;
     // What is stored now, so the re-read below compares against it
     design = { ...design, modernize: resolved.modernize };
