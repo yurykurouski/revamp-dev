@@ -382,6 +382,7 @@ export class BrandExtractorService {
 
     return {
       language: content?.language,
+      languageSource: content?.language ? content.languageSource : undefined,
       title: content?.title,
       metaDescription: content?.metaDescription,
       ogImage: content?.ogImage,

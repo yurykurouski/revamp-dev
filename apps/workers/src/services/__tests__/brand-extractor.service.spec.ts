@@ -283,6 +283,18 @@ describe('BrandExtractorService', () => {
       expect(result.siteContent).toMatchObject({ headings: [], paragraphs: [], serviceItems: [], testimonials: [] });
     });
 
+    it('should keep the language and where it was read from (REV-116)', () => {
+      const base: RawBrandExtractionData = { colors: [], fontFamilies: [], socialLinks: [], services: [] };
+      const content = { headings: [], paragraphs: [], serviceItems: [], navItems: [], testimonials: [], images: [] };
+
+      expect(
+        BrandExtractorService.toSiteContent({ ...content, language: 'pl', languageSource: 'text' }, base),
+      ).toMatchObject({ language: 'pl', languageSource: 'text' });
+      const unknown = BrandExtractorService.toSiteContent({ ...content, languageSource: 'text' }, base);
+      expect(unknown.language).toBeUndefined();
+      expect(unknown.languageSource).toBeUndefined();
+    });
+
     it('should bound free-text contact fields at a word boundary', () => {
       expect(BrandExtractorService.sanitizeText('  a   b  ', 10)).toBe('a b');
       expect(BrandExtractorService.sanitizeText('one two three four', 11)).toBe('one two');

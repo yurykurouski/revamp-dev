@@ -177,4 +177,94 @@ describe('extractSiteContentInPage (REV-23)', () => {
       expect(extractSiteContentInPage().structured).toBeUndefined();
     });
   });
+
+  describe('language (REV-116)', () => {
+    const page = (head: string, body: string): string => `<html><head>${head}</head><body>${body}</body></html>`;
+    // document.write leaves the attributes of the existing <html> alone, so lang is set by hand
+    const setLang = (lang: string | null): void => {
+      if (lang === null) document.documentElement.removeAttribute('lang');
+      else document.documentElement.setAttribute('lang', lang);
+    };
+    beforeEach(() => setLang(null));
+    const repeat = (text: string, times = 4): string => Array.from({ length: times }, () => `<p>${text}</p>`).join('');
+
+    const POLISH =
+      'Nasza klinika stomatologiczna w Warszawie oferuje leczenie zębów, implanty oraz licówki. Zapraszamy do gabinetu, który jest otwarty od poniedziałku do soboty dla całej rodziny.';
+    const ENGLISH =
+      'Our dental clinic in the heart of the city offers implants and veneers for the whole family. We are open from Monday to Saturday and you can book your visit with us on the phone.';
+    const RUSSIAN =
+      'Наша стоматологическая клиника в центре города предлагает лечение зубов и импланты. Мы работаем с понедельника по субботу, и вы можете записаться по телефону или на сайте.';
+    const BELARUSIAN =
+      'Наша стаматалагічная клініка ў цэнтры горада прапануе лячэнне зубоў і імпланты. Мы працуем з панядзелка па суботу, і вы можаце запісацца па тэлефоне ці на сайце.';
+    const LITHUANIAN =
+      'Mūsų odontologijos klinika miesto centre siūlo dantų gydymą ir implantus. Dirbame nuo pirmadienio iki šeštadienio, o vizitą galite užsiregistruoti telefonu arba svetainėje, kaip jums patogu.';
+
+    it('takes <html lang> first, over the meta and the text', () => {
+      loadPage(page('<meta http-equiv="Content-Language" content="de">', repeat(ENGLISH)));
+      setLang('pl_PL');
+      const content = extractSiteContentInPage();
+
+      expect(content.language).toBe('pl-PL');
+      expect(content.languageSource).toBe('html');
+    });
+
+    it('reads <meta http-equiv="content-language"> when <html lang> is missing, empty or malformed', () => {
+      for (const lang of [null, '', '{{lang}}']) {
+        document.documentElement.innerHTML = '';
+        loadPage(page('<meta http-equiv="Content-Language" content="pl, en">', repeat(ENGLISH)));
+        setLang(lang);
+        const content = extractSiteContentInPage();
+
+        expect(content.language).toBe('pl');
+        expect(content.languageSource).toBe('meta');
+      }
+    });
+
+    it.each([
+      ['pl', POLISH],
+      ['en', ENGLISH],
+      ['ru', RUSSIAN],
+      ['be', BELARUSIAN],
+      ['lt', LITHUANIAN],
+    ])('guesses %s from the page text when nothing is declared', (code, text) => {
+      loadPage(page('<meta http-equiv="Content-Type" content="text/html; charset=iso-8859-2">', repeat(text)));
+      const content = extractSiteContentInPage();
+
+      expect(content.language).toBe(code);
+      expect(content.languageSource).toBe('text');
+    });
+
+    it('ignores a cookie banner in another language when guessing', () => {
+      loadPage(page('', `<div id="cookie-notice">${repeat(ENGLISH, 6)}</div><main>${repeat(POLISH, 2)}</main>`));
+
+      expect(extractSiteContentInPage().language).toBe('pl');
+    });
+
+    it('gives no language when the text is too short', () => {
+      loadPage(page('', '<h1>Anident</h1><p>Kontakt</p>'));
+      const content = extractSiteContentInPage();
+
+      expect(content.language).toBeUndefined();
+      expect(content.languageSource).toBeUndefined();
+    });
+
+    it('gives no language when two languages are mixed evenly', () => {
+      loadPage(page('', repeat(POLISH, 2) + repeat(ENGLISH, 2)));
+
+      expect(extractSiteContentInPage().language).toBeUndefined();
+    });
+
+    it('gives no language for Ukrainian text instead of reading it as Belarusian or Russian', () => {
+      loadPage(
+        page(
+          '',
+          repeat(
+            'Наша стоматологічна клініка в центрі міста пропонує лікування зубів та імпланти. Ми працюємо з понеділка по суботу, і ви можете записатися за телефоном. Їх якість є високою, ґарантуємо.',
+          ),
+        ),
+      );
+
+      expect(extractSiteContentInPage().language).toBeUndefined();
+    });
+  });
 });
