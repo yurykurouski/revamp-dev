@@ -14,6 +14,7 @@ import { ColorPickerToolbar } from '../ColorPickerToolbar.js';
 import { MvpLayoutPicker } from '../MvpLayoutPicker.js';
 import { FloatingToolsPanel } from './FloatingToolsPanel.js';
 import { MvpEditPrompt } from './MvpEditPrompt.js';
+import { MvpRebuildLevelToggle } from './MvpRebuildLevelToggle.js';
 
 /** Used when neither the MVP nor the audit has a brand color */
 const DEFAULT_PRIMARY = '#5c5bed';
@@ -187,6 +188,15 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, locked })
             onChange={liveLayout.changeLayout}
             disabled={pickersDisabled}
             disabledReason={disabled ? t('mvpLayout.locked') : t('mvpEdit.busy')}
+          />
+        )}
+        {tools.hasMvp && rebuilt && (
+          <MvpRebuildLevelToggle
+            value={liveLayout.level}
+            onChange={liveLayout.changeLevel}
+            disabled={pickersDisabled}
+            disabledReason={disabled ? t('mvpLayout.locked') : t('mvpEdit.busy')}
+            reason={liveLayout.levelReason}
           />
         )}
         {tools.hasMvp && liveLayout.rerendering && (

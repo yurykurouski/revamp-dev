@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
 import { apiClient, ILeadItem, IEmailDraft, IMvpProjectDetail } from '../api/client.js';
 import { QuickAddLeadInput, hasRebuildEdit, mvpGenerationMode } from '@revamp/validation';
-import { ILeadStats, LeadStatus, LlmProviderId, MvpLayoutVariant } from '@revamp/shared-types';
+import { ILeadStats, LeadStatus, LlmProviderId, MvpLayoutVariant, RebuildLevel } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
 export const LEADS_QUERY_KEY = ['leads'];
@@ -141,6 +141,8 @@ export interface UpdateMvpLayoutVariables {
   mvpId: string;
   leadId: string;
   variant: MvpLayoutVariant;
+  /** The rebuild level (REV-114), with the `original` variant only */
+  level?: RebuildLevel;
 }
 
 export const UPDATE_MVP_LAYOUT_MUTATION_KEY = ['update-mvp-layout'];
@@ -150,7 +152,7 @@ export const useUpdateMvpLayoutMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationKey: UPDATE_MVP_LAYOUT_MUTATION_KEY,
-    mutationFn: ({ mvpId, variant }: UpdateMvpLayoutVariables) => apiClient.updateMvpLayout(mvpId, variant),
+    mutationFn: ({ mvpId, variant, level }: UpdateMvpLayoutVariables) => (level ? apiClient.updateMvpLayout(mvpId, variant, level) : apiClient.updateMvpLayout(mvpId, variant)),
     // One save at a time, so quick picks reach the server in the order they were made
     scope: { id: 'update-mvp-layout' },
     // The saved MVP carries the new layout, so the layout chip and the change summary follow it
