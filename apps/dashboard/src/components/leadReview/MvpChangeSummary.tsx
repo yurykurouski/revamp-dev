@@ -227,9 +227,10 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
           </Box>
           <Text muted>{t('mvpChanges.dataKept', { kept: businessData.kept, checked: businessData.checked })}</Text>
           <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-            {businessData.issues.map(({ field, status }) => (
+            {/* A field can fail more than once, even with the same status (several unsourced phones) */}
+            {businessData.issues.map(({ field, status }, idx) => (
               <Chip
-                key={field}
+                key={`${field}-${status}-${idx}`}
                 size="small"
                 color={COMPLETENESS_STATUS_COLOR[status]}
                 label={`${fieldLabel(field)}: ${t(`completeness.statuses.${status}`)}`}
