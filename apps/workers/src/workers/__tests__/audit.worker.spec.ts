@@ -324,7 +324,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         }),
         // The home page HTML was read: the dated-site verdict is stored and no stale error kept (REV-114)
         siteEra: expect.objectContaining({ dated: true, signs: expect.arrayContaining(['table_layout', 'no_viewport']) }),
-        $unset: { siteLayoutError: '', siteSectionsError: '', siteEraError: '' },
+        $unset: { siteLayoutError: '', siteSectionsError: '', siteSectionsErrorReason: '', siteEraError: '' },
         designCritique: expect.objectContaining({
           visualHierarchyRating: 70,
           mobileFriendlinessRating: 80,
@@ -464,6 +464,8 @@ describe('AuditWorker (@revamp/workers)', () => {
       // The original layout was not read either: its reason is stored instead (REV-104)
       siteLayout: '',
       siteSections: '',
+      // The page was not read, so there is no model failure to name (REV-132)
+      siteSectionsErrorReason: '',
       // No home page HTML was captured, so the verdict is unset (REV-114)
       siteEra: '',
     });
@@ -1066,6 +1068,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         desktopBuffer: Buffer.from('d'),
         siteLayout: { error: 'Layout not collected in this test' },
         siteSections: { raw: { viewportWidth: 1440, viewportHeight: 900, blocks: [], typography: {}, pageChars: 14, uncaptured: [] } },
+        homeHtml: '<html><head><meta name="viewport" content="width=device-width"></head><body><p>Gabinet</p></body></html>',
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
@@ -1111,16 +1114,41 @@ describe('AuditWorker (@revamp/workers)', () => {
       );
     });
 
-    it('stores the rules reading and records a sections measurement error when the grouping fails', async () => {
+    it('stores the model failure with its reason and no sections, never the rules reading (REV-132)', async () => {
+      for (const reason of ['not_configured', 'call_failed', 'invalid_answer', 'ineligible'] as const) {
+        vi.mocked(Audit.findOneAndUpdate).mockClear();
+        vi.mocked(readPageSections).mockResolvedValue({
+          reading: { error: `Grouping failed: ${reason}` },
+          reason,
+          measurementError: { measurement: 'sections', message: `Grouping failed: ${reason}` },
+        });
+        const completed = await runJob();
+        expect(completed).not.toHaveProperty('siteSections');
+        expect(completed.$unset).toEqual(expect.objectContaining({ siteSections: '' }));
+        expect(completed.siteSectionsError).toBe(`Grouping failed: ${reason}`);
+        expect(completed.siteSectionsErrorReason).toBe(reason);
+        expect(completed.measurementErrors).toContainEqual({ measurement: 'sections', message: `Grouping failed: ${reason}` });
+        // The grouping is not scored
+        expect(completed.scores).toEqual(expect.objectContaining({ total: expect.any(Number), design: 65 }));
+      }
+    });
+
+    it("reads the dated site's body font from the page, not from the model's sections (REV-132)", async () => {
       vi.mocked(readPageSections).mockResolvedValue({
-        reading: { sections: { ...llmReading, source: 'rules' } },
+        reading: { error: 'No vision model' },
+        reason: 'not_configured',
         measurementError: { measurement: 'sections', message: 'No vision model' },
+        typography: { heading: { family: 'Times New Roman', size: 24, weight: 700, uppercase: false }, body: { family: 'Times New Roman', size: 16, weight: 400 } },
       });
       const completed = await runJob();
-      expect((completed.siteSections as ISiteSections).source).toBe('rules');
-      expect(completed.measurementErrors).toContainEqual({ measurement: 'sections', message: 'No vision model' });
-      // The grouping is not scored
-      expect(completed.scores).toEqual(expect.objectContaining({ total: expect.any(Number), design: 65 }));
+      expect(completed.siteEra.signs).toContain('default_font');
+    });
+
+    it("clears an earlier audit's grouping failure when the model groups the page (REV-132)", async () => {
+      vi.mocked(readPageSections).mockResolvedValue({ reading: { sections: llmReading } });
+      const completed = await runJob();
+      expect(completed).not.toHaveProperty('siteSectionsErrorReason');
+      expect(completed.$unset).toEqual(expect.objectContaining({ siteSectionsError: '', siteSectionsErrorReason: '' }));
     });
 
     it('still groups the page from the outline when the screenshot cannot be cut into tiles', async () => {

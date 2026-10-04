@@ -45,29 +45,35 @@ describe('RebuildModernizeService (REV-114)', () => {
     expect(JSON.parse(runner.mock.calls[1]![0].userPrompt).previousAnswerRejected).toBe('unknown section s-99');
   });
 
-  it('falls back to the default after two invalid answers', async () => {
+  it('stores invalid_answer with no design after two invalid answers (REV-132)', async () => {
     const runner = vi.fn().mockResolvedValueOnce('not json at all').mockResolvedValueOnce(JSON.stringify({ design: { sections: { 's-99': { align: 'left' } } } }));
-    expect(await serviceWith(runner).choose(input)).toEqual({ source: 'default', design: defaultModernDesign(read), error: 'invalid: unknown section s-99' });
+    const result = await serviceWith(runner).choose(input);
+    expect(result).toEqual({ source: 'failed', error: 'invalid_answer', message: 'unknown section s-99' });
+    expect(result).not.toHaveProperty('design');
   });
 
   it('rejects a string field (strict schema)', async () => {
     const runner = vi.fn().mockResolvedValue(JSON.stringify({ design: { summary: 'Nowoczesny wygląd' } }));
     const result = await serviceWith(runner).choose(input);
-    expect(result.source).toBe('default');
-    expect(result.error).toMatch(/^invalid: /);
+    expect(result.source).toBe('failed');
+    expect(result.error).toBe('invalid_answer');
+    expect(result).not.toHaveProperty('design');
     expect(runner).toHaveBeenCalledTimes(2);
   });
 
-  it('falls back when the call throws', async () => {
+  it('stores call_failed with no design when the call throws (REV-132)', async () => {
     const runner = vi.fn().mockRejectedValue(new Error('boom'));
     const result = await serviceWith(runner).choose(input);
-    expect(result).toEqual({ source: 'default', design: defaultModernDesign(read), error: 'call_failed: boom' });
+    expect(result).toEqual({ source: 'failed', error: 'call_failed', message: 'boom' });
   });
 
-  it('falls back without calling when no provider is configured', async () => {
+  it('stores not_configured with no design and makes no call when no provider is configured (REV-132)', async () => {
     const runner = vi.fn();
     const service = new RebuildModernizeService({ provider: 'anthropic', anthropicApiKey: '', claudeCliRunner: runner });
-    expect(await service.choose(input)).toEqual({ source: 'default', design: defaultModernDesign(read), error: 'not_configured' });
+    const result = await service.choose(input);
+    expect(result.source).toBe('failed');
+    expect(result.error).toBe('not_configured');
+    expect(result).not.toHaveProperty('design');
     expect(runner).not.toHaveBeenCalled();
   });
 

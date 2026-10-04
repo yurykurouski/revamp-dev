@@ -260,13 +260,27 @@ export const en = {
       no_content: 'The original site cannot be rebuilt because no content sections were found on its page.',
       low_coverage: 'The original site cannot be rebuilt because only {{percent}}% of its page could be read.',
       flat: 'The original site cannot be rebuilt because its page was read as a few long blocks without headings.',
+      invalid: 'The original site cannot be rebuilt because the rebuilt page did not pass validation.',
+      too_large: 'The original site cannot be rebuilt because the rebuilt page is too large.',
+      grouping: {
+        not_configured: 'The original site cannot be rebuilt: no AI vision model is configured to read its page. Configure one and audit the site again, or use a template layout.',
+        call_failed: 'The original site cannot be rebuilt: the AI vision model call failed while its page was read. Audit the site again, or use a template layout.',
+        invalid_answer: 'The original site cannot be rebuilt: the AI vision model gave no valid reading of its page. Audit the site again, or use a template layout.',
+        ineligible: 'The original site cannot be rebuilt: the AI vision model\'s reading of its page is too incomplete to rebuild. Use a template layout.',
+        rules_reading: 'The original site cannot be rebuilt: it was audited before rebuilds were made from the AI reading only. Audit the site again, or use a template layout.',
+      },
     },
     level: {
       label: 'Look',
       faithful: 'Faithful',
       modern: 'Modernized',
       suggested: 'Suggested: the original site looks dated',
-      defaultDesign: 'Standard modern design (the AI choice was not available)',
+      unavailableTitle: 'Modernized look unavailable',
+      unavailable: {
+        not_configured: 'No AI model is configured to choose the modernized look. The page stays as it is.',
+        call_failed: 'The AI model call for the modernized look failed. The page stays as it is; pick Modernized to try again.',
+        invalid_answer: 'The AI model gave no valid modernized look. The page stays as it is; pick Modernized to try again.',
+      },
     },
     rerendering: 'Re-rendering the page…',
     fallback: {
@@ -277,6 +291,11 @@ export const en = {
       invalid: 'The rebuild did not pass validation, so the template was used.',
       too_large: 'The rebuilt page was too large, so the template was used.',
     },
+  },
+  mvpFailure: {
+    title: 'The MVP was not generated',
+    useTemplate: 'Generate with a template layout',
+    useTemplateHint: 'Builds the MVP from the Bento template instead of rebuilding the original site.',
   },
   llm: {
     provider: 'LLM provider',
@@ -708,6 +727,7 @@ export const en = {
       modernizeManual: 'Part of the modernized look, which the operator picked.',
       modernizeDated: 'Part of the modernized look: the original was detected as dated (score {{score}}).',
       modernizeDatedUnscored: 'Part of the modernized look: the original was detected as dated.',
+      modernizeLegacyDefault: 'Part of the standard modern look applied before the AI chose every modernized look; re-render to let the AI choose it.',
     },
     changes: {
       unknown: {

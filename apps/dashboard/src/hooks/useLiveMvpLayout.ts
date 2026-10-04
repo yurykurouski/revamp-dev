@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { MVP_LAYOUT_MODERNIZE_REASONS, MVP_LAYOUT_VARIANTS, MvpLayoutVariant, RebuildLevel } from '@revamp/shared-types';
 import { canChangeMvpLayout } from '@revamp/validation';
 import { ApiError, type ILeadItem, type IMvpProjectDetail } from '../api/client.js';
-import { rebuildFallbackOf } from '../components/MvpLayoutChip.js';
+import { modernizeUnavailableReason, rebuildRefusalText, renderFailureText } from '../utils/renderFailure.js';
 import { UPDATE_MVP_LAYOUT_MUTATION_KEY, mvpRecordId, useUpdateMvpLayoutMutation } from './useLeads.js';
 
 /** The rebuild level an MVP is rendered at (REV-114); an MVP from before levels is faithful */
@@ -43,27 +43,17 @@ export const LEVEL_RERENDER_WAIT_MS = 2 * MODEL_CALL_TIMEOUT_MS + 30_000;
 /** How often the MVP is fetched while the page is re-rendered */
 const RERENDER_POLL_MS = 2000;
 
-/** The reasons the API gives for refusing a switch to the original site (`rebuildEligibility`) */
-const REFUSAL_REASONS = ['rebuild:unread', 'rebuild:no_content', 'rebuild:low_coverage', 'rebuild:flat'] as const;
-type RefusalReason = (typeof REFUSAL_REASONS)[number];
-const isRefusalReason = (reason: string): reason is RefusalReason => (REFUSAL_REASONS as readonly string[]).includes(reason);
-const refusalKind = (reason: RefusalReason) =>
-  reason.slice('rebuild:'.length) as RefusalReason extends `rebuild:${infer Kind}` ? Kind : never;
-
 /**
  * The message shown for a failed layout save. A refused switch to the original site says why it cannot
- * be rebuilt (REV-110), in the interface language; any other failure shows the server's message.
+ * be rebuilt (REV-110), including the vision model's failure (REV-132), in the interface language; any other
+ * failure shows the server's message.
  */
 function layoutSaveError(err: unknown, t: TFunction): string {
   if (err instanceof ApiError && err.code === 'MVP_REBUILD_UNAVAILABLE') {
     const details = (err.details ?? {}) as { reason?: unknown; facts?: unknown };
-    const codes = [details.reason, ...(Array.isArray(details.facts) ? details.facts : [])].filter(
-      (code): code is string => typeof code === 'string',
-    );
-    const fallback = rebuildFallbackOf(codes);
-    if (fallback && isRefusalReason(fallback.reason)) {
-      return t(`mvpLayout.rebuildRefused.${refusalKind(fallback.reason)}`, { percent: fallback.percent });
-    }
+    const facts = Array.isArray(details.facts) ? details.facts.filter((fact): fact is string => typeof fact === 'string') : [];
+    const text = typeof details.reason === 'string' ? rebuildRefusalText(details.reason, facts) : undefined;
+    if (text) return String(t(text.key as never, text.values as never));
   }
   return err instanceof Error ? err.message : String(err);
 }
@@ -87,7 +77,6 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   const queryClient = useQueryClient();
   const mutation = useUpdateMvpLayoutMutation();
   // A pick belongs to one version of one MVP: another lead or a regeneration drops it
-  const [pick, setPick] = useState<{ version: string; variant: MvpLayoutVariant } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const mvpId = mvpRecordId(mvp);
@@ -109,7 +98,19 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
     since: number;
     echoSeen: boolean;
     level?: RebuildLevel;
+    /** The failure the MVP carried when the pick was made, so only a new one ends the wait */
+    failureBefore?: string;
   } | null>(null);
+  // A re-render the workers could not make (REV-132): the page published before stays, so the wait ends with
+  // the failure, and the picks go back to what the MVP is saved with (the workers put a failed level back)
+  const failure = mvp?.renderFailure;
+  const [pick, setPick] = useState<{ version: string; variant: MvpLayoutVariant } | null>(null);
+  const [levelPick, setLevelPick] = useState<{ version: string; level: RebuildLevel } | null>(null);
+  if (rerender && failure && String(failure.at) !== rerender.failureBefore && rerender.version === watched) {
+    setRerender(null);
+    setPick(null);
+    setLevelPick(null);
+  }
   const settled =
     Boolean(mvp) &&
     Boolean(mvp?.rebuild) === (saved === 'original') &&
@@ -123,16 +124,16 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
   if (pick && (pick.version !== version || (!isSaving && pending === saved))) setPick(null);
   const layout = pending ?? saved;
   const savedLevel: RebuildLevel = mvp?.layout?.rebuildLevel ?? 'faithful';
-  const [levelPick, setLevelPick] = useState<{ version: string; level: RebuildLevel } | null>(null);
   const pendingLevel = levelPick?.version === version ? levelPick.level : null;
   if (levelPick && (levelPick.version !== version || (!isSaving && pendingLevel === savedLevel))) setLevelPick(null);
   const level = pendingLevel ?? savedLevel;
   const reasons = mvp?.layout?.reasons ?? [];
-  const levelReason = reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.fallback)
-    ? ('defaultDesign' as const)
-    : reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.dated)
-      ? ('suggested' as const)
-      : undefined;
+  const levelReason = reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.dated) ? ('suggested' as const) : undefined;
+  // Why the modernized look is not there: the model gave no design (REV-132); a pick asks it again
+  const modernUnavailable = modernizeUnavailableReason(mvp);
+  // A re-render of the rebuild that could not be made; a modernize failure is said by the level toggle
+  const failureText = failure && failure.code !== 'MVP_MODERNIZE_UNAVAILABLE' ? renderFailureText(failure) : undefined;
+  const renderFailure = failureText ? String(t(failureText.key as never, failureText.values as never)) : null;
   const canChange = Boolean(mvpId) && canChangeMvpLayout(lead.status);
 
   const post = useCallback(
@@ -172,11 +173,12 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
     setPick({ version, variant });
     const crossing = crossesRenderer(layout, variant);
     const before = shown;
+    const failureBefore = failure ? String(failure.at) : undefined;
     mutation.mutate(
       { mvpId, leadId: lead.id, variant },
       {
         onSuccess: () => {
-          if (crossing) setRerender({ version: watched, before, since: Date.now(), echoSeen: false });
+          if (crossing) setRerender({ version: watched, before, since: Date.now(), echoSeen: false, failureBefore });
         },
         // Only the latest pick reports back; its failure puts the saved layout back
         onError: (err) => {
@@ -192,10 +194,11 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
     if (!mvpId || !canChange || layout !== 'original' || next === level) return;
     setLevelPick({ version, level: next });
     const before = shown;
+    const failureBefore = failure ? String(failure.at) : undefined;
     mutation.mutate(
       { mvpId, leadId: lead.id, variant: 'original', level: next },
       {
-        onSuccess: () => setRerender({ version: watched, before, since: Date.now(), echoSeen: false, level: next }),
+        onSuccess: () => setRerender({ version: watched, before, since: Date.now(), echoSeen: false, level: next, failureBefore }),
         onError: (err) => {
           setLevelPick(null);
           setError(layoutSaveError(err, t));
@@ -209,6 +212,8 @@ export function useLiveMvpLayout({ lead, mvp, iframeRef }: UseLiveMvpLayoutOptio
     level,
     changeLevel,
     levelReason,
+    modernUnavailable,
+    renderFailure,
     canChange,
     changeLayout,
     onFrameLoad,

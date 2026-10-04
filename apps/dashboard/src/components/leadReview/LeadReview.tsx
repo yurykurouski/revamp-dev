@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Box, Chip, IconButton, Tab, Tabs, Tooltip, Typography } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckIcon from '@mui/icons-material/Check';
@@ -49,6 +50,17 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
 
   const { data: audit, isLoading: isAuditLoading, error: auditError } = useAuditQuery(lead.auditId || lead.id);
   const { data: mvp } = useMvpQuery(lead.id);
+  // A generation that publishes the lead's MVP is fetched at once, also the first one, which the query had
+  // answered with none (REV-132)
+  const queryClient = useQueryClient();
+  const generated = useRef({ id: lead.id, at: lead.mvpGeneratedAt });
+  useEffect(() => {
+    const previous = generated.current;
+    generated.current = { id: lead.id, at: lead.mvpGeneratedAt };
+    if (previous.id === lead.id && previous.at !== lead.mvpGeneratedAt) {
+      void queryClient.invalidateQueries({ queryKey: ['mvp', lead.id] });
+    }
+  }, [lead.id, lead.mvpGeneratedAt, queryClient]);
   const draft = useEmailDraft(lead, audit);
 
   const approveMutation = useApproveOutreachMutation();

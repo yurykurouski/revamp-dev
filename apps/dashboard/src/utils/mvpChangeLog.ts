@@ -138,8 +138,12 @@ const SEO_CODE_CHECKS: Partial<Record<RebuildChangeKind, StandardsCheck>> = {
 /** The original text the rebuild folds under "Read more" (`COLLAPSE_CHARS` in the planner) */
 export const COLLAPSE_CHARS = 1200;
 
+/** The code a page modernized before REV-132 carries when the standard look stood in for the model's choice */
+const LEGACY_MODERNIZE_DEFAULT = 'modernize:default';
+
 /** Why the modernize layer chose a design change, from the layout's reasons (REV-114) */
 function modernizeWhy(reasons: string[]): ChangeText {
+  if (reasons.includes(LEGACY_MODERNIZE_DEFAULT)) return k('sources.modernizeLegacyDefault');
   if (reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.manual)) return k('sources.modernizeManual');
   if (reasons.includes(MVP_LAYOUT_MODERNIZE_REASONS.dated)) {
     const score = Number(reasons.find((r) => r.startsWith('dated:'))?.slice('dated:'.length));

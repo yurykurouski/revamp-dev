@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq';
-import type { LeadStatus } from '@revamp/shared-types';
+import type { IMvpRenderFailure, LeadStatus } from '@revamp/shared-types';
 import { Lead } from '../models/Lead.model.js';
 
 const MAX_ERROR_LENGTH = 300;
@@ -26,15 +26,18 @@ export async function handleGenerationFailure(
   if (!job?.data?.leadId) return;
 
   const attempts = job.opts?.attempts ?? 1;
-  if (job.attemptsMade < attempts) return; // BullMQ retries it
+  // BullMQ retries it, unless the error is final (a render a model could not make, REV-132)
+  if (job.attemptsMade < attempts && err?.name !== 'UnrecoverableError') return;
 
   const status = statusAfterFailedGeneration(job.data.previousStatus);
   const generationError = `MVP ${stage} failed: ${err?.message || 'unknown error'}`.slice(0, MAX_ERROR_LENGTH);
+  // The code and reason the dashboard explains in the operator's language (REV-132)
+  const generationFailure = (err as { failure?: IMvpRenderFailure } | undefined)?.failure;
   try {
     // Only a lead still marked GENERATING by this run is reset; never overwrite a newer state
     await Lead.findOneAndUpdate(
       { _id: job.data.leadId, status: 'GENERATING' },
-      { $set: { status, generationError } },
+      { $set: { status, generationError, ...(generationFailure ? { generationFailure } : {}) } },
     ).exec();
     console.warn(`[GenerationFailure] Lead ${job.data.leadId} reset to ${status}: ${generationError}`);
   } catch (updateErr) {

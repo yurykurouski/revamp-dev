@@ -1,5 +1,6 @@
 import {
   IRebuildModernize,
+  ModernizeFailure,
   IRebuildModernizeAnswer,
   ISiteSection,
   ISiteSections,
@@ -20,10 +21,12 @@ import { buildRebuildOutline } from './rebuild-edit.service.js';
 import { defaultModernDesign } from './rebuild-modernize.js';
 
 // The modernize level's model call (REV-114): the model chooses a look for a dated site's rebuild by ids and
-// fixed values only; the answer is validated and checked against the page, and the code's default stands in
-// when the model is unavailable or wrong. It never writes text.
+// fixed values only; the answer is validated and checked against the page. When the model is unavailable or
+// wrong, the failure is returned with its reason and no design: nothing stands in for it (REV-132). It never
+// writes text.
 
 const list = (values: readonly string[]) => values.join(' | ');
+const MESSAGE_CHARS = 300;
 
 export const REBUILD_MODERNIZE_SYSTEM_PROMPT = `You are the art director of a one-page website (MVP) that rebuilds a local business's dated home page section by section. You choose how to modernize its look. You decide ONLY the layout and style of the sections the page already has.
 
@@ -89,12 +92,18 @@ export class RebuildModernizeService {
     this.llm = new LlmClient(options);
   }
 
-  /** The model's design when it passes, else the default with the reason; never throws for a model failure */
+  /** The model's design when it passes, else the failure with its reason and no design; never throws for a model failure */
   async choose(input: RebuildModernizeInput): Promise<RebuildModernizeChoice> {
+    // The model's starting point only, never its stand-in (REV-132)
     const start = defaultModernDesign(input.siteSections);
-    const fallback = (error: string, usage?: LlmUsage): RebuildModernizeChoice => ({ source: 'default', design: start, error, ...(usage ? { usage, model: this.llm.modelName } : {}) });
+    const failed = (error: ModernizeFailure, message: string, usage?: LlmUsage): RebuildModernizeChoice => ({
+      source: 'failed',
+      error,
+      message: message.slice(0, MESSAGE_CHARS),
+      ...(usage ? { usage, model: this.llm.modelName } : {}),
+    });
     const unavailable = this.llm.unavailableReason();
-    if (!this.llm.provider || unavailable) return fallback('not_configured');
+    if (!this.llm.provider || unavailable) return failed('not_configured', unavailable ?? 'No LLM provider is configured');
 
     const page = modernizeOutline(input.siteSections);
     let usage: LlmUsage | undefined;
@@ -122,14 +131,14 @@ export class RebuildModernizeService {
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         console.warn(`[RebuildModernizeService] Call failed: ${message}`);
-        return fallback(`call_failed: ${message}`, usage);
+        return failed('call_failed', message, usage);
       }
       const checked = this.check(text, input.siteSections);
       if (checked.ok) return { source: 'llm', design: checked.design, ...(usage ? { usage, model: this.llm.modelName } : {}) };
       rejected = checked.reason;
       console.warn(`[RebuildModernizeService] Answer rejected: ${rejected}`);
     }
-    return fallback(`invalid: ${rejected}`, usage);
+    return failed('invalid_answer', rejected ?? 'no valid answer', usage);
   }
 
   private check(text: string, read: ISiteSections): { ok: true; design: IRebuildModernizeAnswer } | { ok: false; reason: string } {

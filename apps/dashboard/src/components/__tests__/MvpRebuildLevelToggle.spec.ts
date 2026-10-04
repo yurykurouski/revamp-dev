@@ -43,9 +43,12 @@ const audit: IAuditDetail = {
 const mvpWith = (
   variant: MvpLayoutVariant,
   opts: { reasons?: string[]; layoutLevel?: RebuildLevel; renderedLevel?: RebuildLevel; editedAt?: string } = {},
+  extra: Partial<IMvpProjectDetail> = {},
 ): IMvpProjectDetail => ({
   id: 'mvp-1',
   leadId: 'lead-1',
+  auditId: 'audit-1',
+  ...extra,
   fullPreviewUrl: 'about:blank#mvp',
   layout: {
     variant,
@@ -185,19 +188,53 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
   it('says the modern look is suggested when the site looks dated', () => {
     render(mvpWith('original', { reasons: ['rule:derived', 'modernize:dated'], layoutLevel: 'modern', renderedLevel: 'modern' }));
     expect(text(en.mvpLayout.level.suggested)).toBe(true);
-    expect(text(en.mvpLayout.level.defaultDesign)).toBe(false);
-  });
-
-  it('says the default design was used when the AI choice was not available', () => {
-    render(mvpWith('original', { reasons: ['modernize:dated', 'modernize:default'], layoutLevel: 'modern', renderedLevel: 'modern' }));
-    expect(text(en.mvpLayout.level.defaultDesign)).toBe(true);
-    expect(text(en.mvpLayout.level.suggested)).toBe(false);
   });
 
   it('shows no caption without a modernize reason', () => {
     render(mvpWith('original', { renderedLevel: 'faithful' }));
     expect(text(en.mvpLayout.level.suggested)).toBe(false);
-    expect(text(en.mvpLayout.level.defaultDesign)).toBe(false);
+    expect(text(en.mvpLayout.level.unavailableTitle)).toBe(false);
+  });
+
+  it.each(['not_configured', 'call_failed', 'invalid_answer'] as const)(
+    'says Modernized is unavailable when the model gave no design for this audit (%s, REV-132)',
+    (error) => {
+      render(mvpWith('original', { renderedLevel: 'faithful' }, { modernize: { auditId: 'audit-1', source: 'failed', error } }));
+      expect(text(en.mvpLayout.level.unavailableTitle)).toBe(true);
+      expect(text(en.mvpLayout.level.unavailable[error])).toBe(true);
+      // A pick asks the model again
+      expect(levelButton('modern').disabled).toBe(false);
+    },
+  );
+
+  it('ignores a model failure stored for another audit, and a design the model made (REV-132)', () => {
+    render(mvpWith('original', { renderedLevel: 'faithful' }, { modernize: { auditId: 'audit-0', source: 'failed', error: 'call_failed' } }));
+    expect(text(en.mvpLayout.level.unavailableTitle)).toBe(false);
+    act(() => root.unmount());
+    root = createRoot(container);
+    render(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'modern' }, { modernize: { auditId: 'audit-1', source: 'llm', design: {} } }));
+    expect(text(en.mvpLayout.level.unavailableTitle)).toBe(false);
+  });
+
+  it('stops waiting when the switch to Modernized fails, keeps Faithful and says why (REV-132)', async () => {
+    render(mvpWith('original', { renderedLevel: 'faithful' }));
+    vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
+    await pickLevel('modern');
+    // The worker published nothing, put the saved level back and recorded why
+    vi.mocked(apiClient.getMvp).mockResolvedValue(
+      mvpWith(
+        'original',
+        { layoutLevel: 'faithful', renderedLevel: 'faithful', reasons: ['rule:manual', 'modernize:manual'] },
+        {
+          modernize: { auditId: 'audit-1', source: 'failed', error: 'call_failed' },
+          renderFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', level: 'modern', at: '2026-10-04T12:00:00.000Z' },
+        },
+      ),
+    );
+    await tick(2000);
+    await vi.waitFor(() => expect(rerendering()).toBe(false));
+    expect(pressed()).toEqual(['faithful']);
+    expect(text(en.mvpLayout.level.unavailable.call_failed)).toBe(true);
   });
 
   it('shows Re-rendering until the polled MVP has been rendered at the picked level', async () => {

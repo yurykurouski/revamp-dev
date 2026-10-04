@@ -95,6 +95,18 @@ describe('RebuildModernizeAnswerSchema', () => {
     expect(RebuildModernizeSchema.safeParse({ ...saved, source: 'x' }).success).toBe(false);
     expect(RebuildModernizeSchema.safeParse({ ...saved, extra: 1 }).success).toBe(false);
   });
+  it('a failure has a reason and no design; the default design is no longer a source (REV-132)', () => {
+    const auditId = 'a'.repeat(24);
+    for (const error of ['not_configured', 'call_failed', 'invalid_answer']) {
+      expect(RebuildModernizeSchema.safeParse({ auditId, source: 'failed', error, message: 'timeout' }).success).toBe(true);
+    }
+    expect(RebuildModernizeSchema.safeParse({ auditId, source: 'failed', error: 'other' }).success).toBe(false);
+    expect(RebuildModernizeSchema.safeParse({ auditId, source: 'failed' }).success).toBe(false);
+    expect(RebuildModernizeSchema.safeParse({ auditId, source: 'failed', error: 'call_failed', design: answer }).success).toBe(false);
+    expect(RebuildModernizeSchema.safeParse({ auditId, source: 'llm' }).success).toBe(false);
+    expect(RebuildModernizeSchema.safeParse({ auditId, source: 'llm', design: answer, error: 'call_failed' }).success).toBe(false);
+    expect(RebuildModernizeSchema.safeParse({ auditId, source: 'default', design: answer, error: 'not_configured' }).success).toBe(false);
+  });
 });
 
 describe('RebuildEditAnswerSchema (operator layer)', () => {

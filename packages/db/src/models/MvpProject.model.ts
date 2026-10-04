@@ -83,6 +83,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     rebuildEdit: { type: Schema.Types.Mixed },
     // REV-114: the modernize level's design (ids and fixed values), applied under the operator's edit
     modernize: { type: Schema.Types.Mixed },
+    // REV-132: why the last re-render was not published (MvpRenderFailureSchema); cleared by a publish
+    renderFailure: { type: Schema.Types.Mixed },
     // REV-118: the published page's standards checks and score (MvpStandardsSchema), re-checked on every publish
     standards: { type: Schema.Types.Mixed },
     // REV-119: the published page's web vitals (MvpPerformanceSchema), measured on every publish

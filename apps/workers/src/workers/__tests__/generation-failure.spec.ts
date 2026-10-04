@@ -49,6 +49,34 @@ describe('MVP generation failure handling (REV-31)', () => {
     );
   });
 
+  it('records a render failure at once, with its code and reason, without waiting for retries (REV-132)', async () => {
+    const at = new Date('2026-10-04T12:00:00Z');
+    const err = Object.assign(new Error('MVP_MODERNIZE_UNAVAILABLE: not_configured'), {
+      name: 'UnrecoverableError',
+      failure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'not_configured', level: 'modern', at },
+    });
+    await handleGenerationFailure(job({ leadId: 'lead-1' }, 1), err, 'deploy');
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-1', status: 'GENERATING' },
+      {
+        $set: {
+          status: 'AUDITED',
+          generationError: 'MVP deploy failed: MVP_MODERNIZE_UNAVAILABLE: not_configured',
+          generationFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'not_configured', level: 'modern', at },
+        },
+      },
+    );
+  });
+
+  it('treats any final error BullMQ will not retry as the last attempt', async () => {
+    const err = Object.assign(new Error('boom'), { name: 'UnrecoverableError' });
+    await handleGenerationFailure(job({ leadId: 'lead-1' }, 1), err, 'deploy');
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-1', status: 'GENERATING' },
+      { $set: { status: 'AUDITED', generationError: 'MVP deploy failed: boom' } },
+    );
+  });
+
   it('returns a failed first generation to AUDITED so it can be retried', async () => {
     await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 1, 1), new Error('boom'), 'content');
 

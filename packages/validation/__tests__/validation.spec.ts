@@ -132,6 +132,13 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => GenerateMvpSchema.parse({ auditId: '' })).toThrow();
     });
 
+    it('takes a Bento layout picked by the operator, never the rebuild (REV-132)', () => {
+      expect(GenerateMvpSchema.parse({ auditId: 'a', layout: 'split' }).layout).toBe('split');
+      expect(GenerateMvpSchema.parse({ auditId: 'a' }).layout).toBeUndefined();
+      expect(() => GenerateMvpSchema.parse({ auditId: 'a', layout: 'original' })).toThrow();
+      expect(() => GenerateMvpSchema.parse({ auditId: 'a', layout: 'nope' })).toThrow();
+    });
+
     it('should accept forceRegenerate and reject non-boolean values (REV-31)', () => {
       expect(GenerateMvpSchema.parse({ auditId: 'a', forceRegenerate: true }).forceRegenerate).toBe(true);
       expect(() => GenerateMvpSchema.parse({ auditId: 'a', forceRegenerate: 'true' })).toThrow();

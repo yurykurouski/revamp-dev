@@ -259,13 +259,27 @@ export const lt: Translation = {
       no_content: 'Originalios svetainės atkurti negalima, nes jos puslapyje nerasta turinio skilčių.',
       low_coverage: 'Originalios svetainės atkurti negalima, nes pavyko perskaityti tik {{percent}}% jos puslapio.',
       flat: 'Originalios svetainės atkurti negalima, nes jos puslapis perskaitytas kaip keli ilgi blokai be antraščių.',
+      invalid: 'Originalios svetainės atkurti negalima, nes atkurtas puslapis nepraėjo patikros.',
+      too_large: 'Originalios svetainės atkurti negalima, nes atkurtas puslapis per didelis.',
+      grouping: {
+        not_configured: 'Originalios svetainės atkurti negalima: nesukonfigūruotas vaizdus atpažįstantis DI modelis jos puslapiui perskaityti. Sukonfigūruokite jį ir atlikite auditą iš naujo arba naudokite šabloną.',
+        call_failed: 'Originalios svetainės atkurti negalima: skaitant jos puslapį DI modelio užklausa nepavyko. Atlikite auditą iš naujo arba naudokite šabloną.',
+        invalid_answer: 'Originalios svetainės atkurti negalima: DI modelis nepateikė tinkamo jos puslapio perskaitymo. Atlikite auditą iš naujo arba naudokite šabloną.',
+        ineligible: 'Originalios svetainės atkurti negalima: DI modelio perskaitytas puslapis per daug neišsamus atkūrimui. Naudokite šabloną.',
+        rules_reading: 'Originalios svetainės atkurti negalima: auditas atliktas anksčiau, nei atkūrimas imtas daryti tik iš DI perskaitymo. Atlikite auditą iš naujo arba naudokite šabloną.',
+      },
     },
     level: {
       label: 'Išvaizda',
       faithful: 'Tiksli kopija',
       modern: 'Atnaujinta',
       suggested: 'Siūloma: originali svetainė atrodo pasenusi',
-      defaultDesign: 'Standartinis modernus dizainas (DI pasirinkimas buvo nepasiekiamas)',
+      unavailableTitle: 'Atnaujinta išvaizda nepasiekiama',
+      unavailable: {
+        not_configured: 'Nesukonfigūruotas DI modelis, kuris parenka atnaujintą išvaizdą. Puslapis lieka toks pat.',
+        call_failed: 'DI modelio užklausa atnaujintai išvaizdai nepavyko. Puslapis lieka toks pat; pasirinkite „Atnaujinta“, kad bandytumėte dar kartą.',
+        invalid_answer: 'DI modelis nepateikė tinkamos atnaujintos išvaizdos. Puslapis lieka toks pat; pasirinkite „Atnaujinta“, kad bandytumėte dar kartą.',
+      },
     },
     rerendering: 'Puslapis perpiešiamas…',
     fallback: {
@@ -276,6 +290,11 @@ export const lt: Translation = {
       invalid: 'Atkurtas puslapis nepraėjo patikros, todėl naudotas šablonas.',
       too_large: 'Atkurtas puslapis buvo per didelis, todėl naudotas šablonas.',
     },
+  },
+  mvpFailure: {
+    title: 'MVP nesugeneruotas',
+    useTemplate: 'Generuoti pagal šabloną',
+    useTemplateHint: 'Sukuria MVP pagal Bento šabloną, užuot atkūrus originalią svetainę.',
   },
   llm: {
     provider: 'LLM teikėjas',
@@ -707,6 +726,7 @@ export const lt: Translation = {
       modernizeManual: 'Operatoriaus pasirinktos modernizuotos išvaizdos dalis.',
       modernizeDated: 'Modernizuotos išvaizdos dalis: originalas atpažintas kaip pasenęs (balas {{score}}).',
       modernizeDatedUnscored: 'Modernizuotos išvaizdos dalis: originalas atpažintas kaip pasenęs.',
+      modernizeLegacyDefault: 'Standartinės modernios išvaizdos dalis, pritaikyta prieš tai, kai kiekvieną atnaujintą išvaizdą ėmė rinktis DI; perkurkite puslapį, kad ją parinktų DI.',
     },
     changes: {
       unknown: {

@@ -1,7 +1,7 @@
 import React from 'react';
 import { Box, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
-import { REBUILD_LEVELS, RebuildLevel } from '@revamp/shared-types';
+import { ModernizeFailure, REBUILD_LEVELS, RebuildLevel } from '@revamp/shared-types';
 
 interface MvpRebuildLevelToggleProps {
   value: RebuildLevel;
@@ -9,8 +9,10 @@ interface MvpRebuildLevelToggleProps {
   disabled?: boolean;
   /** Why the toggle is disabled, shown as its tooltip */
   disabledReason?: string;
-  /** Why the page is at the modern level: the site looks dated, or the model's design was replaced by the default */
-  reason?: 'suggested' | 'defaultDesign';
+  /** Why the page is at the modern level: the site looks dated */
+  reason?: 'suggested';
+  /** Why the modernized look is not available: the model gave no design (REV-132); a pick asks it again */
+  unavailable?: ModernizeFailure;
 }
 
 /**
@@ -23,6 +25,7 @@ export const MvpRebuildLevelToggle: React.FC<MvpRebuildLevelToggleProps> = ({
   disabled,
   disabledReason,
   reason,
+  unavailable,
 }) => {
   const { t } = useTranslation();
 
@@ -76,10 +79,20 @@ export const MvpRebuildLevelToggle: React.FC<MvpRebuildLevelToggleProps> = ({
           group
         )}
       </Box>
-      {reason && (
+      {reason && !unavailable && (
         <Typography variant="caption" color="text.secondary">
           {t(`mvpLayout.level.${reason}`)}
         </Typography>
+      )}
+      {unavailable && (
+        <Box role="status" data-testid="mvp-rebuild-level-unavailable">
+          <Typography variant="caption" color="warning.main" sx={{ display: 'block', fontWeight: 600 }}>
+            {t('mvpLayout.level.unavailableTitle')}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {t(`mvpLayout.level.unavailable.${unavailable}`)}
+          </Typography>
+        </Box>
       )}
     </Box>
   );

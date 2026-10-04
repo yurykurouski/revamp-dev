@@ -142,7 +142,8 @@ export const createAuditWorker = (): Worker => {
               html: homeHtml,
               contentWidth: rawSiteSections.raw?.contentWidth,
               fullBleedShare: rawSiteSections.raw?.fullBleedShare,
-              typography: siteSections.sections?.typography,
+              // Measured on the page, so the verdict does not depend on the vision model (REV-132)
+              typography: sectionsResult.typography,
               now: new Date(),
             });
           } catch (eraErr) {
@@ -195,7 +196,7 @@ export const createAuditWorker = (): Worker => {
             message: critiqueResult.fallbackReason ?? 'The Vision model gave no critique; the critique shown is a template',
           });
         }
-        // The page's sections were read by the rules instead of the vision model; not scored (REV-113)
+        // The vision model gave no sections; not scored, and the rules reading never stands in (REV-113, REV-132)
         if (sectionsResult.measurementError) measurementErrors.push(sectionsResult.measurementError);
         for (const failure of measurementErrors) {
           console.warn(`[AuditWorker] ${failure.measurement} not measured for lead ${leadId}: ${failure.message}`);
@@ -212,6 +213,7 @@ export const createAuditWorker = (): Worker => {
           // Exactly one of the two is set, so a re-audit never keeps the previous run's sections (REV-109)
           siteSections: siteSections.sections,
           siteSectionsError: siteSections.error,
+          siteSectionsErrorReason: sectionsResult.reason,
           // Exactly one of the two is set, so a re-audit never keeps the previous run's verdict (REV-114)
           siteEra,
           siteEraError,

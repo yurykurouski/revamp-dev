@@ -123,6 +123,8 @@ export interface ILead {
   mvpGeneratedAt?: string | Date;
   /** Why the last MVP generation failed; cleared when a new run starts (REV-31) */
   generationError?: string;
+  /** The code and reason of a generation that failed because a rebuild model gave no answer (REV-132) */
+  generationFailure?: IMvpRenderFailure;
   /** Why the last audit failed for good, as one readable line; cleared when a new audit is queued (REV-44) */
   auditError?: string;
   /** Complexity class from the latest audit, copied here for list sorting and filtering (REV-38) */
@@ -471,6 +473,13 @@ export type SiteSkipReason = (typeof SITE_SKIP_REASONS)[number];
 export const SITE_SECTIONS_SOURCES = ['rules', 'llm'] as const;
 export type SiteSectionsSource = (typeof SITE_SECTIONS_SOURCES)[number];
 
+/**
+ * Why the vision model gave the audit no sections (REV-132): no model is set up, the call failed, it answered
+ * invalidly twice, or its reading cannot be rebuilt. The rules reading never stands in for it.
+ */
+export const SITE_GROUPING_FAILURES = ['not_configured', 'call_failed', 'invalid_answer', 'ineligible'] as const;
+export type SiteGroupingFailure = (typeof SITE_GROUPING_FAILURES)[number];
+
 export const SITE_IMAGE_SHAPES = ['square', 'round', 'wide', 'tall'] as const;
 export type SiteImageShape = (typeof SITE_IMAGE_SHAPES)[number];
 
@@ -617,6 +626,8 @@ export interface IAudit {
   siteSections?: ISiteSections;
   /** Why the sections could not be read */
   siteSectionsError?: string;
+  /** Why the vision model gave no sections (REV-132); absent when the page itself could not be read */
+  siteSectionsErrorReason?: SiteGroupingFailure;
   generatedContent?: IMvpGeneratedContent;
   createdAt: string | Date;
   completedAt?: string | Date;
@@ -758,6 +769,8 @@ export interface IMvpProject {
   rebuildEdit?: IRebuildEdit;
   /** The modernize level's design for the rebuilt page (REV-114), applied under the operator's edit */
   modernize?: IRebuildModernize;
+  /** Why the last re-render was not published (REV-132); the page published before stays. Cleared by a publish */
+  renderFailure?: IMvpRenderFailure;
   /** The published page's standards checks (REV-118), re-checked on every publish; absent on MVPs published before it */
   standards?: IMvpStandards;
   /** The published page's web vitals (REV-119), measured on every publish; absent on MVPs published before it */
@@ -1191,6 +1204,8 @@ export interface IAiGenerationJobData {
   /** Operator's provider/model for this run only; the worker's env default applies otherwise (REV-32) */
   provider?: LlmProviderId;
   model?: string;
+  /** A Bento layout the operator picked for this run, e.g. when the rebuild cannot be made (REV-132) */
+  layout?: BentoLayoutVariant;
 }
 
 /** Which provider and model produced a run's copy, carried to the MvpProject (REV-32) */
@@ -1208,6 +1223,8 @@ export interface IDeployJobData {
   forceRegenerate?: boolean;
   previousStatus?: LeadStatus;
   generationSource?: IMvpGenerationSource;
+  /** A Bento layout the operator picked for this run (REV-132) */
+  layout?: BentoLayoutVariant;
   /**
    * `relayout`: re-render the published bundle in the MVP's saved layout from its stored copy, with no
    * LLM call and no status change (REV-84). A full deploy when absent.
@@ -1441,13 +1458,15 @@ export const MVP_LAYOUT_UNREAD_REASON = 'site_layout:unread';
 export const MVP_LAYOUT_REBUILD_REASON = 'rule:rebuild';
 /** Kept on a manual `original` pick that had to fall back, so a regeneration tries the rebuild again */
 export const MVP_LAYOUT_MANUAL_ORIGINAL = 'manual:original';
-/** Why the rebuild is at the modernize level (REV-114): the site is dated, the operator chose it, or the model's design was replaced by the default */
+/** Why the rebuild is at the modernize level (REV-114): the site is dated, or the operator chose it */
 export const MVP_LAYOUT_MODERNIZE_REASONS = {
   dated: 'modernize:dated',
   manual: 'modernize:manual',
-  fallback: 'modernize:default',
 } as const;
-/** Why the rebuild fell back to the Bento template (REV-110); stored first in `layout.reasons` */
+/**
+ * Why the rebuild cannot be made (REV-110). Before REV-132 it fell back to the Bento template and stored the
+ * reason first in `layout.reasons`; now the render fails with it (`IMvpRenderFailure`)
+ */
 export const REBUILD_FALLBACK_REASONS = [
   'rebuild:unread',
   'rebuild:no_content',
@@ -1457,6 +1476,18 @@ export const REBUILD_FALLBACK_REASONS = [
   'rebuild:too_large',
 ] as const;
 export type RebuildFallbackReason = (typeof REBUILD_FALLBACK_REASONS)[number];
+/** The audit has no sections from the vision model (REV-132): its failure, or a rules reading stored before REV-132 */
+export const REBUILD_GROUPING_REASONS = [
+  'grouping:not_configured',
+  'grouping:call_failed',
+  'grouping:invalid_answer',
+  'grouping:ineligible',
+  'grouping:rules_reading',
+] as const satisfies readonly (`grouping:${SiteGroupingFailure}` | 'grouping:rules_reading')[];
+export type RebuildGroupingReason = (typeof REBUILD_GROUPING_REASONS)[number];
+/** Every reason a rebuild cannot be made (REV-132) */
+export const REBUILD_UNAVAILABLE_REASONS = [...REBUILD_GROUPING_REASONS, ...REBUILD_FALLBACK_REASONS] as const;
+export type RebuildUnavailableReason = (typeof REBUILD_UNAVAILABLE_REASONS)[number];
 
 export const REBUILD_OMISSIONS = ['section', 'nav_link', 'link', 'embed', 'image', 'text', 'item'] as const;
 export type RebuildOmission = (typeof REBUILD_OMISSIONS)[number];
@@ -1614,14 +1645,41 @@ export interface IRebuildEdit extends IRebuildEditAnswer {
 /** What the modernize level may decide: the edit's look fields, never order, hiding, dropping or CSS (REV-114) */
 export type IRebuildModernizeAnswer = Omit<IRebuildEditAnswer, 'order' | 'hidden' | 'dropped' | 'customCss'>;
 
-/** The modernize design of a rebuilt page, with the audit its ids were read from (REV-114) */
+/** Why the modernize model gave no design (REV-132): no model is set up, the call failed, or it answered invalidly twice */
+export const MODERNIZE_FAILURES = ['not_configured', 'call_failed', 'invalid_answer'] as const;
+export type ModernizeFailure = (typeof MODERNIZE_FAILURES)[number];
+
+/**
+ * The modernize design of a rebuilt page, with the audit its ids were read from (REV-114). Only the model makes
+ * one (REV-132): `failed` records why it did not, with no design, and is asked for again on the next modern render.
+ * Records with `source: 'default'` from before REV-132 are never applied.
+ */
 export interface IRebuildModernize {
   auditId: string;
-  /** `llm` when the model chose the design, `default` when the code's default stands in */
-  source: 'llm' | 'default';
-  design: IRebuildModernizeAnswer;
-  /** Why the model's design was not used */
-  error?: string;
+  source: 'llm' | 'failed';
+  /** Set exactly when `source` is `llm` */
+  design?: IRebuildModernizeAnswer;
+  /** Set exactly when `source` is `failed` */
+  error?: ModernizeFailure;
+  /** The failure's detail, for the logs and the operator */
+  message?: string;
+}
+
+/** The API error codes a render that needs a model can fail with (REV-132) */
+export const MVP_RENDER_FAILURE_CODES = ['MVP_REBUILD_UNAVAILABLE', 'MVP_MODERNIZE_UNAVAILABLE'] as const;
+export type MvpRenderFailureCode = (typeof MVP_RENDER_FAILURE_CODES)[number];
+
+/**
+ * Why a render was not made (REV-132): the rebuild with its `RebuildUnavailableReason`, or the modernized look
+ * with its `ModernizeFailure`. Stored on the lead for a generation and on the MVP for a re-render.
+ */
+export interface IMvpRenderFailure {
+  code: MvpRenderFailureCode;
+  reason: RebuildUnavailableReason | ModernizeFailure;
+  /** The level the render was asked for */
+  level?: RebuildLevel;
+  message?: string;
+  at: string | Date;
 }
 
 // The rebuild plan (REV-110): every decision of the rebuild, validated before it is rendered; never stored
@@ -1835,6 +1893,7 @@ export const API_ERROR_CODES = [
   'MVP_EDIT_FAILED',
   'MVP_EDIT_TIMEOUT',
   'MVP_REBUILD_UNAVAILABLE',
+  'MVP_MODERNIZE_UNAVAILABLE',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',

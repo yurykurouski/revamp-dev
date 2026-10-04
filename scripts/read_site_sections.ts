@@ -2,9 +2,10 @@
  * Reads real home pages section by section and prints what the audit would store (REV-109).
  * Read-only: it writes nothing to MongoDB or MinIO. Usage:
  *   npx tsx scripts/read_site_sections.ts https://falcodent.pl/ https://www.dentalux.pl/ https://www.elefant.med.pl/
- * With --llm the vision model also groups the page (REV-113): both readings are printed with their rebuild
- * gate verdict, and which one the audit would store. With --record <dir> (implies --llm) the outline and the
- * model's ids-only answer are saved as <dir>/<hostname>.json for the recorded-answer tests.
+ * The audit stores only the vision model's grouping (REV-113, REV-132), so --llm shows what it would store, or the
+ * failure and its reason. The rules reading is printed too as a debug view: it is never stored or rebuilt. With
+ * --record <dir> (implies --llm) the outline and the model's ids-only answer are saved as <dir>/<hostname>.json for
+ * the recorded-answer tests.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
@@ -27,6 +28,8 @@ if (urls.length === 0 || (recordAt >= 0 && !recordDir)) {
   console.error('Usage: npx tsx scripts/read_site_sections.ts [--llm] [--record <dir>] <url> [url...]');
   process.exit(1);
 }
+
+if (!llm) console.log('The rebuild needs the vision model\'s grouping: pass --llm to see what the audit stores. The rules reading below is a debug view only.');
 
 const gate = (read: ISiteSections | undefined) => {
   const verdict = rebuildEligibility({ siteSections: read });
@@ -78,14 +81,14 @@ try {
       const raw = await page.evaluate(collectSiteSectionsInPage);
       console.log(`\n=== ${url}`);
       if (raw.outline) console.log(`outline: ${raw.outline.pieces.length} pieces${raw.outline.truncated ? ' (truncated)' : ''}, body ${raw.outline.bodySize}px`);
-      print('rules', readSiteSections(raw, layout.blocks));
+      print('rules (debug only: never stored or rebuilt)', readSiteSections(raw, layout.blocks));
       if (!png) continue;
 
       const tiles = await ImageService.tilesForVision(png);
       const started = Date.now();
       const result = await readPageSections({ raw, layoutBlocks: layout.blocks, tiles, url });
       print(`stored by the audit (${result.modelUsed ?? 'no model'}, ${Math.round((Date.now() - started) / 1000)}s)`, result.reading);
-      if (result.measurementError) console.log(`measurement error: ${result.measurementError.message}`);
+      if (result.measurementError) console.log(`measurement error: ${result.measurementError.message}${result.reason ? ` (reason ${result.reason})` : ''}`);
       if (result.usage) console.log(`tokens: ${result.usage.promptTokens} in, ${result.usage.completionTokens} out, ${result.usage.totalTokens} total`);
 
       if (recordDir) {

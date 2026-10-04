@@ -108,6 +108,8 @@ const LeadSchema = new Schema<ILeadDocument>(
     generationError: {
       type: String,
     },
+    // REV-132: the code and reason of a generation a rebuild model could not make (MvpRenderFailureSchema)
+    generationFailure: { type: Schema.Types.Mixed },
     // REV-44: why the last audit failed for good; shown on the card with a retry action
     auditError: {
       type: String,

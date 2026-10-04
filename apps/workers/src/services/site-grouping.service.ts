@@ -1,10 +1,11 @@
 /**
  * SectionGroupingAgent (REV-113): a vision model groups the page outline's numbered pieces into the
  * header, sections and footer, answering with ids only. Every audit asks it; when it is not set up,
- * fails or answers badly, the rules reading (REV-109) is stored and the failure is recorded (REV-100).
- * The model may group and classify page pieces by id; it never writes copy or markup.
+ * fails or answers badly, the audit stores no sections and the failure with its reason (REV-132): the
+ * rules reading never stands in for it. The model may group and classify page pieces by id; it never
+ * writes copy or markup.
  */
-import type { IMeasurementError } from '@revamp/shared-types';
+import type { IMeasurementError, ISiteTypography, SiteGroupingFailure } from '@revamp/shared-types';
 import { rebuildEligibility, SiteGroupingAnswerSchema, type SiteGroupingAnswer } from '@revamp/validation';
 import { env } from '../config/env.js';
 import { LlmClient, extractJsonObject, resolveDefaultProvider, type LlmProvider, type LlmUsage } from './llm-client.js';
@@ -12,7 +13,7 @@ import { findExecutable } from './llm-capabilities.js';
 import { checkGrouping, outlinePrompt, readGroupedSections } from './site-grouping.js';
 import type { RawLayoutBlock } from './site-layout.service.js';
 import type { RawPageOutline, RawSiteSections } from './site-sections.page.js';
-import { readSiteSections, type SiteSectionsReading } from './site-sections.service.js';
+import { toTypography, type SiteSectionsReading } from './site-sections.service.js';
 
 export const SITE_GROUPING_SYSTEM_PROMPT = `You organise a business's home page into sections. You never write text.
 
@@ -62,7 +63,7 @@ const ERROR_CHARS = 300;
 export type GroupingTile = { data: Buffer; top: number; bottom: number };
 export type GroupingResult =
   | { answer: SiteGroupingAnswer; modelUsed: string; usage?: LlmUsage }
-  | { error: string; modelUsed: string; usage?: LlmUsage };
+  | { error: string; reason: Extract<SiteGroupingFailure, 'call_failed' | 'invalid_answer'>; modelUsed: string; usage?: LlmUsage };
 
 /** VISION_LLM_PROVIDER, else the copywriting default, else the local Claude Code CLI when it is installed */
 export function groupingProvider(): LlmProvider | undefined {
@@ -90,7 +91,10 @@ export class SiteGroupingService {
     let usage: LlmUsage | undefined;
     let last = 'unknown error';
     let rejected: string | undefined;
+    // An answer the checks rejected makes the run invalid_answer, even when a later call failed: the model was reached
+    let reason: 'call_failed' | 'invalid_answer' = 'call_failed';
     for (const temperature of TEMPERATURES) {
+      let text: string;
       try {
         const res = await this.client.completeWithUsage({
           systemPrompt: SITE_GROUPING_SYSTEM_PROMPT,
@@ -102,26 +106,38 @@ export class SiteGroupingService {
           timeoutMs: TIMEOUT_MS,
         });
         usage = addUsage(usage, res.usage);
-        const parsed = SiteGroupingAnswerSchema.safeParse(extractJsonObject(res.text));
+        text = res.text;
+      } catch (err) {
+        last = err instanceof Error ? err.message : String(err);
+        continue;
+      }
+      try {
+        const parsed = SiteGroupingAnswerSchema.safeParse(extractJsonObject(text));
         if (!parsed.success) {
           const issue = parsed.error.issues[0];
           last = `schema: ${issue?.path.join('.')} ${issue?.message}`;
           rejected = last;
+          reason = 'invalid_answer';
           continue;
         }
         const problems = checkGrouping(parsed.data, input.outline);
         if (problems.length) {
           last = problems.slice(0, 5).join('; ');
           rejected = last;
+          reason = 'invalid_answer';
           continue;
         }
         return { answer: parsed.data, modelUsed: this.client.modelName, usage };
       } catch (err) {
+        // The answer holds no JSON object
         last = err instanceof Error ? err.message : String(err);
+        rejected = last;
+        reason = 'invalid_answer';
       }
     }
     return {
       error: `The vision model gave no valid grouping in ${TEMPERATURES.length} attempts (last error: ${last})`.slice(0, ERROR_CHARS),
+      reason,
       modelUsed: this.client.modelName,
       usage,
     };
@@ -131,8 +147,13 @@ export class SiteGroupingService {
 export const siteGroupingService = new SiteGroupingService();
 
 export interface PageSectionsResult {
+  /** The model's reading, or why there is none; never the rules reading (REV-132) */
   reading: SiteSectionsReading;
+  /** Why the model gave no sections; absent when it did, or when the page itself was not read */
+  reason?: SiteGroupingFailure;
   measurementError?: IMeasurementError;
+  /** The page's measured type, read without the model, for the dated-site check (REV-114) */
+  typography?: ISiteTypography;
   modelUsed?: string;
   usage?: LlmUsage;
   /** The model's ids-only answer when it passed the checks, stored or not; for the recorder script */
@@ -140,8 +161,8 @@ export interface PageSectionsResult {
 }
 
 /**
- * The page's sections as the audit stores them: the model's grouping when it is valid and does not
- * lose a rebuild the rules reading would allow, else the rules reading with the failure recorded.
+ * The page's sections as the audit stores them: the model's grouping when it is valid and can be rebuilt,
+ * else no sections, with the failure and its reason (REV-132)
  */
 export async function readPageSections(input: {
   raw?: RawSiteSections;
@@ -153,17 +174,19 @@ export async function readPageSections(input: {
   grouping?: SiteGroupingService;
 }): Promise<PageSectionsResult> {
   const grouping = input.grouping ?? siteGroupingService;
-  const rules: SiteSectionsReading = input.raw ? readSiteSections(input.raw, input.layoutBlocks) : { error: input.rawError ?? 'No section facts' };
+  const typography = toTypography(input.raw?.typography);
   const fail = (message: string, extra: Partial<PageSectionsResult> = {}): PageSectionsResult => ({
-    reading: rules,
+    reading: { error: message.slice(0, ERROR_CHARS) },
     measurementError: { measurement: 'sections', message: message.slice(0, ERROR_CHARS) },
+    ...(typography ? { typography } : {}),
     ...extra,
   });
-  if (!input.raw?.outline) return fail('No page outline');
+  if (!input.raw) return fail(input.rawError ?? 'No section facts');
+  if (!input.raw.outline) return fail('No page outline');
   const unavailable = grouping.unavailableReason();
-  if (unavailable) return fail(unavailable);
+  if (unavailable) return fail(unavailable, { reason: 'not_configured' });
   const result = await grouping.group({ outline: input.raw.outline, tiles: input.tiles, url: input.url, niche: input.niche });
-  if ('error' in result) return fail(result.error, { modelUsed: result.modelUsed, usage: result.usage });
+  if ('error' in result) return fail(result.error, { reason: result.reason, modelUsed: result.modelUsed, usage: result.usage });
   const meta = { modelUsed: result.modelUsed, usage: result.usage, answer: result.answer };
   let llm: SiteSectionsReading;
   try {
@@ -172,11 +195,8 @@ export async function readPageSections(input: {
     // The grouping never fails the audit
     llm = { error: err instanceof Error ? err.message : String(err) };
   }
-  if (llm.error) return fail(`The model's grouping could not be read: ${llm.error}`, meta);
-  const llmGate = rebuildEligibility({ siteSections: llm.sections });
-  const rulesGate = rules.sections ? rebuildEligibility({ siteSections: rules.sections }) : undefined;
-  if (!llmGate.ok && rulesGate?.ok) {
-    return fail(`The model's reading fails ${llmGate.reason} (${llmGate.facts.join(', ')}) where the rules reading passes`, meta);
-  }
-  return { reading: llm, ...meta };
+  if (llm.error) return fail(`The model's grouping could not be read: ${llm.error}`, { reason: 'invalid_answer', ...meta });
+  const gate = rebuildEligibility({ siteSections: llm.sections });
+  if (!gate.ok) return fail(`The model's reading fails ${gate.reason} (${gate.facts.join(', ')})`, { reason: 'ineligible', ...meta });
+  return { reading: llm, ...(typography ? { typography } : {}), ...meta };
 }

@@ -157,4 +157,11 @@ describe('modernizeForAudit (REV-114)', () => {
     expect(modernizeForAudit(null, audit)).toBeUndefined();
     warn.mockRestore();
   });
+
+  it('never applies a failure or a default design stored before REV-132', () => {
+    const failed: IRebuildModernize = { auditId, source: 'failed', error: 'call_failed', message: 'boom' };
+    expect(modernizeForAudit(failed, audit)).toBeUndefined();
+    const legacy = { auditId, source: 'default', design: defaultModernDesign(read), error: 'not_configured' } as unknown as IRebuildModernize;
+    expect(modernizeForAudit(legacy, audit)).toBeUndefined();
+  });
 });
