@@ -34,6 +34,28 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(read.sections.at(-1)!.role).toBe('footer');
   });
 
+  it('keeps a logo banner drawn as a CSS background as the header image, with no logo id (REV-133)', () => {
+    // adwokatpiatkowska.pl: the brand banner is a 940x150 header div with a background image, not an <img>
+    const banner = P(1, 'background', { tag: 'div', box: box(0, 250, 940, 150), src: 'https://anident.test/banner.jpg' });
+    const bannerOutline = { ...outline, pieces: [banner, ...pieces.slice(1)] };
+    const bannerAnswer: SiteGroupingAnswer = { ...answer, header: { pieces: [1, 2] } };
+    expect(checkGrouping(bannerAnswer, bannerOutline)).toEqual([]);
+    // Naming it as the logo is still refused: the logo id is for an image piece only
+    expect(checkGrouping({ ...answer, header: { logo: 1, pieces: [2] } }, bannerOutline)).toContain('logo 1 is not an image');
+    const header = readGroupedSections({ ...raw, outline: bannerOutline }, bannerAnswer).sections!.sections.find((s) => s.role === 'header')!;
+    expect(header.images).toEqual([expect.objectContaining({ src: 'https://anident.test/banner.jpg' })]);
+    // The page gives the banner no alt text, and none is invented
+    expect(header.images[0]!.alt).toBeUndefined();
+    expect(header.intro.links.map((l) => l.label)).toEqual(['Start', 'Oferta']);
+  });
+
+  it('puts an image logo before a header background', () => {
+    const banner = P(12, 'background', { tag: 'div', box: box(0, 900, 500, 120), src: 'https://anident.test/strip.jpg' });
+    const both = { ...outline, pieces: [...pieces.slice(0, 11), banner] };
+    const header = readGroupedSections({ ...raw, outline: both }, { ...answer, header: { logo: 1, pieces: [2, 12] } }).sections!.sections.find((s) => s.role === 'header')!;
+    expect(header.images.map((i) => i.src)).toEqual(['https://anident.test/logo.jpg', 'https://anident.test/strip.jpg']);
+  });
+
   it('records left-out pieces as unassigned and lowers coverage by their text', () => {
     const read = readGroupedSections(raw, answer).sections!;
     expect(read.skipped).toContainEqual(expect.objectContaining({ reason: 'unassigned', sample: 'Licznik odwiedzin 12345' }));
@@ -267,5 +289,17 @@ describe('outlinePrompt (REV-113)', () => {
     expect(text).toMatch(/^4 text 13px "Implanty treść.*… \(\d+ chars\)" y=400/m);
     const slid = outlinePrompt({ ...outline, pieces: [P(1, 'heading', { text: 'Slajd', styled: true, slide: { slider: 2, index: 3 } })] }, []);
     expect(slid).toMatch(/^1 heading styled .* slide=2\.3$/m);
+  });
+
+  it("names a background's file, the page's only fact about what it shows (REV-133)", () => {
+    const backgrounds = [
+      P(1, 'background', { box: box(0, 250, 940, 150), src: 'https://www.adwokatpiatkowska.pl/gfx/kancelaria_logo.png' }),
+      P(2, 'background', { box: box(150, 0, 1440, 425), src: 'https://x.test/a/%C5%9Bciana.jpg?v=3#top' }),
+      P(3, 'background', { box: box(600, 0, 1440, 425), src: `https://x.test/${'n'.repeat(100)}.webp` }),
+    ];
+    const text = outlinePrompt({ ...outline, pieces: backgrounds }, []);
+    expect(text).toMatch(/^1 background 940x150 file="kancelaria_logo\.png" y=0 x=250$/m);
+    expect(text).toMatch(/^2 background 1440x425 file="ściana\.jpg" y=150 x=0$/m);
+    expect(text).toMatch(new RegExp(`^3 background 1440x425 file="${'n'.repeat(60)}" y=600 x=0$`, 'm'));
   });
 });

@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { rebuildEligibility } from '@revamp/validation';
 import type { LlmClient } from '../llm-client.js';
 import { readSiteSections } from '../site-sections.service.js';
-import { SiteGroupingService, readPageSections } from '../site-grouping.service.js';
+import { SITE_GROUPING_SYSTEM_PROMPT, SiteGroupingService, readPageSections } from '../site-grouping.service.js';
 import { answer, passingRules, raw, rulesRaw } from './fixtures/grouping-fixtures.js';
 
 const clientOf = (...replies: Array<string | Error>) => {
@@ -55,6 +55,11 @@ describe('SiteGroupingService (REV-113)', () => {
     const noHeading = JSON.stringify({ sections: [{ pieces: [4], kind: 'other', arrangement: 'text' }] });
     const r = await new SiteGroupingService({ client: clientOf(noHeading, noHeading) }).group(input);
     expect('error' in r && r.error).toMatch(/schema: sections\.0\.heading/);
+  });
+
+  it('tells the model the logo is an image piece and optional, and where a background or text logo goes (REV-133)', () => {
+    expect(SITE_GROUPING_SYSTEM_PROMPT).toMatch(/logo.*only an image piece/i);
+    expect(SITE_GROUPING_SYSTEM_PROMPT).toMatch(/background or as text.*leave "logo" out.*header pieces/i);
   });
 
   it('says why no model can be called', () => {
