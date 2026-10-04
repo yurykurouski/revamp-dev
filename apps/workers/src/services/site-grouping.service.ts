@@ -19,13 +19,15 @@ export const SITE_GROUPING_SYSTEM_PROMPT = `You organise a business's home page 
 
 Inputs: screenshots of the desktop page (1440px wide) in order, each with its page range, and an outline:
 one line per numbered piece of the page (heading, text, list, links, image, background, embed) with its
-font size, bold (b), position (y = px from the top of the page, x) and size, and the start of its text.
+font size, bold (b), position (y = px from the top of the page, x) and size, and the start of its text; a
+background's file name (file) can tell a logo banner from a photo.
 "styled" headings are short bold, large or uppercase lines that are not HTML headings. "hidden" pieces are
 kept page text that is not shown until clicked (an accordion answer, a tab). "slide=S.N" marks a piece on
 slide N of slider S; slides other than the current one sit outside the screenshots (x beyond the page width).
 
 Group the pieces as a visitor sees the page:
-- header: the logo image (logo) and the menu and top-bar pieces (pieces).
+- header: the logo (logo) and the menu and top-bar pieces (pieces). The logo is only an image piece, and optional:
+  when the brand mark is drawn as a background or as text, leave "logo" out and list that piece in the header pieces.
 - sections, in page order: each starts at its heading and holds every piece that belongs to that heading
   until the next section: its text, lists, buttons and the photos shown with it. A photo floated beside or
   between paragraphs belongs to that paragraph's section, never to a separate gallery.
@@ -52,7 +54,7 @@ Rules:
   own copy). Leave a piece out only when it is not content: a second copy of the header menu (for example a
   hidden mobile menu with the same links), a hit counter, an empty spacer.
 - Respond with one raw JSON object, no prose, no markdown:
-{"header":{"logo":<id>,"pieces":[<id>...]},"sections":[{"heading":<id>,"eyebrow":<id, optional>,"pieces":[<id>...],
+{"header":{"logo":<image id, optional>,"pieces":[<id>...]},"sections":[{"heading":<id>,"eyebrow":<id, optional>,"pieces":[<id>...],
 "items":[{"title":<id>,"pieces":[<id>...]}] (optional),"kind":"<kind>","arrangement":"<arrangement>"}],"footer":{"pieces":[<id>...]}}`;
 
 const TEMPERATURES = [0.1, 0];

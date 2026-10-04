@@ -11,6 +11,7 @@ import type {
   RawOutlinePiece,
   RawPageOutline,
   RawSiteBlock,
+  RawSiteImage,
   RawSiteItem,
   RawSiteLink,
   RawSiteSections,
@@ -83,6 +84,9 @@ const linesOf = (p: RawOutlinePiece) =>
 const area = (b: RawBox) => b.width * b.height;
 const imagesOf = (pieces: RawOutlinePiece[]) =>
   pieces.filter((p) => p.type === 'image' && p.image).map((p) => p.image!);
+/** Background pieces as images, with no alt text: the page gives none */
+const backgroundImagesOf = (pieces: RawOutlinePiece[]): RawSiteImage[] =>
+  pieces.filter((p) => p.type === 'background' && p.src).map((p) => ({ src: p.src!, alt: '', box: p.box, radius: 0 }));
 const backgroundImageOf = (pieces: RawOutlinePiece[]) =>
   pieces.find((p) => p.type === 'background' && p.src)?.src;
 
@@ -335,7 +339,8 @@ function chromeBlock(
     contentBox: box,
     intro: { text: [], links: sorted.flatMap((p) => p.links ?? []) },
     extra: text.length ? [{ type: 'text', text }] : [],
-    images: [...(logo?.image ? [logo.image] : []), ...imagesOf(sorted)],
+    // A header's own background photo, e.g. a logo banner drawn in CSS (REV-133), comes before its inline images
+    images: [...(logo?.image ? [logo.image] : []), ...(role === 'header' ? backgroundImagesOf(sorted) : []), ...imagesOf(sorted)],
     embeds: sorted.filter((p) => p.type === 'embed' && p.embed).map((p) => p.embed!),
     style: {
       background: backgroundOf(sorted),
@@ -421,6 +426,22 @@ const preview = (s: string) =>
 const where = (b: RawBox, size = true) =>
   `y=${b.top} x=${b.left}${size ? ` w=${b.width} h=${b.height}` : ''}`;
 
+/** A background's file name, decoded and capped: the page's only fact about what it shows (a logo banner, REV-133) */
+const fileOf = (src: string | undefined): string => {
+  let path = '';
+  try {
+    path = new URL(src ?? '').pathname;
+  } catch {
+    return '';
+  }
+  const name = path.split('/').filter(Boolean).at(-1) ?? '';
+  try {
+    return decodeURIComponent(name).slice(0, 60);
+  } catch {
+    return name.slice(0, 60);
+  }
+};
+
 /** The outline as the model reads it: one line per piece, its facts, and a preview of its text */
 export function outlinePrompt(
   outline: RawPageOutline,
@@ -440,7 +461,7 @@ export function outlinePrompt(
       case 'image':
         return `${p.id} image ${p.image?.box.width ?? 0}x${p.image?.box.height ?? 0} alt=${quote((p.image?.alt ?? '').slice(0, 60))} ${where(p.box, false)}${facts}`;
       case 'background':
-        return `${p.id} background ${p.box.width}x${p.box.height} ${where(p.box, false)}${facts}`;
+        return `${p.id} background ${p.box.width}x${p.box.height}${fileOf(p.src) ? ` file=${quote(fileOf(p.src))}` : ''} ${where(p.box, false)}${facts}`;
       case 'embed':
         return `${p.id} embed ${p.embed?.kind ?? 'widget'} ${where(p.box)}${facts}`;
     }

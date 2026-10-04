@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest';
 import { rebuildEligibility, type SiteGroupingAnswer } from '@revamp/validation';
 import type { ISiteSections } from '@revamp/shared-types';
 import type { RawSiteSections } from '../site-sections.page.js';
-import { readGroupedSections } from '../site-grouping.js';
+import { checkGrouping, readGroupedSections } from '../site-grouping.js';
 
 const load = (name: string): { raw: RawSiteSections; answer: SiteGroupingAnswer } => {
   const r = JSON.parse(readFileSync(new URL(`./fixtures/grouping/${name}.json`, import.meta.url), 'utf8'));
@@ -32,6 +32,17 @@ describe('recorded model answers (REV-113)', () => {
     expect(rebuildEligibility({ siteSections: read })).toEqual({ ok: true });
     expect(body(read).filter((s) => s.images.length > 0 && s.intro.text.length > 0).length).toBeGreaterThanOrEqual(3);
     expect(body(read).some((s) => s.arrangement === 'gallery')).toBe(false);
+  });
+
+  it('adwokatpiatkowska.pl: a logo banner drawn as a CSS background stays in the header with no logo id (REV-133)', () => {
+    const { raw, answer } = load('adwokatpiatkowska');
+    expect(checkGrouping(answer, raw.outline!)).toEqual([]);
+    expect(answer.header?.logo).toBeUndefined();
+    const read = readGroupedSections(raw, answer).sections!;
+    const header = read.sections.find((s) => s.role === 'header')!;
+    expect(header.images[0]!.src).toBe('https://www.adwokatpiatkowska.pl/gfx/kancelaria_logo.png');
+    expect(body(read).every((s) => s.intro.heading)).toBe(true);
+    expect(rebuildEligibility({ siteSections: read })).toEqual({ ok: true });
   });
 
   // REV-122: the model names the bullet list by its one id; whichever arrangement it answers, the lines are the items
