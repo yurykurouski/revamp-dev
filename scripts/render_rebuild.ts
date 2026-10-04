@@ -24,6 +24,9 @@ import { collectSiteLayoutInPage } from '../apps/workers/src/services/site-layou
 import { collectSiteSectionsInPage } from '../apps/workers/src/services/site-sections.page.js';
 import { readSiteSections } from '../apps/workers/src/services/site-sections.service.js';
 import { renderRebuild } from '../apps/workers/src/templates/rebuild/index.js';
+import { checkMvpStandards } from '../apps/workers/src/services/mvp-standards.js';
+import { readStandardsInDocument } from '../apps/workers/src/services/standards.page.js';
+import { VitalsService } from '../apps/workers/src/services/vitals.service.js';
 import { RebuildPlanSchema, rebuildEligibility } from '../packages/validation/src/index.js';
 
 const args = process.argv.slice(2);
@@ -104,7 +107,15 @@ try {
       const phone = links.find((l) => l.kind === 'phone')?.label;
       const email = links.find((l) => l.kind === 'email')?.href.replace(/^mailto:/, '');
       // The language as the audit reads it: <html lang>, the content-language meta, then the text (REV-116)
-      const language = (await browserService.extractSiteContent(page))?.language;
+      const site = await browserService.extractSiteContent(page);
+      const language = site?.language;
+      // The original's standards as the audit reads them (REV-118), so the tags it lacked are recorded and compared
+      const { faviconLink, ...dom } = await page.evaluate(readStandardsInDocument, undefined);
+      const originalStandards = {
+        https: /^https:\/\//i.test(page.url() || url),
+        ...dom,
+        favicon: faviconLink || (await VitalsService.probeFaviconIco(page, page.url() || url)),
+      };
       const renders = [{ suffix: '', modernize: undefined }, ...(choice ? [{ suffix: '.modern', modernize: choice.design }] : [])];
       for (const render of renders) {
         const parsed = RebuildPlanSchema.safeParse(
@@ -117,6 +128,9 @@ try {
             primary: '#2563eb',
             year: new Date().getFullYear(),
             ...(render.modernize ? { modernize: render.modernize } : {}),
+            ...(site ? { site } : {}),
+            originalUrl: url,
+            originalStandards,
           }),
         );
         const name = `${host}${render.suffix}`;
@@ -128,8 +142,13 @@ try {
         }
         const plan = parsed.data;
         mkdirSync(outDir, { recursive: true });
-        writeFileSync(`${outDir}/${name}.html`, renderRebuild(plan));
+        const html = renderRebuild(plan);
+        writeFileSync(`${outDir}/${name}.html`, html);
         console.log(`${name}: ${plan.summary.sections} sections, omitted ${plan.summary.omitted.length}, tuning ${plan.summary.tuning.join(' ')}`);
+        // The MVP's standards by the audit's checks; its https is HTTPS-readiness (REV-118)
+        const mvp = checkMvpStandards(html);
+        const failing = (checks: Record<string, boolean | undefined>) => Object.keys(checks).filter((k) => !checks[k]).join(',') || 'none';
+        console.log(`  standards: original ${VitalsService.calculateStandardsScore(originalStandards)} (failing ${failing(originalStandards)}) -> MVP ${mvp.score} (failing ${failing(mvp.checks)})`);
         for (const o of plan.summary.omitted) console.log(`  omitted ${o.what} ${o.reason}: ${o.sample ?? ''}`);
       }
     } finally {

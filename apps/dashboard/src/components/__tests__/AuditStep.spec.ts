@@ -228,3 +228,42 @@ describe('AuditStep metric explanations (REV-103)', () => {
     expect(container.textContent).toContain(NOT_MEASURED);
   });
 });
+
+describe('AuditStep SEO and web standards (REV-118)', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    document.body.innerHTML = '';
+  });
+
+  it('shows the original checks next to the published MVP ones, above the data check', () => {
+    const standardsChecks = {
+      https: true, viewport: true, title: true, metaDescription: false, singleH1: true, favicon: true, structuredData: false, openGraph: false,
+    };
+    const mvp = {
+      leadId: 'lead-1',
+      fullPreviewUrl: 'https://demos.example/x/index.html',
+      standards: { checks: { ...standardsChecks, metaDescription: true, structuredData: true, openGraph: true }, score: 100 },
+    };
+    act(() => {
+      root.render(
+        React.createElement(ThemeProvider, { theme }, React.createElement(AuditStep, { audit: { ...audit, standardsChecks }, mvp, isLoading: false })),
+      );
+    });
+    const card = container.querySelector('[data-testid="seo-standards"]');
+    expect(card).not.toBeNull();
+    expect(card!.querySelector('[data-testid="seo-original-score"]')?.textContent).toBe('70/100');
+    expect(card!.querySelector('[data-testid="seo-mvp-score"]')?.textContent).toBe('100/100');
+    expect(card!.querySelector('[data-testid="seo-original-openGraph"]')?.getAttribute('data-state')).toBe('failed');
+    expect(card!.querySelector('[data-testid="seo-mvp-openGraph"]')?.getAttribute('data-state')).toBe('passed');
+  });
+});

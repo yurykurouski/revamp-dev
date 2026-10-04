@@ -16,7 +16,8 @@ const data: IBentoTemplateData = {
   trackingToken: 'tok_123',
 };
 
-// Taken before the shared pieces moved out of the template (REV-110); the move must not change a byte
+// Taken before the shared pieces moved out of the template (REV-110); the move must not change a byte. Updated for
+// REV-118, which adds the OpenGraph tags to the head and nothing else
 describe('Bento output is unchanged by the shared extraction', () => {
   for (const layout of BENTO_LAYOUT_VARIANTS) {
     it(`renders the ${layout} layout exactly as before`, () => {

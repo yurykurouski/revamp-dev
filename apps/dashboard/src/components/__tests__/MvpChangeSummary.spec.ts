@@ -188,3 +188,23 @@ describe('MvpChangeSummary (REV-81)', () => {
     }
   });
 });
+
+describe('MvpChangeSummary SEO card (REV-118)', () => {
+  const standardsChecks = {
+    https: true, viewport: true, title: true, metaDescription: false, singleH1: true, favicon: true, structuredData: false, openGraph: false,
+  };
+
+  it('shows the standards score before and after, and the checks the MVP fixed', () => {
+    const text = textOf(
+      render(
+        { ...fullMvp, standards: { checks: { ...standardsChecks, metaDescription: true, openGraph: true }, score: 90 } },
+        { ...audit, standardsChecks },
+      ),
+    );
+    expect(text).toContain(`|${en.mvpChanges.seo.replace('&', '&amp;')}|`);
+    expect(text).toContain(`|${en.mvpChanges.tags.improved}|`);
+    expect(text).toMatch(/\|70\|.*\|90\|/);
+    expect(text).toContain(en.mvpChanges.seoScore);
+    expect(text).toContain(`The MVP fixes: ${en.seo.checks.metaDescription}, ${en.seo.checks.openGraph}`);
+  });
+});

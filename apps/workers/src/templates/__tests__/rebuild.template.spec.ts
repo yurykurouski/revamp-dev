@@ -19,6 +19,7 @@ const plan = (sections: IRebuildSection[], over: Partial<IRebuildPlan> = {}): IR
   sections, bookingAppended: true, bookingServices: ['Implanty'],
   footer: { contacts: { phone: '+48 510 510 706', email: 'a@b.pl', address: 'ul. X 1' }, social: [{ label: 'facebook', href: 'https://facebook.com/x' }] },
   summary: { coverage: 1, sections: sections.length, omitted: [], tuning: [] },
+  seo: {},
   ...over,
 });
 

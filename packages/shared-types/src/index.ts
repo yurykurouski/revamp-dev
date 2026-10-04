@@ -172,17 +172,70 @@ export interface IWebVitals {
   cls?: number;
 }
 
-/** The web standards checks behind `scores.standards` (spec 3.1.3.2, REV-102) */
+/** The web standards and SEO checks behind `scores.standards` (spec 3.1.3.2, REV-102, REV-118) */
 export interface IStandardsChecks {
   https: boolean;
   viewport: boolean;
   title: boolean;
+  /** A non-empty `<meta name="description">` (REV-118); absent on audits made before it */
+  metaDescription?: boolean;
+  /** Exactly one `<h1>` with text (REV-118); absent on audits made before it */
+  singleH1?: boolean;
   /** An icon link in the page, or a working `/favicon.ico` */
   favicon: boolean;
   /** Schema.org markup (JSON-LD or microdata) */
   structuredData: boolean;
   /** At least one OpenGraph `og:` meta tag */
   openGraph: boolean;
+}
+
+/** Every standards check, in the order the dashboard lists them */
+export const STANDARDS_CHECKS = ['https', 'viewport', 'title', 'metaDescription', 'singleH1', 'favicon', 'structuredData', 'openGraph'] as const satisfies readonly (keyof IStandardsChecks)[];
+export type StandardsCheck = (typeof STANDARDS_CHECKS)[number];
+
+/** Points per standards check (spec 3.1.3.2, REV-118); they add up to 100 */
+export const STANDARDS_POINTS: Record<StandardsCheck, number> = {
+  https: 20,
+  viewport: 20,
+  title: 10,
+  metaDescription: 10,
+  singleH1: 10,
+  favicon: 10,
+  structuredData: 10,
+  openGraph: 10,
+};
+
+/**
+ * The published MVP's standards checks (REV-118), read by code from the page the deploy uploaded with the same
+ * checks as the audit. Serving over HTTPS depends on where the MVP is deployed, so its `https` is HTTPS-readiness:
+ * the page loads nothing over plain http
+ */
+export interface IMvpStandards {
+  checks: Required<IStandardsChecks>;
+  score: number;
+}
+
+/**
+ * The MVP's search and sharing tags (REV-118), built by code from the audit's verified data only: a tag whose
+ * source is missing is left out
+ */
+export interface IMvpSeo {
+  /** The original's meta description, else its first paragraph of at least 50 characters, at most 160 characters */
+  description?: string;
+  /** `og:image`: the original's own og:image, else the page's first photo of at least 200 px a side, else the logo */
+  image?: string;
+  /** `og:locale` ("pl_PL"), only when the language tag names or implies one region */
+  locale?: string;
+  /** Schema.org `LocalBusiness` from the verified contacts */
+  localBusiness?: {
+    name: string;
+    url?: string;
+    telephone?: string;
+    email?: string;
+    address?: string;
+    image?: string;
+    sameAs: string[];
+  };
 }
 
 /**
@@ -690,6 +743,8 @@ export interface IMvpProject {
   rebuildEdit?: IRebuildEdit;
   /** The modernize level's design for the rebuilt page (REV-114), applied under the operator's edit */
   modernize?: IRebuildModernize;
+  /** The published page's standards checks (REV-118), re-checked on every publish; absent on MVPs published before it */
+  standards?: IMvpStandards;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -1396,7 +1451,10 @@ export interface IMvpRebuildSummary {
   /** Sections rendered (header and footer excluded) */
   sections: number;
   omitted: { what: RebuildOmission; reason: string; sample?: string }[];
-  /** Fix codes, e.g. `contrast:3`, `overlay:1`, `alt:12`, `font:body-16`, `collapse:11`, `h1:hidden` */
+  /**
+   * Fix codes, e.g. `contrast:3`, `overlay:1`, `alt:12`, `font:body-16`, `collapse:11`, `h1:hidden`, and the SEO tags the
+   * original lacked (REV-118): `seo:description`, `seo:og`, `seo:jsonld`
+   */
   tuning: string[];
   /** `faithful` keeps the original look; `modern` applies the modernize design (REV-114) */
   level?: RebuildLevel;
@@ -1595,6 +1653,8 @@ export interface IRebuildPlan {
   summary: IMvpRebuildSummary;
   /** The operator's CSS (REV-111), already through the sanitizer */
   customCss?: string;
+  /** The page's search and sharing tags (REV-118) */
+  seo: IMvpSeo;
 }
 
 export interface IBentoTemplateData {
@@ -1648,6 +1708,8 @@ export interface IBentoTemplateData {
   /** Absolute public API URL ("https://api.example.com/api/v1"); the MVP loads the tracker and posts events here (REV-52) */
   publicApiUrl?: string;
   customHeadSnippet?: string;
+  /** Search and sharing tags (REV-118); without a grounded description the hero copy describes the page */
+  seo?: IMvpSeo;
 }
 
 

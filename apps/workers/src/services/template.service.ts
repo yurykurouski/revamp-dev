@@ -13,6 +13,7 @@ import { generateBentoHtml } from '../templates/bento.template.js';
 import { getSupportedIconNames } from '../templates/icons.js';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { env } from '../config/env.js';
+import { buildMvpSeo } from './mvp-seo.js';
 
 /** The colors saved on an MVP record; any one left out falls back to the audit's brand tokens */
 export interface MvpPaletteOverride {
@@ -103,6 +104,17 @@ export class BentoTemplateService {
     const ogIsLogo = !site?.ogImage || site.ogImage === logoUrl || /logo/i.test(site.ogImage);
     const heroImageUrl = !ogIsLogo && isHttpUrl(site?.ogImage) ? site.ogImage : images[0];
     const email = contacts?.email || lead.contactEmail;
+    // Search and sharing tags from the verified data (REV-118); Bento records no codes
+    const { seo } = buildMvpSeo({
+      businessName,
+      language,
+      ...(site ? { site } : {}),
+      contacts: { phone: contacts?.phone || lead.contactPhone, email, address: contacts?.address },
+      socialLinks: contacts?.socialLinks ?? [],
+      ...(heroImageUrl ? { photo: heroImageUrl } : {}),
+      ...(logoUrl ? { logoUrl } : {}),
+      ...(isHttpUrl(lead.originalUrl) ? { originalUrl: lead.originalUrl } : {}),
+    });
 
     const templateData: IBentoTemplateData = {
       businessName,
@@ -146,6 +158,7 @@ export class BentoTemplateService {
       originalUrl: isHttpUrl(lead.originalUrl) ? lead.originalUrl : undefined,
       // The tracker is loaded from the API, not the storage host serving the MVP (REV-52)
       publicApiUrl: isHttpUrl(env.PUBLIC_API_URL) ? env.PUBLIC_API_URL : undefined,
+      seo,
     };
 
     return this.render(templateData);

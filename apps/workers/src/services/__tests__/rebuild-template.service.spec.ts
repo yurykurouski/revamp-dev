@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { IAudit, ISiteSections } from '@revamp/shared-types';
 import { RebuildUnavailable, defaultRebuildPrimary, editForAudit, rebuildTemplateService } from '../rebuild-template.service.js';
+import { checkMvpStandards } from '../mvp-standards.js';
 
 const siteSections = (ratio = 0.98): ISiteSections => ({
   sections: [{ index: 1, role: 'hero', kind: 'other', arrangement: 'banner', intro: { heading: 'Witamy', text: ['Tekst'], links: [] }, items: [], extra: [], images: [], embeds: [], style: {} }],
@@ -72,5 +73,39 @@ describe('rebuildTemplateService with the modernize layer (REV-114)', () => {
     expect(modern.html).not.toBe(plain.html);
     expect(modern.summary.tuning.some((code) => code.startsWith('modernize:'))).toBe(true);
     expect(plain.summary.tuning.some((code) => code.startsWith('modernize:'))).toBe(false);
+  });
+});
+
+describe('rebuildTemplateService search and sharing tags (REV-118)', () => {
+  const failed = { https: true, viewport: true, title: true, metaDescription: false, singleH1: false, favicon: false, structuredData: false, openGraph: false };
+
+  it('renders a page that passes every standards check it can, with the original description', () => {
+    const { html, summary } = rebuildTemplateService.renderFromAudit(
+      { businessName: 'Falco-Dent', originalUrl: 'https://falcodent.pl/' },
+      audit({
+        extractedContent: { language: 'pl', metaDescription: 'Stomatologia w Warszawie', paragraphs: [] } as unknown as IAudit['extractedContent'],
+        standardsChecks: failed,
+      }),
+    );
+    expect(html).toContain('<meta name="description" content="Stomatologia w Warszawie">');
+    expect(html).toContain('<meta property="og:locale" content="pl_PL">');
+    expect(html).toContain('"@type":"LocalBusiness"');
+    expect(summary.tuning).toEqual(expect.arrayContaining(['seo:description', 'seo:og', 'seo:jsonld']));
+    expect(checkMvpStandards(html)).toEqual({
+      checks: { https: true, viewport: true, title: true, metaDescription: true, singleH1: true, favicon: true, structuredData: true, openGraph: true },
+      score: 100,
+    });
+  });
+
+  it('keeps a single h1 when the page has no hero heading (the business name, visually hidden)', () => {
+    const noHeading = siteSections();
+    noHeading.sections = [{ ...noHeading.sections[0]!, intro: { text: ['Tekst bez nagłówka'], links: [] } }];
+    const { html } = rebuildTemplateService.renderFromAudit({ businessName: 'Falco-Dent' }, audit({ siteSections: noHeading }));
+    expect(checkMvpStandards(html).checks.singleH1).toBe(true);
+  });
+
+  it('leaves the description out when the original has none and no paragraph long enough', () => {
+    const { html } = rebuildTemplateService.renderFromAudit({ businessName: 'Falco-Dent' }, audit());
+    expect(html).not.toContain('name="description"');
   });
 });

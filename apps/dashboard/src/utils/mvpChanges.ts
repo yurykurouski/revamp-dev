@@ -3,6 +3,7 @@ import type { CompletenessField, CompletenessStatus, MvpLayoutVariant } from '@r
 import type { IAuditDetail, IMvpProjectDetail } from '../api/client.js';
 import { layoutRuleOf } from '../components/MvpLayoutChip.js';
 import { MvpSourceSummary, summarizeMvpSource } from './llmChoice.js';
+import { SeoStandardsView, seoStandardsView } from './seoStandards.js';
 
 /** A key business fact the MVP lost, changed or showed without a source on the original site */
 export interface MvpDataIssue {
@@ -28,6 +29,8 @@ export interface MvpChangeSummary {
   businessData?: { kept: number; checked: number; issues: MvpDataIssue[] };
   /** The design critique's quick wins, given to the copy writer as guidance; not checked on the page */
   critiqueGuidance: string[];
+  /** Only when the published MVP was checked and a check differs from the original's (REV-118) */
+  seo?: Pick<SeoStandardsView, 'originalScore' | 'mvpScore' | 'fixed' | 'regressed'>;
 }
 
 const ISSUE_STATUSES: ReadonlyArray<MvpDataIssue['status']> = ['unsourced', 'missing', 'altered'];
@@ -104,6 +107,13 @@ export function summarizeMvpChanges(
     }
   }
 
+  // The published page's SEO and standards checks against the original's (REV-118); only what changed
+  const seo = seoStandardsView(audit, mvp);
+  if (seo?.mvpScore !== undefined && (seo.fixed.length > 0 || seo.regressed.length > 0)) {
+    const { originalScore, mvpScore, fixed, regressed } = seo;
+    summary.seo = { ...(originalScore !== undefined ? { originalScore } : {}), mvpScore, fixed, regressed };
+  }
+
   summary.critiqueGuidance = (audit?.quickWins ?? []).map((win) => win.trim()).filter(Boolean);
   return summary;
 }
@@ -116,6 +126,7 @@ export function isMvpChangeSummaryEmpty(summary: MvpChangeSummary): boolean {
     !summary.sections &&
     !summary.palette &&
     !summary.businessData &&
+    !summary.seo &&
     summary.critiqueGuidance.length === 0
   );
 }

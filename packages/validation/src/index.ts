@@ -28,6 +28,8 @@ import {
   REBUILD_EDIT_HEADING_CASES,
   REBUILD_HERO_STYLES,
   REBUILD_LEVELS,
+  STANDARDS_CHECKS,
+  STANDARDS_POINTS,
   REBUILD_MEDIA_FITS,
   REBUILD_TYPE_SCALES,
   RebuildLevel,
@@ -1048,6 +1050,25 @@ export const MvpEditOutputSchema = z.object({
 
 export type MvpEditOutput = z.infer<typeof MvpEditOutputSchema>;
 
+const seoHttp = z.string().max(2000).regex(/^https?:\/\//i, 'Only http(s) URLs are allowed');
+/** An MVP's search and sharing tags (REV-118); every value is copied from the audit's verified data */
+export const MvpSeoSchema = z.object({
+  description: z.string().min(1).max(160).optional(),
+  image: seoHttp.optional(),
+  locale: z.string().regex(/^[a-z]{2,3}_[A-Z]{2}$/).optional(),
+  localBusiness: z
+    .object({
+      name: z.string().min(1).max(300),
+      url: seoHttp.optional(),
+      telephone: z.string().min(1).max(30).optional(),
+      email: z.string().email().max(254).optional(),
+      address: z.string().min(1).max(300).optional(),
+      image: seoHttp.optional(),
+      sameAs: z.array(seoHttp).max(12),
+    })
+    .optional(),
+});
+
 export const BentoTemplateDataSchema = z.object({
   businessName: z.string().min(1).max(100),
   design: MvpDesignSchema.optional(),
@@ -1096,6 +1117,7 @@ export const BentoTemplateDataSchema = z.object({
   trackingToken: z.string().optional(),
   publicApiUrl: HttpUrlSchema.optional(),
   customHeadSnippet: z.string().optional(),
+  seo: MvpSeoSchema.optional(),
 });
 
 export type BentoTemplateData = z.infer<typeof BentoTemplateDataSchema>;
@@ -1542,7 +1564,19 @@ export const RebuildPlanSchema = z.object({
   }),
   summary: MvpRebuildSummarySchema,
   customCss: z.string().max(MVP_CUSTOM_CSS_MAX).optional(),
+  seo: MvpSeoSchema,
 });
+
+/** The published MVP's standards checks (REV-118): every check read, and the score their points add up to */
+export const MvpStandardsSchema = z
+  .object({
+    checks: z.object(Object.fromEntries(STANDARDS_CHECKS.map((check) => [check, z.boolean()])) as Record<(typeof STANDARDS_CHECKS)[number], z.ZodBoolean>),
+    score: z.number().int().min(0).max(100),
+  })
+  .refine(
+    ({ checks, score }) => STANDARDS_CHECKS.reduce((sum, check) => sum + (checks[check] ? STANDARDS_POINTS[check] : 0), 0) === score,
+    'The score is the points of the passed checks',
+  );
 
 // The rebuild edit (REV-111): ids from the reader and fixed values; the only free text is CSS for the sanitizer
 

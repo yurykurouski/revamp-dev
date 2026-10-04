@@ -78,6 +78,9 @@ const AuditSchema = new Schema<IAuditDocument>(
           https: { type: Boolean, required: true },
           viewport: { type: Boolean, required: true },
           title: { type: Boolean, required: true },
+          // REV-118: not required, audits made before it lack them
+          metaDescription: { type: Boolean },
+          singleH1: { type: Boolean },
           favicon: { type: Boolean, required: true },
           structuredData: { type: Boolean, required: true },
           openGraph: { type: Boolean, required: true },

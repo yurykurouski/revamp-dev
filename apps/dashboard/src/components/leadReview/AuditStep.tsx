@@ -9,6 +9,7 @@ import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { CompletenessChecklist } from '../CompletenessChecklist.js';
+import { SeoStandardsCard } from '../SeoStandardsCard.js';
 
 /** Shown for a metric the audit did not measure */
 export const NOT_MEASURED = '—';
@@ -62,7 +63,7 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color, hint }) => (
 /**
  * Step 1 of a lead review (REV-77): the original site's full-page screenshot next to (or, below `xl`, above) the audit — the
  * measured metrics, each explained in a line (REV-103; a value the audit did not measure shows as missing, REV-45, and a failed measurement
- * is listed with its reason, REV-100), the MVP data check,
+ * is listed with its reason, REV-100), the SEO and web standards checks of the original and the MVP (REV-118), the MVP data check,
  * the critical flaws and the quick wins, marked as a template when the Vision model gave no critique (REV-101).
  */
 export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, error }) => {
@@ -232,6 +233,9 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
             {t('inspector.sectionsByRules')}: {sectionsError.message}
           </Alert>
         )}
+
+        {/* The original's SEO and web standards checks, and the published MVP's by the same checks (REV-118) */}
+        <SeoStandardsCard audit={audit} mvp={mvp} />
 
         {/* The MVP checked against the original site's key business data (REV-36) */}
         <CompletenessChecklist report={mvp?.completenessReport} />
