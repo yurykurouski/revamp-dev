@@ -680,6 +680,273 @@ export const pl: Translation = {
       guidance: 'Wskazówki',
     },
   },
+  mvpChangeLog: {
+    title: 'Każda zmiana i jej powód',
+    intro: 'Zbudowane przez kod z tego, co zapisał renderer, i z pomiarów. Żadnych powodów ani liczb nie napisała tu AI.',
+    counts: 'Zmiany: {{changes}} · Pominięte: {{omitted}}',
+    why: 'Dlaczego',
+    effect: 'Dla odwiedzających',
+    loss: 'Odwiedzający tracą',
+    showInPreview: 'Pokaż w podglądzie',
+    untitledSection: 'Sekcja bez nagłówka',
+    samples: 'Pominięte',
+    empty: 'Renderer nie zapisał żadnych zmian dla tej strony.',
+    groups: {
+      accessibility: 'Dostępność',
+      readability: 'Czytelność',
+      performance: 'Wydajność',
+      seo: 'SEO',
+      booking: 'Konwersja i rezerwacja',
+      design: 'Wygląd',
+      edits: 'Twoje zmiany',
+      omitted: 'Pominięta treść',
+    },
+    sources: {
+      edit: 'Na Twoją prośbę w narzędziach projektu lub w opisie zmiany.',
+      modernize: 'Część nowoczesnego wyglądu.',
+      modernizeManual: 'Część nowoczesnego wyglądu wybranego przez operatora.',
+      modernizeDated: 'Część nowoczesnego wyglądu: oryginał rozpoznano jako przestarzały (wynik {{score}}).',
+      modernizeDatedUnscored: 'Część nowoczesnego wyglądu: oryginał rozpoznano jako przestarzały.',
+    },
+    changes: {
+      unknown: {
+        what: 'Zapisana zmiana „{{code}}”',
+        why: 'Ta wersja panelu nie ma wyjaśnienia dla tego kodu.',
+        effect: 'Nieznane.',
+      },
+      contrast: {
+        what: 'Kolor tekstu zmieniony z {{from}} na {{to}} na tle {{background}}',
+        why: 'Kontrast wynosił {{before}}:1, poniżej minimum WCAG AA 4,5:1; teraz {{after}}:1.',
+        effect: 'Czytelne w jasnym świetle i dla osób słabowidzących.',
+      },
+      contrastUnmeasured: {
+        what: 'Kolor tekstu zmieniony dla kontrastu',
+        why: 'Kontrast był poniżej minimum WCAG AA 4,5:1. Kolory i współczynniki nie zostały zapisane dla tej strony.',
+        effect: 'Czytelne w jasnym świetle i dla osób słabowidzących.',
+      },
+      overlay: {
+        what: 'Przyciemnienie {{percent}}% na zdjęciu w tle',
+        why: 'Tekst na zdjęciu nie ma pewnego kontrastu; przyciemnienie utrzymuje biały tekst czytelnym na każdym zdjęciu.',
+        effect: 'Tekst na zdjęciu pozostaje czytelny.',
+      },
+      overlayUnmeasured: {
+        what: 'Przyciemnienie na zdjęciu w tle',
+        why: 'Tekst na zdjęciu nie ma pewnego kontrastu. Siła przyciemnienia nie została zapisana dla tej strony.',
+        effect: 'Tekst na zdjęciu pozostaje czytelny.',
+      },
+      alt: {
+        what: 'Tekst alternatywny dodany do obrazów: {{count}}, z ich podpisu lub nagłówka sekcji',
+        why: 'Na oryginale nie miały tekstu alternatywnego.',
+        effect: 'Użytkownicy czytników ekranu słyszą, co pokazuje obraz, a wyszukiwarki mogą go zaindeksować.',
+      },
+      h1Hidden: {
+        what: 'Ukryty nagłówek główny z nazwą firmy',
+        why: 'Oryginalna strona nie miała nagłówka głównego, którego mogłaby użyć przebudowa.',
+        effect: 'Czytniki ekranu i wyszukiwarki wiedzą, czego dotyczy strona.',
+      },
+      fontBody: {
+        what: 'Tekst główny powiększony z {{from}} px do {{to}} px',
+        why: 'Tekst mniejszy niż 16 px trudno czytać na telefonie.',
+        effect: 'Odwiedzający czytają bez powiększania.',
+      },
+      fontBodyUnmeasured: {
+        what: 'Tekst główny powiększony do 16 px',
+        why: 'Tekst główny oryginału był mniejszy niż 16 px. Jego rozmiar nie został zapisany dla tej strony.',
+        effect: 'Odwiedzający czytają bez powiększania.',
+      },
+      lineHeight: {
+        what: 'Interlinia zwiększona z {{from}} do {{to}}',
+        why: 'Interlinia poniżej 1,5 nie spełnia wytycznych WCAG dotyczących odstępów tekstu.',
+        effect: 'Długie akapity łatwiej czytać linia po linii.',
+      },
+      lineHeightUnmeasured: {
+        what: 'Interlinia zwiększona do 1,5',
+        why: 'Interlinia oryginału była poniżej 1,5. Jej wartość nie została zapisana dla tej strony.',
+        effect: 'Długie akapity łatwiej czytać linia po linii.',
+      },
+      collapse: {
+        what: 'Długi blok tekstu ({{chars}} znaków) zwinięty pod „Czytaj więcej”',
+        why: 'Jest dłuższy niż {{limit}} znaków i spycha resztę strony daleko w dół.',
+        effect: 'Odwiedzający szybciej docierają do kolejnych sekcji i nadal mogą otworzyć cały tekst.',
+      },
+      collapseUnmeasured: {
+        what: 'Długi blok tekstu zwinięty pod „Czytaj więcej”',
+        why: 'Jest dłuższy niż próg zwijania. Jego długość nie została zapisana dla tej strony.',
+        effect: 'Odwiedzający szybciej docierają do kolejnych sekcji i nadal mogą otworzyć cały tekst.',
+      },
+      bookingReplaced: {
+        what: 'Formularz oryginału zastąpiony formularzem rezerwacji',
+        why: 'Strona zachowuje jeden formularz, w miejscu formularza oryginału.',
+        effect: 'Odwiedzający podają imię i telefon i wybierają usługę w jednym krótkim formularzu.',
+      },
+      bookingAppended: {
+        what: 'Formularz rezerwacji dodany przed stopką',
+        why: 'Oryginalna strona nie miała formularza do rezerwacji ani pytań.',
+        effect: 'Odwiedzający mogą poprosić o wizytę bez opuszczania strony i bez dzwonienia.',
+      },
+      heroCta: {
+        what: 'Przycisk rezerwacji dodany na pierwszym ekranie',
+        effect: 'Pierwszy ekran podsuwa odwiedzającym kolejny krok.',
+      },
+      footerAdded: {
+        what: 'Stopka ze zweryfikowanymi kontaktami',
+        why: 'Stopka oryginału nie została zachowana: miała tylko linki do innych stron albo jej nie było.',
+        effect: 'Odwiedzający znajdują telefon, e-mail i adres na końcu strony.',
+      },
+      seoDescription: {
+        what: 'Dodany opis meta z własnego tekstu oryginału',
+        why: 'Oryginał nie miał opisu meta.',
+        effect: 'Wyniki wyszukiwania pokazują pod linkiem słowa samej firmy.',
+      },
+      seoOg: {
+        what: 'Dodane tagi udostępniania (OpenGraph)',
+        why: 'Oryginał ich nie miał.',
+        effect: 'Udostępniony link pokazuje nazwę firmy, tekst i zdjęcie w komunikatorach i mediach społecznościowych.',
+      },
+      seoJsonld: {
+        what: 'Dodane dane Schema.org o firmie ze zweryfikowanych kontaktów',
+        why: 'Oryginał ich nie miał.',
+        effect: 'Wyszukiwarki i mapy niezawodnie odczytują nazwę, telefon i adres.',
+      },
+      style: {
+        what: 'Zmienione tło, wyrównanie lub odstępy sekcji',
+        effect: 'Sekcje są od siebie oddzielone, więc stronę łatwiej przeglądać.',
+      },
+      cards: {
+        what: 'Akapity pokazane jako karty',
+        effect: 'Krótkie punkty można przeczytać jednym spojrzeniem.',
+      },
+      side: {
+        what: 'Zdjęcie przeniesione na drugą stronę tekstu',
+        effect: 'Zdjęcia zmieniają strony, więc strona czyta się mniej monotonnie.',
+      },
+      fill: {
+        what: 'Zdjęcie powiększone na całą kolumnę',
+        effect: 'Odwiedzający lepiej widzą miejsce lub pracę.',
+      },
+      heroPhoto: {
+        what: 'Zdjęcie z tej sekcji przeniesione na pierwszy ekran',
+        effect: 'Pierwszy ekran pokazuje prawdziwą firmę, nie tylko tekst.',
+      },
+      type: {
+        what: 'Nowoczesna skala typografii: większe nagłówki, tekst główny co najmniej 17 px',
+        effect: 'Wyraźna hierarchia: odwiedzający najpierw widzą to, co ważne.',
+      },
+      theme: {
+        what: 'Zmieniona czcionka, odstępy, zaokrąglenia lub wielkość liter nagłówków strony',
+        effect: 'Spójny wygląd całej strony.',
+      },
+      order: {
+        what: 'Zmieniona kolejność sekcji',
+        effect: 'Odwiedzający widzą sekcje w wybranej przez ciebie kolejności.',
+      },
+      cssDropped: {
+        what: 'Twój własny CSS został pominięty',
+        effect: 'Odwiedzający widzą stronę bez tego CSS: nie przechodzi już kontroli bezpieczeństwa.',
+      },
+      levelFaithful: {
+        what: 'Wierna przebudowa strony głównej oryginału',
+        why: 'Zachowuje kolory, wyrównanie i układ oryginału, zmieniając tylko to, czego wymagają poprawki poniżej.',
+        effect: 'Odwiedzający rozpoznają własną stronę firmy.',
+      },
+      levelModern: {
+        what: 'Unowocześniona przebudowa: ta sama treść, kolejność i kolory marki w nowoczesnym wyglądzie',
+        effect: 'Strona wygląda współcześnie i mówi to samo co oryginał.',
+      },
+      template: {
+        what: 'Zbudowana z szablonu „{{variant}}” zamiast przebudowy oryginału',
+        whyRule: 'Wybrany przez reguły układu: {{rule}}.',
+        whyUnknown: 'Powód tego układu nie został zapisany.',
+        effect: 'Odwiedzający dostają jednostronicową witrynę ze zweryfikowanymi faktami o firmie w nowym brzmieniu.',
+      },
+      measuredOn: 'Zmierzono w profilu telefonu na {{host}}, gdzie hostowany jest prototyp. Na hostingu samej firmy liczby mogą się różnić.',
+      measuredOnAt: 'Zmierzono {{at, datetime(dateStyle: short; timeStyle: short)}} w profilu telefonu na {{host}}, gdzie hostowany jest prototyp. Na hostingu samej firmy liczby mogą się różnić.',
+      lcpNotMeasured: {
+        what: 'Szybkość ładowania prototypu nie została zmierzona',
+        why: 'Pomiar się nie udał: {{error}}',
+        effect: 'Nieznane.',
+      },
+      lcpNoOriginal: {
+        what: 'Największy element widoczny po {{mvp}} s',
+        why: 'Szybkość ładowania oryginału nie została zmierzona, więc nie ma z czym porównać.',
+        effect: 'Nie porównano.',
+      },
+      lcp: {
+        what: 'Największy element widoczny po {{mvp}} s (oryginał: {{original}} s)',
+        why: 'Largest Contentful Paint, mierzony tak samo na obu stronach. Google uznaje 2,5 s lub mniej za dobry wynik.',
+        effect: 'Pierwszy ekran pojawia się szybciej, więc mniej odwiedzających wychodzi przed załadowaniem.',
+        effectSlower: 'Pierwszy ekran nie pojawia się szybciej niż na oryginale.',
+      },
+      clsNoOriginal: {
+        what: 'Przesunięcie układu podczas ładowania: {{mvp}}',
+        why: 'Przesunięcie układu oryginału nie zostało zmierzone, więc nie ma z czym porównać.',
+        effect: 'Nie porównano.',
+      },
+      cls: {
+        what: 'Przesunięcie układu podczas ładowania: {{mvp}} (oryginał: {{original}})',
+        why: 'Cumulative Layout Shift, mierzony tak samo na obu stronach. Google uznaje 0,1 lub mniej za dobry wynik.',
+        effect: 'Tekst i przyciski nie skaczą podczas ładowania, więc odwiedzający nie klikają w złe miejsce.',
+        effectWorse: 'Podczas ładowania treść przesuwa się bardziej niż na oryginale.',
+      },
+      standardsFixed: {
+        what: 'Kontrola „{{check}}” teraz przechodzi',
+        why: 'Oryginał nie przechodził tej kontroli.',
+      },
+      standardsRegressed: {
+        what: 'Kontrola „{{check}}” nie przechodzi na prototypie',
+        why: 'Oryginał przechodził tę kontrolę.',
+        effect: 'Utracone: {{hint}}',
+      },
+    },
+    omitted: {
+      items: {
+        section: 'Pominięte sekcje: {{count}}',
+        nav_link: 'Pominięte linki menu: {{count}}',
+        link: 'Pominięte linki: {{count}}',
+        embed: 'Pominięte osadzone formularze lub widżety: {{count}}',
+        image: 'Pominięte obrazy: {{count}}',
+        text: 'Pominięte akapity: {{count}}',
+        item: 'Pominięte elementy: {{count}}',
+      },
+      reasons: {
+        section: {
+          noise: { why: 'Odczytane jako bałagan strony (baner cookie, widżet lub wyskakujące okno), nie treść.', effect: 'Ten bałagan, nie treść.' },
+          empty: { why: 'Nie było nic do pokazania: brak tekstu lub tylko linki do innych stron.', effect: 'Nic, co mogliby tam przeczytać.' },
+          duplicate: { why: 'Powtarza treść pokazaną w innym miejscu strony.', effect: 'Nic: widzą tę treść raz.' },
+          cap: { why: 'Poza limitem tego, ile strony odczytuje czytnik.', effect: 'Tę część oryginalnej strony.' },
+          unassigned: { why: 'Odczyt strony nie przypisał tego fragmentu do żadnej sekcji.', effect: 'Ten fragment oryginalnej strony.' },
+          hidden: { why: 'Sekcja ukryta na Twoją prośbę.', effect: 'Tę sekcję.' },
+          over_cap: { why: 'Poza maksymalną liczbą sekcji, które pokazuje prototyp.', effect: 'Tę sekcję.' },
+        },
+        nav_link: {
+          contact_link: { why: 'Linki do telefonu, e-maila i mapy znikają z menu; nagłówek i stopka pokazują zweryfikowane kontakty.', effect: 'Nic: kontakty są w nagłówku i stopce.' },
+          other_page: { why: 'Prowadzi na inną stronę; prototyp to tylko strona główna.', effect: 'Tę stronę z menu.' },
+        },
+        link: {
+          no_label: { why: 'Nie miał widocznej etykiety, więc czytniki ekranu odczytałyby go jako link bez nazwy.', effect: 'Link, którego nie dało się rozpoznać.' },
+          unsafe_url: { why: 'Jego adres nie jest linkiem internetowym ani kontaktowym (na przykład javascript:).', effect: 'Ten link.' },
+          other_page: { why: 'Prowadzi na inną stronę; prototyp to tylko strona główna.', effect: 'Tę stronę z tego linku.' },
+        },
+        embed: {
+          second_form: { why: 'Strona zachowuje jeden formularz rezerwacji; drugi formularz konkurowałby z nim.', effect: 'Nic: korzystają z formularza rezerwacji.' },
+          host_not_allowed: { why: 'Osadzane są tylko mapy i filmy z Google Maps, OpenStreetMap, YouTube i Vimeo, ze względu na prywatność i bezpieczeństwo.', effect: 'Ten osadzony widżet.' },
+        },
+        image: {
+          not_http: { why: 'Jego adres nie jest adresem internetowym, który strona może załadować (na przykład osadzony obraz data).', effect: 'Ten obraz.' },
+        },
+        text: {
+          dropped: { why: 'Pominięty na Twoją prośbę.', effect: 'Ten tekst.' },
+        },
+        item: {
+          dropped: { why: 'Pominięty na Twoją prośbę.', effect: 'Ten element.' },
+        },
+      },
+      unknown: {
+        why: 'Zapisany powód „{{reason}}”, którego ta wersja panelu nie wyjaśnia.',
+        effect: 'Nieznane.',
+      },
+    },
+  },
   mvpPreviewPage: {
     backToReview: 'Wróć do przeglądu',
     openPublished: 'Otwórz stronę, którą otrzyma lead',

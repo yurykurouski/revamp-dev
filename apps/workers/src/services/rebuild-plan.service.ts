@@ -1,5 +1,6 @@
 import type {
   IMvpRebuildSummary,
+  IRebuildChangeFact,
   IRebuildEditAnswer,
   IRebuildModernizeAnswer,
   IRebuildSectionEdit,
@@ -18,11 +19,18 @@ import type {
   IStandardsChecks,
 } from '@revamp/shared-types';
 import { z } from 'zod';
-import { REBUILD_BANNER_MIN_WIDTH, REBUILD_IFRAME_HOSTS, REBUILD_SUMMARY_LIMITS, SITE_SECTIONS_LIMITS, rebuildH1Section } from '@revamp/validation';
+import {
+  REBUILD_BANNER_MIN_WIDTH,
+  REBUILD_IFRAME_HOSTS,
+  REBUILD_SUMMARY_LIMITS,
+  SITE_SECTIONS_LIMITS,
+  parseRebuildChange,
+  rebuildH1Section,
+} from '@revamp/validation';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { FONT_STACKS } from '../templates/design.js';
 import { UnsafeCssError, sanitizeMvpCss } from '../templates/css-sanitizer.js';
-import { BANNER_OVERLAY, clampPadding, fontStack, mix, onColor, readableText, typeScale } from './rebuild-tuning.js';
+import { BANNER_OVERLAY, clampPadding, contrastRatio, fontStack, mix, onColor, readableText, typeScale } from './rebuild-tuning.js';
 import { type EditSource, arrangedSection, mergeRebuildEdits } from './rebuild-modernize-plan.js';
 import { buildMvpSeo, isSharingImage } from './mvp-seo.js';
 
@@ -100,9 +108,42 @@ const label = (text: string | undefined) => cut((text ?? '').trim(), LIMITS.labe
 const texts = (list: string[]) =>
   list.map((t) => cut(t, LIMITS.textChars)).filter((t) => t.trim()).slice(0, LIMITS.textsPerArray);
 
+/** A contrast ratio for the record, rounded down so a failing ratio never reads as passing */
+const ratio = (a: string, b: string) => Math.floor(contrastRatio(a, b) * 100) / 100;
+
+/** The measured values of a text color made readable (REV-119) */
+const contrastFact = (from: string, to: string, background: string): Omit<IRebuildChangeFact, 'code'> => ({
+  from,
+  to,
+  background,
+  ratioBefore: ratio(from, background),
+  ratioAfter: ratio(to, background),
+});
+
 class Recorder {
   readonly summary: IMvpRebuildSummary;
   private altFilled = 0;
+  /** The measured values behind the codes (REV-119), the first measurement of a code kept */
+  private readonly facts = new Map<string, Omit<IRebuildChangeFact, 'code'>>();
+  note(code: string, values: Omit<IRebuildChangeFact, 'code'>) {
+    if (!this.facts.has(code)) this.facts.set(code, values);
+  }
+  /**
+   * The facts of the codes the page kept (a dropped section's are left out), each with its section's heading as read
+   * on the original
+   */
+  finish(read: ISiteSection[]) {
+    const headings = new Map(read.map((s) => [s.index, cut((s.intro.heading ?? '').trim(), 120)]));
+    const facts: IRebuildChangeFact[] = [];
+    for (const code of this.summary.tuning) {
+      const index = parseRebuildChange(code)?.section;
+      const heading = index === undefined ? undefined : headings.get(index);
+      const fact = { ...(heading ? { section: heading } : {}), ...this.facts.get(code) };
+      if (Object.keys(fact).length) facts.push({ code, ...fact });
+    }
+    // Always set on a new summary, empty included, so a reader can tell "nothing measured" from "saved before facts"
+    this.summary.facts = facts;
+  }
   constructor(coverage: number) {
     this.summary = { coverage, sections: 0, omitted: [], tuning: [] };
   }
@@ -317,6 +358,7 @@ function planSection(
     if ((embed.kind === 'form' || embed.kind === 'widget') && !ctx.booking.placed) {
       ctx.booking.placed = booking = true;
       rec.fix('booking:replaced');
+      if (heading) rec.note('booking:replaced', { section: cut(heading, 120) });
     } else if ((embed.kind === 'map' || embed.kind === 'video') && isHttp(embed.src) && REBUILD_IFRAME_HOSTS.some((host) => host.test(embed.src!))) {
       embeds.push({ kind: embed.kind, src: embed.src, title: embed.kind === 'map' ? t.mapTitle : t.videoTitle });
     } else {
@@ -336,6 +378,7 @@ function planSection(
     // The overlay darkens the section's photo, or each slide's; slides keep their own white caption
     overlay = BANNER_OVERLAY;
     fixes.push(`overlay:${section.index}`);
+    ctx.rec.note(`overlay:${section.index}`, { value: BANNER_OVERLAY });
   }
   if (photo) {
     text = '#ffffff';
@@ -343,7 +386,10 @@ function planSection(
     // A photo slider's own intro (heading, text, links) sits on the section background, not on a photo
     const fixed = readableText(textColor, background ?? PAGE_BACKGROUND);
     text = fixed.color;
-    if (fixed.changed) fixes.push(`contrast:${section.index}`);
+    if (fixed.changed) {
+      fixes.push(`contrast:${section.index}`);
+      if (textColor) ctx.rec.note(`contrast:${section.index}`, contrastFact(textColor, fixed.color, background ?? PAGE_BACKGROUND));
+    }
   }
 
   // Items on their own background get a text color readable there, not the section's (white over a photo)
@@ -351,7 +397,10 @@ function planSection(
   if (section.itemStyle) {
     const { radius, background: itemBackground } = section.itemStyle;
     const itemText = itemBackground && HEX.test(itemBackground) ? readableText(textColor, itemBackground) : undefined;
-    if (itemText?.changed) fixes.push(`contrast:${section.index}`);
+    if (itemText?.changed) {
+      fixes.push(`contrast:${section.index}`);
+      if (textColor) ctx.rec.note(`contrast:${section.index}`, contrastFact(textColor, itemText.color, itemBackground!));
+    }
     itemStyle = {
       ...section.itemStyle,
       // The reader keeps radii up to 1000 px; the plan caps them at 999 (a pill either way)
@@ -364,7 +413,10 @@ function planSection(
   const density = edit?.density ?? ctx.look?.density;
 
   const collapsed = section.arrangement === 'text' && textLength(section) > COLLAPSE_CHARS;
-  if (collapsed) fixes.push(`collapse:${section.index}`);
+  if (collapsed) {
+    fixes.push(`collapse:${section.index}`);
+    ctx.rec.note(`collapse:${section.index}`, { value: textLength(section) });
+  }
 
   // A hero given a photo gets the header's CTA when none of its own links survives planning (REV-114)
   const introLinks = planLinks(section.intro.links, rec);
@@ -611,6 +663,10 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
 
   const scale = typeScale(read.typography);
   scale.tuning.forEach((code) => rec.fix(code));
+  // The read sizes behind the type fixes (REV-119)
+  const body = read.typography?.body;
+  if (body?.size !== undefined) rec.note('font:body-16', { from: Math.round(body.size), to: scale.bodySize });
+  if (body?.lineHeight !== undefined) rec.note('line-height:1.5', { from: Math.round(body.lineHeight * 100) / 100, to: scale.lineHeight });
   // The modern type scale (REV-114) replaces the read sizes; the responsive clamps stay in the CSS
   const modern = edit?.theme?.typeScale === 'modern';
   if (modern) rec.fix(`${from('theme.typeScale')}:type`);
@@ -640,6 +696,7 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     ...(input.originalStandards ? { original: input.originalStandards } : {}),
   });
   seoCodes.forEach((code) => rec.fix(code));
+  rec.finish(read.sections);
 
   return {
     language,

@@ -16,6 +16,13 @@ exports[`modernize (REV-114) > plans exactly as today without a modernize layer 
   ],
   "summary": {
     "coverage": 0.997,
+    "facts": [
+      {
+        "code": "collapse:9",
+        "section": "DLACZEGO WARTO WYBRAĆ KLINIKĘ STOMATOLOGICZNĄ ANIDENT?",
+        "value": 2260,
+      },
+    ],
     "omitted": [
       {
         "reason": "other_page",

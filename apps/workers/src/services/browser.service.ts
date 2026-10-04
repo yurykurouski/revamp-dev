@@ -1,6 +1,6 @@
 import { chromium, Browser, BrowserContextOptions, Page } from 'playwright';
 import { axeService, AxeAuditResult } from './axe.service.js';
-import { vitalsService, VitalsAuditResult } from './vitals.service.js';
+import { RawVitals, VitalsService, vitalsService, VitalsAuditResult } from './vitals.service.js';
 import { RawBrandExtractionData } from './brand-extractor.service.js';
 import { extractSiteContentInPage, RawSiteContent } from './site-content.extractor.js';
 import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.service.js';
@@ -8,6 +8,16 @@ import { collectComplexitySignalsInPage, RawComplexitySignals } from './site-com
 import { collectSiteLayoutInPage, RawSiteLayout } from './site-layout.service.js';
 import { collectSiteSectionsInPage, RawSiteSections } from './site-sections.page.js';
 import { MAX_HTML_BYTES } from './site-assessment.service.js';
+
+/** The phone the audit measures on; the published MVP is measured on the same one (REV-119) */
+const MOBILE_CONTEXT: BrowserContextOptions = {
+  viewport: { width: 375, height: 812 },
+  userAgent:
+    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+  deviceScaleFactor: 2,
+  isMobile: true,
+  hasTouch: true,
+};
 
 export interface ScreenshotResult {
   /** Above-the-fold viewport screenshots (used for Vision LLM critique) */
@@ -550,16 +560,7 @@ export class BrowserService {
     }
 
     // 2. Mobile Screenshot (375x812), A11y WCAG scan, and Core Web Vitals
-    const mobileOptions: BrowserContextOptions = {
-      viewport: { width: 375, height: 812 },
-      userAgent:
-        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
-      deviceScaleFactor: 2,
-      isMobile: true,
-      hasTouch: true,
-    };
-
-    const mobileContext = await this.createContext(browser, mobileOptions);
+    const mobileContext = await this.createContext(browser, MOBILE_CONTEXT);
     try {
       const page = await mobileContext.newPage();
       await this.navigateWithFallback(page, url, 25000);
@@ -600,6 +601,22 @@ export class BrowserService {
       siteSections,
       homeHtml,
     };
+  }
+
+  /**
+   * A published page's LCP and layout shifts (REV-119), loaded on the audit's phone and read by the audit's own reader
+   */
+  async measurePageVitals(url: string): Promise<RawVitals> {
+    const browser = await this.getBrowser();
+    this.jobCount++;
+    const context = await this.createContext(browser, MOBILE_CONTEXT);
+    try {
+      const page = await context.newPage();
+      await this.navigateWithFallback(page, url, 25000);
+      return await VitalsService.readVitalsInPage(page);
+    } finally {
+      await context.close();
+    }
   }
 
   /**

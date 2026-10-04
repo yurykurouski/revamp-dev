@@ -14,6 +14,8 @@ import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { isMvpChangeSummaryEmpty, MvpChangeSummary as Summary, summarizeMvpChanges } from '../../utils/mvpChanges.js';
 import { COMPLETENESS_STATUS_COLOR } from '../../utils/completeness.js';
+import { buildMvpChangeLog } from '../../utils/mvpChangeLog.js';
+import { MvpChangeLog } from './MvpChangeLog.js';
 
 type Tone = 'success' | 'info' | 'warning' | 'error' | 'default';
 interface Tag {
@@ -24,6 +26,8 @@ interface Tag {
 interface MvpChangeSummaryProps {
   mvp?: IMvpProjectDetail | null;
   audit?: IAuditDetail | null;
+  /** Scrolls the preview to an element of the published page (REV-119) */
+  onShowSection?: (anchor: string) => void;
 }
 
 /** One kind of change: an icon tile, its name, a tag saying what happened, and the details */
@@ -292,10 +296,12 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
  * "What changed": the generated MVP compared with the original site (REV-81), built only from
  * data the pipeline stored (AGENTS.md §3.2.2). Renders nothing until an MVP exists.
  */
-export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit }) => {
+export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit, onShowSection }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const summary = summarizeMvpChanges(mvp, audit);
+  // Every change with its reason (REV-119), from the same stored MVP, so it follows each re-publish
+  const log = buildMvpChangeLog(mvp, audit) ?? [];
   if (!summary) return null;
 
   return (
@@ -316,13 +322,16 @@ export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit }
         </Button>
       </Box>
       <Collapse in={open}>
-        <Box id="mvp-changes-body" sx={{ pt: 1, pb: 0.5, maxHeight: 340, overflowY: 'auto' }}>
-          {isMvpChangeSummaryEmpty(summary) ? (
+        <Box id="mvp-changes-body" sx={{ pt: 1, pb: 0.5, maxHeight: 520, overflowY: 'auto' }}>
+          {isMvpChangeSummaryEmpty(summary) && log.length === 0 ? (
             <Typography variant="caption" color="text.secondary">
               {t('mvpChanges.empty')}
             </Typography>
           ) : (
-            <SummaryCards summary={summary} />
+            <>
+              {!isMvpChangeSummaryEmpty(summary) && <SummaryCards summary={summary} />}
+              {log.length > 0 && <MvpChangeLog entries={log} onShowSection={onShowSection} />}
+            </>
           )}
         </Box>
       </Collapse>

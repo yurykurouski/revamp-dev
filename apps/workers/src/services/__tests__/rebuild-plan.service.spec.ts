@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import type { IRebuildPlan, ISiteSection, ISiteSections } from '@revamp/shared-types';
-import { RebuildPlanSchema, SITE_SECTIONS_LIMITS, type SiteGroupingAnswer } from '@revamp/validation';
+import { REBUILD_OMISSION_REASONS } from '@revamp/shared-types';
+import type { IRebuildModernizeAnswer, IRebuildPlan, ISiteSection, ISiteSections } from '@revamp/shared-types';
+import { RebuildPlanSchema, SITE_SECTIONS_LIMITS, parseRebuildChange, type SiteGroupingAnswer } from '@revamp/validation';
 import { mergeRebuildEdits, planRebuild, RebuildInput } from '../rebuild-plan.service.js';
 import { BANNER_OVERLAY, contrastRatio } from '../rebuild-tuning.js';
 import { readGroupedSections } from '../site-grouping.js';
@@ -833,5 +834,92 @@ describe('planRebuild search and sharing tags (REV-118)', () => {
   it('falls back to the logo for og:image when no section has a photo', () => {
     const text = section(1, { role: 'hero', intro: { heading: 'Witamy', text: ['Tekst'], links: [] } });
     expect(planRebuild(input([header, text])).seo.image).toBe('https://falcodent.pl/logo.png');
+  });
+});
+
+describe('planRebuild change codes and their facts (REV-119)', () => {
+  const recorded = (name: string): { siteSections: ISiteSections; answer: IRebuildModernizeAnswer } =>
+    JSON.parse(readFileSync(new URL(`./fixtures/modernize/${name}.json`, import.meta.url), 'utf8'));
+
+  /** Every code and omission a plan records has an entry in the vocabulary the dashboard explains */
+  const expectExplainable = (plan: IRebuildPlan) => {
+    for (const code of plan.summary.tuning) expect(parseRebuildChange(code), code).toBeDefined();
+    for (const { what, reason } of plan.summary.omitted) {
+      expect(REBUILD_OMISSION_REASONS[what] as readonly string[], `${what}:${reason}`).toContain(reason);
+    }
+    for (const fact of plan.summary.facts ?? []) expect(plan.summary.tuning).toContain(fact.code);
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  };
+
+  it('records only codes and omissions the dashboard explains, on recorded pages at both levels', () => {
+    for (const name of ['anident', 'falcodent']) {
+      const { siteSections, answer } = recorded(name);
+      expectExplainable(planRebuild(input(siteSections.sections, { siteSections })));
+      expectExplainable(planRebuild(input(siteSections.sections, { siteSections, modernize: answer })));
+    }
+  });
+
+  it('records the codes of the operator edit and every fix, each one explainable', () => {
+    const pale = section(2, { intro: { heading: 'Nasze usługi', text: ['x'.repeat(2000)], links: [] }, style: { background: '#ffffff', textColor: '#bbbbbb' } });
+    const form = section(3, { intro: { heading: 'Kontakt', text: ['Napisz'], links: [] },
+      embeds: [{ kind: 'form' }, { kind: 'form' }, { kind: 'video', src: 'https://evil.example/v' }] });
+    const photos = section(4, { arrangement: 'media-beside-text', intro: { heading: 'Gabinet', text: ['Tekst'], links: [
+      { label: 'Blog', href: 'https://falcodent.pl/blog/', kind: 'link' }, { label: '', href: 'https://falcodent.pl/x', kind: 'link' },
+    ] }, images: [{ src: 'https://falcodent.pl/g.jpg', width: 1200, height: 800 }, { src: 'data:image/png;base64,AA' }] });
+    const cards = section(5, { intro: { heading: 'Dlaczego my', text: ['Jeden.', 'Dwa.', 'Trzy.', 'Cztery.'], links: [] } });
+    const plain = section(1, { role: 'hero', intro: { heading: 'Witamy', text: ['Tekst'], links: [] } });
+    const sections = [header, plain, pale, form, photos, cards, section(6), section(7)];
+    const siteSections = read(sections, {
+      skipped: [{ reason: 'noise', sample: 'Cookies' }],
+      typography: { heading: { size: 30 }, body: { size: 14, lineHeight: 1.3 } },
+    } as Partial<ISiteSections>);
+    const plan = planRebuild(input(sections, {
+      siteSections,
+      edit: {
+        auditId: 'a1',
+        order: ['s-2', 's-1'],
+        hidden: ['s-6'],
+        dropped: ['s-7.t0'],
+        sections: { 's-4': { mediaSide: 'left', media: 'fill', background: 'tinted' }, 's-5': { arrangement: 'card-grid' } },
+        theme: { font: 'serif', typeScale: 'modern' },
+        customCss: 'body { color: red',
+      },
+    }));
+    expectExplainable(plan);
+    expect(plan.summary.tuning).toEqual(expect.arrayContaining([
+      'contrast:2', 'collapse:2', 'font:body-16', 'line-height:1.5', 'booking:replaced', 'edit:order', 'edit:side:4', 'edit:fill:4',
+      'edit:style:4', 'edit:cards:5', 'edit:type', 'edit:theme',
+    ]));
+    expect(plan.summary.omitted.map((o) => `${o.what}:${o.reason}`)).toEqual(expect.arrayContaining([
+      'section:noise', 'section:hidden', 'embed:second_form', 'embed:host_not_allowed', 'link:other_page', 'image:not_http',
+    ]));
+  });
+
+  it('records the measured values behind a code, with the heading of its section', () => {
+    const pale = section(2, { intro: { heading: 'Nasze usługi', text: ['Tekst'], links: [] }, style: { background: '#ffffff', textColor: '#bbbbbb' } });
+    const siteSections = read([header, hero, pale], { typography: { heading: { size: 30 }, body: { size: 14.4, lineHeight: 1.25 } } } as Partial<ISiteSections>);
+    const plan = planRebuild(input([header, hero, pale], { siteSections }));
+    const facts = new Map((plan.summary.facts ?? []).map(({ code, ...fact }) => [code, fact]));
+    const contrast = facts.get('contrast:2')!;
+    expect(contrast).toMatchObject({ section: 'Nasze usługi', from: '#bbbbbb', background: '#ffffff' });
+    expect(contrast.ratioBefore).toBeLessThan(4.5);
+    expect(contrast.ratioAfter).toBeGreaterThanOrEqual(4.5);
+    expect(contrast.ratioAfter).toBe(Math.floor(contrastRatio(String(contrast.to), '#ffffff') * 100) / 100);
+    expect(facts.get('overlay:1')).toEqual({ section: 'Stomatologia estetyczna', value: BANNER_OVERLAY });
+    expect(facts.get('font:body-16')).toEqual({ from: 14, to: 16 });
+    expect(facts.get('line-height:1.5')).toEqual({ from: 1.25, to: 1.5 });
+  });
+
+  it('records an empty facts list when nothing was measured, so it reads apart from a summary saved before facts', () => {
+    const plain = section(1, { role: 'hero', intro: { heading: 'Witamy', text: ['Tekst'], links: [] } });
+    expect(planRebuild(input([header, plain])).summary.facts).toEqual([]);
+  });
+
+  it('records no fact for a section the page does not render', () => {
+    const pale = section(2, { arrangement: 'card-grid', intro: { text: [], links: [] }, style: { background: '#ffffff', textColor: '#eeeeee' },
+      items: [{ text: [], links: [{ label: 'Implanty', href: 'https://falcodent.pl/implanty/', kind: 'link' }] }] });
+    const plan = planRebuild(input([header, hero, pale]));
+    expect(plan.summary.tuning).not.toContain('contrast:2');
+    expect(plan.summary.facts!.map((fact) => fact.code)).not.toContain('contrast:2');
   });
 });

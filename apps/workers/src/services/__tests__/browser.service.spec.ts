@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BrowserService, FULL_PAGE_MAX_HEIGHT, REVEAL_ANIMATIONS_CSS, EVALUATE_NAME_SHIM, SITE_SECTIONS_TIMEOUT_MS } from '../browser.service.js';
 import { chromium, type Page } from 'playwright';
 import { cookieConsentService } from '../cookie-consent.service.js';
-import { vitalsService } from '../vitals.service.js';
+import { VitalsService, vitalsService } from '../vitals.service.js';
 import { axeService } from '../axe.service.js';
 
 vi.mock('../axe.service.js', () => ({
@@ -17,6 +17,7 @@ vi.mock('../axe.service.js', () => ({
 }));
 
 vi.mock('../vitals.service.js', () => ({
+  VitalsService: { readVitalsInPage: vi.fn().mockResolvedValue({ lcpMs: 640, shifts: [] }) },
   vitalsService: {
     collectVitals: vi.fn().mockResolvedValue({
       lcpSeconds: 1.8,
@@ -304,6 +305,25 @@ describe('BrowserService', () => {
 
     mockPage.evaluate.mockResolvedValueOnce({ unexpected: true });
     await expect(service.extractSiteContent(mockPage)).resolves.toBeUndefined();
+  });
+
+  it('measures a published page on the audit`s phone and closes its context (REV-119)', async () => {
+    const service = new BrowserService(20);
+    const vitals = await service.measurePageVitals('http://localhost:9000/revamp-demos/falco/index.html');
+    expect(vitals).toEqual({ lcpMs: 640, shifts: [] });
+    const options = mockBrowser.newContext.mock.calls[0][0];
+    expect(options).toMatchObject({ viewport: { width: 375, height: 812 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+    expect(options.userAgent).toContain('iPhone');
+    expect(mockPage.goto).toHaveBeenCalledWith('http://localhost:9000/revamp-demos/falco/index.html', expect.objectContaining({ waitUntil: 'domcontentloaded' }));
+    expect(VitalsService.readVitalsInPage).toHaveBeenCalledWith(mockPage);
+    expect(mockContext.close).toHaveBeenCalledTimes(1);
+  });
+
+  it('closes the measuring context when the page cannot be loaded (REV-119)', async () => {
+    const service = new BrowserService(20);
+    mockPage.goto.mockRejectedValue(new Error('net::ERR_CONNECTION_REFUSED'));
+    await expect(service.measurePageVitals('http://localhost:9000/x')).rejects.toThrow('ERR_CONNECTION_REFUSED');
+    expect(mockContext.close).toHaveBeenCalledTimes(1);
   });
 
   it('should close browser gracefully on close()', async () => {

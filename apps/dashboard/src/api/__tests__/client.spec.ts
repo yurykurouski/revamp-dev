@@ -279,6 +279,7 @@ describe('Dashboard apiClient', () => {
         desktopFullScreenshotUrl: undefined,
         mobileFullScreenshotUrl: undefined,
         lcpSeconds: undefined,
+        cls: undefined,
         a11yScore: undefined,
         a11yViolationsCount: undefined,
         visualHierarchyRating: undefined,
@@ -300,6 +301,11 @@ describe('Dashboard apiClient', () => {
       const audit = mapServerAudit({ leadId: 'lead-1', standardsChecks, scores: { total: 70, standards: 70 } }, 'audit-1');
       expect(audit.standardsChecks).toEqual(standardsChecks);
       expect(audit.standardsScore).toBe(70);
+    });
+
+    it('passes on the measured LCP and CLS, a CLS of 0 included (REV-119)', () => {
+      expect(mapServerAudit({ leadId: 'lead-1', webVitals: { lcp: 4800, cls: 0 } }, 'audit-1')).toMatchObject({ lcpSeconds: 4.8, cls: 0 });
+      expect(mapServerAudit({ leadId: 'lead-1', webVitals: { cls: 0.31 } }, 'audit-1')).toMatchObject({ lcpSeconds: undefined, cls: 0.31 });
     });
 
     it('passes on the measurements the audit could not take (REV-100)', () => {

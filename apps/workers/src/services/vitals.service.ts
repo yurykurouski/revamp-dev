@@ -29,7 +29,7 @@ export interface RawLayoutShift {
   hadRecentInput: boolean;
 }
 
-interface RawVitals {
+export interface RawVitals {
   lcpMs: number | null;
   shifts: RawLayoutShift[];
 }
@@ -127,51 +127,59 @@ export class VitalsService {
   }
 
   /**
+   * LCP and layout shifts as the page reports them, through buffered PerformanceObservers; shared by the audit and the
+   * published MVP's measurement (REV-119), so both pages are read alike
+   */
+  static readVitalsInPage(page: Page): Promise<RawVitals> {
+    return page.evaluate(
+      () =>
+        new Promise<RawVitals>((resolve) => {
+          // LCP and layout-shift entries are not in the performance timeline (getEntriesByType
+          // returns none); only a buffered PerformanceObserver receives them (REV-99)
+          let lcpMs: number | null = null;
+          const shifts: RawLayoutShift[] = [];
+
+          const readLcp = (entries: PerformanceEntryList) => {
+            const last = entries[entries.length - 1];
+            if (last) lcpMs = last.startTime;
+          };
+          const readShifts = (entries: PerformanceEntryList) => {
+            for (const entry of entries) {
+              const shift = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
+              shifts.push({
+                startTime: shift.startTime,
+                value: typeof shift.value === 'number' ? shift.value : 0,
+                hadRecentInput: !!shift.hadRecentInput,
+              });
+            }
+          };
+
+          const lcpObserver = new PerformanceObserver((list) => readLcp(list.getEntries()));
+          const clsObserver = new PerformanceObserver((list) => readShifts(list.getEntries()));
+          lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
+          clsObserver.observe({ type: 'layout-shift', buffered: true });
+
+          // Buffered entries are delivered on a later task; collect whatever is still queued
+          setTimeout(() => {
+            readLcp(lcpObserver.takeRecords());
+            readShifts(clsObserver.takeRecords());
+            lcpObserver.disconnect();
+            clsObserver.disconnect();
+
+            resolve({ lcpMs, shifts });
+          }, 50);
+        }),
+    );
+  }
+
+  /**
    * Collects Core Web Vitals and Standards metrics from an active Playwright page
    */
   async collectVitals(page: Page, targetUrl: string): Promise<VitalsAuditResult> {
     const hasSsl = targetUrl.toLowerCase().startsWith('https://');
 
     try {
-      const evaluation = await page.evaluate(
-        () =>
-          new Promise<RawVitals>((resolve) => {
-            // LCP and layout-shift entries are not in the performance timeline (getEntriesByType
-            // returns none); only a buffered PerformanceObserver receives them (REV-99)
-            let lcpMs: number | null = null;
-            const shifts: RawLayoutShift[] = [];
-
-            const readLcp = (entries: PerformanceEntryList) => {
-              const last = entries[entries.length - 1];
-              if (last) lcpMs = last.startTime;
-            };
-            const readShifts = (entries: PerformanceEntryList) => {
-              for (const entry of entries) {
-                const shift = entry as PerformanceEntry & { hadRecentInput?: boolean; value?: number };
-                shifts.push({
-                  startTime: shift.startTime,
-                  value: typeof shift.value === 'number' ? shift.value : 0,
-                  hadRecentInput: !!shift.hadRecentInput,
-                });
-              }
-            };
-
-            const lcpObserver = new PerformanceObserver((list) => readLcp(list.getEntries()));
-            const clsObserver = new PerformanceObserver((list) => readShifts(list.getEntries()));
-            lcpObserver.observe({ type: 'largest-contentful-paint', buffered: true });
-            clsObserver.observe({ type: 'layout-shift', buffered: true });
-
-            // Buffered entries are delivered on a later task; collect whatever is still queued
-            setTimeout(() => {
-              readLcp(lcpObserver.takeRecords());
-              readShifts(clsObserver.takeRecords());
-              lcpObserver.disconnect();
-              clsObserver.disconnect();
-
-              resolve({ lcpMs, shifts });
-            }, 50);
-          }),
-      );
+      const evaluation = await VitalsService.readVitalsInPage(page);
 
       // The same reader checks the published MVP (REV-118)
       const { faviconLink, ...domChecks } = await page.evaluate(readStandardsInDocument, undefined);

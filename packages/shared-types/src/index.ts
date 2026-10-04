@@ -216,6 +216,21 @@ export interface IMvpStandards {
 }
 
 /**
+ * The published MVP's web vitals (REV-119): the uploaded page loaded in the audit's mobile profile and read with the
+ * audit's in-page reader. It is served from the demo host, not the business's own hosting. A value the page did not
+ * report is absent and `error` says why; no other timing stands in for it.
+ */
+export interface IMvpPerformance {
+  webVitals: IWebVitals;
+  /** The performance score from LCP and CLS, as the audit scores the original; absent without an LCP */
+  score?: number;
+  /** The host the page was loaded from */
+  host: string;
+  measuredAt: string | Date;
+  error?: string;
+}
+
+/**
  * The MVP's search and sharing tags (REV-118), built by code from the audit's verified data only: a tag whose
  * source is missing is left out
  */
@@ -745,6 +760,8 @@ export interface IMvpProject {
   modernize?: IRebuildModernize;
   /** The published page's standards checks (REV-118), re-checked on every publish; absent on MVPs published before it */
   standards?: IMvpStandards;
+  /** The published page's web vitals (REV-119), measured on every publish; absent on MVPs published before it */
+  performance?: IMvpPerformance;
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -1444,6 +1461,75 @@ export type RebuildFallbackReason = (typeof REBUILD_FALLBACK_REASONS)[number];
 export const REBUILD_OMISSIONS = ['section', 'nav_link', 'link', 'embed', 'image', 'text', 'item'] as const;
 export type RebuildOmission = (typeof REBUILD_OMISSIONS)[number];
 
+/**
+ * Why each kind of content was left out (REV-119): the reasons `planRebuild` records, so the dashboard explains each
+ * one. A section's reasons include the reader's own (`SITE_SKIP_REASONS`).
+ */
+export const REBUILD_OMISSION_REASONS = {
+  section: [...SITE_SKIP_REASONS, 'hidden', 'over_cap'],
+  nav_link: ['contact_link', 'other_page'],
+  link: ['no_label', 'unsafe_url', 'other_page'],
+  embed: ['second_form', 'host_not_allowed'],
+  image: ['not_http'],
+  text: ['dropped'],
+  item: ['dropped'],
+} as const satisfies Record<RebuildOmission, readonly string[]>;
+
+/**
+ * The kinds of change the rebuild records as tuning codes (REV-119); `parseRebuildChange` (`@revamp/validation`) reads
+ * a code into its kind. A new code needs a kind here, the parser, and an explanation in the dashboard in all five locales.
+ */
+export const REBUILD_CHANGE_KINDS = [
+  'contrast',
+  'overlay',
+  'alt',
+  'font-body',
+  'line-height',
+  'collapse',
+  'h1-hidden',
+  'booking-replaced',
+  'booking-appended',
+  'footer-added',
+  'seo-description',
+  'seo-og',
+  'seo-jsonld',
+  'style',
+  'cards',
+  'side',
+  'fill',
+  'hero-photo',
+  'hero-cta',
+  'type',
+  'theme',
+  'order',
+  'css-dropped',
+] as const;
+export type RebuildChangeKind = (typeof REBUILD_CHANGE_KINDS)[number];
+
+/** Who asked for a design change: the modernize layer (REV-114) or the operator's edit (REV-111) */
+export const REBUILD_CHANGE_SOURCES = ['modernize', 'edit'] as const;
+export type RebuildChangeSource = (typeof REBUILD_CHANGE_SOURCES)[number];
+
+/**
+ * The values the planner measured for one tuning code (REV-119), so the change can be told with its numbers; a value
+ * it did not measure is absent, never estimated
+ */
+export interface IRebuildChangeFact {
+  code: string;
+  /** The heading of the section the change is in, as read on the original; absent when it has none */
+  section?: string;
+  /** Before and after: text colors (`contrast`), body size in px (`font-body`), line height (`line-height`) */
+  from?: string | number;
+  to?: string | number;
+  /** The background the text color was checked on (`contrast`) */
+  background?: string;
+  /** Contrast ratios before and after (`contrast`) */
+  ratioBefore?: number;
+  ratioAfter?: number;
+  /** One measured value: the overlay's opacity (`overlay`), the section's characters (`collapse`) */
+  value?: number;
+}
+
 /** What the rebuild kept out and which fixes it applied (REV-110) */
 export interface IMvpRebuildSummary {
   /** The reader's coverage ratio of the original page */
@@ -1458,6 +1544,8 @@ export interface IMvpRebuildSummary {
   tuning: string[];
   /** `faithful` keeps the original look; `modern` applies the modernize design (REV-114) */
   level?: RebuildLevel;
+  /** The measured values behind the tuning codes (REV-119); absent on summaries saved before it */
+  facts?: IRebuildChangeFact[];
 }
 
 /** How far the rebuild departs from the original look (REV-114) */
