@@ -504,6 +504,8 @@ export interface IAuditDetail {
   desktopFullScreenshotUrl?: string;
   mobileFullScreenshotUrl?: string;
   lcpSeconds?: number;
+  /** Cumulative layout shift as measured; undefined when not measured (REV-119) */
+  cls?: number;
   a11yScore?: number;
   a11yViolationsCount?: number;
   visualHierarchyRating?: number;
@@ -547,6 +549,7 @@ export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail =
     mobileFullScreenshotUrl: a.screenshotUrls?.mobileFull || undefined,
     // webVitals.lcp is in milliseconds
     lcpSeconds: a.webVitals?.lcp != null ? a.webVitals.lcp / 1000 : undefined,
+    cls: a.webVitals?.cls ?? undefined,
     a11yScore: a.scores?.accessibility ?? undefined,
     a11yViolationsCount: a.a11ySummary?.violationsCount ?? undefined,
     visualHierarchyRating: designCritiqueFallback ? undefined : (a.designCritique?.visualHierarchyRating ?? undefined),

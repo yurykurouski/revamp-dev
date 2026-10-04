@@ -85,6 +85,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     modernize: { type: Schema.Types.Mixed },
     // REV-118: the published page's standards checks and score (MvpStandardsSchema), re-checked on every publish
     standards: { type: Schema.Types.Mixed },
+    // REV-119: the published page's web vitals (MvpPerformanceSchema), measured on every publish
+    performance: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,

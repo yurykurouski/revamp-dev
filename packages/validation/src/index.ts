@@ -22,6 +22,8 @@ import {
   BENTO_LAYOUT_VARIANTS,
   MVP_LAYOUT_VARIANTS,
   REBUILD_OMISSIONS,
+  RebuildChangeKind,
+  RebuildChangeSource,
   REBUILD_EDIT_ALIGNS,
   REBUILD_EDIT_ARRANGEMENTS,
   REBUILD_EDIT_BACKGROUNDS,
@@ -1415,7 +1417,73 @@ export const MvpRebuildSummarySchema = z.object({
     .max(REBUILD_SUMMARY_LIMITS.omitted),
   tuning: z.array(z.string().min(1).max(60)).max(REBUILD_SUMMARY_LIMITS.tuning),
   level: z.enum(REBUILD_LEVELS).optional(),
+  // The measured values behind the codes (REV-119)
+  facts: z
+    .array(
+      z.object({
+        code: z.string().min(1).max(60),
+        section: z.string().min(1).max(120).optional(),
+        from: z.union([z.string().max(20), z.number()]).optional(),
+        to: z.union([z.string().max(20), z.number()]).optional(),
+        background: z.string().max(20).optional(),
+        ratioBefore: z.number().min(1).max(21).optional(),
+        ratioAfter: z.number().min(1).max(21).optional(),
+        value: z.number().min(0).optional(),
+      }),
+    )
+    .max(REBUILD_SUMMARY_LIMITS.tuning)
+    .optional(),
 });
+
+/** One tuning code read into its kind (REV-119): the section index, a count or a photo id it names, and its source */
+export interface RebuildChange {
+  kind: RebuildChangeKind;
+  /** Set on the design changes (`style`, `cards`, …): the modernize layer or the operator */
+  source?: RebuildChangeSource;
+  /** The reader's section index (`s-<index>`) the change is in */
+  section?: number;
+  /** How many (`alt:<n>`) */
+  count?: number;
+}
+
+const EXACT_CODES: Record<string, RebuildChangeKind> = {
+  'font:body-16': 'font-body',
+  'line-height:1.5': 'line-height',
+  'h1:hidden': 'h1-hidden',
+  'booking:replaced': 'booking-replaced',
+  'booking:appended': 'booking-appended',
+  'footer:added': 'footer-added',
+  'seo:description': 'seo-description',
+  'seo:og': 'seo-og',
+  'seo:jsonld': 'seo-jsonld',
+};
+const SECTION_CODE = /^(contrast|overlay|collapse):(\d{1,3})$/;
+const SOURCED_SECTION_CODE = /^(modernize|edit):(style|cards|side|fill):(\d{1,3})$/;
+const SOURCED_CODE = /^(modernize|edit):(hero-cta|type|theme)$/;
+const HERO_PHOTO_CODE = /^(modernize|edit):hero-photo:s-(\d{1,3})\.m\d{1,3}$/;
+const EDIT_ONLY_CODE = /^edit:(order|css-dropped)$/;
+
+/**
+ * The kind of a rebuild tuning code (REV-119), or undefined for a code no kind covers. Every code `planRebuild` records
+ * parses; the dashboard explains each kind.
+ */
+export function parseRebuildChange(code: string): RebuildChange | undefined {
+  const exact = EXACT_CODES[code];
+  if (exact) return { kind: exact };
+  const alt = /^alt:(\d{1,4})$/.exec(code);
+  if (alt) return { kind: 'alt', count: Number(alt[1]) };
+  const section = SECTION_CODE.exec(code);
+  if (section) return { kind: section[1] as RebuildChangeKind, section: Number(section[2]) };
+  const sourced = SOURCED_SECTION_CODE.exec(code);
+  if (sourced) return { kind: sourced[2] as RebuildChangeKind, source: sourced[1] as RebuildChangeSource, section: Number(sourced[3]) };
+  const plain = SOURCED_CODE.exec(code);
+  if (plain) return { kind: plain[2] as RebuildChangeKind, source: plain[1] as RebuildChangeSource };
+  const photo = HERO_PHOTO_CODE.exec(code);
+  if (photo) return { kind: 'hero-photo', source: photo[1] as RebuildChangeSource, section: Number(photo[2]) };
+  const edit = EDIT_ONLY_CODE.exec(code);
+  if (edit) return { kind: edit[1] as RebuildChangeKind, source: 'edit' };
+  return undefined;
+}
 
 /** Iframe hosts the rebuild may embed (REV-110) */
 export const REBUILD_IFRAME_HOSTS = [
@@ -1577,6 +1645,17 @@ export const MvpStandardsSchema = z
     ({ checks, score }) => STANDARDS_CHECKS.reduce((sum, check) => sum + (checks[check] ? STANDARDS_POINTS[check] : 0), 0) === score,
     'The score is the points of the passed checks',
   );
+
+/** The published MVP's web vitals (REV-119); LCP in ms, CLS unitless, the score only with an LCP */
+export const MvpPerformanceSchema = z
+  .object({
+    webVitals: z.object({ lcp: z.number().int().min(0).optional(), cls: z.number().min(0).optional() }),
+    score: z.number().int().min(0).max(100).optional(),
+    host: z.string().min(1).max(253),
+    measuredAt: z.coerce.date(),
+    error: z.string().min(1).max(300).optional(),
+  })
+  .refine(({ webVitals, score }) => score === undefined || webVitals.lcp !== undefined, 'A score needs an LCP');
 
 // The rebuild edit (REV-111): ids from the reader and fixed values; the only free text is CSS for the sanitizer
 

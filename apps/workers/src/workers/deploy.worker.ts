@@ -34,6 +34,7 @@ import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
 import { mvpCompletenessService } from '../services/mvp-completeness.service.js';
 import { checkMvpStandards } from '../services/mvp-standards.js';
+import { measureMvpPerformance } from '../services/mvp-performance.js';
 import { handleGenerationFailure } from './generation-failure.js';
 
 function transliterate(str: string): string {
@@ -262,7 +263,6 @@ export async function republishSavedMvp(leadId: string) {
   // The lead and the audit do not change between passes; the stored copy is the one the MVP was made with
   const derived = deriveMvpLayout(auditData.siteLayout ?? undefined, buildLayoutSignals(leadData, auditData, project.generatedContent));
   let layout: IMvpLayoutSelection | undefined;
-  let html: string | undefined;
   const auditKey = String(audit._id);
   // A modern design computed by this job, so a later pass never asks the model again for the same audit
   let computed: IRebuildModernize | undefined;
@@ -286,7 +286,6 @@ export async function republishSavedMvp(leadId: string) {
       rebuildEdit: design.rebuildEdit,
       modernize: resolved.modernize,
     });
-    html = rendered.html;
     published = await publishMvp(project.previewSlug, rendered.html, lead, audit);
     layout = rendered.layout;
 
@@ -299,15 +298,28 @@ export async function republishSavedMvp(leadId: string) {
     // the levels is faithful
     const previous = project.rebuild as IMvpRebuildSummary | null | undefined;
     const levelChanged = Boolean(previous && rendered.rebuild) && (previous?.level ?? 'faithful') !== rendered.rebuild?.level;
-    if (rendered.rebuild || project.rebuild || switched) {
-      await MvpProject.findByIdAndUpdate(project._id, {
-        $set: {
-          ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
-          ...(switched || levelChanged ? { editedAt: new Date() } : {}),
-        },
-        ...(rendered.rebuild ? {} : { $unset: { rebuild: '' } }),
-      }).exec();
-    }
+    // The published page's checks go in the same write as its summary and editedAt, so the dashboard, which stops
+    // waiting on that write, never lists the previous page's measurements (REV-119). The completeness report
+    // (REV-111) and the standards (REV-118) are code only; the web vitals load the uploaded page. None throws.
+    const completenessReport = mvpCompletenessService.check(rendered.html, leadData, auditData);
+    const standards = publishedStandards(rendered.html);
+    const performance = await measureMvpPerformance(published.fullPreviewUrl);
+    const unset = { ...(rendered.rebuild ? {} : { rebuild: '' }), ...(standards ? {} : { standards: '' }) };
+    await MvpProject.findByIdAndUpdate(project._id, {
+      $set: {
+        completenessReport,
+        ...(standards ? { standards } : {}),
+        performance,
+        ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
+        ...(switched || levelChanged ? { editedAt: new Date() } : {}),
+      },
+      ...(Object.keys(unset).length ? { $unset: unset } : {}),
+    }).exec();
+    console.log(
+      `[DeployWorker] Completeness re-checked (deterministic): ${completenessReport.status}` +
+        (standards ? `; standards ${standards.score}/100` : '') +
+        `; web vitals ${performance.error ?? `LCP ${performance.webVitals.lcp} ms, CLS ${performance.webVitals.cls}`}`,
+    );
     // The layout is written only while it is still the one this pass rendered from: an operator's pick
     // made during the upload wins, and shows up as a difference in the re-read below (another pass)
     if (layoutChanged) {
@@ -333,20 +345,6 @@ export async function republishSavedMvp(leadId: string) {
     if (sameDesign(latestDesign, design)) break;
     project = latest;
     design = latestDesign;
-  }
-
-  // The report follows the published page (REV-111): code only, no LLM call on a re-publish; never throws
-  if (html) {
-    const completenessReport = mvpCompletenessService.check(html, leadData, auditData);
-    // The standards follow the published page too (REV-118)
-    const standards = publishedStandards(html);
-    await MvpProject.findByIdAndUpdate(project._id, {
-      $set: { completenessReport, ...(standards ? { standards } : {}) },
-      ...(standards ? {} : { $unset: { standards: '' } }),
-    }).exec();
-    console.log(
-      `[DeployWorker] Completeness re-checked (deterministic): ${completenessReport.status}` + (standards ? `; standards ${standards.score}/100` : ''),
-    );
   }
 
   console.log(
@@ -443,6 +441,9 @@ export const createDeployWorker = (): Worker => {
       // The published page's standards, by the audit's own checks (REV-118)
       const standards = publishedStandards(html);
       if (standards) console.log(`[DeployWorker] Standards of the MVP: ${standards.score}/100 (original ${auditData.scores?.standards ?? 'not measured'})`);
+      // Its web vitals, loaded on the audit's phone (REV-119); a failure is stored as such
+      const performance = await measureMvpPerformance(fullPreviewUrl);
+      console.log(`[DeployWorker] Web vitals of the MVP: ${performance.error ?? `LCP ${performance.webVitals.lcp} ms, CLS ${performance.webVitals.cls}`}`);
 
       // 8. Create or update MvpProject document in MongoDB (one per lead; regeneration updates it)
       const generatedAt = new Date();
@@ -503,6 +504,7 @@ export const createDeployWorker = (): Worker => {
           ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
           ...(resolved.changed ? { modernize: resolved.modernize } : {}),
           ...(standards ? { standards } : {}),
+          performance,
         },
         { upsert: true, new: true },
       ).exec();

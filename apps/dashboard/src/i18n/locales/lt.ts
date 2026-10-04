@@ -680,6 +680,273 @@ export const lt: Translation = {
       guidance: 'Gairės',
     },
   },
+  mvpChangeLog: {
+    title: 'Kiekvienas pakeitimas ir jo priežastis',
+    intro: 'Sudaryta kodu iš to, ką užrašė generatorius, ir iš matavimų. Jokių priežasčių ar skaičių čia neparašė DI.',
+    counts: 'Pakeitimai: {{changes}} · Praleista: {{omitted}}',
+    why: 'Kodėl',
+    effect: 'Lankytojams',
+    loss: 'Lankytojai netenka',
+    showInPreview: 'Rodyti peržiūroje',
+    untitledSection: 'Skyrius be antraštės',
+    samples: 'Praleista',
+    empty: 'Generatorius neužrašė jokių šio puslapio pakeitimų.',
+    groups: {
+      accessibility: 'Prieinamumas',
+      readability: 'Skaitomumas',
+      performance: 'Greitis',
+      seo: 'SEO',
+      booking: 'Konversija ir registracija',
+      design: 'Dizainas',
+      edits: 'Jūsų pakeitimai',
+      omitted: 'Praleistas turinys',
+    },
+    sources: {
+      edit: 'Jūs to paprašėte dizaino įrankiuose arba aprašytu pakeitimu.',
+      modernize: 'Modernizuotos išvaizdos dalis.',
+      modernizeManual: 'Operatoriaus pasirinktos modernizuotos išvaizdos dalis.',
+      modernizeDated: 'Modernizuotos išvaizdos dalis: originalas atpažintas kaip pasenęs (balas {{score}}).',
+      modernizeDatedUnscored: 'Modernizuotos išvaizdos dalis: originalas atpažintas kaip pasenęs.',
+    },
+    changes: {
+      unknown: {
+        what: 'Užrašytas pakeitimas „{{code}}“',
+        why: 'Ši skydelio versija neturi šio kodo paaiškinimo.',
+        effect: 'Nežinoma.',
+      },
+      contrast: {
+        what: 'Teksto spalva pakeista iš {{from}} į {{to}} ant {{background}} fono',
+        why: 'Kontrastas buvo {{before}}:1, žemiau WCAG AA minimumo 4,5:1; dabar {{after}}:1.',
+        effect: 'Skaitoma ryškioje šviesoje ir silpnaregiams lankytojams.',
+      },
+      contrastUnmeasured: {
+        what: 'Teksto spalva pakeista dėl kontrasto',
+        why: 'Kontrastas buvo žemiau WCAG AA minimumo 4,5:1. Spalvos ir santykiai šiam puslapiui neužrašyti.',
+        effect: 'Skaitoma ryškioje šviesoje ir silpnaregiams lankytojams.',
+      },
+      overlay: {
+        what: '{{percent}}% patamsinimas ant fono nuotraukos',
+        why: 'Tekstas ant nuotraukos neturi patikimo kontrasto; patamsinimas išlaiko baltą tekstą skaitomą ant bet kokios nuotraukos.',
+        effect: 'Tekstas ant nuotraukos lieka skaitomas.',
+      },
+      overlayUnmeasured: {
+        what: 'Patamsinimas ant fono nuotraukos',
+        why: 'Tekstas ant nuotraukos neturi patikimo kontrasto. Patamsinimo stiprumas šiam puslapiui neužrašytas.',
+        effect: 'Tekstas ant nuotraukos lieka skaitomas.',
+      },
+      alt: {
+        what: 'Alternatyvusis tekstas pridėtas paveikslėliams: {{count}}, iš jų parašo arba skyriaus antraštės',
+        why: 'Originale jie neturėjo alternatyviojo teksto.',
+        effect: 'Ekrano skaitytuvų naudotojai išgirsta, kas pavaizduota, o paieškos sistemos gali juos indeksuoti.',
+      },
+      h1Hidden: {
+        what: 'Paslėpta pagrindinė antraštė su įmonės pavadinimu',
+        why: 'Originaliame puslapyje nebuvo pagrindinės antraštės, kurią galėtų panaudoti perkūrimas.',
+        effect: 'Ekrano skaitytuvai ir paieškos sistemos žino, apie ką puslapis.',
+      },
+      fontBody: {
+        what: 'Pagrindinis tekstas padidintas nuo {{from}} px iki {{to}} px',
+        why: 'Mažesnį nei 16 px tekstą sunku skaityti telefone.',
+        effect: 'Lankytojai skaito nedidindami.',
+      },
+      fontBodyUnmeasured: {
+        what: 'Pagrindinis tekstas padidintas iki 16 px',
+        why: 'Originalo pagrindinis tekstas buvo mažesnis nei 16 px. Jo dydis šiam puslapiui neužrašytas.',
+        effect: 'Lankytojai skaito nedidindami.',
+      },
+      lineHeight: {
+        what: 'Eilučių tarpai padidinti nuo {{from}} iki {{to}}',
+        why: 'Mažesni nei 1,5 eilučių tarpai neatitinka WCAG teksto tarpų rekomendacijų.',
+        effect: 'Ilgas pastraipas lengviau sekti eilutė po eilutės.',
+      },
+      lineHeightUnmeasured: {
+        what: 'Eilučių tarpai padidinti iki 1,5',
+        why: 'Originalo eilučių tarpai buvo mažesni nei 1,5. Jų reikšmė šiam puslapiui neužrašyta.',
+        effect: 'Ilgas pastraipas lengviau sekti eilutė po eilutės.',
+      },
+      collapse: {
+        what: 'Ilgas teksto blokas ({{chars}} simbolių) suskleistas po „Skaityti daugiau“',
+        why: 'Jis ilgesnis nei {{limit}} simbolių ir nustumia likusį puslapį toli žemyn.',
+        effect: 'Lankytojai greičiau pasiekia kitus skyrius ir vis tiek gali atverti visą tekstą.',
+      },
+      collapseUnmeasured: {
+        what: 'Ilgas teksto blokas suskleistas po „Skaityti daugiau“',
+        why: 'Jis ilgesnis nei suskleidimo riba. Jo ilgis šiam puslapiui neužrašytas.',
+        effect: 'Lankytojai greičiau pasiekia kitus skyrius ir vis tiek gali atverti visą tekstą.',
+      },
+      bookingReplaced: {
+        what: 'Originalo forma pakeista registracijos forma',
+        why: 'Puslapyje lieka viena forma, originalo formos vietoje.',
+        effect: 'Lankytojai vienoje trumpoje formoje palieka vardą ir telefoną bei pasirenka paslaugą.',
+      },
+      bookingAppended: {
+        what: 'Registracijos forma pridėta prieš poraštę',
+        why: 'Originaliame puslapyje nebuvo formos registruotis ar paklausti.',
+        effect: 'Lankytojai gali prašyti vizito neišėję iš puslapio ir neskambindami.',
+      },
+      heroCta: {
+        what: 'Registracijos mygtukas pridėtas pirmajame ekrane',
+        effect: 'Pirmasis ekranas pasiūlo lankytojams kitą žingsnį.',
+      },
+      footerAdded: {
+        what: 'Poraštė su patikrintais kontaktais',
+        why: 'Originalo poraštė neišsaugota: joje buvo tik nuorodos į kitus puslapius arba jos nebuvo.',
+        effect: 'Lankytojai puslapio pabaigoje randa telefoną, el. paštą ir adresą.',
+      },
+      seoDescription: {
+        what: 'Pridėtas meta aprašas iš paties originalo teksto',
+        why: 'Originalas neturėjo meta aprašo.',
+        effect: 'Paieškos rezultatuose po nuoroda matyti pačios įmonės žodžiai.',
+      },
+      seoOg: {
+        what: 'Pridėtos dalijimosi žymos (OpenGraph)',
+        why: 'Originalas jų neturėjo.',
+        effect: 'Pasidalyta nuoroda pokalbių programėlėse ir socialiniuose tinkluose rodo įmonės pavadinimą, tekstą ir nuotrauką.',
+      },
+      seoJsonld: {
+        what: 'Pridėti Schema.org įmonės duomenys iš patikrintų kontaktų',
+        why: 'Originalas jų neturėjo.',
+        effect: 'Paieškos sistemos ir žemėlapiai patikimai nuskaito pavadinimą, telefoną ir adresą.',
+      },
+      style: {
+        what: 'Pakeistas skyriaus fonas, lygiuotė arba tarpai',
+        effect: 'Skyriai atskirti vienas nuo kito, todėl puslapį lengviau peržvelgti.',
+      },
+      cards: {
+        what: 'Pastraipos parodytos kortelėmis',
+        effect: 'Trumpus punktus galima perskaityti vienu žvilgsniu.',
+      },
+      side: {
+        what: 'Nuotrauka perkelta į kitą teksto pusę',
+        effect: 'Nuotraukos keičia puses, todėl puslapis skaitosi mažiau monotoniškai.',
+      },
+      fill: {
+        what: 'Nuotrauka padidinta per visą stulpelį',
+        effect: 'Lankytojai geriau mato vietą ar darbą.',
+      },
+      heroPhoto: {
+        what: 'Nuotrauka iš šio skyriaus perkelta į pirmąjį ekraną',
+        effect: 'Pirmasis ekranas rodo tikrą įmonę, ne tik tekstą.',
+      },
+      type: {
+        what: 'Moderni šriftų skalė: didesnės antraštės, pagrindinis tekstas bent 17 px',
+        effect: 'Aiški hierarchija: lankytojai pirmiausia mato, kas svarbu.',
+      },
+      theme: {
+        what: 'Pakeistas puslapio šriftas, tarpai, kampai arba antraščių raidžių dydis',
+        effect: 'Vientisa viso puslapio išvaizda.',
+      },
+      order: {
+        what: 'Pakeista skyrių tvarka',
+        effect: 'Lankytojai mato skyrius jūsų pasirinkta tvarka.',
+      },
+      cssDropped: {
+        what: 'Jūsų CSS praleistas',
+        effect: 'Lankytojai mato puslapį be to CSS: jis nebepraeina saugumo patikros.',
+      },
+      levelFaithful: {
+        what: 'Tikslus originalo pagrindinio puslapio perkūrimas',
+        why: 'Išlaiko originalo spalvas, lygiuotę ir išdėstymą, keičiant tik tai, ko reikia toliau nurodytiems pataisymams.',
+        effect: 'Lankytojai atpažįsta pačios įmonės svetainę.',
+      },
+      levelModern: {
+        what: 'Modernizuotas perkūrimas: tas pats turinys, tvarka ir prekės ženklo spalvos modernia išvaizda',
+        effect: 'Puslapis atrodo šiuolaikiškai ir sako tą patį, ką originalas.',
+      },
+      template: {
+        what: 'Sukurta pagal šabloną „{{variant}}“, o ne perkuriant originalą',
+        whyRule: 'Parinkta išdėstymo taisyklių: {{rule}}.',
+        whyUnknown: 'Šio išdėstymo priežastis neužrašyta.',
+        effect: 'Lankytojai gauna vieno puslapio svetainę su patikrintais įmonės faktais nauja formuluote.',
+      },
+      measuredOn: 'Išmatuota telefono profiliu adresu {{host}}, kur talpinamas prototipas. Pačios įmonės talpinimo vietoje skaičiai gali skirtis.',
+      measuredOnAt: 'Išmatuota {{at, datetime(dateStyle: short; timeStyle: short)}} telefono profiliu adresu {{host}}, kur talpinamas prototipas. Pačios įmonės talpinimo vietoje skaičiai gali skirtis.',
+      lcpNotMeasured: {
+        what: 'Prototipo įkėlimo greitis neišmatuotas',
+        why: 'Matavimas nepavyko: {{error}}',
+        effect: 'Nežinoma.',
+      },
+      lcpNoOriginal: {
+        what: 'Didžiausias elementas parodytas po {{mvp}} s',
+        why: 'Originalo įkėlimo greitis neišmatuotas, todėl nėra su kuo palyginti.',
+        effect: 'Nepalyginta.',
+      },
+      lcp: {
+        what: 'Didžiausias elementas parodytas po {{mvp}} s (originalas: {{original}} s)',
+        why: 'Largest Contentful Paint, išmatuota vienodai abiejuose puslapiuose. Google gerais laiko 2,5 s ar mažiau.',
+        effect: 'Pirmasis ekranas pasirodo greičiau, todėl mažiau lankytojų išeina jo nesulaukę.',
+        effectSlower: 'Pirmasis ekranas pasirodo ne greičiau nei originale.',
+      },
+      clsNoOriginal: {
+        what: 'Išdėstymo poslinkis įkeliant: {{mvp}}',
+        why: 'Originalo išdėstymo poslinkis neišmatuotas, todėl nėra su kuo palyginti.',
+        effect: 'Nepalyginta.',
+      },
+      cls: {
+        what: 'Išdėstymo poslinkis įkeliant: {{mvp}} (originalas: {{original}})',
+        why: 'Cumulative Layout Shift, išmatuota vienodai abiejuose puslapiuose. Google gerais laiko 0,1 ar mažiau.',
+        effect: 'Tekstas ir mygtukai nešokinėja įkeliant, todėl lankytojai nepaspaudžia ne ten.',
+        effectWorse: 'Įkeliant turinys pasislenka labiau nei originale.',
+      },
+      standardsFixed: {
+        what: 'Patikra „{{check}}“ dabar praeina',
+        why: 'Originalas šios patikros nepraėjo.',
+      },
+      standardsRegressed: {
+        what: 'Patikra „{{check}}“ prototipe nepraeina',
+        why: 'Originalas šią patikrą praėjo.',
+        effect: 'Prarasta: {{hint}}',
+      },
+    },
+    omitted: {
+      items: {
+        section: 'Praleisti skyriai: {{count}}',
+        nav_link: 'Praleistos meniu nuorodos: {{count}}',
+        link: 'Praleistos nuorodos: {{count}}',
+        embed: 'Praleistos įterptos formos ar valdikliai: {{count}}',
+        image: 'Praleisti paveikslėliai: {{count}}',
+        text: 'Praleistos pastraipos: {{count}}',
+        item: 'Praleisti elementai: {{count}}',
+      },
+      reasons: {
+        section: {
+          noise: { why: 'Atpažinta kaip puslapio triukšmas (slapukų juosta, valdiklis ar iššokantis langas), ne turinys.', effect: 'Tą triukšmą, ne turinį.' },
+          empty: { why: 'Nebuvo ką rodyti: nėra teksto arba tik nuorodos į kitus puslapius.', effect: 'Nieko, ką ten būtų galima perskaityti.' },
+          duplicate: { why: 'Kartoja turinį, rodomą kitoje puslapio vietoje.', effect: 'Nieko: tą turinį jie mato vieną kartą.' },
+          cap: { why: 'Už ribos, kiek puslapio nuskaito skaitytuvas.', effect: 'Tą originalo puslapio dalį.' },
+          unassigned: { why: 'Skaitant puslapį šis fragmentas nepateko į jokį skyrių.', effect: 'Tą originalo puslapio fragmentą.' },
+          hidden: { why: 'Jūs paslėpėte šį skyrių.', effect: 'Šį skyrių.' },
+          over_cap: { why: 'Už didžiausio skyrių skaičiaus, kurį rodo prototipas.', effect: 'Tą skyrių.' },
+        },
+        nav_link: {
+          contact_link: { why: 'Telefono, el. pašto ir žemėlapio nuorodos pašalinamos iš meniu; antraštė ir poraštė rodo patikrintus kontaktus.', effect: 'Nieko: kontaktai yra antraštėje ir poraštėje.' },
+          other_page: { why: 'Veda į kitą puslapį; prototipas yra tik pagrindinis puslapis.', effect: 'Tą puslapį iš meniu.' },
+        },
+        link: {
+          no_label: { why: 'Ji neturėjo matomo užrašo, todėl ekrano skaitytuvai ją perskaitytų kaip bevardę nuorodą.', effect: 'Nuorodą, kurios nebuvo galima atpažinti.' },
+          unsafe_url: { why: 'Jos adresas nėra interneto ar kontakto nuoroda (pavyzdžiui, javascript:).', effect: 'Tą nuorodą.' },
+          other_page: { why: 'Veda į kitą puslapį; prototipas yra tik pagrindinis puslapis.', effect: 'Tą puslapį per šią nuorodą.' },
+        },
+        embed: {
+          second_form: { why: 'Puslapyje lieka viena registracijos forma; antra forma su ja konkuruotų.', effect: 'Nieko: jie naudoja registracijos formą.' },
+          host_not_allowed: { why: 'Įterpiami tik Google Maps, OpenStreetMap, YouTube ir Vimeo žemėlapiai bei vaizdo įrašai, dėl privatumo ir saugumo.', effect: 'Tą įterptą valdiklį.' },
+        },
+        image: {
+          not_http: { why: 'Jo adresas nėra interneto adresas, kurį puslapis gali įkelti (pavyzdžiui, įterptas data paveikslėlis).', effect: 'Tą paveikslėlį.' },
+        },
+        text: {
+          dropped: { why: 'Jūs jį praleidote.', effect: 'Tą tekstą.' },
+        },
+        item: {
+          dropped: { why: 'Jūs jį praleidote.', effect: 'Tą elementą.' },
+        },
+      },
+      unknown: {
+        why: 'Užrašyta priežastis „{{reason}}“, kurios ši skydelio versija nepaaiškina.',
+        effect: 'Nežinoma.',
+      },
+    },
+  },
   mvpPreviewPage: {
     backToReview: 'Atgal į peržiūrą',
     openPublished: 'Atidaryti puslapį, kurį gaus potencialus klientas',

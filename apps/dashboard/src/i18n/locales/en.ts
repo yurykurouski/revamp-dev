@@ -681,6 +681,273 @@ export const en = {
       guidance: 'Guidance',
     },
   },
+  mvpChangeLog: {
+    title: 'Every change, with its reason',
+    intro: 'Built by code from what the renderer recorded and what was measured. No AI wrote these reasons or numbers.',
+    counts: 'Changes: {{changes}} · Left out: {{omitted}}',
+    why: 'Why',
+    effect: 'For visitors',
+    loss: 'Visitors lose',
+    showInPreview: 'Show in preview',
+    untitledSection: 'Untitled section',
+    samples: 'Left out',
+    empty: 'The renderer recorded no changes for this page.',
+    groups: {
+      accessibility: 'Accessibility',
+      readability: 'Readability',
+      performance: 'Performance',
+      seo: 'SEO',
+      booking: 'Conversion & booking',
+      design: 'Design',
+      edits: 'Your edits',
+      omitted: 'Content left out',
+    },
+    sources: {
+      edit: 'You asked for it in the Design tools or a described change.',
+      modernize: 'Part of the modernized look.',
+      modernizeManual: 'Part of the modernized look, which the operator picked.',
+      modernizeDated: 'Part of the modernized look: the original was detected as dated (score {{score}}).',
+      modernizeDatedUnscored: 'Part of the modernized look: the original was detected as dated.',
+    },
+    changes: {
+      unknown: {
+        what: 'Recorded change "{{code}}"',
+        why: 'This version of the dashboard has no explanation for this code.',
+        effect: 'Not known.',
+      },
+      contrast: {
+        what: 'Text color changed from {{from}} to {{to}} on {{background}}',
+        why: 'Its contrast was {{before}}:1, below the WCAG AA minimum of 4.5:1; it is now {{after}}:1.',
+        effect: 'Readable in bright light and for visitors with low vision.',
+      },
+      contrastUnmeasured: {
+        what: 'Text color changed for contrast',
+        why: 'Its contrast was below the WCAG AA minimum of 4.5:1. The colors and ratios were not recorded for this page.',
+        effect: 'Readable in bright light and for visitors with low vision.',
+      },
+      overlay: {
+        what: 'A {{percent}}% dark overlay over the background photo',
+        why: 'Text over a photo has no reliable contrast; the overlay keeps white text readable on any photo.',
+        effect: 'The text over the photo stays readable.',
+      },
+      overlayUnmeasured: {
+        what: 'A dark overlay over the background photo',
+        why: 'Text over a photo has no reliable contrast. The overlay strength was not recorded for this page.',
+        effect: 'The text over the photo stays readable.',
+      },
+      alt: {
+        what: 'Alt text added to {{count}} images, from their caption or section heading',
+        why: 'They had no alt text on the original.',
+        effect: 'Screen-reader users hear what each image shows, and search engines can index them.',
+      },
+      h1Hidden: {
+        what: 'A hidden main heading with the business name',
+        why: 'The original page had no main heading the rebuild could use.',
+        effect: 'Screen readers and search engines know what the page is about.',
+      },
+      fontBody: {
+        what: 'Body text enlarged from {{from}} px to {{to}} px',
+        why: 'Text smaller than 16 px is hard to read on phones.',
+        effect: 'Visitors read without zooming in.',
+      },
+      fontBodyUnmeasured: {
+        what: 'Body text enlarged to 16 px',
+        why: 'The original body text was smaller than 16 px. Its size was not recorded for this page.',
+        effect: 'Visitors read without zooming in.',
+      },
+      lineHeight: {
+        what: 'Line spacing raised from {{from}} to {{to}}',
+        why: 'Line spacing under 1.5 falls short of the WCAG text spacing guidance.',
+        effect: 'Long paragraphs are easier to follow line by line.',
+      },
+      lineHeightUnmeasured: {
+        what: 'Line spacing raised to 1.5',
+        why: 'The original line spacing was under 1.5. Its value was not recorded for this page.',
+        effect: 'Long paragraphs are easier to follow line by line.',
+      },
+      collapse: {
+        what: 'A long text block ({{chars}} characters) folded under "Read more"',
+        why: 'It is longer than {{limit}} characters, which pushes the rest of the page far down.',
+        effect: 'Visitors reach the next sections sooner and can still open the full text.',
+      },
+      collapseUnmeasured: {
+        what: 'A long text block folded under "Read more"',
+        why: 'It is longer than the fold limit. Its length was not recorded for this page.',
+        effect: 'Visitors reach the next sections sooner and can still open the full text.',
+      },
+      bookingReplaced: {
+        what: 'The original form replaced by the booking form',
+        why: 'The page keeps one form, where the original had its own.',
+        effect: 'Visitors leave their name and phone and pick a service in one short form.',
+      },
+      bookingAppended: {
+        what: 'A booking form added before the footer',
+        why: 'The original page had no form to book or ask with.',
+        effect: 'Visitors can request an appointment without leaving the page or calling.',
+      },
+      heroCta: {
+        what: 'A booking button added to the first screen',
+        effect: 'The first screen gives visitors a next step.',
+      },
+      footerAdded: {
+        what: 'A footer with the verified contacts',
+        why: 'The original footer was not kept: it held only links to other pages, or the page had none.',
+        effect: 'Visitors find the phone, email and address at the end of the page.',
+      },
+      seoDescription: {
+        what: 'A meta description added, taken from the original\'s own text',
+        why: 'The original had no meta description.',
+        effect: 'Search results show the business\'s own words under the link.',
+      },
+      seoOg: {
+        what: 'Sharing tags (OpenGraph) added',
+        why: 'The original had none.',
+        effect: 'A shared link shows the business name, text and photo in messengers and social networks.',
+      },
+      seoJsonld: {
+        what: 'Schema.org business data added from the verified contacts',
+        why: 'The original had none.',
+        effect: 'Search engines and maps read the name, phone and address reliably.',
+      },
+      style: {
+        what: 'Section background, alignment or spacing restyled',
+        effect: 'Sections stand apart, so the page is easier to scan.',
+      },
+      cards: {
+        what: 'Paragraphs shown as cards',
+        effect: 'Short points can be read at a glance.',
+      },
+      side: {
+        what: 'Photo placed on the other side of the text',
+        effect: 'Photos alternate sides, so the page reads less monotonously.',
+      },
+      fill: {
+        what: 'Photo enlarged to fill its column',
+        effect: 'Visitors see the place or the work in more detail.',
+      },
+      heroPhoto: {
+        what: 'A photo from this section moved to the first screen',
+        effect: 'The first screen shows the real business, not only text.',
+      },
+      type: {
+        what: 'Modern type scale: larger headings, body text of at least 17 px',
+        effect: 'A clear hierarchy: visitors see what matters first.',
+      },
+      theme: {
+        what: 'Page font, spacing, corners or heading case changed',
+        effect: 'One consistent look across the page.',
+      },
+      order: {
+        what: 'Sections reordered',
+        effect: 'Visitors see the sections in the order you chose.',
+      },
+      cssDropped: {
+        what: 'Your custom CSS was left out',
+        effect: 'Visitors see the page without that CSS: it no longer passes the CSS safety check.',
+      },
+      levelFaithful: {
+        what: 'Faithful rebuild of the original home page',
+        why: 'Keeps the original\'s colors, alignment and layout, changing only what the fixes below need.',
+        effect: 'Visitors recognize the business\'s own site.',
+      },
+      levelModern: {
+        what: 'Modernized rebuild: same content, order and brand colors in a modern look',
+        effect: 'The page looks current while saying what the original says.',
+      },
+      template: {
+        what: 'Built from the {{variant}} template instead of a rebuild of the original',
+        whyRule: 'Picked by the layout rules: {{rule}}.',
+        whyUnknown: 'The reason for this layout was not recorded.',
+        effect: 'Visitors get a one-page site with the business\'s verified facts, in new wording.',
+      },
+      measuredOn: 'Measured on a phone profile at {{host}}, where the prototype is hosted. On the business\'s own hosting the numbers can differ.',
+      measuredOnAt: 'Measured {{at, datetime(dateStyle: short; timeStyle: short)}} on a phone profile at {{host}}, where the prototype is hosted. On the business\'s own hosting the numbers can differ.',
+      lcpNotMeasured: {
+        what: 'The prototype\'s loading speed was not measured',
+        why: 'The measurement failed: {{error}}',
+        effect: 'Not known.',
+      },
+      lcpNoOriginal: {
+        what: 'Largest content shown after {{mvp}} s',
+        why: 'The original\'s loading speed was not measured, so there is nothing to compare with.',
+        effect: 'Not compared.',
+      },
+      lcp: {
+        what: 'Largest content shown after {{mvp}} s (original: {{original}} s)',
+        why: 'Largest Contentful Paint, measured the same way on both pages. Google rates 2.5 s or less as good.',
+        effect: 'The first screen appears sooner, so fewer visitors leave before it loads.',
+        effectSlower: 'The first screen appears no sooner than on the original.',
+      },
+      clsNoOriginal: {
+        what: 'Layout shift while loading: {{mvp}}',
+        why: 'The original\'s layout shift was not measured, so there is nothing to compare with.',
+        effect: 'Not compared.',
+      },
+      cls: {
+        what: 'Layout shift while loading: {{mvp}} (original: {{original}})',
+        why: 'Cumulative Layout Shift, measured the same way on both pages. Google rates 0.1 or less as good.',
+        effect: 'Text and buttons stay in place while the page loads, so visitors don\'t tap the wrong thing.',
+        effectWorse: 'Content moves more while the page loads than on the original.',
+      },
+      standardsFixed: {
+        what: 'Passes the "{{check}}" check now',
+        why: 'The original failed this check.',
+      },
+      standardsRegressed: {
+        what: 'Fails the "{{check}}" check on the prototype',
+        why: 'The original passed this check.',
+        effect: 'Lost: {{hint}}',
+      },
+    },
+    omitted: {
+      items: {
+        section: 'Sections left out: {{count}}',
+        nav_link: 'Menu links left out: {{count}}',
+        link: 'Links left out: {{count}}',
+        embed: 'Embedded forms or widgets left out: {{count}}',
+        image: 'Images left out: {{count}}',
+        text: 'Paragraphs left out: {{count}}',
+        item: 'Items left out: {{count}}',
+      },
+      reasons: {
+        section: {
+          noise: { why: 'Read as page clutter (a cookie banner, widget or pop-up), not content.', effect: 'That clutter, not content.' },
+          empty: { why: 'Nothing was left to show: no text, or only links to other pages.', effect: 'Nothing they could read there.' },
+          duplicate: { why: 'It repeats content shown elsewhere on the page.', effect: 'Nothing: they see that content once.' },
+          cap: { why: 'Past the limit of how much of a page the reader takes in.', effect: 'That part of the original page.' },
+          unassigned: { why: 'The page reading placed this piece in no section.', effect: 'That piece of the original page.' },
+          hidden: { why: 'You hid this section.', effect: 'This section.' },
+          over_cap: { why: 'Past the maximum number of sections the prototype shows.', effect: 'That section.' },
+        },
+        nav_link: {
+          contact_link: { why: 'Phone, email and map links leave the menu; the header and footer show the verified contacts.', effect: 'Nothing: the contacts are in the header and footer.' },
+          other_page: { why: 'It leads to another page; the prototype is the home page only.', effect: 'That page, from the menu.' },
+        },
+        link: {
+          no_label: { why: 'It had no visible label, so screen readers would read it as an unnamed link.', effect: 'A link they could not identify.' },
+          unsafe_url: { why: 'Its address is not a web or contact link (for example javascript:).', effect: 'That link.' },
+          other_page: { why: 'It leads to another page; the prototype is the home page only.', effect: 'That page, from this link.' },
+        },
+        embed: {
+          second_form: { why: 'The page keeps one booking form; a second form would compete with it.', effect: 'Nothing: they use the booking form.' },
+          host_not_allowed: { why: 'Only maps and videos from Google Maps, OpenStreetMap, YouTube and Vimeo are embedded, for privacy and safety.', effect: 'That embedded widget.' },
+        },
+        image: {
+          not_http: { why: 'Its address is not a web address the page can load (for example an inline data image).', effect: 'That image.' },
+        },
+        text: {
+          dropped: { why: 'You left it out.', effect: 'That text.' },
+        },
+        item: {
+          dropped: { why: 'You left it out.', effect: 'That item.' },
+        },
+      },
+      unknown: {
+        why: 'Recorded reason "{{reason}}", which this version of the dashboard does not explain.',
+        effect: 'Not known.',
+      },
+    },
+  },
   mvpPreviewPage: {
     backToReview: 'Back to the review',
     openPublished: 'Open the page the lead receives',

@@ -28,6 +28,7 @@ import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
 import { MvpLayoutChip } from '../MvpLayoutChip.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
+import { showInPreview } from '../../utils/mvpChangeLog.js';
 import { MvpDesignTools, useMvpDesignTools } from './MvpDesignTools.js';
 import { leadPreviewPath } from '../../routes/paths.js';
 
@@ -278,7 +279,7 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
       </Box>
 
       {/* What the MVP changed compared with the original site (REV-81), under the preview (REV-94) */}
-      <MvpChangeSummary mvp={mvp} audit={audit} />
+      <MvpChangeSummary mvp={mvp} audit={audit} onShowSection={(anchor) => showInPreview(iframeRef.current, previewUrl, anchor)} />
     </Card>
   );
 };

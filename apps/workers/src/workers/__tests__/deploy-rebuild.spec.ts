@@ -169,6 +169,24 @@ describe('deploy with the rebuild (REV-110)', () => {
     expect(update.standards.score).toBe(20);
   });
 
+  it('saves the web vitals of the published page, measured on its URL (REV-119)', async () => {
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 0.98, sections: 1, omitted: [], tuning: [] } });
+    vi.mocked(browserService.measurePageVitals).mockResolvedValue({ lcpMs: 912.4, shifts: [{ startTime: 100, value: 0.02, hadRecentInput: false }] });
+    await runDeploy({ siteSections: sectionsFixture });
+    expect(browserService.measurePageVitals).toHaveBeenCalledWith('http://minio/v/falco/index.html');
+    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    expect(update.performance).toEqual({ webVitals: { lcp: 912, cls: 0.02 }, score: 100, host: 'minio', measuredAt: expect.any(Date) });
+  });
+
+  it('stores a failed measurement as such and still publishes (REV-119)', async () => {
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 0.98, sections: 1, omitted: [], tuning: [] } });
+    vi.mocked(browserService.measurePageVitals).mockRejectedValue(new Error('net::ERR_CONNECTION_REFUSED'));
+    const result = await runDeploy({ siteSections: sectionsFixture });
+    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    expect(update.performance).toEqual({ webVitals: {}, host: 'minio', measuredAt: expect.any(Date), error: expect.stringContaining('ERR_CONNECTION_REFUSED') });
+    expect(result.success).toBe(true);
+  });
+
   it('passes no palette to the rebuild, so it takes the site button color itself', async () => {
     vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 0.98, sections: 1, omitted: [], tuning: [] } });
     await runDeploy({ siteSections: sectionsFixture });
@@ -251,6 +269,17 @@ describe('re-publish with the rebuild (REV-110)', () => {
     );
   });
 
+  it('measures the re-published page again (REV-119)', async () => {
+    savedProject({ layout: { variant: 'bento', reasons: ['rule:manual'] }, rebuild: undefined });
+    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
+    vi.mocked(browserService.measurePageVitals).mockResolvedValue({ lcpMs: null, shifts: [] });
+    await republishSavedMvp(leadId);
+    const sets = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map(([, update]) => (update as any)?.$set ?? {});
+    expect(sets.find((set) => set.performance)?.performance).toEqual({
+      webVitals: { cls: 0 }, host: 'minio', measuredAt: expect.any(Date), error: 'The page reported no largest-contentful-paint entry',
+    });
+  });
+
   it('does not touch editedAt when the renderer stays the same', async () => {
     savedProject({ layout: { variant: 'bento', reasons: ['rule:manual'] }, rebuild: undefined });
     vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
@@ -265,7 +294,13 @@ describe('re-publish with the rebuild (REV-110)', () => {
     await republishSavedMvp(leadId);
     const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as Record<string, any>;
     expect(update.$unset).toEqual({ rebuild: '' });
-    expect(update.$set).toEqual({ editedAt: expect.any(Date) });
+    // The page's checks arrive with the switch, so the dashboard never lists the previous page's (REV-119)
+    expect(update.$set).toEqual({
+      editedAt: expect.any(Date),
+      completenessReport: expect.anything(),
+      standards: expect.anything(),
+      performance: expect.objectContaining({ host: 'minio' }),
+    });
   });
 
   it('records a fallback of a manual original once and does not publish twice', async () => {
@@ -286,8 +321,8 @@ describe('re-publish with the rebuild (REV-110)', () => {
     expect(filter).toEqual({ _id: projectId, layout: { variant: 'original', reasons: ['rule:manual'] } });
     expect(update.$set.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:too_large']);
     // Bento before and after: no renderer switch; the only other write is the re-checked completeness (REV-111)
-    // and the published page's standards (REV-118)
-    expect(vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => Object.keys((call[1] as any).$set))).toEqual([['completenessReport', 'standards']]);
+    // and the published page's standards (REV-118) and web vitals (REV-119)
+    expect(vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => Object.keys((call[1] as any).$set))).toEqual([['completenessReport', 'standards', 'performance']]);
     expect(storageService.uploadHtml).toHaveBeenCalledTimes(1);
     expect(result.layout).toBe(update.$set.layout.variant);
   });
