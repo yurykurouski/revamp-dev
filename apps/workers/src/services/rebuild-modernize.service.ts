@@ -13,7 +13,7 @@ import {
   REBUILD_MEDIA_FITS,
   REBUILD_TYPE_SCALES,
 } from '@revamp/shared-types';
-import { REBUILD_BANNER_MIN_WIDTH, REBUILD_CARD_MAX_CHARS, RebuildModernizeAnswerSchema, cardRun, checkRebuildEdit } from '@revamp/validation';
+import { REBUILD_BANNER_MIN_WIDTH, REBUILD_CARD_MAX_CHARS, RebuildModernizeAnswerSchema, cardRun, checkRebuildEdit, rebuildItemsFitCards } from '@revamp/validation';
 import { LlmClient, LlmUsage, extractJsonObject } from './llm-client.js';
 import { EDIT_LLM_TIMEOUT_MS, MvpEditServiceOptions } from './mvp-edit.service.js';
 import { buildRebuildOutline } from './rebuild-edit.service.js';
@@ -47,11 +47,12 @@ Respond with a raw JSON object only, with no preamble and no markdown, in exactl
 
 /**
  * The arrangements a section's content fits besides its own (REV-114), by the rules `checkRebuildEdit` applies:
- * a `text` section with a run of short paragraphs takes cards or a list, a `list` of 3 or more items takes cards
+ * a `text` section with a run of short paragraphs takes cards or a list, a `list` of 3 or more items takes cards,
+ * and so do 3 or more items beside a photo
  */
 export function fittingArrangements(section: ISiteSection): (typeof REBUILD_EDIT_ARRANGEMENTS)[number][] {
   if (section.arrangement === 'text') return cardRun(section.intro.text) ? ['card-grid', 'list'] : [];
-  return section.arrangement === 'list' && section.items.length >= 3 ? ['card-grid'] : [];
+  return rebuildItemsFitCards(section) ? ['card-grid'] : [];
 }
 
 /** The page the model sees: the edit outline, with what each section's content fits */

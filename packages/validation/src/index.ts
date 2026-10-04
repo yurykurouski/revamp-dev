@@ -1429,6 +1429,7 @@ export const MvpRebuildSummarySchema = z.object({
         ratioBefore: z.number().min(1).max(21).optional(),
         ratioAfter: z.number().min(1).max(21).optional(),
         value: z.number().min(0).optional(),
+        median: z.number().min(0).optional(),
       }),
     )
     .max(REBUILD_SUMMARY_LIMITS.tuning)
@@ -1462,6 +1463,7 @@ const SOURCED_SECTION_CODE = /^(modernize|edit):(style|cards|side|fill):(\d{1,3}
 const SOURCED_CODE = /^(modernize|edit):(hero-cta|type|theme)$/;
 const HERO_PHOTO_CODE = /^(modernize|edit):hero-photo:s-(\d{1,3})\.m\d{1,3}$/;
 const EDIT_ONLY_CODE = /^edit:(order|css-dropped)$/;
+const WALL_CODE = /^wall:(\d{1,3})$/;
 
 /**
  * The kind of a rebuild tuning code (REV-119), or undefined for a code no kind covers. Every code `planRebuild` records
@@ -1482,6 +1484,8 @@ export function parseRebuildChange(code: string): RebuildChange | undefined {
   if (photo) return { kind: 'hero-photo', source: photo[1] as RebuildChangeSource, section: Number(photo[2]) };
   const edit = EDIT_ONLY_CODE.exec(code);
   if (edit) return { kind: edit[1] as RebuildChangeKind, source: 'edit' };
+  const wall = WALL_CODE.exec(code);
+  if (wall) return { kind: 'text-wall', section: Number(wall[1]) };
   return undefined;
 }
 
@@ -1753,6 +1757,28 @@ export const rebuildH1Section = (sections: ISiteSection[]): ISiteSection | undef
 export const REBUILD_CARD_MAX_CHARS = 300;
 
 /**
+ * A section rendered as a wall of text (REV-122): at least this many paragraphs, and more than
+ * `REBUILD_WALL_MEDIAN_FACTOR` times the median of the page's other sections. The planner records it as `wall:<i>`.
+ */
+export const REBUILD_WALL_MIN_PARAGRAPHS = 10;
+export const REBUILD_WALL_MEDIAN_FACTOR = 3;
+
+/** The section indexes whose paragraph count stands out as a wall, with the median of the others */
+export function textWalls(counts: { index: number; paragraphs: number }[]): { index: number; paragraphs: number; median: number }[] {
+  const median = (list: number[]) => {
+    if (!list.length) return 0;
+    const sorted = [...list].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid]! : (sorted[mid - 1]! + sorted[mid]!) / 2;
+  };
+  return counts.flatMap((c) => {
+    if (c.paragraphs < REBUILD_WALL_MIN_PARAGRAPHS) return [];
+    const others = median(counts.filter((o) => o !== c).map((o) => o.paragraphs));
+    return c.paragraphs > REBUILD_WALL_MEDIAN_FACTOR * others ? [{ ...c, median: others }] : [];
+  });
+}
+
+/**
  * The run of paragraphs that become cards (REV-114): at least 3 in a row, each at most 300 characters,
  * with only longer paragraphs before and after it (those stay as the section's intro and outro). A longer
  * paragraph inside the run, or fewer than 3, means the section does not fit. `end` is exclusive.
@@ -1767,6 +1793,14 @@ export function cardRun(paragraphs: string[]): { start: number; end: number } | 
   while (i < paragraphs.length && long(paragraphs[i]!)) i++;
   if (i !== paragraphs.length || end - start < 3) return null;
   return { start, end };
+}
+
+/**
+ * Whether a section's items can be shown as cards (REV-114): a list of 3 or more, or 3 or more items read beside a
+ * photo (REV-122: a bullet list next to its picture); the photo then follows the cards
+ */
+export function rebuildItemsFitCards(section: Pick<ISiteSection, 'arrangement' | 'items'>): boolean {
+  return (section.arrangement === 'list' || section.arrangement === 'media-beside-text') && section.items.length >= 3;
 }
 
 export type RebuildEditCheck = { ok: true } | { ok: false; reason: string };
@@ -1813,7 +1847,7 @@ export function checkRebuildEdit(edit: IRebuildEditAnswer, read: Pick<ISiteSecti
       const fits =
         section.arrangement === 'text'
           ? cardRun(section.intro.text) !== null
-          : section.arrangement === 'list' && arrangement === 'card-grid' && section.items.length >= 3;
+          : rebuildItemsFitCards(section) && arrangement === 'card-grid';
       if (!fits) return fail(`${id} cannot be shown as ${arrangement}`);
     }
     if ((change.mediaSide || change.media) && !(section.arrangement === 'media-beside-text' && section.images.length > 0)) {

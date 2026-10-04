@@ -88,6 +88,7 @@ export const CHANGE_KIND_GROUPS: Record<RebuildChangeKind, ChangeGroup | 'by-sou
   theme: 'by-source',
   order: 'by-source',
   'css-dropped': 'by-source',
+  'text-wall': 'readability',
 };
 
 /** The template of each kind under `mvpChangeLog.changes` (camel case); kinds with a measured value have an `…Unmeasured` twin */
@@ -115,13 +116,17 @@ export const CHANGE_KIND_KEYS: Record<RebuildChangeKind, string> = {
   theme: 'theme',
   order: 'order',
   'css-dropped': 'cssDropped',
+  'text-wall': 'textWall',
 };
 
 /** Kinds whose text needs a measured value; without the fact they use their `…Unmeasured` template */
-export const MEASURED_KINDS: ReadonlySet<RebuildChangeKind> = new Set(['contrast', 'overlay', 'font-body', 'line-height', 'collapse']);
+export const MEASURED_KINDS: ReadonlySet<RebuildChangeKind> = new Set(['contrast', 'overlay', 'font-body', 'line-height', 'collapse', 'text-wall']);
 
 /** Kinds that take something away from visitors */
 const LOSS_KINDS: ReadonlySet<RebuildChangeKind> = new Set(['css-dropped']);
+
+/** Kinds that change nothing and point the operator at something to review (REV-122) */
+const NOTICE_KINDS: ReadonlySet<RebuildChangeKind> = new Set(['text-wall']);
 
 /** The SEO check each SEO code adds, so the standards comparison does not list it twice */
 const SEO_CODE_CHECKS: Partial<Record<RebuildChangeKind, StandardsCheck>> = {
@@ -159,6 +164,8 @@ function measuredValues(kind: RebuildChangeKind, fact: IRebuildChangeFact | unde
       return fact.value === undefined ? undefined : { percent: Math.round(fact.value * 100) };
     case 'collapse':
       return fact.value === undefined ? undefined : { chars: fact.value, limit: COLLAPSE_CHARS };
+    case 'text-wall':
+      return fact.value === undefined || fact.median === undefined ? undefined : { paragraphs: fact.value, median: fact.median };
     case 'font-body':
     case 'line-height':
       return fact.from === undefined || fact.to === undefined ? undefined : { from: fact.from, to: fact.to };
@@ -194,7 +201,7 @@ export function changeEntry(code: string, fact: IRebuildChangeFact | undefined, 
   return {
     id: `code:${code}`,
     group,
-    tone: LOSS_KINDS.has(kind) ? 'lost' : 'improved',
+    tone: LOSS_KINDS.has(kind) ? 'lost' : NOTICE_KINDS.has(kind) ? 'info' : 'improved',
     what: k(`${base}.what`, values),
     why: bySource ? sourceWhy(source, reasons) : k(`${base}.why`, values),
     effect: k(`${base}.effect`, values),

@@ -70,6 +70,10 @@ const galleryItem = (i: IRebuildItem) =>
       }</figure>`
     : renderItem(i);
 
+/** An item with nothing but one line of text and its links */
+const plainLine = (i: IRebuildItem) =>
+  !i.title && !i.subtitle && !i.image && !i.backgroundImage && !i.price && i.rating === undefined && i.text.length === 1;
+
 interface ItemGroup {
   /** Prefix for the ids a group needs (tabs) */
   id: string;
@@ -112,6 +116,10 @@ function renderItems(arrangement: IRebuildSection['arrangement'], items: IRebuil
     case 'card-grid':
       return `<div class="rb-grid" style="--rb-columns: ${group.columns ?? 3}">${items.map((i) => renderItem(i)).join('')}</div>`;
     default:
+      // Items that are one plain line each (an original bullet list, REV-122) stay a bulleted list
+      if (items.every(plainLine)) {
+        return `<ul class="rb-list rb-bullets">${items.map((i) => `<li>${escapeHtml(i.text[0] ?? '')}${links(i.links)}</li>`).join('')}</ul>`;
+      }
       return `<div class="rb-list">${items.map((i) => renderItem(i)).join('')}</div>`;
   }
 }

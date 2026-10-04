@@ -11,6 +11,9 @@ import {
   checkRebuildEdit,
   hasRebuildEdit,
   manualMvpLayout,
+  rebuildItemsFitCards,
+  textWalls,
+  REBUILD_WALL_MIN_PARAGRAPHS,
 } from '../src/index.js';
 
 const paragraphs = (...lengths: number[]) => lengths.map((n) => 'x'.repeat(n));
@@ -141,6 +144,17 @@ describe('checkRebuildEdit (modernize rules)', () => {
     expect(sections({ 's-5': { arrangement: 'card-grid' } }).ok).toBe(false);
     expect(sections({ 's-5': { arrangement: 'list' } })).toEqual({ ok: true });
   });
+  it('items beside a photo become cards from 3 items (REV-122)', () => {
+    const items = (n: number) => Array.from({ length: n }, (_, i) => ({ text: [`Atut ${i}`], links: [] }));
+    const beside = (n: number) =>
+      checkRebuildEdit({ sections: { 's-2': { arrangement: 'card-grid' } } }, { sections: [section(1, 'hero'), section(2, 'content', { arrangement: 'media-beside-text', items: items(n) })] });
+    expect(beside(3)).toEqual({ ok: true });
+    expect(beside(2)).toEqual({ ok: false, reason: 's-2 cannot be shown as card-grid' });
+    expect(rebuildItemsFitCards({ arrangement: 'media-beside-text', items: items(24) })).toBe(true);
+    expect(rebuildItemsFitCards({ arrangement: 'list', items: items(3) })).toBe(true);
+    expect(rebuildItemsFitCards({ arrangement: 'slider', items: items(5) })).toBe(false);
+    expect(rebuildItemsFitCards({ arrangement: 'text', items: items(5) })).toBe(false);
+  });
   it('mediaSide and media need a photo beside the text', () => {
     expect(sections({ 's-3': { mediaSide: 'left' } })).toEqual({ ok: false, reason: 's-3 has no photo beside its text' });
     expect(sections({ 's-2': { mediaSide: 'left', media: 'fill' } })).toEqual({ ok: true });
@@ -206,5 +220,23 @@ describe('hasRebuildEdit and MvpLayoutSelectionSchema', () => {
   it('validates the level', () => {
     expect(MvpLayoutSelectionSchema.safeParse({ variant: 'original', reasons: [], rebuildLevel: 'modern' }).success).toBe(true);
     expect(MvpLayoutSelectionSchema.safeParse({ variant: 'original', reasons: [], rebuildLevel: 'retro' }).success).toBe(false);
+  });
+});
+
+describe('textWalls (REV-122)', () => {
+  const counts = (...paragraphs: number[]) => paragraphs.map((n, index) => ({ index, paragraphs: n }));
+  it('flags a section of at least 10 paragraphs over 3 times the median of the others', () => {
+    expect(textWalls(counts(0, 2, 2, 3, 3, 0, 7, 2, 26, 2))).toEqual([{ index: 8, paragraphs: 26, median: 2 }]);
+    // An even count of others takes the mean of the middle two
+    expect(textWalls(counts(1, 3, 12))).toEqual([{ index: 2, paragraphs: 12, median: 2 }]);
+  });
+  it('leaves a short section, one not far above the others, and a page of long sections alone', () => {
+    expect(REBUILD_WALL_MIN_PARAGRAPHS).toBe(10);
+    expect(textWalls(counts(0, 0, 9))).toEqual([]);
+    expect(textWalls(counts(4, 4, 12))).toEqual([]);
+    expect(textWalls(counts(4, 4, 13))).toEqual([{ index: 2, paragraphs: 13, median: 4 }]);
+    expect(textWalls(counts(12, 14, 15))).toEqual([]);
+    expect(textWalls(counts(10))).toEqual([{ index: 0, paragraphs: 10, median: 0 }]);
+    expect(textWalls([])).toEqual([]);
   });
 });

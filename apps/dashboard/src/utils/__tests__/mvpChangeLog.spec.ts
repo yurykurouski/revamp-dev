@@ -78,12 +78,14 @@ const SAMPLE_CODES: Record<RebuildChangeKind, string[]> = {
   theme: ['modernize:theme', 'edit:theme'],
   order: ['edit:order'],
   'css-dropped': ['edit:css-dropped'],
+  'text-wall': ['wall:5'],
 };
 
 const FULL_FACTS: Record<string, IMvpRebuildSummary['facts']> = {
   contrast: [{ code: 'contrast:3', section: 'Our services', from: '#9a9a9a', to: '#595959', background: '#ffffff', ratioBefore: 2.84, ratioAfter: 7.0 }],
   overlay: [{ code: 'overlay:1', value: 0.55 }],
   collapse: [{ code: 'collapse:5', value: 2260 }],
+  'text-wall': [{ code: 'wall:5', section: 'Why us', value: 26, median: 2 }],
   'font-body': [{ code: 'font:body-16', from: 14, to: 16 }],
   'line-height': [{ code: 'line-height:1.5', from: 1.25, to: 1.5 }],
 };
@@ -102,6 +104,15 @@ function expectExplained(entry: ChangeEntry, language: string) {
   };
   texts(entry).forEach(check);
 }
+
+describe('a wall of text (REV-122)', () => {
+  it('is a readability notice with the paragraph count and the median, and needs both values', () => {
+    const entry = changeEntry('wall:5', FULL_FACTS['text-wall']![0], []);
+    expect(entry).toMatchObject({ group: 'readability', tone: 'info' });
+    expect(entry.what).toEqual({ key: 'mvpChangeLog.changes.textWall.what', values: { paragraphs: 26, median: 2 } });
+    expect(changeEntry('wall:5', { code: 'wall:5', value: 26 }, []).what.key).toBe('mvpChangeLog.changes.textWallUnmeasured.what');
+  });
+});
 
 describe('change explanations are complete (REV-119)', () => {
   it('maps every change kind to a group and a template', () => {

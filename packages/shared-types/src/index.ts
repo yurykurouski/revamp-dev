@@ -1503,6 +1503,7 @@ export const REBUILD_CHANGE_KINDS = [
   'theme',
   'order',
   'css-dropped',
+  'text-wall',
 ] as const;
 export type RebuildChangeKind = (typeof REBUILD_CHANGE_KINDS)[number];
 
@@ -1526,8 +1527,10 @@ export interface IRebuildChangeFact {
   /** Contrast ratios before and after (`contrast`) */
   ratioBefore?: number;
   ratioAfter?: number;
-  /** One measured value: the overlay's opacity (`overlay`), the section's characters (`collapse`) */
+  /** One measured value: the overlay's opacity (`overlay`), the section's characters (`collapse`), its paragraphs (`wall`) */
   value?: number;
+  /** The median paragraph count of the page's other sections (`wall`, REV-122) */
+  median?: number;
 }
 
 /** What the rebuild kept out and which fixes it applied (REV-110) */
