@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MvpStandardsSchema } from '@revamp/validation';
-import { checkMvpStandards } from '../mvp-standards.js';
+import { checkMvpStandards, comparableStandardsScore } from '../mvp-standards.js';
 
 const page = (head: string, body = '<h1>Falco-Dent</h1>') => `<!doctype html><html lang="pl"><head>${head}</head><body>${body}</body></html>`;
 const FULL_HEAD = `<meta charset="UTF-8"><meta name="viewport" content="width=device-width"><title>Falco-Dent</title>
@@ -61,5 +61,21 @@ describe('checkMvpStandards (REV-118)', () => {
       <script type="application/ld+json">{"@context":"https://schema.org"}</script><script type="application/ld+json">{oops</script>`;
     const { checks } = checkMvpStandards(page(head));
     expect(checks).toMatchObject({ title: false, metaDescription: false, openGraph: false, structuredData: false, favicon: false, viewport: false });
+  });
+});
+
+describe('comparableStandardsScore (REV-126)', () => {
+  const all = { https: true, viewport: true, title: true, metaDescription: true, singleH1: true, favicon: true, structuredData: true, openGraph: true };
+
+  it("sums the points of the checks the original passed when every check was read", () => {
+    expect(comparableStandardsScore(all)).toBe(100);
+    expect(comparableStandardsScore({ ...all, https: false, openGraph: false })).toBe(70);
+    expect(comparableStandardsScore(Object.fromEntries(Object.keys(all).map((k) => [k, false])))).toBe(0);
+  });
+
+  it('gives no score for an audit made before a check existed, or one that read no standards', () => {
+    const beforeRev118 = Object.fromEntries(Object.entries(all).filter(([check]) => check !== 'metaDescription' && check !== 'singleH1'));
+    expect(comparableStandardsScore(beforeRev118)).toBeUndefined();
+    expect(comparableStandardsScore(undefined)).toBeUndefined();
   });
 });

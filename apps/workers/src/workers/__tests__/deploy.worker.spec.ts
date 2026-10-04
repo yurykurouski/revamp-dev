@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createDeployWorker } from '../deploy.worker.js';
 import { Lead } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
@@ -538,6 +538,100 @@ describe('DeployWorker (@revamp/workers)', () => {
     });
   });
 
+  describe('comparison banner: measured values only (REV-126)', () => {
+    const leadId = '64f8a1234567890123456789';
+    const mvpHtml = '<!doctype html><html><head><title>Smile Dental</title></head><body><h1>Smile Dental</h1></body></html>';
+    const allChecks = { https: true, viewport: true, title: true, metaDescription: true, singleH1: true, favicon: true, structuredData: false, openGraph: false };
+
+    const setUpDeploy = (auditFields: Record<string, unknown>) => {
+      createDeployWorker();
+      const lead = { _id: leadId, businessName: 'Smile Dental', domain: 'smile.pl', toObject: () => lead };
+      const audit = { _id: 'audit-1', leadId, ...auditFields, toObject: () => audit };
+      vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+      vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
+      vi.mocked(MvpProject.findOne).mockReturnValue({
+        select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(null) }),
+      } as any);
+      vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue(mvpHtml);
+      vi.mocked(storageService.uploadHtml).mockResolvedValue({ url: 'http://minio/v/smile/index.html', key: 'v/smile/index.html' });
+      vi.mocked(browserService.captureHtmlScreenshot).mockResolvedValue(Buffer.from('mvp-shot'));
+      vi.mocked(ImageService.createComparisonBanner).mockResolvedValue(Buffer.from('banner'));
+      vi.mocked(storageService.uploadComparisonBanner).mockResolvedValue('http://minio/banners/smile.webp');
+      vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }) } as any);
+      vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
+    };
+    const bannerInput = () => vi.mocked(ImageService.createComparisonBanner).mock.calls[0]![0];
+    const savedStandards = () => (vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]?.[1] as any)?.standards;
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    it("puts the original's measured values and the published page's standards score on the banner", async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response(Buffer.from('original-shot'), { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      setUpDeploy({
+        screenshotUrls: { mobileOriginal: 'http://minio/screens/mobile.webp' },
+        webVitals: { lcp: 4200, cls: 0.2 },
+        a11ySummary: { violationsCount: 7 },
+        standardsChecks: allChecks,
+      });
+
+      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+
+      expect(fetchMock).toHaveBeenCalledWith('http://minio/screens/mobile.webp');
+      const input = bannerInput();
+      expect(input.originalMobileBuffer?.toString()).toBe('original-shot');
+      expect(input.newMvpMobileBuffer.toString()).toBe('mvp-shot');
+      expect(input).toMatchObject({ oldLcpSeconds: 4.2, oldA11yViolationsCount: 7, oldStandardsScore: 80 });
+      // The score of the page that was published, the same one saved on the MvpProject
+      expect(savedStandards()?.score).toEqual(expect.any(Number));
+      expect(input.newStandardsScore).toBe(savedStandards().score);
+      expect(input).not.toHaveProperty('newScore');
+    });
+
+    it('leaves out every value that was not measured, and never shows the MVP as the original', async () => {
+      vi.stubGlobal('fetch', vi.fn());
+      // An audit whose measurements failed (REV-100) and that was made before the SEO checks (REV-118)
+      const beforeRev118 = Object.fromEntries(Object.entries(allChecks).filter(([check]) => check !== 'metaDescription' && check !== 'singleH1'));
+      setUpDeploy({ screenshotUrls: {}, webVitals: { cls: 0.1 }, standardsChecks: beforeRev118 });
+
+      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+
+      const input = bannerInput();
+      expect(input.originalMobileBuffer).toBeUndefined();
+      expect(input.oldLcpSeconds).toBeUndefined();
+      expect(input.oldA11yViolationsCount).toBeUndefined();
+      expect(input.oldStandardsScore).toBeUndefined();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it("shows no original screenshot when it cannot be loaded", async () => {
+      for (const fetchMock of [vi.fn().mockResolvedValue(new Response('gone', { status: 404 })), vi.fn().mockRejectedValue(new Error('ECONNREFUSED'))]) {
+        vi.clearAllMocks();
+        vi.stubGlobal('fetch', fetchMock);
+        setUpDeploy({ screenshotUrls: { mobileOriginal: 'http://minio/screens/mobile.webp' } });
+
+        await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+
+        expect(bannerInput().originalMobileBuffer).toBeUndefined();
+      }
+    });
+
+    it('omits the MVP score when its standards could not be read', async () => {
+      vi.stubGlobal('fetch', vi.fn());
+      setUpDeploy({ screenshotUrls: {} });
+      const standards = await import('../../services/mvp-standards.js');
+      vi.spyOn(standards, 'checkMvpStandards').mockImplementation(() => {
+        throw new Error('unparsable');
+      });
+
+      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+
+      expect(bannerInput().newStandardsScore).toBeUndefined();
+      expect(savedStandards()).toBeUndefined();
+    });
+  });
+
   it('should register a failed handler that resets the lead after the last attempt', () => {
     createDeployWorker();
     expect(mockWorkerInstance.on).toHaveBeenCalledWith('failed', expect.any(Function));
@@ -639,6 +733,23 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
       expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
       expect(assess).not.toHaveBeenCalled();
+    });
+
+    it("re-publishes the banner with the new page's standards score, the one written with the summary (REV-126)", async () => {
+      setUp();
+      vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue(project('editorial')) } as any);
+      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(project('editorial')) } as any);
+
+      await capturedProcessor!(job);
+
+      const written = (vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]?.[1] as any)?.$set;
+      expect(written.standards.score).toEqual(expect.any(Number));
+      expect(vi.mocked(ImageService.createComparisonBanner).mock.calls[0]![0]).toMatchObject({
+        newStandardsScore: written.standards.score,
+        originalMobileBuffer: undefined,
+      });
+      // The performance is still written in the same update as the standards (REV-119)
+      expect(written).toHaveProperty('performance');
     });
 
     it('publishes Bento for an MVP saved without a layout', async () => {

@@ -33,7 +33,7 @@ import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
 import { mvpCompletenessService } from '../services/mvp-completeness.service.js';
-import { checkMvpStandards } from '../services/mvp-standards.js';
+import { checkMvpStandards, comparableStandardsScore } from '../services/mvp-standards.js';
 import { measureMvpPerformance } from '../services/mvp-performance.js';
 import { handleGenerationFailure } from './generation-failure.js';
 
@@ -56,13 +56,17 @@ type AuditDoc = NonNullable<Awaited<ReturnType<typeof findGenerationAudit>>>;
 
 /**
  * Uploads the MVP bundle to the S3/MinIO demo sandbox under the lead's slug, then captures its mobile
- * view and uploads the 1200x630 "Before / After" comparison banner next to it.
+ * view and uploads the 1200x630 "Before / After" comparison banner next to it. The banner carries measured
+ * values only (REV-126): the original's from its audit, the MVP's standards score read from this HTML, each left
+ * out when it was not measured. The MVP's web vitals are not on it: they are measured on the demo host, not
+ * the business's own hosting.
  */
 async function publishMvp(
   slug: string,
   html: string,
   lead: Pick<ILead, 'businessName'>,
   audit: AuditDoc,
+  standards: IMvpStandards | undefined,
 ): Promise<{ fullPreviewUrl: string; storageHtmlPath: string; comparisonBannerUrl: string }> {
   const { url: fullPreviewUrl, key: storageHtmlPath } = await storageService.uploadHtml(slug, html, env.S3_BUCKET_DEMOS);
   console.log(`[DeployWorker] HTML deployed to ${fullPreviewUrl}`);
@@ -73,14 +77,15 @@ async function publishMvp(
     deviceScaleFactor: 2,
   });
 
-  // The original site's mobile screenshot, else the new MVP on both sides
-  let originalMobileBuffer: Buffer = newMvpMobileBuffer;
+  // The original site's mobile screenshot; without it the banner says so and the MVP never stands in for it
+  let originalMobileBuffer: Buffer | undefined;
   if (audit.screenshotUrls?.mobileOriginal) {
     try {
       const res = await fetch(audit.screenshotUrls.mobileOriginal);
       if (res.ok) originalMobileBuffer = Buffer.from(await res.arrayBuffer());
-    } catch {
-      // keep the fallback
+      else console.warn(`[DeployWorker] The original's mobile screenshot was not loaded (HTTP ${res.status})`);
+    } catch (error) {
+      console.warn('[DeployWorker] The original\'s mobile screenshot was not loaded:', error);
     }
   }
 
@@ -88,9 +93,10 @@ async function publishMvp(
     originalMobileBuffer,
     newMvpMobileBuffer,
     businessName: lead.businessName,
-    oldLcpSeconds: audit.webVitals?.lcp ? audit.webVitals.lcp / 1000 : undefined,
+    oldLcpSeconds: typeof audit.webVitals?.lcp === 'number' ? audit.webVitals.lcp / 1000 : undefined,
     oldA11yViolationsCount: audit.a11ySummary?.violationsCount,
-    newScore: 95,
+    oldStandardsScore: comparableStandardsScore(audit.standardsChecks),
+    newStandardsScore: standards?.score,
   });
 
   const comparisonBannerUrl = await storageService.uploadComparisonBanner(slug, bannerBuffer);
@@ -286,7 +292,9 @@ export async function republishSavedMvp(leadId: string) {
       rebuildEdit: design.rebuildEdit,
       modernize: resolved.modernize,
     });
-    published = await publishMvp(project.previewSlug, rendered.html, lead, audit);
+    // The published page's standards, read from its HTML before the upload so the banner carries them (REV-126)
+    const standards = publishedStandards(rendered.html);
+    published = await publishMvp(project.previewSlug, rendered.html, lead, audit, standards);
     layout = rendered.layout;
 
     // The rebuild summary follows the page; a fallback records its reason on the layout. A page whose
@@ -302,7 +310,6 @@ export async function republishSavedMvp(leadId: string) {
     // waiting on that write, never lists the previous page's measurements (REV-119). The completeness report
     // (REV-111) and the standards (REV-118) are code only; the web vitals load the uploaded page. None throws.
     const completenessReport = mvpCompletenessService.check(rendered.html, leadData, auditData);
-    const standards = publishedStandards(rendered.html);
     const performance = await measureMvpPerformance(published.fullPreviewUrl);
     const unset = { ...(rendered.rebuild ? {} : { rebuild: '' }), ...(standards ? {} : { standards: '' }) };
     await MvpProject.findByIdAndUpdate(project._id, {
@@ -436,10 +443,10 @@ export const createDeployWorker = (): Worker => {
           (completenessReport.hasCriticalIssues ? ', critical data missing or changed' : ''),
       );
 
-      // 3-7. Upload the bundle and a fresh Before / After banner
-      const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit);
-      // The published page's standards, by the audit's own checks (REV-118)
+      // The published page's standards, by the audit's own checks (REV-118); the banner carries the score (REV-126)
       const standards = publishedStandards(html);
+      // 3-7. Upload the bundle and a fresh Before / After banner
+      const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit, standards);
       if (standards) console.log(`[DeployWorker] Standards of the MVP: ${standards.score}/100 (original ${auditData.scores?.standards ?? 'not measured'})`);
       // Its web vitals, loaded on the audit's phone (REV-119); a failure is stored as such
       const performance = await measureMvpPerformance(fullPreviewUrl);

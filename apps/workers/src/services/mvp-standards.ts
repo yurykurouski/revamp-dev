@@ -1,5 +1,5 @@
 import { Window } from 'happy-dom';
-import { IMvpStandards, STANDARDS_CHECKS, STANDARDS_POINTS } from '@revamp/shared-types';
+import { IMvpStandards, IStandardsChecks, STANDARDS_CHECKS, STANDARDS_POINTS } from '@revamp/shared-types';
 import { MvpStandardsSchema } from '@revamp/validation';
 import { readStandardsInDocument } from './standards.page.js';
 
@@ -57,4 +57,13 @@ export function checkMvpStandards(html: string): IMvpStandards {
   } finally {
     void window.happyDOM.close();
   }
+}
+
+/**
+ * The original's standards score to set beside the MVP's (REV-126): only when every check was read, so an audit made
+ * before a check existed (REV-118) is never compared with the MVP's full score. Absent otherwise.
+ */
+export function comparableStandardsScore(checks: Partial<IStandardsChecks> | undefined): number | undefined {
+  if (!checks || STANDARDS_CHECKS.some((check) => typeof checks[check] !== 'boolean')) return undefined;
+  return STANDARDS_CHECKS.reduce((sum, check) => sum + (checks[check] ? STANDARDS_POINTS[check] : 0), 0);
 }
