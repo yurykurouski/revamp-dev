@@ -26,6 +26,8 @@ const shift = (startTime: number, value: number, hadRecentInput = false): RawLay
 const ALL_STANDARDS: RawStandards = {
   viewport: true,
   title: true,
+  metaDescription: true,
+  singleH1: true,
   faviconLink: true,
   structuredData: true,
   openGraph: true,
@@ -35,14 +37,25 @@ const ALL_CHECKS: IStandardsChecks = {
   https: true,
   viewport: true,
   title: true,
+  metaDescription: true,
+  singleH1: true,
   favicon: true,
   structuredData: true,
   openGraph: true,
 };
 
-/** A page double whose DOM reads give `evaluation`; `favicon.ico` answers when `ico` is given */
-const mockPage = (evaluation: unknown, ico?: { status: number; contentType: string }) => ({
-  evaluate: vi.fn().mockResolvedValue(evaluation),
+/**
+ * A page double whose reads give `evaluation`: the vitals first, then the standards reader's checks;
+ * `favicon.ico` answers when `ico` is given
+ */
+const mockPage = (
+  evaluation: { lcpMs: number | null; shifts: RawLayoutShift[]; standards: RawStandards },
+  ico?: { status: number; contentType: string },
+) => ({
+  evaluate: vi
+    .fn()
+    .mockResolvedValueOnce({ lcpMs: evaluation.lcpMs, shifts: evaluation.shifts })
+    .mockResolvedValueOnce(evaluation.standards),
   url: () => 'https://example-secure.com/home',
   request: {
     get: vi.fn(async () => {
@@ -72,11 +85,12 @@ describe('VitalsService', () => {
     expect(VitalsService.calculatePerformanceScore(5.2, 0.3)).toBe(10);
   });
 
-  it('gives the standards points of every passed check, 100 in all (spec 3.1.3.2, REV-102)', () => {
+  it('gives the standards points of every passed check, 100 in all (spec 3.1.3.2, REV-102, REV-118)', () => {
     expect(Object.values(STANDARDS_POINTS).reduce((a, b) => a + b, 0)).toBe(100);
     expect(VitalsService.calculateStandardsScore(ALL_CHECKS)).toBe(100);
-    expect(VitalsService.calculateStandardsScore({ ...ALL_CHECKS, https: false })).toBe(70);
-    expect(VitalsService.calculateStandardsScore({ ...ALL_CHECKS, viewport: false, title: false })).toBe(60);
+    expect(VitalsService.calculateStandardsScore({ ...ALL_CHECKS, https: false })).toBe(80);
+    expect(VitalsService.calculateStandardsScore({ ...ALL_CHECKS, viewport: false, title: false })).toBe(70);
+    expect(VitalsService.calculateStandardsScore({ ...ALL_CHECKS, metaDescription: false, singleH1: false })).toBe(80);
     expect(
       VitalsService.calculateStandardsScore({ ...ALL_CHECKS, favicon: false, structuredData: false, openGraph: false }),
     ).toBe(70);
@@ -85,11 +99,20 @@ describe('VitalsService', () => {
         https: false,
         viewport: false,
         title: false,
+        metaDescription: false,
+        singleH1: false,
         favicon: false,
         structuredData: false,
         openGraph: false,
       }),
     ).toBe(0);
+  });
+
+  it('scores an audit made before REV-118, which has no SEO checks, without their points', () => {
+    const before: IStandardsChecks = { ...ALL_CHECKS };
+    delete before.metaDescription;
+    delete before.singleH1;
+    expect(VitalsService.calculateStandardsScore(before)).toBe(80);
   });
 
   it('should collect vitals from page evaluate', async () => {
@@ -243,6 +266,8 @@ describe.skipIf(!browser)('VitalsService (real Chromium)', () => {
       https: true,
       viewport: true,
       title: true,
+      metaDescription: false,
+      singleH1: false,
       favicon: false,
       structuredData: false,
       openGraph: false,
@@ -263,6 +288,7 @@ describe.skipIf(!browser)('VitalsService (real Chromium)', () => {
   it('reads the icon link, Schema.org JSON-LD and OpenGraph tags from the DOM', async () => {
     await page.setContent(`<!doctype html><html><head><title>Marked up</title>
       <meta name="viewport" content="width=device-width">
+      <meta NAME="Description" content="Dental care in Wrocław">
       <link rel="Shortcut Icon" href="/icon.png">
       <meta property="og:title" content="Marked up">
       <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Dentist","name":"X"}]}</script>
@@ -289,10 +315,42 @@ describe.skipIf(!browser)('VitalsService (real Chromium)', () => {
       https: false,
       viewport: false,
       title: true,
+      metaDescription: false,
+      singleH1: false,
       favicon: false,
       structuredData: true,
       openGraph: false,
     });
+  });
+});
+
+describe.skipIf(!browser)('readStandardsInDocument SEO checks (real Chromium, REV-118)', () => {
+  let context: BrowserContext;
+  let page: Page;
+  const service = new VitalsService();
+
+  beforeEach(async () => {
+    context = await browser!.newContext();
+    await context.addInitScript({ content: EVALUATE_NAME_SHIM });
+    page = await context.newPage();
+  });
+
+  afterEach(async () => {
+    await context.close();
+  });
+
+  it('fails the meta description when it is empty, and the h1 check when two headings are h1', async () => {
+    await page.setContent(`<!doctype html><html><head><title>Two</title><meta name="description" content="   "></head>
+      <body><h1>First</h1><h1>Second</h1></body></html>`);
+    const result = await service.collectVitals(page, 'https://fixture.test');
+    expect(result.standards).toMatchObject({ metaDescription: false, singleH1: false });
+  });
+
+  it('counts only h1 elements with text, so an empty one does not break the single h1', async () => {
+    await page.setContent(`<!doctype html><html><head><title>One</title></head>
+      <body><h1> </h1><h1>Our clinic</h1><h2>Services</h2></body></html>`);
+    const result = await service.collectVitals(page, 'https://fixture.test');
+    expect(result.standards?.singleH1).toBe(true);
   });
 });
 

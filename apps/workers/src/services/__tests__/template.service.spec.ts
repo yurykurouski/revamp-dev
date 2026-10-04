@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { BentoTemplateService, bentoTemplateService } from '../template.service.js';
 import { resolveTrackerUrls } from '../../templates/bento.template.js';
 import { env } from '../../config/env.js';
+import { checkMvpStandards } from '../mvp-standards.js';
 import { IBentoTemplateData, ILead, IAudit, BENTO_LAYOUT_VARIANTS } from '@revamp/shared-types';
 
 describe('BentoTemplateService (@revamp/workers)', () => {
@@ -294,6 +295,28 @@ describe('BentoTemplateService (@revamp/workers)', () => {
     expect(html).toContain('--brand-primary: #5c5bed;');
     expect(html).toContain('+48 500 123 456');
     expect(html).toContain('class="bento-grid"');
+  });
+
+  describe('search and sharing tags (REV-118)', () => {
+    const lead: Partial<ILead> = { businessName: 'Listonosz Auto Service', contactPhone: '+48 500 123 456', originalUrl: 'https://listonosz.site/' };
+
+    it('writes the original description, OpenGraph and LocalBusiness, passing every standards check', () => {
+      const audit = {
+        extractedContent: { language: 'pl', metaDescription: 'Warsztat samochodowy w Warszawie', paragraphs: [], headings: [], serviceItems: [], navItems: [], testimonials: [], images: [] },
+      } as unknown as Partial<IAudit>;
+      const html = bentoTemplateService.renderFromAudit(lead, audit);
+      expect(html).toContain('<meta name="description" content="Warsztat samochodowy w Warszawie">');
+      expect(html).toContain('<meta property="og:locale" content="pl_PL">');
+      expect(html).toContain('"@type":"LocalBusiness"');
+      expect(html).toContain('"url":"https://listonosz.site/"');
+      expect(checkMvpStandards(html).score).toBe(100);
+    });
+
+    it('describes the page by its hero copy when the original has no description, as before', () => {
+      const html = bentoTemplateService.renderFromAudit(lead, {});
+      expect(html).toMatch(/<meta name="description" content="[^"]+">/);
+      expect(html).toContain('og:title');
+    });
   });
 
   describe('saved palette (REV-90)', () => {

@@ -785,3 +785,53 @@ describe('modernize (REV-114)', () => {
     expect(plan.summary.tuning.some((code) => code.startsWith('modernize:'))).toBe(false);
   });
 });
+
+describe('planRebuild search and sharing tags (REV-118)', () => {
+  const failed = { https: true, viewport: true, title: true, metaDescription: false, singleH1: true, favicon: true, structuredData: false, openGraph: false };
+
+  it('builds the tags from the verified data and the page photo, and validates', () => {
+    const plan = planRebuild(input([header, hero, team], { site: { metaDescription: 'Gabinet w Warszawie', paragraphs: [] }, originalUrl: 'https://falcodent.pl/' }));
+    expect(plan.seo).toEqual({
+      description: 'Gabinet w Warszawie',
+      image: 'https://falcodent.pl/hero.jpg',
+      locale: 'pl_PL',
+      localBusiness: {
+        name: 'Falco-Dent',
+        url: 'https://falcodent.pl/',
+        telephone: '+48 510 510 706',
+        email: 'recepcja@falcodent.pl',
+        address: 'ul. Kasprowicza 1, Warszawa',
+        image: 'https://falcodent.pl/hero.jpg',
+        sameAs: ['https://facebook.com/falcodent'],
+      },
+    });
+    expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
+  });
+
+  it('records the tags the audit found missing on the original', () => {
+    const plan = planRebuild(input([header, hero], { site: { metaDescription: 'Gabinet', paragraphs: [] }, originalStandards: failed }));
+    expect(plan.summary.tuning).toEqual(expect.arrayContaining(['seo:description', 'seo:og', 'seo:jsonld']));
+  });
+
+  it('records nothing when the original already had the tags or was not measured', () => {
+    const had = { ...failed, metaDescription: true, structuredData: true, openGraph: true };
+    for (const over of [{ originalStandards: had }, {}]) {
+      const plan = planRebuild(input([header, hero], { site: { metaDescription: 'Gabinet', paragraphs: [] }, ...over }));
+      expect(plan.summary.tuning.filter((code) => code.startsWith('seo:'))).toEqual([]);
+    }
+  });
+
+  it('never shares a small or unsized image, taking the first one of at least 200 px a side', () => {
+    const images = section(1, { role: 'hero', intro: { heading: 'Witamy', text: ['Tekst'], links: [] }, images: [
+      { src: 'https://falcodent.pl/separator.png', alt: '', width: 57, height: 179 },
+      { src: 'https://falcodent.pl/unsized.jpg', alt: 'Gabinet' },
+      { src: 'https://falcodent.pl/gabinet.jpg', alt: 'Gabinet', width: 800, height: 600 },
+    ] });
+    expect(planRebuild(input([header, images])).seo.image).toBe('https://falcodent.pl/gabinet.jpg');
+  });
+
+  it('falls back to the logo for og:image when no section has a photo', () => {
+    const text = section(1, { role: 'hero', intro: { heading: 'Witamy', text: ['Tekst'], links: [] } });
+    expect(planRebuild(input([header, text])).seo.image).toBe('https://falcodent.pl/logo.png');
+  });
+});

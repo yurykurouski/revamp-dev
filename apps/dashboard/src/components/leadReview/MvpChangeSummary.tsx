@@ -8,6 +8,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
 import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
+import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
@@ -129,8 +130,9 @@ const Swatch: React.FC<{ color?: string; caption: string; empty: string }> = ({ 
 
 const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
   const { t } = useTranslation();
-  const { layout, copySource, sections, palette, businessData, critiqueGuidance } = summary;
+  const { layout, copySource, sections, palette, businessData, seo, critiqueGuidance } = summary;
   const fieldLabel = (field: string) => t(`completeness.fields.${field}` as 'completeness.fields.phone');
+  const checkLabel = (check: string) => t(`seo.checks.${check}` as 'seo.checks.https');
 
   const paletteTag: Tag | undefined = palette
     ? palette.original
@@ -238,6 +240,30 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
               />
             ))}
           </Box>
+        </ChangeCard>
+      )}
+
+      {seo && (
+        <ChangeCard
+          icon={<TravelExploreIcon />}
+          title={t('mvpChanges.seo')}
+          tag={
+            seo.regressed.length > 0
+              ? { label: t('mvpChanges.tags.check'), tone: 'warning' }
+              : { label: t('mvpChanges.tags.improved'), tone: 'success' }
+          }
+        >
+          <Stat
+            before={seo.originalScore}
+            value={seo.mvpScore}
+            label={t(seo.originalScore !== undefined ? 'mvpChanges.seoScore' : 'mvpChanges.seoMvpScore')}
+          />
+          {seo.fixed.length > 0 && (
+            <Text>{t('seo.fixed', { checks: seo.fixed.map(checkLabel).join(', ') })}</Text>
+          )}
+          {seo.regressed.length > 0 && (
+            <Text muted>{t('seo.regressed', { checks: seo.regressed.map(checkLabel).join(', ') })}</Text>
+          )}
         </ChangeCard>
       )}
 

@@ -168,3 +168,29 @@ describe('summarizeMvpChanges (REV-81)', () => {
     expect(summarizeMvpChanges(mvp({ provider: 'deterministic' }), null)!.copySource).toEqual({ actual: 'deterministic' });
   });
 });
+
+describe('summarizeMvpChanges SEO and web standards (REV-118)', () => {
+  const original = {
+    https: true, viewport: true, title: true, metaDescription: false, singleH1: true, favicon: true, structuredData: false, openGraph: false,
+  };
+  const checks = { ...original, metaDescription: true, structuredData: true, openGraph: true };
+
+  it('lists the checks the published MVP fixed, with both scores', () => {
+    const summary = summarizeMvpChanges(mvp({ standards: { checks, score: 100 } }), audit({ standardsChecks: original }))!;
+    expect(summary.seo).toEqual({ originalScore: 70, mvpScore: 100, fixed: ['metaDescription', 'structuredData', 'openGraph'], regressed: [] });
+    expect(isMvpChangeSummaryEmpty({ critiqueGuidance: [], seo: summary.seo })).toBe(false);
+  });
+
+  it('lists a check the MVP lost', () => {
+    const summary = summarizeMvpChanges(
+      mvp({ standards: { checks: { ...checks, favicon: false }, score: 90 } }),
+      audit({ standardsChecks: original }),
+    )!;
+    expect(summary.seo?.regressed).toEqual(['favicon']);
+  });
+
+  it('leaves the card out when nothing differs or the MVP was not checked', () => {
+    expect(summarizeMvpChanges(mvp({ standards: { checks: original, score: 70 } }), audit({ standardsChecks: original }))!.seo).toBeUndefined();
+    expect(summarizeMvpChanges(mvp(), audit({ standardsChecks: original }))!.seo).toBeUndefined();
+  });
+});

@@ -5,6 +5,7 @@ import {
   IAudit,
   IMvpDesign,
   IMvpLayoutSelection,
+  IMvpStandards,
   IMvpRebuildSummary,
   IRebuildEdit,
   IRebuildModernize,
@@ -32,6 +33,7 @@ import { storageService } from '../services/storage.service.js';
 import { browserService } from '../services/browser.service.js';
 import { ImageService } from '../services/image.service.js';
 import { mvpCompletenessService } from '../services/mvp-completeness.service.js';
+import { checkMvpStandards } from '../services/mvp-standards.js';
 import { handleGenerationFailure } from './generation-failure.js';
 
 function transliterate(str: string): string {
@@ -210,6 +212,19 @@ const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof save
   JSON.stringify(a.modernize ?? null) === JSON.stringify(b.modernize ?? null);
 
 /**
+ * The published page's standards checks (REV-118), by code with the audit's reader; advisory, so a page that cannot
+ * be checked has none rather than failing the publish
+ */
+export function publishedStandards(html: string): IMvpStandards | undefined {
+  try {
+    return checkMvpStandards(html);
+  } catch (error) {
+    console.warn(`[DeployWorker] Standards of the published MVP not checked: ${error instanceof Error ? error.message : String(error)}`);
+    return undefined;
+  }
+}
+
+/**
  * Re-publishes an existing MVP in the layout (REV-84), palette (REV-90) and edits the operator saved: the
  * stored copy rendered by the deterministic template, with no LLM call and no lead status change, so the
  * page a lead is sent is the one the operator approved. The completeness report is re-checked by code on
@@ -323,8 +338,15 @@ export async function republishSavedMvp(leadId: string) {
   // The report follows the published page (REV-111): code only, no LLM call on a re-publish; never throws
   if (html) {
     const completenessReport = mvpCompletenessService.check(html, leadData, auditData);
-    await MvpProject.findByIdAndUpdate(project._id, { $set: { completenessReport } }).exec();
-    console.log(`[DeployWorker] Completeness re-checked (deterministic): ${completenessReport.status}`);
+    // The standards follow the published page too (REV-118)
+    const standards = publishedStandards(html);
+    await MvpProject.findByIdAndUpdate(project._id, {
+      $set: { completenessReport, ...(standards ? { standards } : {}) },
+      ...(standards ? {} : { $unset: { standards: '' } }),
+    }).exec();
+    console.log(
+      `[DeployWorker] Completeness re-checked (deterministic): ${completenessReport.status}` + (standards ? `; standards ${standards.score}/100` : ''),
+    );
   }
 
   console.log(
@@ -418,6 +440,9 @@ export const createDeployWorker = (): Worker => {
 
       // 3-7. Upload the bundle and a fresh Before / After banner
       const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit);
+      // The published page's standards, by the audit's own checks (REV-118)
+      const standards = publishedStandards(html);
+      if (standards) console.log(`[DeployWorker] Standards of the MVP: ${standards.score}/100 (original ${auditData.scores?.standards ?? 'not measured'})`);
 
       // 8. Create or update MvpProject document in MongoDB (one per lead; regeneration updates it)
       const generatedAt = new Date();
@@ -438,6 +463,7 @@ export const createDeployWorker = (): Worker => {
         ...(rendered.rebuild ? {} : { rebuild: '' }),
         ...(savedEdit && !rebuildEdit ? { rebuildEdit: '' } : {}),
         ...(staleModernize && !resolved.changed ? { modernize: '' } : {}),
+        ...(standards ? {} : { standards: '' }),
       };
       // The rebuild's CTAs default to the site's own button color (REV-110)
       const rebuildPrimary = layout.variant === 'original' ? defaultRebuildPrimary(auditData) : undefined;
@@ -476,6 +502,7 @@ export const createDeployWorker = (): Worker => {
           layout,
           ...(rendered.rebuild ? { rebuild: rendered.rebuild } : {}),
           ...(resolved.changed ? { modernize: resolved.modernize } : {}),
+          ...(standards ? { standards } : {}),
         },
         { upsert: true, new: true },
       ).exec();

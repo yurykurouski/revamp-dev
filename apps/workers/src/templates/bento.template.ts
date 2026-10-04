@@ -6,6 +6,7 @@ import { designCss, hasDesign, isHidden, renderDesignBlock, resolveSectionOrder 
 import { renderableCustomCss } from './css-sanitizer.js';
 import { hexToRgb, monogramSvg, resolveTrackerUrls, scriptJson, svgDataUri, trackerScriptTag } from './shared/page.js';
 import { bookingFormHtml, bookingScript } from './shared/booking.js';
+import { seoHeadTags } from './shared/seo.js';
 
 export { resolveTrackerUrls } from './shared/page.js';
 
@@ -589,8 +590,12 @@ export function generateBentoHtml(data: IBentoTemplateData): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${businessName} — Official website & booking</title>
-  <link rel="icon" href="${escapeHtml(faviconHref)}">
-  <meta name="description" content="${heroHeadline}. ${heroSubheadline}">
+  <link rel="icon" href="${escapeHtml(faviconHref)}">${seoHeadTags(
+    data.seo ?? {},
+    `${data.businessName} — Official website & booking`,
+    // Without the original's own description, the page's hero copy describes it, as before REV-118
+    data.seo?.description ?? `${data.hero.headline}. ${data.hero.subheadline}`,
+  )}
   
   <style>
     /* -------------------------------------------------------------

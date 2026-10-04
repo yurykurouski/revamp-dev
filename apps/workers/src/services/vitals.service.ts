@@ -1,6 +1,10 @@
 import { Page } from 'playwright';
-import { IMeasurementError, IStandardsChecks, IWebVitals } from '@revamp/shared-types';
+import { IMeasurementError, IStandardsChecks, IWebVitals, STANDARDS_CHECKS, STANDARDS_POINTS } from '@revamp/shared-types';
 import { sanitizeAuditError } from '@revamp/validation';
+import { RawStandards, readStandardsInDocument } from './standards.page.js';
+
+export { STANDARDS_POINTS };
+export type { RawStandards };
 
 /**
  * What the vitals collection measured. A measurement that failed leaves its values out and is listed
@@ -25,26 +29,10 @@ export interface RawLayoutShift {
   hadRecentInput: boolean;
 }
 
-/** The standards checks read from the DOM; the favicon may still be found at `/favicon.ico` */
-export type RawStandards = Pick<IStandardsChecks, 'viewport' | 'title' | 'structuredData' | 'openGraph'> & {
-  faviconLink: boolean;
-};
-
 interface RawVitals {
   lcpMs: number | null;
   shifts: RawLayoutShift[];
-  standards: RawStandards;
 }
-
-/** Points per standards check (spec 3.1.3.2); they add up to 100 */
-export const STANDARDS_POINTS: Record<keyof IStandardsChecks, number> = {
-  https: 30,
-  viewport: 30,
-  title: 10,
-  favicon: 10,
-  structuredData: 10,
-  openGraph: 10,
-};
 
 /** How long the `/favicon.ico` probe may take; a site that does not answer by then has no favicon */
 const FAVICON_PROBE_TIMEOUT_MS = 3000;
@@ -115,10 +103,7 @@ export class VitalsService {
    * Standards score (0 - 100): the points of every check the page passes (`STANDARDS_POINTS`)
    */
   static calculateStandardsScore(checks: IStandardsChecks): number {
-    return (Object.keys(STANDARDS_POINTS) as Array<keyof IStandardsChecks>).reduce(
-      (score, check) => score + (checks[check] ? STANDARDS_POINTS[check] : 0),
-      0,
-    );
+    return STANDARDS_CHECKS.reduce((score, check) => score + (checks[check] ? STANDARDS_POINTS[check] : 0), 0);
   }
 
   /**
@@ -183,43 +168,13 @@ export class VitalsService {
               lcpObserver.disconnect();
               clsObserver.disconnect();
 
-              const hasContent = (selector: string, attribute: string) =>
-                Array.from(document.querySelectorAll(selector)).some(
-                  (el) => (el.getAttribute(attribute) ?? '').trim().length > 0,
-                );
-              // Any Schema.org JSON-LD object with a type, or microdata pointing at schema.org
-              const hasJsonLd = Array.from(document.querySelectorAll('script[type="application/ld+json"]')).some(
-                (script) => {
-                  try {
-                    const typed = (node: unknown): boolean =>
-                      Array.isArray(node)
-                        ? node.some(typed)
-                        : !!node &&
-                          typeof node === 'object' &&
-                          (!!(node as Record<string, unknown>)['@type'] ||
-                            typed((node as Record<string, unknown>)['@graph']));
-                    return typed(JSON.parse(script.textContent || ''));
-                  } catch {
-                    return false;
-                  }
-                },
-              );
-              resolve({
-                lcpMs,
-                shifts,
-                standards: {
-                  viewport: hasContent('meta[name="viewport"]', 'content'),
-                  title: !!document.title && document.title.trim().length > 0,
-                  faviconLink: hasContent('link[rel~="icon" i], link[rel="apple-touch-icon" i]', 'href'),
-                  structuredData: hasJsonLd || !!document.querySelector('[itemtype*="schema.org" i]'),
-                  openGraph: hasContent('meta[property^="og:" i]', 'content'),
-                },
-              });
+              resolve({ lcpMs, shifts });
             }, 50);
           }),
       );
 
-      const { faviconLink, ...domChecks } = evaluation.standards;
+      // The same reader checks the published MVP (REV-118)
+      const { faviconLink, ...domChecks } = await page.evaluate(readStandardsInDocument, undefined);
       const standards: IStandardsChecks = {
         https: hasSsl,
         ...domChecks,

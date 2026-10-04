@@ -12,6 +12,7 @@ import {
   IApiError,
   IAudit,
   IMeasurementError,
+  IStandardsChecks,
   ICriticalFlaw,
   ILead,
   IMvpProject,
@@ -520,6 +521,10 @@ export interface IAuditDetail {
   measurementErrors: Serialized<IMeasurementError>[];
   /** The design critique is the worker's template, not the Vision model's; its ratings are undefined (REV-101) */
   designCritiqueFallback: boolean;
+  /** The original site's standards and SEO checks; undefined when they were not measured (REV-118) */
+  standardsChecks?: IStandardsChecks;
+  /** Their score as the audit stored it */
+  standardsScore?: number;
 }
 
 /**
@@ -556,5 +561,7 @@ export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail =
     originalServiceCount: a.extractedServices?.length ?? a.extractedContent?.serviceItems?.length ?? undefined,
     measurementErrors,
     designCritiqueFallback,
+    standardsChecks: a.standardsChecks ?? undefined,
+    standardsScore: a.scores?.standards ?? undefined,
   };
 };

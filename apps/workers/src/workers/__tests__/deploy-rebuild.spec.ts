@@ -145,6 +145,30 @@ describe('deploy with the rebuild (REV-110)', () => {
     expect(result.success).toBe(true);
   });
 
+  it('saves the standards of the published page, checked by code on the uploaded HTML (REV-118)', async () => {
+    const html = `<!doctype html><html lang="pl"><head><title>Falco</title><meta name="viewport" content="width=device-width">
+      <meta name="description" content="Dentysta"><meta property="og:title" content="Falco"><link rel="icon" href="/i.png">
+      <script type="application/ld+json">{"@type":"LocalBusiness","name":"Falco"}</script></head><body><h1>Falco</h1></body></html>`;
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html, summary: { coverage: 0.98, sections: 1, omitted: [], tuning: [] } });
+    await runDeploy({ siteSections: sectionsFixture });
+    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    // Uploaded to http://minio, but the page loads nothing over http: ready for HTTPS hosting
+    expect(update.standards).toEqual({
+      checks: { https: true, viewport: true, title: true, metaDescription: true, singleH1: true, favicon: true, structuredData: true, openGraph: true },
+      score: 100,
+    });
+  });
+
+  it('fails every tag check on a published page without the tags (REV-118)', async () => {
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: '<html>REBUILD</html>', summary: { coverage: 0.98, sections: 1, omitted: [], tuning: [] } });
+    await runDeploy({ siteSections: sectionsFixture });
+    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    const { https, ...tags } = update.standards.checks;
+    expect(https).toBe(true);
+    expect(Object.values(tags).every((passed) => passed === false)).toBe(true);
+    expect(update.standards.score).toBe(20);
+  });
+
   it('passes no palette to the rebuild, so it takes the site button color itself', async () => {
     vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 0.98, sections: 1, omitted: [], tuning: [] } });
     await runDeploy({ siteSections: sectionsFixture });
@@ -262,7 +286,8 @@ describe('re-publish with the rebuild (REV-110)', () => {
     expect(filter).toEqual({ _id: projectId, layout: { variant: 'original', reasons: ['rule:manual'] } });
     expect(update.$set.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:too_large']);
     // Bento before and after: no renderer switch; the only other write is the re-checked completeness (REV-111)
-    expect(vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => Object.keys((call[1] as any).$set))).toEqual([['completenessReport']]);
+    // and the published page's standards (REV-118)
+    expect(vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => Object.keys((call[1] as any).$set))).toEqual([['completenessReport', 'standards']]);
     expect(storageService.uploadHtml).toHaveBeenCalledTimes(1);
     expect(result.layout).toBe(update.$set.layout.variant);
   });

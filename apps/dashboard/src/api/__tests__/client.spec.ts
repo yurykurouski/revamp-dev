@@ -288,7 +288,18 @@ describe('Dashboard apiClient', () => {
         colorPalette: { primary: undefined, secondary: undefined, accent: undefined },
         measurementErrors: [],
         designCritiqueFallback: false,
+        standardsChecks: undefined,
+        standardsScore: undefined,
       });
+    });
+
+    it('passes on the original site\'s standards checks and their stored score (REV-118)', () => {
+      const standardsChecks = {
+        https: true, viewport: true, title: true, metaDescription: false, singleH1: true, favicon: true, structuredData: false, openGraph: false,
+      };
+      const audit = mapServerAudit({ leadId: 'lead-1', standardsChecks, scores: { total: 70, standards: 70 } }, 'audit-1');
+      expect(audit.standardsChecks).toEqual(standardsChecks);
+      expect(audit.standardsScore).toBe(70);
     });
 
     it('passes on the measurements the audit could not take (REV-100)', () => {

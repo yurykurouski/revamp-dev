@@ -13,7 +13,9 @@ import type {
   ISiteLink,
   ISiteSection,
   ISiteSectionItem,
+  ISiteContent,
   ISiteSections,
+  IStandardsChecks,
 } from '@revamp/shared-types';
 import { z } from 'zod';
 import { REBUILD_BANNER_MIN_WIDTH, REBUILD_IFRAME_HOSTS, REBUILD_SUMMARY_LIMITS, SITE_SECTIONS_LIMITS, rebuildH1Section } from '@revamp/validation';
@@ -22,6 +24,7 @@ import { FONT_STACKS } from '../templates/design.js';
 import { UnsafeCssError, sanitizeMvpCss } from '../templates/css-sanitizer.js';
 import { BANNER_OVERLAY, clampPadding, fontStack, mix, onColor, readableText, typeScale } from './rebuild-tuning.js';
 import { type EditSource, arrangedSection, mergeRebuildEdits } from './rebuild-modernize-plan.js';
+import { buildMvpSeo, isSharingImage } from './mvp-seo.js';
 
 export { mergeRebuildEdits };
 
@@ -41,6 +44,12 @@ export interface RebuildInput {
   edit?: IRebuildEditAnswer;
   /** The modernize layer (REV-114), under the operator's edit; its ids already checked against these sections */
   modernize?: IRebuildModernizeAnswer;
+  /** The original's description, og:image and copy, for the search and sharing tags (REV-118) */
+  site?: Pick<ISiteContent, 'metaDescription' | 'paragraphs' | 'ogImage'>;
+  /** The original site's address, the business's own */
+  originalUrl?: string;
+  /** The original's standards checks, so the tags it lacked are recorded (REV-118) */
+  originalStandards?: IStandardsChecks;
 }
 
 /** A `text` section longer than this puts its body in a collapsed <details> */
@@ -616,6 +625,21 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
   const phone = input.contacts.phone?.trim().slice(0, 30) || undefined;
   const email = input.contacts.email?.trim();
   const validEmail = email && EmailSchema.safeParse(email).success ? email : undefined;
+  // Search and sharing tags (REV-118) from the verified data; the tags the original lacked are recorded
+  // The page's first photo: a section background, or an image large enough to share (never a decorative sliver)
+  const photo = sections.flatMap((s) => [s.style.backgroundImage, ...s.images.filter(isSharingImage).map((i) => i.src)]).find(isHttp);
+  const { seo, codes: seoCodes } = buildMvpSeo({
+    businessName,
+    language,
+    ...(input.site ? { site: input.site } : {}),
+    contacts: { phone, email: validEmail, address: input.contacts.address },
+    socialLinks: input.socialLinks,
+    ...(photo ? { photo } : {}),
+    ...(logo?.src ? { logoUrl: logo.src } : {}),
+    ...(input.originalUrl ? { originalUrl: input.originalUrl } : {}),
+    ...(input.originalStandards ? { original: input.originalStandards } : {}),
+  });
+  seoCodes.forEach((code) => rec.fix(code));
 
   return {
     language,
@@ -662,6 +686,7 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
     },
     summary: rec.summary,
     ...(customCss ? { customCss } : {}),
+    seo,
   };
 }
 

@@ -26,6 +26,7 @@ const slider = (n: number): IRebuildPlan => ({
     style: { text: '#111111', align: 'left', paddingY: 64, fullBleed: false } }],
   bookingAppended: true, bookingServices: [], footer: { contacts: {}, social: [] },
   summary: { coverage: 1, sections: 1, omitted: [], tuning: [] },
+  seo: {},
 });
 
 describe('rebuild page script (REV-110)', () => {

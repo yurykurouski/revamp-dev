@@ -188,11 +188,19 @@ export const minimalPlan = (): IRebuildPlan => ({
   bookingServices: [],
   footer: { contacts: {}, social: [] },
   summary: { coverage: 0.978, sections: 1, omitted: [], tuning: [] },
+  seo: {},
 });
 
 describe('RebuildPlanSchema', () => {
   it('accepts a minimal plan', () => {
     expect(() => RebuildPlanSchema.parse(minimalPlan())).not.toThrow();
+  });
+
+  it('requires the search and sharing tags, and validates them (REV-118)', () => {
+    const withoutSeo: Partial<ReturnType<typeof minimalPlan>> = minimalPlan();
+    delete withoutSeo.seo;
+    expect(RebuildPlanSchema.safeParse(withoutSeo).success).toBe(false);
+    expect(RebuildPlanSchema.safeParse({ ...minimalPlan(), seo: { image: 'javascript:alert(1)' } }).success).toBe(false);
   });
   it('rejects a javascript: link and a data: image', () => {
     const plan = minimalPlan();

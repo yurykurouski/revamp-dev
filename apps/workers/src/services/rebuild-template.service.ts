@@ -74,6 +74,9 @@ export const rebuildTemplateService = {
         year: now.getFullYear(),
         ...(modernize ? { modernize } : {}),
         ...(answer ? { edit: answer } : {}),
+        ...(audit?.extractedContent ? { site: audit.extractedContent } : {}),
+        ...(isHttpUrl(lead.originalUrl) ? { originalUrl: lead.originalUrl } : {}),
+        ...(audit?.standardsChecks ? { originalStandards: audit.standardsChecks } : {}),
       }),
     );
     if (!parsed.success) throw new RebuildUnavailable('rebuild:invalid', [`invalid:${parsed.error.issues[0]?.path.join('.') ?? 'plan'}`.slice(0, 60)]);

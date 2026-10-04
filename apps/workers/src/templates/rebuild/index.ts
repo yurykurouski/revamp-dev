@@ -3,6 +3,7 @@ import { escapeHtml } from '../html.js';
 import { getMvpStrings } from '../mvp-locale.js';
 import { bookingFormHtml, bookingScript } from '../shared/booking.js';
 import { monogramSvg, resolveTrackerUrls, svgDataUri, trackerScriptTag } from '../shared/page.js';
+import { seoHeadTags } from '../shared/seo.js';
 import { renderFooter, renderHeader } from './chrome.js';
 import { renderSection, RenderCtx } from './sections.js';
 import { REBUILD_SCRIPT } from './script.js';
@@ -25,7 +26,7 @@ export function renderRebuild(plan: IRebuildPlan, opts: { publicApiUrl?: string;
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(plan.businessName)}</title>
+  <title>${escapeHtml(plan.businessName)}</title>${seoHeadTags(plan.seo, plan.businessName)}
   <link rel="icon" href="${escapeHtml(favicon)}">
   <style>${rebuildCss(plan)}</style>
 </head>
