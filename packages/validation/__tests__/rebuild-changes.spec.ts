@@ -20,6 +20,7 @@ describe('parseRebuildChange (REV-119)', () => {
     expect(parseRebuildChange('contrast:3')).toEqual({ kind: 'contrast', section: 3 });
     expect(parseRebuildChange('overlay:0')).toEqual({ kind: 'overlay', section: 0 });
     expect(parseRebuildChange('collapse:11')).toEqual({ kind: 'collapse', section: 11 });
+    expect(parseRebuildChange('wall:9')).toEqual({ kind: 'text-wall', section: 9 });
   });
 
   it('reads the source of a design change', () => {
@@ -36,7 +37,7 @@ describe('parseRebuildChange (REV-119)', () => {
   });
 
   it('rejects codes no kind covers', () => {
-    for (const code of ['', 'contrast', 'contrast:x', 'alt:', 'modernize:order', 'modernize:css-dropped', 'other:style:1', 'seo:title', 'font:body-14']) {
+    for (const code of ['', 'contrast', 'contrast:x', 'alt:', 'modernize:order', 'modernize:css-dropped', 'other:style:1', 'seo:title', 'font:body-14', 'wall:', 'modernize:wall:1', 'text-wall:1']) {
       expect(parseRebuildChange(code), code).toBeUndefined();
     }
   });
@@ -46,7 +47,7 @@ describe('parseRebuildChange (REV-119)', () => {
       'contrast:1', 'overlay:1', 'alt:2', 'font:body-16', 'line-height:1.5', 'collapse:1', 'h1:hidden', 'booking:replaced',
       'booking:appended', 'footer:added', 'seo:description', 'seo:og', 'seo:jsonld', 'edit:style:1', 'edit:cards:1',
       'edit:side:1', 'edit:fill:1', 'edit:hero-photo:s-1.m0', 'edit:hero-cta', 'edit:type', 'edit:theme', 'edit:order',
-      'edit:css-dropped',
+      'edit:css-dropped', 'wall:9',
     ];
     expect(new Set(samples.map((code) => parseRebuildChange(code)?.kind))).toEqual(new Set(REBUILD_CHANGE_KINDS));
   });
@@ -65,6 +66,8 @@ describe('MvpRebuildSummarySchema facts (REV-119)', () => {
     expect(MvpRebuildSummarySchema.safeParse(summary).success).toBe(true);
     const facts = [{ code: 'contrast:2', section: 'Services', from: '#9a9a9a', to: '#595959', background: '#ffffff', ratioBefore: 2.8, ratioAfter: 4.6 }];
     expect(MvpRebuildSummarySchema.safeParse({ ...summary, facts }).success).toBe(true);
+    expect(MvpRebuildSummarySchema.safeParse({ ...summary, tuning: ['wall:9'], facts: [{ code: 'wall:9', value: 26, median: 2 }] }).success).toBe(true);
+    expect(MvpRebuildSummarySchema.safeParse({ ...summary, facts: [{ code: 'wall:9', median: -1 }] }).success).toBe(false);
   });
   it('rejects a ratio outside 1..21 and a fact without a code', () => {
     expect(MvpRebuildSummarySchema.safeParse({ ...summary, facts: [{ code: 'contrast:2', ratioBefore: 0.5 }] }).success).toBe(false);

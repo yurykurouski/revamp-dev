@@ -26,6 +26,7 @@ import {
   SITE_SECTIONS_LIMITS,
   parseRebuildChange,
   rebuildH1Section,
+  textWalls,
 } from '@revamp/validation';
 import { getMvpStrings, sanitizeLanguageTag } from '../templates/mvp-locale.js';
 import { FONT_STACKS } from '../templates/design.js';
@@ -618,6 +619,12 @@ export function planRebuild(input: RebuildInput): IRebuildPlan {
       return false;
     })
     .map(({ planned }) => planned);
+  // A section far longer in paragraphs than the rest of the page (REV-122) is recorded, so a lost structure shows
+  const paragraphsOf = (s: IRebuildSection) => s.intro.text.length + s.extra.reduce((n, b) => n + (b.type === 'text' ? b.text.length : 0), 0);
+  for (const wall of textWalls(sections.map((s) => ({ index: s.index, paragraphs: paragraphsOf(s) })))) {
+    rec.fix(`wall:${wall.index}`);
+    rec.note(`wall:${wall.index}`, { value: wall.paragraphs, median: wall.median });
+  }
   // The operator's order; unlisted sections follow in the original order
   if (edit?.order?.length) {
     const rank = new Map(edit.order.map((id, i) => [id, i]));

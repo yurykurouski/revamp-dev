@@ -519,12 +519,38 @@ describe('planRebuild with the operator edit (REV-111)', () => {
 
 describe('modernize (REV-114)', () => {
   // The anident.pl reading, as the vision grouping stores it (site-grouping.recorded.spec.ts)
-  const anident = (): ISiteSections => {
-    const r = JSON.parse(readFileSync(new URL('./fixtures/grouping/anident.json', import.meta.url), 'utf8'));
+  const anident = (name = 'anident'): ISiteSections => {
+    const r = JSON.parse(readFileSync(new URL(`./fixtures/grouping/${name}.json`, import.meta.url), 'utf8'));
     const raw: RawSiteSections = { viewportWidth: r.viewportWidth, viewportHeight: r.viewportHeight, blocks: [], typography: r.typography, pageChars: r.pageChars, uncaptured: [], outline: r.outline };
     return readGroupedSections(raw, r.answer as SiteGroupingAnswer).sections!;
   };
   const anidentInput = (over: Partial<RebuildInput> = {}): RebuildInput => input([], { siteSections: anident(), businessName: 'Anident', ...over });
+  /**
+   * anident as it was read before REV-122: s-9's bullet list flattened into paragraphs, a 26-paragraph text section, kept
+   * for the paragraph-card rules and the wall guard
+   */
+  const anidentWall = (): ISiteSections => {
+    const read = anident();
+    return {
+      ...read,
+      sections: read.sections.map((s) =>
+        s.index !== 9
+          ? s
+          : {
+              ...s,
+              arrangement: 'text' as const,
+              intro: {
+                ...s.intro,
+                text: [...s.intro.text, ...s.items.flatMap((i) => i.text), ...s.extra.flatMap((e) => (e.type === 'text' ? e.text : []))],
+                links: [...s.intro.links, ...s.items.flatMap((i) => i.links)],
+              },
+              items: [],
+              extra: [],
+            },
+      ),
+    };
+  };
+  const wallInput = (over: Partial<RebuildInput> = {}): RebuildInput => input([], { siteSections: anidentWall(), businessName: 'Anident', ...over });
   const valid = (plan: IRebuildPlan) => {
     expect(() => RebuildPlanSchema.parse(plan)).not.toThrow();
     return plan;
@@ -562,8 +588,8 @@ describe('modernize (REV-114)', () => {
     expect(mergeRebuildEdits({ hero: { photo: 's-2.m0', style: 'split' } }, { hero: { photo: 's-4.m0', style: 'banner' } }).edit?.hero).toEqual({ photo: 's-4.m0', style: 'banner' });
   });
 
-  describe('cards from paragraphs (anident s-9)', () => {
-    const faithful = planRebuild(anidentInput());
+  describe('cards from paragraphs (anident s-9 read as a wall, before REV-122)', () => {
+    const faithful = planRebuild(wallInput());
     const paragraphs = byId(faithful, 's-9')!.intro.text;
     const carded = (s: IRebuildPlan['sections'][number]) => [
       ...s.intro.text,
@@ -572,7 +598,7 @@ describe('modernize (REV-114)', () => {
     ];
 
     it('turns the short paragraphs into cards and keeps the long one after them as text', () => {
-      const plan = valid(planRebuild(anidentInput({ modernize: { sections: { 's-9': { arrangement: 'card-grid' } } } })));
+      const plan = valid(planRebuild(wallInput({ modernize: { sections: { 's-9': { arrangement: 'card-grid' } } } })));
       const s9 = byId(plan, 's-9')!;
       expect(paragraphs).toHaveLength(26);
       // The longest carded paragraph is 135 characters: 3 columns
@@ -592,7 +618,7 @@ describe('modernize (REV-114)', () => {
     });
 
     it("applies the operator's drops first", () => {
-      const plan = valid(planRebuild(anidentInput({ modernize: { sections: { 's-9': { arrangement: 'card-grid' } } }, edit: { dropped: ['s-9.t0'] } })));
+      const plan = valid(planRebuild(wallInput({ modernize: { sections: { 's-9': { arrangement: 'card-grid' } } }, edit: { dropped: ['s-9.t0'] } })));
       const s9 = byId(plan, 's-9')!;
       expect(s9.items.map((i) => i.text[0])).not.toContain(paragraphs[0]);
       expect(s9.items).toHaveLength(24);
@@ -648,6 +674,51 @@ describe('modernize (REV-114)', () => {
       const plan = valid(planRebuild(input([hero, text], { modernize: { sections: { 's-4': { arrangement: 'card-grid' } } } })));
       expect(byId(plan, 's-4')).toMatchObject({ arrangement: 'text', items: [] });
       expect(plan.summary.tuning.some((code) => code.includes('cards:'))).toBe(false);
+    });
+  });
+
+  describe('the anident bullet list (REV-122)', () => {
+    const items = (s: IRebuildPlan['sections'][number]) => s.items.map((i) => i.text[0]);
+
+    it('faithful: a list of 24 items, the intro before it and the closing paragraph after, no wall recorded', () => {
+      const plan = valid(planRebuild(anidentInput()));
+      const s9 = byId(plan, 's-9')!;
+      expect(s9).toMatchObject({ arrangement: 'list', collapsed: false, intro: { text: ['Ze względu na szereg naszych atutów:'] } });
+      expect(s9.items).toHaveLength(24);
+      expect(s9.extra).toHaveLength(1);
+      expect(plan.summary.tuning.some((code) => code.startsWith('wall:'))).toBe(false);
+    });
+
+    it('modern: 24 cards from a photo-beside-text answer; the photo follows the cards and the side is dropped', () => {
+      const beside = input([], { siteSections: anident('anident-beside'), businessName: 'Anident' });
+      const faithful = valid(planRebuild(beside));
+      const read = faithful.sections.find((s) => s.intro.heading?.startsWith('DLACZEGO WARTO'))!;
+      expect(read).toMatchObject({ arrangement: 'media-beside-text', mediaSide: 'right' });
+      expect(read.items).toHaveLength(24);
+      const plan = valid(planRebuild({ ...beside, modernize: { sections: { [read.id]: { arrangement: 'card-grid' } } } }));
+      const cards = byId(plan, read.id)!;
+      expect(cards).toMatchObject({ arrangement: 'card-grid', columns: 3, itemStyle: { border: true } });
+      expect(cards.mediaSide).toBeUndefined();
+      expect(cards.images).toHaveLength(1);
+      expect(items(cards)).toEqual(items(read));
+      expect(plan.summary.tuning).toContain(`modernize:cards:${read.index}`);
+    });
+
+    it('uses 2 columns for items over 160 characters, and leaves fewer than 3 items beside the photo', () => {
+      const beside = (texts: string[]) =>
+        section(4, { arrangement: 'media-beside-text', images: [{ src: 'https://x.pl/a.jpg', width: 400 }], items: texts.map((t) => ({ text: [t], links: [] })) });
+      const cards = { modernize: { sections: { 's-4': { arrangement: 'card-grid' as const } } } };
+      expect(byId(planRebuild(input([hero, beside(['A'.repeat(161), 'B', 'C'])], cards)), 's-4')).toMatchObject({ arrangement: 'card-grid', columns: 2 });
+      const two = byId(planRebuild(input([hero, beside(['A', 'B'])], cards)), 's-4')!;
+      expect(two.arrangement).toBe('media-beside-text');
+    });
+
+    it('records a wall of paragraphs with its count and the median of the other sections', () => {
+      const plan = valid(planRebuild(wallInput()));
+      expect(plan.summary.tuning).toContain('wall:9');
+      expect(plan.summary.tuning.filter((code) => code.startsWith('wall:'))).toEqual(['wall:9']);
+      expect(plan.summary.facts).toContainEqual({ code: 'wall:9', section: 'DLACZEGO WARTO WYBRAĆ KLINIKĘ STOMATOLOGICZNĄ ANIDENT?', value: 26, median: 2 });
+      expect(parseRebuildChange('wall:9')).toEqual({ kind: 'text-wall', section: 9 });
     });
   });
 

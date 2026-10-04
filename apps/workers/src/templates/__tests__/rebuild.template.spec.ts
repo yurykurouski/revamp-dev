@@ -423,3 +423,39 @@ describe('renderRebuild with the modernize fields (REV-114)', () => {
     expect(rebuildCss(plan([section(1)]))).toContain('[data-media-fit=fill] .rb-media img');
   });
 });
+
+describe('renderRebuild with a bullet list (REV-122)', () => {
+  const photo = { src: 'https://x.pl/gabinet.jpg', alt: 'Gabinet', width: 242, height: 182 };
+  const lines = ['najwyższa jakość usług', 'pantomogram wykonywany na miejscu', 'parking <obok>'];
+  const plain = lines.map((line) => ({ text: [line], links: [] }));
+  const sectionHtml = (html: string) => html.slice(html.indexOf('id="s-1"'), html.indexOf('</section>', html.indexOf('id="s-1"')));
+
+  it('faithful: plain one-line items are a bulleted list beside the photo, escaped, with their links', () => {
+    const items = [...plain.slice(0, 2), { text: [lines[2]!], links: [{ label: 'Dojazd', href: '#s-4', kind: 'anchor' as const }] }];
+    const html = sectionHtml(renderRebuild(plan([section(1, { arrangement: 'media-beside-text', mediaSide: 'right', images: [photo], items })])));
+    expect(html).toContain('data-has-media');
+    expect(html).toContain('<ul class="rb-list rb-bullets"><li>najwyższa jakość usług</li><li>pantomogram wykonywany na miejscu</li>');
+    expect(html).toContain('<li>parking &lt;obok&gt;<div class="rb-links"><a class="rb-link" href="#s-4">Dojazd</a></div></li>');
+    expect(html).not.toContain('<article');
+    expect(renderRebuild(plan([section(1, { arrangement: 'list', items: plain })]))).toContain('<ul class="rb-list rb-bullets">');
+  });
+
+  it('keeps richer items as articles, and cards as a grid', () => {
+    const rich = sectionHtml(renderRebuild(plan([section(1, { arrangement: 'list', items: [...plain, { title: 'Implanty', text: ['Opis'], links: [] }] })])));
+    expect(rich).not.toContain('rb-bullets');
+    expect(rich).toContain('<div class="rb-list"><article class="rb-item">');
+    const twoLines = sectionHtml(renderRebuild(plan([section(1, { arrangement: 'list', items: [{ text: ['Jeden', 'Dwa'], links: [] }, ...plain] })])));
+    expect(twoLines).not.toContain('rb-bullets');
+    const cards = sectionHtml(renderRebuild(plan([section(1, { arrangement: 'card-grid', columns: 3, images: [photo], items: plain, itemStyle: { border: true } })])));
+    expect(cards).toContain('<div class="rb-grid" style="--rb-columns: 3">');
+    expect(cards).not.toContain('rb-bullets');
+    // The photo follows the cards
+    expect(cards.indexOf('rb-grid')).toBeLessThan(cards.indexOf('class="rb-media"'));
+  });
+
+  it('styles the bullets in the static CSS, left-aligned in a centered section', () => {
+    const css = rebuildCss(plan([section(1)]));
+    expect(css).toContain('.rb-list.rb-bullets { display: block; list-style: disc;');
+    expect(css).toContain('[data-align=center] .rb-bullets { width: fit-content; margin-inline: auto; }');
+  });
+});

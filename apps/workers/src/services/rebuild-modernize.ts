@@ -1,5 +1,5 @@
 import type { IAudit, IRebuildModernize, IRebuildModernizeAnswer, IRebuildSectionEdit, ISiteSection, ISiteSections } from '@revamp/shared-types';
-import { REBUILD_BANNER_MIN_WIDTH, SITE_SECTIONS_LIMITS, cardRun, checkRebuildEdit, rebuildH1Section } from '@revamp/validation';
+import { REBUILD_BANNER_MIN_WIDTH, SITE_SECTIONS_LIMITS, cardRun, checkRebuildEdit, rebuildH1Section, rebuildItemsFitCards } from '@revamp/validation';
 
 // The modernize layer's deterministic default (REV-114): the design a dated site gets when the model is not
 // used or its answer is rejected. It is also the model's starting point. Ids and fixed values only.
@@ -51,8 +51,9 @@ export function defaultModernDesign(read: ISiteSections): IRebuildModernizeAnswe
     if (!overPhoto) edit(s).align = 'left';
     if (s.role !== 'content') return;
     if (s.arrangement === 'text' && cardRun(s.intro.text)) edit(s).arrangement = 'card-grid';
-    else if (s.arrangement === 'list' && s.items.length >= 3) edit(s).arrangement = 'card-grid';
-    if (s.arrangement === 'media-beside-text' && s.images.length > 0 && heroSource?.section !== s) {
+    else if (rebuildItemsFitCards(s)) edit(s).arrangement = 'card-grid';
+    // Items beside a photo become cards, and the photo follows them: there is no column to fill or side to pick
+    if (s.arrangement === 'media-beside-text' && s.images.length > 0 && heroSource?.section !== s && !rebuildItemsFitCards(s)) {
       edit(s).media = 'fill';
       edit(s).mediaSide = side;
       side = side === 'right' ? 'left' : 'right';

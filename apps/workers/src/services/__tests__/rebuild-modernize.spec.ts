@@ -21,8 +21,19 @@ describe('defaultModernDesign (REV-114)', () => {
     expect(design.hero).toEqual({ photo: 's-2.m0', style: 'split' });
   });
 
-  it('shows the long run of short paragraphs as cards', () => {
+  it('shows the bullet list as cards (REV-122: read as a list of 24 items)', () => {
     expect(design.sections?.['s-9']?.arrangement).toBe('card-grid');
+  });
+
+  it('shows the bullet list read beside its photo as cards, with no column fill or side (REV-122)', () => {
+    const beside = load('anident-beside');
+    const why = beside.sections.find((s) => s.intro.heading?.startsWith('DLACZEGO WARTO'))!;
+    expect(why).toMatchObject({ arrangement: 'media-beside-text' });
+    const d = defaultModernDesign(beside);
+    expect(d.sections?.[`s-${why.index}`]).toMatchObject({ arrangement: 'card-grid' });
+    expect(d.sections?.[`s-${why.index}`]?.media).toBeUndefined();
+    expect(d.sections?.[`s-${why.index}`]?.mediaSide).toBeUndefined();
+    expect(checkRebuildEdit(d, beside)).toEqual({ ok: true });
   });
 
   it('alternates the photo side and fills the column, skipping the section whose photo moved to the hero', () => {

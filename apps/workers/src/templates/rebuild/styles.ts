@@ -102,6 +102,11 @@ h4 { font-size: 1.1em; }
 [data-item-align=center] .rb-item { text-align: center; }
 [data-item-align=center] .rb-item .rb-links { justify-content: center; }
 .rb-item-body { padding-top: 12px; }
+/* A list of plain lines keeps its bullets, left-aligned in a centered column */
+.rb-list.rb-bullets { display: block; list-style: disc; padding-left: 1.25em; max-width: 72ch; text-align: left; }
+.rb-bullets li + li { margin-top: .5em; }
+.rb-bullets .rb-links { margin-top: 4px; }
+[data-align=center] .rb-bullets { width: fit-content; margin-inline: auto; }
 .rb-item-body > :last-child { margin-bottom: 0; }
 .rb-item-title { margin-bottom: .25em; }
 .rb-item-subtitle { opacity: .8; font-size: .95em; margin-bottom: .5em; }

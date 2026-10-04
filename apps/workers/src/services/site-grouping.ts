@@ -12,6 +12,7 @@ import type {
   RawPageOutline,
   RawSiteBlock,
   RawSiteItem,
+  RawSiteLink,
   RawSiteSections,
 } from './site-sections.page.js';
 import { readSiteSections, type SiteSectionsReading } from './site-sections.service.js';
@@ -119,7 +120,8 @@ type ItemPieces = { title?: RawOutlinePiece; pieces: RawOutlinePiece[] };
 /**
  * Items the page itself names: a slider section gets one per slide of the slider that carries its copy,
  * whatever items the model made (the outline's `slide` facts, the slide's first heading as its title; a
- * thumbnail strip's bare photos are left out); a gallery the model left without items one per photo.
+ * thumbnail strip's bare photos are left out); a gallery the model left without items one per photo; any other
+ * section the model left without items one per line of its first list pieces.
  * Undefined otherwise.
  */
 function derivedItems(
@@ -128,7 +130,7 @@ function derivedItems(
   pieces: RawOutlinePiece[],
   itemPieces: RawOutlinePiece[],
   viewportWidth: number,
-): { items: ItemPieces[]; rest: RawOutlinePiece[]; headingUsed: boolean } | undefined {
+): { items: ItemPieces[]; rest: RawOutlinePiece[]; headingUsed: boolean; firstItem?: number } | undefined {
   if (s.arrangement === 'slider') {
     const all = [heading, ...pieces, ...itemPieces].sort(byPage);
     // The slider that carries the copy; another one beside it (a thumbnail strip) only repeats its photos
@@ -174,7 +176,65 @@ function derivedItems(
       headingUsed: false,
     };
   }
+  if (!MARKUP.has(s.arrangement) && s.arrangement !== 'gallery' && !s.items?.length) {
+    const lists = leadingLists(pieces);
+    const items = lists.flatMap(listItems);
+    if (items.length < 2) return undefined;
+    return {
+      items,
+      rest: pieces.filter((p) => !lists.includes(p)),
+      headingUsed: false,
+      firstItem: lists[0]!.id,
+    };
+  }
   return undefined;
+}
+
+const isList = (p: RawOutlinePiece) => p.type === 'list' && (p.lines?.length ?? 0) > 0;
+
+/**
+ * The section's first list piece and the lists right after it (REV-122): the model names a list by one id, never
+ * its lines, so the lines are the items. Copy between two lists ends the run, so the page's order is kept.
+ */
+function leadingLists(pieces: RawOutlinePiece[]): RawOutlinePiece[] {
+  const sorted = [...pieces].sort(byPage);
+  const first = sorted.findIndex(isList);
+  if (first < 0) return [];
+  const run: RawOutlinePiece[] = [];
+  for (const p of sorted.slice(first)) {
+    if (isList(p)) run.push(p);
+    else if (isCopy(p)) break;
+  }
+  return run;
+}
+
+/**
+ * One item per line of a list piece (REV-122), stacked in the list's box; each of the list's links goes to the
+ * first line from the previous link's on that holds its label, else stays with the last item it fits nowhere
+ */
+function listItems(list: RawOutlinePiece): ItemPieces[] {
+  const lines = list.lines ?? [];
+  const links = lines.map((): RawSiteLink[] => []);
+  let at = 0;
+  for (const link of list.links ?? []) {
+    const label = link.label.trim();
+    const found = [...lines.keys()].find((i) => i >= at && lines[i]!.includes(label));
+    if (found !== undefined) at = found;
+    links[found ?? lines.length - 1]!.push(link);
+  }
+  const height = list.box.height / lines.length;
+  return lines.map((text, i) => ({
+    pieces: [
+      {
+        ...list,
+        type: 'text' as const,
+        text,
+        lines: undefined,
+        links: links[i],
+        box: { ...list.box, top: list.box.top + i * height, height },
+      },
+    ],
+  }));
 }
 
 function sectionBlock(
@@ -197,9 +257,9 @@ function sectionBlock(
       pieces: i.pieces.map(get),
     }));
   const ownHeading = derived?.headingUsed ? undefined : heading;
-  // Items the page names (slides, photos) sit beside the intro, not after it
+  // Items the page names (slides, photos) sit beside the intro, not after it; a list's lines are where the list was
   const firstItem = derived
-    ? Infinity
+    ? (derived.firstItem ?? Infinity)
     : Math.min(
         Infinity,
         ...items.flatMap((i) => [...(i.title ? [i.title.id] : []), ...i.pieces.map((p) => p.id)]),

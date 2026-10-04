@@ -185,6 +185,72 @@ describe('assembleGroupedBlocks / readGroupedSections (REV-113)', () => {
     expect(s.images).toEqual([]);
   });
 
+  describe('a list piece in a section the model left without items (REV-122)', () => {
+    const link = (label: string) => ({ label, href: `https://anident.test/${label.length}`, button: false });
+    const photo = { src: 'https://x.test/p.jpg', alt: 'Gabinet', box: box(460, 800, 240, 180), radius: 0 };
+    const listPieces: RawOutlinePiece[] = [
+      P(1, 'heading', { text: 'DLACZEGO WARTO?', level: 2, box: box(400, 0, 1000, 40) }),
+      P(2, 'text', { text: 'Ze względu na szereg naszych atutów:', box: box(440, 0, 700, 20) }),
+      P(3, 'image', { tag: 'img', box: photo.box, image: photo }),
+      P(4, 'list', {
+        tag: 'ul',
+        box: box(470, 0, 700, 90),
+        lines: ['najwyższa jakość usług', 'pantomogram wykonywany na miejscu', 'implanty MEGAGEN oraz Zimmer'],
+        links: [link('pantomogram'), link('MEGAGEN'), link('Zimmer')],
+      }),
+      P(5, 'text', { text: 'Klinika zapewnia kompleksowe leczenie.', box: box(580, 0, 700, 40) }),
+    ];
+    const read = (arrangement: SiteGroupingAnswer['sections'][number]['arrangement'], extra: RawOutlinePiece[] = [], ids = [2, 3, 4, 5]) =>
+      readGroupedSections({ ...raw, outline: { ...outline, pieces: [...listPieces, ...extra] }, pageChars: 200 }, {
+        sections: [{ heading: 1, pieces: ids, kind: 'features', arrangement }],
+      }).sections!.sections[0]!;
+
+    it('makes one item per line, each with the links its line holds; the copy before is the intro and after it the extra', () => {
+      const s = read('list');
+      expect(s.arrangement).toBe('list');
+      expect(s.items.map((i) => [i.text, i.links.map((l) => l.label)])).toEqual([
+        [['najwyższa jakość usług'], []],
+        [['pantomogram wykonywany na miejscu'], ['pantomogram']],
+        [['implanty MEGAGEN oraz Zimmer'], ['MEGAGEN', 'Zimmer']],
+      ]);
+      expect(s.intro.text).toEqual(['Ze względu na szereg naszych atutów:']);
+      expect(s.intro.links).toEqual([]);
+      expect(s.extra).toEqual([{ type: 'text', text: ['Klinika zapewnia kompleksowe leczenie.'] }]);
+      expect(s.images.map((i) => i.src)).toEqual(['https://x.test/p.jpg']);
+    });
+
+    it('keeps a photo-beside-text answer beside its photo, with the list as items, and loses no text', () => {
+      const s = read('media-beside-text');
+      expect(s.arrangement).toBe('media-beside-text');
+      expect(s.items).toHaveLength(3);
+      const text = [...s.intro.text, ...s.items.flatMap((i) => i.text), ...s.extra.flatMap((e) => (e.type === 'text' ? e.text : []))];
+      expect(text).toEqual(['Ze względu na szereg naszych atutów:', ...listPieces[3]!.lines!, 'Klinika zapewnia kompleksowe leczenie.']);
+    });
+
+    it('joins lists that follow each other, and leaves a list after other copy as text in its place', () => {
+      const next = P(6, 'list', { tag: 'ul', box: box(600, 0, 700, 40), lines: ['obsługa po angielsku', 'parking'] });
+      const joined = read('list', [{ ...next, id: 6 }], [2, 3, 4, 6]);
+      expect(joined.items.map((i) => i.text[0])).toEqual([...listPieces[3]!.lines!, 'obsługa po angielsku', 'parking']);
+      const apart = read('list', [next], [2, 3, 4, 5, 6]);
+      expect(apart.items).toHaveLength(3);
+      expect(apart.extra).toEqual([{ type: 'text', text: ['Klinika zapewnia kompleksowe leczenie.', 'obsługa po angielsku', 'parking'] }]);
+    });
+
+    it("leaves the model's own items, a one-line list, and markup sections as they were", () => {
+      const withItems = readGroupedSections({ ...raw, outline: { ...outline, pieces: listPieces }, pageChars: 200 }, {
+        sections: [{ heading: 1, pieces: [2, 3, 5], items: [{ pieces: [4] }], kind: 'features', arrangement: 'list' }],
+      }).sections!.sections[0]!;
+      expect(withItems.items.map((i) => i.text)).toEqual([listPieces[3]!.lines]);
+      const one = [...listPieces.slice(0, 3), { ...listPieces[3]!, lines: ['najwyższa jakość usług'] }];
+      const single = readGroupedSections({ ...raw, outline: { ...outline, pieces: one }, pageChars: 80 }, {
+        sections: [{ heading: 1, pieces: [2, 3, 4], kind: 'features', arrangement: 'text' }],
+      }).sections!.sections[0]!;
+      expect(single.items).toEqual([]);
+      expect(single.intro.text).toContain('najwyższa jakość usług');
+      expect(read('accordion').items).toEqual([]);
+    });
+  });
+
   it('refuses an invalid answer with its reasons', () => {
     expect(readGroupedSections(raw, { ...answer, footer: { pieces: [99] } }).error).toMatch(/unknown id 99/);
     expect(readGroupedSections({ ...raw, outline: undefined }, answer).error).toBe('No page outline');

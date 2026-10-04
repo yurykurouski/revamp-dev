@@ -774,6 +774,16 @@ export const lt: Translation = {
         why: 'Jis ilgesnis nei suskleidimo riba. Jo ilgis šiam puslapiui neužrašytas.',
         effect: 'Lankytojai greičiau pasiekia kitus skyrius ir vis tiek gali atverti visą tekstą.',
       },
+      textWall: {
+        what: 'Teksto skyrius iš {{paragraphs}} pastraipų paliktas toks, koks buvo nuskaitytas',
+        why: 'Kiti puslapio skyriai turi {{median}} pastraipų (mediana), todėl šis skyrius nuskaitant galėjo prarasti savo struktūrą (sąrašą ar korteles). Patikrinkite jį peržiūroje.',
+        effect: 'Lankytojams niekas nepasikeitė; tokį ilgą skyrių sunku peržvelgti, todėl verta jį patikrinti prieš siunčiant.',
+      },
+      textWallUnmeasured: {
+        what: 'Teksto skyrius, daug ilgesnis už kitus, paliktas toks, koks buvo nuskaitytas',
+        why: 'Jo pastraipų skaičius gerokai viršija kitus puslapio skyrius; skaičiai šiam puslapiui neužrašyti. Patikrinkite jį peržiūroje.',
+        effect: 'Lankytojams niekas nepasikeitė; tokį ilgą skyrių sunku peržvelgti, todėl verta jį patikrinti prieš siunčiant.',
+      },
       bookingReplaced: {
         what: 'Originalo forma pakeista registracijos forma',
         why: 'Puslapyje lieka viena forma, originalo formos vietoje.',

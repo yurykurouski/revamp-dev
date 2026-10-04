@@ -1,5 +1,5 @@
 import type { IRebuildEditAnswer, IRebuildModernizeAnswer, IRebuildSectionEdit, ISiteSection } from '@revamp/shared-types';
-import { SITE_SECTIONS_LIMITS, cardRun } from '@revamp/validation';
+import { SITE_SECTIONS_LIMITS, cardRun, rebuildItemsFitCards } from '@revamp/validation';
 
 // The modernize layer under the operator's edit (REV-114): how the two are merged, and the card shape a
 // section's paragraphs take. Pure; the planner applies the result.
@@ -63,6 +63,12 @@ export function arrangedSection(section: ISiteSection, arrangement: IRebuildSect
   if (!arrangement || arrangement === section.arrangement) return section;
   if (section.arrangement === 'list' && arrangement === 'card-grid') {
     return section.items.length >= 3 ? { ...section, arrangement, itemStyle: section.itemStyle ?? { ...CARD_SURFACE } } : section;
+  }
+  // Items read beside a photo (REV-122): the cards take the width, two columns for long items, and the photo follows
+  if (section.arrangement === 'media-beside-text' && arrangement === 'card-grid') {
+    if (!rebuildItemsFitCards(section)) return section;
+    const longest = Math.max(...section.items.map((i) => i.text.join(' ').length));
+    return { ...section, arrangement, mediaSide: undefined, columns: longest > CARD_WIDE_CHARS ? 2 : 3, itemStyle: section.itemStyle ?? { ...CARD_SURFACE } };
   }
   if (section.arrangement !== 'text') return section;
   const paragraphs = section.intro.text;

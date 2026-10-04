@@ -774,6 +774,16 @@ export const pl: Translation = {
         why: 'Jest dłuższy niż próg zwijania. Jego długość nie została zapisana dla tej strony.',
         effect: 'Odwiedzający szybciej docierają do kolejnych sekcji i nadal mogą otworzyć cały tekst.',
       },
+      textWall: {
+        what: 'Sekcja tekstu z {{paragraphs}} akapitami, zachowana tak, jak została odczytana',
+        why: 'Pozostałe sekcje strony mają {{median}} akapitów (mediana), więc ta mogła przy odczycie stracić swoją strukturę (listę lub karty). Sprawdź ją w podglądzie.',
+        effect: 'Dla odwiedzających nic się nie zmienia; tak długą sekcję trudno przejrzeć, więc warto ją sprawdzić przed wysłaniem.',
+      },
+      textWallUnmeasured: {
+        what: 'Sekcja tekstu znacznie dłuższa od pozostałych, zachowana tak, jak została odczytana',
+        why: 'Liczba jej akapitów znacznie przewyższa pozostałe sekcje strony; liczby nie zostały zapisane dla tej strony. Sprawdź ją w podglądzie.',
+        effect: 'Dla odwiedzających nic się nie zmienia; tak długą sekcję trudno przejrzeć, więc warto ją sprawdzić przed wysłaniem.',
+      },
       bookingReplaced: {
         what: 'Formularz oryginału zastąpiony formularzem rezerwacji',
         why: 'Strona zachowuje jeden formularz, w miejscu formularza oryginału.',

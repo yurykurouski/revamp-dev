@@ -778,6 +778,23 @@ describe.skipIf(!browser)('collectSiteSectionsInPage (real Chromium, REV-109)', 
       expect(types.filter((t) => t.startsWith('image:'))).toEqual(['image:Falco-Dent']);
     });
 
+    it('reads a bullet list whose lines hold links as one list piece, a line per <li> and the links kept (REV-122, anident)', async () => {
+      const o = await outlineOf(pageOf(`<table width="600" align="center"><tr><td>
+        <h2>DLACZEGO WARTO WYBRAĆ KLINIKĘ?</h2><font>Ze względu na szereg naszych atutów:</font>
+        <img src="https://img.test/gabinet.jpg" alt="Stomatologia" width="242" height="182" align="right">
+        <ul><li>najwyższa jakość usług</li><li><a href="https://anident.test/pantomogram.html">pantomogram</a> wykonywany na miejscu</li>
+        <li>implanty systemów <a href="https://anident.test/systemy.html">MEGAGEN oraz Zimmer</a></li></ul>
+        <font>Klinika zapewnia kompleksowe leczenie.</font></td></tr></table>`));
+      expect(brief(o)).toEqual([
+        'heading:DLACZEGO WARTO WYBRAĆ KLINIKĘ?',
+        'text:Ze względu na szereg naszych atutów:',
+        'image:Stomatologia',
+        'list:najwyższa jakość usług|pantomogram wykonywany na miejscu|implanty systemów MEGAGEN oraz Zimmer',
+        'text:Klinika zapewnia kompleksowe leczenie.',
+      ]);
+      expect(o.pieces.find((p) => p.type === 'list')!.links!.map((l) => l.label)).toEqual(['pantomogram', 'MEGAGEN oraz Zimmer']);
+    });
+
     it('records background photos and embeds as pieces, and marks kept hidden text', async () => {
       const o = await outlineOf(pageOf(`<section style="height:400px;background:url(https://img.test/hero.jpg) center/cover"><h1>Witamy</h1></section>
         <section><h2>FAQ</h2><details><summary>Czy boli?</summary><p>Nie, zabieg jest w znieczuleniu.</p></details>

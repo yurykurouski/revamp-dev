@@ -99,6 +99,8 @@ describe('fittingArrangements (REV-114)', () => {
     ['a list of 3 items', section(1, { arrangement: 'list', items: [item, item, item] })],
     ['a list of 2 items', section(1, { arrangement: 'list', items: [item, item] })],
     ['media beside 3 short paragraphs', section(1, { arrangement: 'media-beside-text', intro: { text: short, links: [] }, images: [{ src: 'https://x.test/a.jpg', width: 300 }] })],
+    ['media beside 3 items (REV-122)', section(1, { arrangement: 'media-beside-text', items: [item, item, item], images: [{ src: 'https://x.test/a.jpg', width: 300 }] })],
+    ['media beside 2 items', section(1, { arrangement: 'media-beside-text', items: [item, item], images: [{ src: 'https://x.test/a.jpg', width: 300 }] })],
   ];
 
   it.each(cases)('agrees with checkRebuildEdit: %s', (_, s) => {
@@ -109,6 +111,11 @@ describe('fittingArrangements (REV-114)', () => {
       const ok = checkRebuildEdit({ sections: { 's-1': { arrangement } } }, page).ok;
       expect(fits.includes(arrangement)).toBe(ok);
     }
+  });
+
+  it('offers cards for items beside a photo (REV-122)', () => {
+    expect(fittingArrangements(cases[5]![1])).toEqual(['card-grid']);
+    expect(fittingArrangements(cases[6]![1])).toEqual([]);
   });
 
   it('lists the outline of the hero and content sections only', () => {

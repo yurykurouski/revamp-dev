@@ -775,6 +775,16 @@ export const en = {
         why: 'It is longer than the fold limit. Its length was not recorded for this page.',
         effect: 'Visitors reach the next sections sooner and can still open the full text.',
       },
+      textWall: {
+        what: 'A text section of {{paragraphs}} paragraphs, kept as it was read',
+        why: 'The page\'s other sections have {{median}} paragraphs (median), so this one may have lost its structure (a list or cards) when it was read. Check it in the preview.',
+        effect: 'Nothing changed for visitors; a section this long is hard to scan, so it is worth a look before sending.',
+      },
+      textWallUnmeasured: {
+        what: 'A text section much longer than the others, kept as it was read',
+        why: 'Its paragraph count stands far above the page\'s other sections; the counts were not recorded for this page. Check it in the preview.',
+        effect: 'Nothing changed for visitors; a section this long is hard to scan, so it is worth a look before sending.',
+      },
       bookingReplaced: {
         what: 'The original form replaced by the booking form',
         why: 'The page keeps one form, where the original had its own.',

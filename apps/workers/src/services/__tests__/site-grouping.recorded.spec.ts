@@ -34,6 +34,33 @@ describe('recorded model answers (REV-113)', () => {
     expect(body(read).some((s) => s.arrangement === 'gallery')).toBe(false);
   });
 
+  // REV-122: the model names the bullet list by its one id; whichever arrangement it answers, the lines are the items
+  describe.each([
+    ['anident', 'list'],
+    ['anident-beside', 'media-beside-text'],
+  ])('anident.pl "Dlaczego warto" (%s: the model answered %s)', (name, answered) => {
+    const { raw, answer } = load(name);
+    const read = readGroupedSections(raw, answer).sections!;
+    const why = read.sections.find((s) => s.intro.heading?.startsWith('DLACZEGO WARTO'))!;
+
+    it('reads the list as 24 items with its intro, closing paragraph and photo, not as a wall of paragraphs', () => {
+      expect(answer.sections.find((s) => s.heading === 53)!.arrangement).toBe(answered);
+      expect(why.arrangement).toBe(answered);
+      expect(why.items).toHaveLength(24);
+      expect(why.items[0]!.text).toEqual(['najwyższa jakość usług']);
+      expect(why.items.every((i) => i.text.length === 1)).toBe(true);
+      expect(why.intro.text).toEqual(['Ze względu na szereg naszych atutów:']);
+      expect(why.extra).toHaveLength(1);
+      expect(why.images).toHaveLength(1);
+    });
+
+    it('keeps every piece of text: coverage 0.997 and nothing unassigned', () => {
+      expect(read.coverage.ratio).toBeGreaterThanOrEqual(0.997);
+      expect(read.skipped.filter((s) => s.reason === 'unassigned')).toEqual([]);
+      expect(rebuildEligibility({ siteSections: read })).toEqual({ ok: true });
+    });
+  });
+
   it('falcodent.pl: not worse than the rules reading (11 headed sections, slider hero, gate passes)', () => {
     const { raw, answer } = load('falcodent');
     const read = readGroupedSections(raw, answer).sections!;
