@@ -7,6 +7,7 @@ import { ScoringService } from '../../services/scoring.service.js';
 import { GenerateMvpContentInput, MvpContentService } from '../../services/mvp-content.service.js';
 import { bentoTemplateService } from '../../services/template.service.js';
 import { emailService, IEmailProvider } from '../../services/email.service.js';
+import { checkMvpStandards } from '../../services/mvp-standards.js';
 import { AnalyticsEventType, ILead, IAudit } from '@revamp/shared-types';
 
 interface TestSiteConfig {
@@ -452,7 +453,7 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
           businessName: site.businessName,
           oldLcpSeconds: 3.5,
           oldA11yViolationsCount: 8,
-          newScore: 95,
+          newStandardsScore: checkMvpStandards(bentoHtml).score,
         });
 
         const bannerMeta = await sharp(bannerWebp).metadata();

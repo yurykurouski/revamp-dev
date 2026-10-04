@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import sharp from 'sharp';
-import { ImageService, WEBP_MAX_DIMENSION } from '../image.service.js';
+import { comparisonBannerMetrics, comparisonBannerOverlay, ImageService, WEBP_MAX_DIMENSION } from '../image.service.js';
 
 describe('ImageService', () => {
   it('should compress a raw image buffer into WebP format', async () => {
@@ -80,7 +80,8 @@ describe('ImageService', () => {
       businessName: 'Prestige Dental',
       oldLcpSeconds: 4.8,
       oldA11yViolationsCount: 16,
-      newScore: 96,
+      oldStandardsScore: 50,
+      newStandardsScore: 100,
     });
 
     expect(bannerBuffer).toBeInstanceOf(Buffer);
@@ -183,3 +184,61 @@ describe('ImageService.tilesForVision (REV-113)', () => {
   });
 });
 
+
+describe('ImageService comparison banner: measured values only (REV-126)', () => {
+  const screen = (r: number, g: number, b: number) =>
+    sharp({ create: { width: 375, height: 812, channels: 4, background: { r, g, b, alpha: 1 } } }).png().toBuffer();
+  const STAND_INS = ['95/100', 'Slow loading', 'Layout issues', 'LCP &lt;', 'Bento', 'preview.revamp.io', 'not available'];
+
+  it('shows each measured value: the original\'s LCP, a11y issues and standards score, the MVP\'s standards score', () => {
+    const input = { newMvpMobileBuffer: Buffer.from(''), businessName: 'Falco', oldLcpSeconds: 4.24, oldA11yViolationsCount: 12, oldStandardsScore: 50, newStandardsScore: 100 };
+    expect(comparisonBannerMetrics(input)).toEqual({
+      before: ['LCP 4.2s • 12 a11y issues', 'SEO & standards 50/100'],
+      after: ['SEO & standards 100/100'],
+    });
+    const svg = comparisonBannerOverlay({ ...input, originalMobileBuffer: Buffer.from('') });
+    expect(svg).toContain('SEO &amp; standards 100/100');
+    expect(svg).toContain('AFTER: Prototype');
+    for (const text of STAND_INS) expect(svg).not.toContain(text);
+  });
+
+  it('leaves out every value that was not measured, and shows nothing in its place', () => {
+    const input = { newMvpMobileBuffer: Buffer.from(''), originalMobileBuffer: Buffer.from(''), businessName: 'Falco' };
+    expect(comparisonBannerMetrics(input)).toEqual({ before: [], after: [] });
+    const svg = comparisonBannerOverlay(input);
+    for (const text of [...STAND_INS, 'LCP', 'a11y', 'standards', 'Score']) expect(svg).not.toContain(text);
+  });
+
+  it('keeps a measured zero and counts one issue in the singular', () => {
+    expect(comparisonBannerMetrics({ newMvpMobileBuffer: Buffer.from(''), businessName: 'X', oldA11yViolationsCount: 0, oldStandardsScore: 0, newStandardsScore: 0 })).toEqual({
+      before: ['0 a11y issues', 'SEO & standards 0/100'],
+      after: ['SEO & standards 0/100'],
+    });
+    expect(comparisonBannerMetrics({ newMvpMobileBuffer: Buffer.from(''), businessName: 'X', oldA11yViolationsCount: 1 }).before).toEqual(['1 a11y issue']);
+  });
+
+  it('says the original screenshot is missing instead of showing the MVP as the original', async () => {
+    const mvp = await screen(34, 197, 94);
+    const banner = await ImageService.createComparisonBanner({ newMvpMobileBuffer: mvp, businessName: 'Falco', newStandardsScore: 100 });
+    expect(comparisonBannerOverlay({ newMvpMobileBuffer: mvp, businessName: 'Falco' })).toContain('Original screenshot not available');
+
+    const { data, info } = await sharp(banner).raw().toBuffer({ resolveWithObject: true });
+    expect([info.width, info.height]).toEqual([1200, 630]);
+    const pixel = (x: number, y: number) => Array.from(data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3));
+    // The left screen holds the placeholder's slate, never the MVP's green; the right screen holds the MVP
+    const [lr, lg, lb] = pixel(140, 160);
+    expect(lg!).toBeLessThan(80);
+    expect(Math.abs(lr! - 30) + Math.abs(lb! - 59)).toBeLessThan(40);
+    expect(pixel(720, 160)[1]!).toBeGreaterThan(150);
+  });
+
+  it("puts the original's screenshot on the left when there is one", async () => {
+    const banner = await ImageService.createComparisonBanner({
+      originalMobileBuffer: await screen(220, 38, 38),
+      newMvpMobileBuffer: await screen(34, 197, 94),
+      businessName: 'Falco',
+    });
+    const { data, info } = await sharp(banner).raw().toBuffer({ resolveWithObject: true });
+    expect(data[(160 * info.width + 140) * info.channels]!).toBeGreaterThan(180);
+  });
+});
