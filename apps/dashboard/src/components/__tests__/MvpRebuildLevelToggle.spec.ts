@@ -119,6 +119,16 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
       vi.advanceTimersByTime(ms);
       await new Promise<void>((resolve) => setTimeout(resolve, 0));
     });
+  /**
+   * Picks a level and waits until its save has landed. The save's answer restarts the poll interval, so
+   * advancing the clock before it lands can skip the next poll under load (REV-117).
+   */
+  const pickLevel = async (level: RebuildLevel) => {
+    act(() => levelButton(level).click());
+    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    await vi.waitFor(() => expect(queryClient.isMutating()).toBe(0));
+    await tick(0);
+  };
 
   it('shows the toggle when the live layout is the original and hides it for a template', () => {
     render(mvpWith('original', { renderedLevel: 'faithful' }));
@@ -196,8 +206,7 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
     vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(
       mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }),
     );
-    act(() => levelButton('modern').click());
-    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    await pickLevel('modern');
 
     await tick(2000);
     expect(rerendering()).toBe(true);
@@ -214,8 +223,7 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
     expect(LEVEL_RERENDER_WAIT_MS).toBeGreaterThanOrEqual(2 * 90_000 + 30_000);
     render(mvpWith('original', { renderedLevel: 'faithful' }));
     vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
-    act(() => levelButton('modern').click());
-    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    await pickLevel('modern');
     vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
 
     await tick(120_000);
@@ -232,8 +240,7 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
   it('stops waiting for a level pick that never arrives after LEVEL_RERENDER_WAIT_MS', async () => {
     render(mvpWith('original', { renderedLevel: 'faithful' }));
     vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
-    act(() => levelButton('modern').click());
-    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    await pickLevel('modern');
     vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'faithful' }));
     await tick(LEVEL_RERENDER_WAIT_MS - 10_000);
     expect(rerendering()).toBe(true);
@@ -244,8 +251,7 @@ describe('Faithful / Modernized toggle in the Design tools (REV-114)', () => {
   it('counts an older MVP without a rendered level as faithful', async () => {
     render(mvpWith('original', { layoutLevel: 'modern', renderedLevel: 'modern' }));
     vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue(mvpWith('original', { layoutLevel: 'faithful', renderedLevel: 'modern' }));
-    act(() => levelButton('faithful').click());
-    await vi.waitFor(() => expect(rerendering()).toBe(true));
+    await pickLevel('faithful');
     vi.mocked(apiClient.getMvp).mockResolvedValue(
       mvpWith('original', { layoutLevel: 'faithful', editedAt: '2026-10-03T12:00:00.000Z' }),
     );
