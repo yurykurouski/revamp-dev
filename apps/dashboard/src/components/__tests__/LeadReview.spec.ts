@@ -101,6 +101,30 @@ describe('LeadReview (REV-77)', () => {
     await flush();
   };
 
+  it('fetches the MVP again once a generation publishes one, so a first MVP shows its design tools (REV-132)', async () => {
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const renderLead = (reviewed: ILeadItem) =>
+      act(async () => {
+        root.render(
+          React.createElement(
+            QueryClientProvider,
+            { client: queryClient },
+            React.createElement(ThemeProvider, { theme: getTheme('dark', 'en') }, React.createElement(LeadReview, { lead: reviewed, onClose, onDecision })),
+          ),
+        );
+      });
+    await renderLead({ ...lead, status: 'AUDITED', mvpGeneratedAt: undefined });
+    await flush();
+    expect(apiClient.getMvp).toHaveBeenCalledTimes(1);
+    await renderLead({ ...lead, status: 'NEEDS_APPROVAL', mvpGeneratedAt: '2026-10-04T15:30:00.000Z' });
+    await flush();
+    expect(apiClient.getMvp).toHaveBeenCalledTimes(2);
+    // The same version is not fetched again on every render
+    await renderLead({ ...lead, status: 'NEEDS_APPROVAL', mvpGeneratedAt: '2026-10-04T15:30:00.000Z' });
+    await flush();
+    expect(apiClient.getMvp).toHaveBeenCalledTimes(2);
+  });
+
   /** Waits until Approve arms after the email step opens */
   const armApprove = () => act(() => new Promise((r) => setTimeout(r, APPROVE_ARM_DELAY_MS + 20)));
   const button = (label: string) =>

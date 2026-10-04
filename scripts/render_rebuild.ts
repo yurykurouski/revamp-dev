@@ -2,13 +2,14 @@
  * Rebuilds real home pages from their sections and writes the HTML to a local folder (REV-110).
  * Read-only: nothing is written to MongoDB or MinIO. Usage:
  *   npx tsx scripts/render_rebuild.ts <out-dir> https://falcodent.pl/ https://www.dentalux.pl/ https://www.elefant.med.pl/
- * With --llm (anywhere in the arguments) the sections come from the vision model's grouping with the rules
- * fallback, as the audit stores them (REV-113).
+ * The rebuild is made only from the AI models (REV-132): --llm reads the sections with the vision model's grouping, as
+ * the audit stores them (REV-113), and a page the model cannot group is reported with the reason, not rebuilt.
+ * --rules-debug instead rebuilds the rules reading, a debug view the runtime never uses; one of the two is required.
  * --level faithful|modern|auto (default auto) picks the rebuild level (REV-114): auto reads the site's era from the
  * page's HTML and its content width, as the audit does, and is modern for a dated site. At modern the look comes
- * from the modernize model call (with --llm) or the code's default, and <host>.modern.html is written next to the
- * faithful <host>.html. --record <dir> (needs --llm) writes { siteSections, answer } per host for the
- * recorded-answer tests (the modern design is chosen for it whatever the level).
+ * from the modernize model call only (--llm); a failed call is reported and no modern page is written. With it,
+ * <host>.modern.html is written next to the faithful <host>.html. --record <dir> (needs --llm) writes
+ * { siteSections, answer } per host for the recorded-answer tests (the modern design is chosen for it whatever the level).
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { chromium } from 'playwright';
@@ -16,13 +17,12 @@ import { EVALUATE_NAME_SHIM, FULL_PAGE_MAX_HEIGHT, browserService } from '../app
 import { cookieConsentService } from '../apps/workers/src/services/cookie-consent.service.js';
 import { ImageService } from '../apps/workers/src/services/image.service.js';
 import { readPageSections } from '../apps/workers/src/services/site-grouping.service.js';
-import { defaultModernDesign } from '../apps/workers/src/services/rebuild-modernize.js';
 import { rebuildModernizeService } from '../apps/workers/src/services/rebuild-modernize.service.js';
 import { readSiteEra } from '../apps/workers/src/services/site-era.service.js';
 import { planRebuild } from '../apps/workers/src/services/rebuild-plan.service.js';
 import { collectSiteLayoutInPage } from '../apps/workers/src/services/site-layout.service.js';
 import { collectSiteSectionsInPage } from '../apps/workers/src/services/site-sections.page.js';
-import { readSiteSections } from '../apps/workers/src/services/site-sections.service.js';
+import { readSiteSections, toTypography } from '../apps/workers/src/services/site-sections.service.js';
 import { renderRebuild } from '../apps/workers/src/templates/rebuild/index.js';
 import { checkMvpStandards } from '../apps/workers/src/services/mvp-standards.js';
 import { readStandardsInDocument } from '../apps/workers/src/services/standards.page.js';
@@ -37,14 +37,23 @@ const valueOf = (flag: string) => {
 const levelArg = valueOf('--level') ?? 'auto';
 const recordDir = valueOf('--record');
 const llm = args.includes('--llm');
+const rulesDebug = args.includes('--rules-debug');
 const [outDir, ...urls] = args.filter((arg) => !arg.startsWith('--'));
 if (!outDir || urls.length === 0 || !['faithful', 'modern', 'auto'].includes(levelArg) || args.includes('--record') || args.includes('--level')) {
-  console.error('Usage: npx tsx scripts/render_rebuild.ts [--llm] [--level faithful|modern|auto] [--record <dir>] <out-dir> <url> [url...]');
+  console.error('Usage: npx tsx scripts/render_rebuild.ts --llm|--rules-debug [--level faithful|modern|auto] [--record <dir>] <out-dir> <url> [url...]');
   process.exit(1);
 }
-// A recorded answer stands for the model's: the code's default saved as one would make the recorded tests meaningless
+if (!llm && !rulesDebug) {
+  console.error('The rebuild needs the vision model: pass --llm (or --rules-debug for a rules-only reading the runtime never uses).');
+  process.exit(1);
+}
+if (levelArg === 'modern' && !llm) {
+  console.error('The modern level needs the model: pass --llm. No default look stands in for its answer (REV-132).');
+  process.exit(1);
+}
+// A recorded answer stands for the model's
 if (recordDir && !llm) {
-  console.error('--record needs --llm: the recorded-answer tests replay the model\'s modern design, not the code\'s default.');
+  console.error('--record needs --llm: the recorded-answer tests replay the model\'s answers.');
   process.exit(1);
 }
 
@@ -72,33 +81,34 @@ try {
       const layout = await page.evaluate(collectSiteLayoutInPage);
       const raw = await page.evaluate(collectSiteSectionsInPage);
       const host = new URL(url).hostname;
+      // The rules reading only in the debug mode; it is tagged as the model's so the rest of the gate is checked
       let reading = readSiteSections(raw, layout.blocks);
+      if (reading.sections) reading = { sections: { ...reading.sections, source: 'llm' } };
       if (png) {
         const result = await readPageSections({ raw, layoutBlocks: layout.blocks, tiles: await ImageService.tilesForVision(png), url });
         reading = result.reading;
-        console.log(`${host}: source ${reading.sections?.source ?? '-'}${result.measurementError ? ` (${result.measurementError.message})` : ''}`);
+        console.log(`${host}: source ${reading.sections?.source ?? '-'}${result.measurementError ? ` (${result.reason ?? 'unread'}: ${result.measurementError.message})` : ''}`);
+        if (result.reason) {
+          console.log(`${host}: NOT REBUILT grouping:${result.reason}`);
+          continue;
+        }
       }
-      const era = readSiteEra({ html, contentWidth: raw.contentWidth, fullBleedShare: raw.fullBleedShare, typography: reading.sections?.typography, now: new Date() });
+      const era = readSiteEra({ html, contentWidth: raw.contentWidth, fullBleedShare: raw.fullBleedShare, typography: toTypography(raw.typography), now: new Date() });
       const level = levelArg === 'auto' ? (era.dated ? 'modern' : 'faithful') : levelArg;
       console.log(`${host}: era score=${era.score} signs=${era.signs.join(',') || '-'} contentWidth=${era.contentWidth ?? '-'} fullBleedShare=${raw.fullBleedShare?.toFixed(2) ?? '-'} dated=${era.dated}`);
       const eligible = rebuildEligibility({ siteSections: reading.sections, siteSectionsError: reading.error });
       if (!eligible.ok) {
-        console.log(`${host}: FALLBACK ${eligible.reason} ${eligible.facts.join(' ')}`);
+        console.log(`${host}: NOT REBUILT ${eligible.reason} ${eligible.facts.join(' ')}`);
         continue;
       }
       const read = reading.sections!;
       const button = read.typography?.button?.background;
       const brandColors = button && /^#[0-9a-f]{6}$/i.test(button) ? [button.toLowerCase()] : [];
-      const choice =
-        level === 'modern' || recordDir
-          ? llm
-            ? await rebuildModernizeService.choose({ siteSections: read, brandColors })
-            : { source: 'default' as const, design: defaultModernDesign(read) }
-          : undefined;
-      console.log(
-        `${host}: level=${level} source=${choice?.source ?? '-'}${choice && 'error' in choice && choice.error ? ` (${choice.error})` : ''}`,
-      );
-      if (recordDir && choice) {
+      const modern = level === 'modern' || recordDir;
+      if (modern && !llm) console.log(`${host}: the modern level needs the model (--llm); only the faithful page is written`);
+      const choice = modern && llm ? await rebuildModernizeService.choose({ siteSections: read, brandColors }) : undefined;
+      console.log(`${host}: level=${level} source=${choice?.source ?? '-'}${choice?.error ? ` (${choice.error}: ${choice.message ?? ''})` : ''}`);
+      if (recordDir && choice?.design) {
         mkdirSync(recordDir, { recursive: true });
         writeFileSync(`${recordDir}/${host.replace(/^www\./, '').replace(/\.[a-z]+$/, '')}.json`, JSON.stringify({ url, source: choice.source, siteSections: read, answer: choice.design }, null, 2) + '\n');
       }
@@ -116,7 +126,7 @@ try {
         ...dom,
         favicon: faviconLink || (await VitalsService.probeFaviconIco(page, page.url() || url)),
       };
-      const renders = [{ suffix: '', modernize: undefined }, ...(choice ? [{ suffix: '.modern', modernize: choice.design }] : [])];
+      const renders = [{ suffix: '', modernize: undefined }, ...(choice?.design ? [{ suffix: '.modern', modernize: choice.design }] : [])];
       for (const render of renders) {
         const parsed = RebuildPlanSchema.safeParse(
           planRebuild({
@@ -134,10 +144,10 @@ try {
           }),
         );
         const name = `${host}${render.suffix}`;
-        // As the deploy worker does: a plan that fails its schema falls back to Bento
+        // As the deploy worker does: a plan that fails its schema is not rendered
         if (!parsed.success) {
           const issue = parsed.error.issues[0];
-          console.log(`${name}: FALLBACK rebuild:invalid ${issue?.path.join('.')} ${issue?.message}`);
+          console.log(`${name}: NOT REBUILT rebuild:invalid ${issue?.path.join('.')} ${issue?.message}`);
           continue;
         }
         const plan = parsed.data;

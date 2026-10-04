@@ -1,8 +1,8 @@
 import type { IAudit, IRebuildModernize, IRebuildModernizeAnswer, IRebuildSectionEdit, ISiteSection, ISiteSections } from '@revamp/shared-types';
 import { REBUILD_BANNER_MIN_WIDTH, SITE_SECTIONS_LIMITS, cardRun, checkRebuildEdit, rebuildH1Section, rebuildItemsFitCards } from '@revamp/validation';
 
-// The modernize layer's deterministic default (REV-114): the design a dated site gets when the model is not
-// used or its answer is rejected. It is also the model's starting point. Ids and fixed values only.
+// The modernize layer's starting point (REV-114): the design the model is shown as a sound default to improve on.
+// Since REV-132 it is never applied in place of the model's answer. Ids and fixed values only.
 
 /** A photo narrower than this is not worth opening the page with */
 export const HERO_PHOTO_MIN_WIDTH = 300;
@@ -75,11 +75,15 @@ export function defaultModernDesign(read: ISiteSections): IRebuildModernizeAnswe
 }
 
 /**
- * The stored modernize design when it was made for this audit and still fits its page, else undefined: its ids
- * name this audit's sections only (as `editForAudit` does for the operator's edit)
+ * The stored modernize design when the model made it for this audit and it still fits its page, else undefined:
+ * its ids name this audit's sections only (as `editForAudit` does for the operator's edit). A stored failure, or a
+ * default design stored before REV-132, is never applied
  */
-export function modernizeForAudit(stored: IRebuildModernize | null | undefined, audit: Partial<IAudit> | undefined): IRebuildModernize | undefined {
-  if (!stored) return undefined;
+export function modernizeForAudit(
+  stored: IRebuildModernize | null | undefined,
+  audit: Partial<IAudit> | undefined,
+): (IRebuildModernize & { source: 'llm'; design: IRebuildModernizeAnswer }) | undefined {
+  if (!stored || stored.source !== 'llm' || !stored.design) return undefined;
   const key = String(audit?._id ?? '');
   if (stored.auditId !== key) {
     console.warn(`[RebuildModernize] Design for audit ${stored.auditId} left out: the MVP renders audit ${key || 'unknown'}`);
@@ -90,5 +94,5 @@ export function modernizeForAudit(stored: IRebuildModernize | null | undefined, 
     console.warn(`[RebuildModernize] Design for audit ${key} left out: ${check.reason}`);
     return undefined;
   }
-  return stored;
+  return stored as IRebuildModernize & { source: 'llm'; design: IRebuildModernizeAnswer };
 }

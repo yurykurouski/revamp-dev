@@ -47,6 +47,12 @@ vi.mock('bullmq', () => {
         opts,
       };
     }),
+    UnrecoverableError: class UnrecoverableError extends Error {
+      constructor(message?: string) {
+        super(message);
+        this.name = 'UnrecoverableError';
+      }
+    },
   };
 });
 
@@ -76,6 +82,7 @@ const sectionsFixture: ISiteSections = {
   },
   skipped: [],
   coverage: { pageChars: 100, capturedChars: 98, ratio: 0.98, uncaptured: [] },
+  source: 'llm',
 };
 
 const lead = { _id: leadId, businessName: 'Falco-Dent', domain: 'falcodent.pl', niche: 'dental', status: 'NEEDS_APPROVAL', toObject: () => lead };
@@ -88,7 +95,7 @@ const publishMocks = () => {
 };
 
 /** Runs a fresh deploy job for an audit with the given fields */
-const runDeploy = async (auditOver: Record<string, unknown>) => {
+const runDeploy = async (auditOver: Record<string, unknown>, jobOver: Record<string, unknown> = {}) => {
   createDeployWorker();
   const audit: Record<string, unknown> = {
     _id: auditId,
@@ -104,7 +111,17 @@ const runDeploy = async (auditOver: Record<string, unknown>) => {
   vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: projectId }) } as any);
   vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
   vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
-  return capturedProcessor!({ id: 'job-rebuild', data: { leadId, auditId } });
+  return capturedProcessor!({ id: 'job-rebuild', data: { leadId, auditId, ...jobOver } });
+};
+
+/** The error a job failed with: a render failure is final (no retry) and carries its code and reason (REV-132) */
+const failedWith = async (run: Promise<unknown>) => {
+  const error = await run.then(
+    () => undefined,
+    (e: unknown) => e as Error & { failure?: Record<string, unknown> },
+  );
+  expect(error).toBeDefined();
+  return error!;
 };
 
 /** The MVP already saved for the lead before a regeneration */
@@ -196,33 +213,54 @@ describe('deploy with the rebuild (REV-110)', () => {
     expect(update.$unset).toBeUndefined();
   });
 
-  it('falls back to Bento with the reason and unsets the summary', async () => {
+  it('fails the generation with the reason when the rebuild cannot be made, and publishes nothing in its place (REV-132)', async () => {
     vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation(() => {
-      throw new RebuildUnavailable('rebuild:low_coverage', ['coverage:0.6']);
+      throw new RebuildUnavailable('rebuild:too_large');
     });
     vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<html>BENTO</html>');
-    await runDeploy({ siteSections: sectionsFixture });
-    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
-    expect(update.layout.reasons.slice(0, 2)).toEqual(['rebuild:low_coverage', 'coverage:0.6']);
-    expect(update.layout.variant).not.toBe('original');
-    expect(update.$unset).toMatchObject({ rebuild: '' });
-    expect(update).not.toHaveProperty('rebuild');
-    // Bento keeps today's inputs: no palette override, and the brand colors are saved
-    expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![4]).toBeUndefined();
-    expect(update.colorPalette.primary).toBe('#4f46e5');
-    expect(storageService.uploadHtml).toHaveBeenCalledWith(expect.any(String), '<html>BENTO</html>', expect.anything());
+    const error = await failedWith(runDeploy({ siteSections: sectionsFixture }));
+    expect(error.name).toBe('UnrecoverableError');
+    expect(error.failure).toEqual({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:too_large', level: 'faithful', message: 'Rebuild unavailable: rebuild:too_large', at: expect.any(Date) });
+    expect(bentoTemplateService.renderFromAudit).not.toHaveBeenCalled();
+    expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
+    expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
-  it('merges the rebuild unset with the cleared operator choice into one $unset', async () => {
-    vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation(() => {
-      throw new RebuildUnavailable('rebuild:unread');
-    });
-    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
-    await runDeploy({ siteSections: sectionsFixture });
-    vi.mocked(MvpProject.findOneAndUpdate).mockClear();
-    await capturedProcessor!({ id: 'job-2', data: { leadId, auditId, generationSource: { provider: 'claude-cli', modelUsed: 'm' } } });
+  it.each(['not_configured', 'call_failed', 'invalid_answer', 'ineligible'] as const)(
+    "fails the generation with the vision model's reason when the audit has no grouping (%s, REV-132)",
+    async (reason) => {
+      vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation((_lead, audit) => {
+        throw new RebuildUnavailable(`grouping:${(audit as any).siteSectionsErrorReason}` as 'grouping:not_configured');
+      });
+      const error = await failedWith(runDeploy({ siteSectionsError: 'No vision model', siteSectionsErrorReason: reason }));
+      expect(error.failure).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', reason: `grouping:${reason}` });
+      expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    },
+  );
+
+  it('renders the Bento layout the operator picked for the run, with no rebuild (REV-132)', async () => {
+    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('<html>BENTO</html>');
+    await runDeploy({ siteSectionsError: 'No vision model', siteSectionsErrorReason: 'not_configured' }, { layout: 'split' });
+    expect(rebuildTemplateService.renderFromAudit).not.toHaveBeenCalled();
+    expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![3]).toBe('split');
     const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
-    expect(update.$unset).toEqual({ requestedProvider: '', requestedModel: '', rebuild: '' });
+    expect(update.layout).toMatchObject({ variant: 'split', reasons: expect.arrayContaining(['rule:manual']) });
+    expect(update.$unset).toMatchObject({ rebuild: '' });
+  });
+
+  it("clears the lead's earlier generation failure once the MVP is published (REV-132)", async () => {
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
+    await runDeploy({ siteSections: sectionsFixture });
+    const leadUpdate = vi.mocked(Lead.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    expect(leadUpdate.$unset).toEqual({ generationError: '', generationFailure: '' });
+  });
+
+  it("clears an MVP's earlier re-render failure when a regeneration publishes (REV-132)", async () => {
+    existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, renderFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', at: new Date() } });
+    vi.mocked(rebuildTemplateService.renderFromAudit).mockReturnValue({ html: 'R', summary: { coverage: 1, sections: 1, omitted: [], tuning: [] } });
+    await runDeploy({ siteSections: sectionsFixture });
+    expect((vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as any).$unset).toMatchObject({ renderFailure: '' });
   });
 
   it('keeps a manual Bento pick over the rebuild on regeneration', async () => {
@@ -243,18 +281,6 @@ describe('deploy with the rebuild (REV-110)', () => {
     });
   });
 
-  it("falls back from a manual original to Bento, keeping the pick marked and the operator's design", async () => {
-    existingProject({ layout: { variant: 'original', reasons: ['rule:manual'] }, design: { hidden: ['reviews'] } });
-    vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation(() => {
-      throw new RebuildUnavailable('rebuild:no_content');
-    });
-    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
-    await runDeploy({ siteSections: sectionsFixture });
-    const update = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
-    expect(update.layout.variant).not.toBe('original');
-    expect(update.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:no_content']);
-    expect(vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]![5]).toEqual({ hidden: ['reviews'] });
-  });
 });
 
 describe('re-publish with the rebuild (REV-110)', () => {
@@ -303,50 +329,38 @@ describe('re-publish with the rebuild (REV-110)', () => {
     });
   });
 
-  it('records a fallback of a manual original once and does not publish twice', async () => {
+  it('a relayout that cannot be rebuilt publishes nothing, keeps the page published before and records why (REV-132)', async () => {
     savedProject({ layout: { variant: 'original', reasons: ['rule:manual'] }, rebuild: undefined });
     vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation(() => {
       throw new RebuildUnavailable('rebuild:too_large');
     });
     vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
-    // The layout is still the one rendered from, so the write lands and the re-read returns it
-    vi.mocked(MvpProject.findOneAndUpdate).mockImplementation(((_filter: unknown, update: any) => {
-      vi.mocked(MvpProject.findById).mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId, previewSlug: 'falco-dent-456789', layout: update.$set.layout }),
-      } as any);
-      return { exec: vi.fn().mockResolvedValue({ _id: projectId }) };
-    }) as any);
-    const result = await republishSavedMvp(leadId);
-    const [filter, update] = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]! as [Record<string, any>, Record<string, any>];
-    expect(filter).toEqual({ _id: projectId, layout: { variant: 'original', reasons: ['rule:manual'] } });
-    expect(update.$set.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:too_large']);
-    // Bento before and after: no renderer switch; the only other write is the re-checked completeness (REV-111)
-    // and the published page's standards (REV-118) and web vitals (REV-119)
-    expect(vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map((call) => Object.keys((call[1] as any).$set))).toEqual([['completenessReport', 'standards', 'performance']]);
-    expect(storageService.uploadHtml).toHaveBeenCalledTimes(1);
-    expect(result.layout).toBe(update.$set.layout.variant);
+    const error = await failedWith(republishSavedMvp(leadId));
+    expect(error).toMatchObject({ name: 'MvpRenderError', failure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:too_large' } });
+    expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    expect(bentoTemplateService.renderFromAudit).not.toHaveBeenCalled();
+    expect(MvpProject.findByIdAndUpdate).toHaveBeenCalledWith(projectId, {
+      $set: { renderFailure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:too_large', level: 'faithful', message: 'Rebuild unavailable: rebuild:too_large', at: expect.any(Date) } },
+    });
   });
 
-  it("never overwrites a layout the operator picked while the fallback published, and renders that pick", async () => {
+  it('the relayout job fails for good with the failure, so BullMQ does not retry it (REV-132)', async () => {
     savedProject({ layout: { variant: 'original', reasons: ['rule:manual'] }, rebuild: undefined });
     vi.mocked(rebuildTemplateService.renderFromAudit).mockImplementation(() => {
-      throw new RebuildUnavailable('rebuild:too_large');
+      throw new RebuildUnavailable('rebuild:invalid');
     });
-    vi.mocked(bentoTemplateService.renderFromAudit).mockImplementation((_lead, _audit, _content, variant) => `<html>${variant}</html>`);
-    // The operator picked Compact during the upload: the guarded write matches nothing
-    const picked = { _id: projectId, previewSlug: 'falco-dent-456789', layout: { variant: 'compact', reasons: ['rule:manual'] } };
-    vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
-    vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(picked) } as any);
+    createDeployWorker();
+    const error = await failedWith(capturedProcessor!({ id: 'job-relayout', data: { leadId, auditId, mode: 'relayout' } }));
+    expect(error.name).toBe('UnrecoverableError');
+    expect(error.failure).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:invalid' });
+  });
 
-    const result = await republishSavedMvp(leadId);
-
-    const uploads = vi.mocked(storageService.uploadHtml).mock.calls.map((call) => call[1]);
-    expect(uploads).toHaveLength(2);
-    expect(uploads[1]).toBe('<html>compact</html>');
-    // Only the first pass tried to record its fallback, guarded on the layout it rendered from
-    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![0]).toMatchObject({ layout: { variant: 'original' } });
-    expect(result.layout).toBe('compact');
+  it('clears the recorded failure once a re-publish succeeds (REV-132)', async () => {
+    savedProject({ layout: { variant: 'bento', reasons: ['rule:manual'] }, rebuild: undefined, renderFailure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:invalid', at: new Date() } });
+    vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue('B');
+    await republishSavedMvp(leadId);
+    const update = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]![1] as Record<string, any>;
+    expect(update.$unset).toMatchObject({ renderFailure: '' });
   });
 });
 
@@ -476,47 +490,53 @@ describe('the rebuild level and the modern design (REV-114)', () => {
       expect(layout.reasons).not.toContain('modernize:dated');
     });
 
-    it('makes no call and stores no design for a dated site that cannot be rebuilt', async () => {
-      await runDeploy({ ...dated, siteSectionsError: 'the page did not load' });
+    it('makes no call and fails with the rebuild reason for a dated site that cannot be rebuilt (REV-132)', async () => {
+      const error = await failedWith(runDeploy({ ...dated, siteSections: undefined, siteSectionsError: 'No vision model', siteSectionsErrorReason: 'not_configured' }));
+      expect(error.failure).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'grouping:not_configured', level: 'modern' });
       expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
       expect(modernizeWrites()).toEqual([]);
-      expect(lastUpsert()).not.toHaveProperty('modernize');
+      expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it.each(['call_failed: timeout', 'not_configured'])('asks again for a default stored after a temporary failure (%s)', async (error) => {
-      existingProject({ _id: projectId, layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId, source: 'default', design: {}, error } });
+    it.each([
+      ['a failed call', { source: 'failed', error: 'call_failed', message: 'timeout' }],
+      ['no provider', { source: 'failed', error: 'not_configured' }],
+      ['two invalid answers', { source: 'failed', error: 'invalid_answer', message: 's-9: unknown section' }],
+      ['a default stored before REV-132', { source: 'default', design: {}, error: 'invalid: s-9: unknown section' }],
+    ])('asks the model again for a design not made after %s (REV-132)', async (_name, stored) => {
+      existingProject({ _id: projectId, layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: { auditId, ...stored } });
       await runDeploy(dated);
       expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
       expect(lastUpsert().modernize).toEqual({ auditId, source: 'llm', design });
+      expect(lastUpsert().layout.reasons).not.toContain('modernize:default');
     });
 
-    it('reuses a default stored after an invalid answer without a call', async () => {
-      const stored = { auditId, source: 'default', design, error: 'invalid: s-9: unknown section' };
-      existingProject({ layout: { variant: 'original', reasons: ['rule:rebuild'] }, modernize: stored });
-      await runDeploy(dated);
-      expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
-      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
-      expect(lastUpsert()).not.toHaveProperty('modernize');
-    });
-
-    it('marks the default design on the layout and records the tokens the model used', async () => {
-      vi.mocked(rebuildModernizeService.choose).mockResolvedValue({
-        source: 'default',
-        design,
-        error: 'invalid: s-9: unknown section',
-        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
-        model: 'claude-test',
-      });
-      await runDeploy(dated);
-      const update = lastUpsert();
-      expect(update.modernize).toEqual({ auditId, source: 'default', design, error: 'invalid: s-9: unknown section' });
-      expect(update.layout.reasons.slice(0, 4)).toEqual(['rule:rebuild', 'modernize:dated', 'dated:7', 'modernize:default']);
-      expect(AnalyticsEvent.create).toHaveBeenCalledWith({
-        leadId,
-        eventType: 'token_usage',
-        metadata: { model: 'claude-test', promptTokens: 10, completionTokens: 5, totalTokens: 15, stage: 'mvp_modernize' },
-      });
-    });
+    it.each(['not_configured', 'call_failed', 'invalid_answer'] as const)(
+      'fails the generation when the model gives no modern design (%s): no faithful or default page, the failure kept (REV-132)',
+      async (reason) => {
+        existingProject({ _id: projectId, layout: { variant: 'original', reasons: ['rule:rebuild'] } });
+        vi.mocked(rebuildModernizeService.choose).mockResolvedValue({
+          source: 'failed',
+          error: reason,
+          message: 'detail',
+          usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+          model: 'claude-test',
+        });
+        const error = await failedWith(runDeploy(dated));
+        expect(error.name).toBe('UnrecoverableError');
+        expect(error.failure).toEqual({ code: 'MVP_MODERNIZE_UNAVAILABLE', reason, level: 'modern', message: 'detail', at: expect.any(Date) });
+        expect(rebuildTemplateService.renderFromAudit).not.toHaveBeenCalled();
+        expect(storageService.uploadHtml).not.toHaveBeenCalled();
+        expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
+        // The failure is stored on the MVP, so the Design tools show the modern look as unavailable
+        expect(modernizeWrites()).toEqual([{ auditId, source: 'failed', error: reason, message: 'detail' }]);
+        expect(AnalyticsEvent.create).toHaveBeenCalledWith({
+          leadId,
+          eventType: 'token_usage',
+          metadata: { model: 'claude-test', promptTokens: 10, completionTokens: 5, totalTokens: 15, stage: 'mvp_modernize' },
+        });
+      },
+    );
   });
 
   describe('re-publish', () => {
@@ -564,25 +584,41 @@ describe('the rebuild level and the modern design (REV-114)', () => {
       expect(editedAtWrites()).toHaveLength(1);
     });
 
-    it('makes no call on a re-publish of a page that cannot be rebuilt', async () => {
+    it('makes no call on a re-publish of a page that cannot be rebuilt, and fails with the reason (REV-132)', async () => {
       savedProject({ layout: modernLayout, rebuild: summary('faithful') });
-      const unread = { _id: auditId, siteSections: sectionsFixture, siteSectionsError: 'the page did not load', screenshotUrls: {}, toObject: () => unread };
+      const unread = { _id: auditId, siteSectionsError: 'No vision model', siteSectionsErrorReason: 'call_failed', screenshotUrls: {}, toObject: () => unread };
       vi.mocked(findGenerationAudit).mockResolvedValue(unread as any);
-      await republishSavedMvp(leadId);
+      const error = await failedWith(republishSavedMvp(leadId));
+      expect(error).toMatchObject({ failure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'grouping:call_failed' } });
       expect(rebuildModernizeService.choose).not.toHaveBeenCalled();
       expect(modernizeWrites()).toEqual([]);
+      expect(storageService.uploadHtml).not.toHaveBeenCalled();
     });
 
-    it('asks again once per job for a default stored after a failed call', async () => {
-      const failed = { auditId, source: 'default', design, error: 'call_failed: timeout' };
-      vi.mocked(rebuildModernizeService.choose).mockResolvedValue({ source: 'default', design, error: 'call_failed: again' });
-      savedProject({ layout: modernLayout, rebuild: summary('modern'), modernize: failed });
-      // A second pass (the palette changed meanwhile) re-reads the design the first pass stored
-      const changed = { _id: projectId, leadId, auditId, previewSlug: 'falco-dent-456789', layout: modernLayout, colorPalette: { primary: '#00ff00' }, rebuild: summary('modern') };
-      vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...changed, modernize: { ...failed, error: 'call_failed: again' } }) } as any);
+    it('a switch to modern the model cannot make keeps the faithful page, puts the level back and records the failure (REV-132)', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary('faithful') });
+      vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: projectId }) } as any);
+      vi.mocked(rebuildModernizeService.choose).mockResolvedValue({ source: 'failed', error: 'not_configured', message: 'No LLM provider is configured' });
+      const error = await failedWith(republishSavedMvp(leadId));
+      expect(error).toMatchObject({ failure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'not_configured', level: 'modern' } });
+      expect(rebuildTemplateService.renderFromAudit).not.toHaveBeenCalled();
+      expect(storageService.uploadHtml).not.toHaveBeenCalled();
+      expect(modernizeWrites()).toEqual([{ auditId, source: 'failed', error: 'not_configured', message: 'No LLM provider is configured' }]);
+      // The saved level goes back to the published page's, guarded on the pick this job rendered from
+      expect(MvpProject.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: projectId, layout: modernLayout },
+        { $set: { layout: expect.objectContaining({ variant: 'original', rebuildLevel: 'faithful', reasons: expect.arrayContaining(['modernize:manual']) }) } },
+      );
+      const failure = vi.mocked(MvpProject.findByIdAndUpdate).mock.calls.map(([, u]) => (u as any).$set?.renderFailure).find(Boolean);
+      expect(failure).toEqual({ code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'not_configured', level: 'modern', message: 'No LLM provider is configured', at: expect.any(Date) });
+      expect(editedAtWrites()).toHaveLength(0);
+    });
+
+    it('asks again on the next job for a design whose call failed before (REV-132)', async () => {
+      savedProject({ layout: modernLayout, rebuild: summary('faithful'), modernize: { auditId, source: 'failed', error: 'call_failed', message: 'timeout' } });
       await republishSavedMvp(leadId);
-      expect(storageService.uploadHtml).toHaveBeenCalledTimes(2);
       expect(rebuildModernizeService.choose).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(rebuildTemplateService.renderFromAudit).mock.calls[0]![4]).toEqual(design);
     });
 
     it('never calls the model twice for the same audit in one job', async () => {

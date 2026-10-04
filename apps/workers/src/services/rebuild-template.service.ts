@@ -1,14 +1,14 @@
-import type { IAudit, ILead, IMvpRebuildSummary, IRebuildEdit, IRebuildEditAnswer, IRebuildModernizeAnswer, RebuildFallbackReason } from '@revamp/shared-types';
+import type { IAudit, ILead, IMvpRebuildSummary, IRebuildEdit, IRebuildEditAnswer, IRebuildModernizeAnswer, RebuildUnavailableReason } from '@revamp/shared-types';
 import { RebuildPlanSchema, rebuildEligibility } from '@revamp/validation';
 import { env } from '../config/env.js';
 import { renderRebuild } from '../templates/rebuild/index.js';
 import { planRebuild } from './rebuild-plan.service.js';
 import { BentoTemplateService, MvpPaletteOverride } from './template.service.js';
 
-/** Why the rebuild could not be rendered; the caller falls back to the Bento template (REV-110) */
+/** Why the rebuild could not be rendered (REV-110); the render fails with it, nothing stands in (REV-132) */
 export class RebuildUnavailable extends Error {
   constructor(
-    readonly reason: RebuildFallbackReason,
+    readonly reason: RebuildUnavailableReason,
     readonly facts: string[] = [],
   ) {
     super(`Rebuild unavailable: ${reason}${facts.length ? ` (${facts.join(', ')})` : ''}`);
@@ -42,7 +42,7 @@ export function editForAudit(edit: IRebuildEdit | null | undefined, audit: Parti
 }
 
 export const rebuildTemplateService = {
-  /** Plan → validate → render → size check; throws RebuildUnavailable for every fallback reason */
+  /** Plan → validate → render → size check; throws RebuildUnavailable for every reason the rebuild cannot be made */
   renderFromAudit(
     lead: Partial<ILead>,
     audit: Partial<IAudit> | undefined,

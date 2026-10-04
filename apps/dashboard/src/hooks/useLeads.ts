@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
 import { apiClient, ILeadItem, IEmailDraft, IMvpProjectDetail } from '../api/client.js';
 import { QuickAddLeadInput, hasRebuildEdit, mvpGenerationMode } from '@revamp/validation';
-import { ILeadStats, LeadStatus, LlmProviderId, MvpLayoutVariant, RebuildLevel } from '@revamp/shared-types';
+import { BentoLayoutVariant, ILeadStats, LeadStatus, LlmProviderId, MvpLayoutVariant, RebuildLevel } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
 export const LEADS_QUERY_KEY = ['leads'];
@@ -208,13 +208,16 @@ export interface GenerateMvpVariables {
   /** Provider/model for this run; the server default applies when absent (REV-32) */
   provider?: LlmProviderId;
   model?: string;
+  /** A Bento layout for this run, e.g. when the rebuild cannot be made (REV-132) */
+  layout?: BentoLayoutVariant;
 }
 
 /** Sends a generate or regenerate request (REV-31); exported for tests */
-export const generateMvpRequest = ({ auditId, forceRegenerate, provider, model }: GenerateMvpVariables) =>
+export const generateMvpRequest = ({ auditId, forceRegenerate, provider, model, layout }: GenerateMvpVariables) =>
   apiClient.generateMvp(auditId, {
     forceRegenerate: forceRegenerate ?? false,
     ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
+    ...(layout ? { layout } : {}),
   });
 
 export const LLM_PROVIDERS_QUERY_KEY = ['llm-providers'] as const;

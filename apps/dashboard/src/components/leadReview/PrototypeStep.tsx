@@ -25,6 +25,7 @@ import {
 } from '../../hooks/useLeads.js';
 import { MvpPreviewFrame } from '../MvpPreviewFrame.js';
 import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
+import { MvpGenerationFailure, hasGenerationFailure } from './MvpGenerationFailure.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
 import { MvpLayoutChip } from '../MvpLayoutChip.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
@@ -90,6 +91,8 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   // From the regenerate click until the lead is back from GENERATING (REV-53)
   const isPreviewBusy = isGenerationRequestPending || lead.status === 'GENERATING';
   const isDesktop = breakpoint === 'desktop';
+  // The last generation a rebuild model could not make (REV-132); shown until a new one starts
+  const failed = hasGenerationFailure(lead) && !isGenerationRequestPending;
 
   return (
     <Card
@@ -114,6 +117,12 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
           minHeight: 0,
         }}
       >
+        {/* A failed regeneration over a published MVP, which stays as it was (REV-132) */}
+        {failed && previewUrl && (
+          <Box sx={{ p: 1.5, pb: 0 }}>
+            <MvpGenerationFailure lead={lead} />
+          </Box>
+        )}
         {/* Toolbar: breakpoints, MVP facts and actions */}
         <Box
           sx={{
@@ -265,13 +274,19 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
                   gap: 2,
                 }}
               >
-                <CircularProgress size={40} />
-                <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                  {t('inspector.generatingTitle')}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {t('inspector.generatingBody')}
-                </Typography>
+                {failed ? (
+                  <MvpGenerationFailure lead={lead} />
+                ) : (
+                  <>
+                    <CircularProgress size={40} />
+                    <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                      {t('inspector.generatingTitle')}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {t('inspector.generatingBody')}
+                    </Typography>
+                  </>
+                )}
               </Box>
             )}
           </Box>

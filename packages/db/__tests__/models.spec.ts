@@ -42,6 +42,12 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(err?.errors['contactEmail']).toBeUndefined();
     });
 
+    it('keeps why the generation could not make the rebuild (REV-132)', () => {
+      const generationFailure = { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'grouping:not_configured', at: new Date('2026-10-04T12:00:00Z') };
+      const lead = new Lead({ businessName: 'A', originalUrl: 'https://a.pl', domain: 'a.pl', generationError: 'x', generationFailure });
+      expect(lead.toObject().generationFailure).toEqual(generationFailure);
+    });
+
     it('should transform _id to id and remove __v in toJSON', () => {
       const lead = new Lead({
         businessName: 'Apex Auto',
@@ -168,6 +174,12 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       const unread = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsError: 'layout walk failed: timeout' });
       expect(unread.toObject().siteSectionsError).toBe('layout walk failed: timeout');
       expect(unread.toObject().siteSections).toBeUndefined();
+    });
+
+    it("keeps why the vision model gave no sections (REV-132)", () => {
+      const audit = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsError: 'No vision model', siteSectionsErrorReason: 'not_configured' });
+      expect(audit.toObject().siteSectionsErrorReason).toBe('not_configured');
+      expect(new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsErrorReason: 'nope' }).validateSync()?.errors['siteSectionsErrorReason']).toBeDefined();
     });
 
     it('keeps the reading source and a sections measurement error (REV-113)', () => {
@@ -309,6 +321,22 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
         rebuildEdit,
       });
       expect(doc.toObject().rebuildEdit).toEqual(rebuildEdit);
+    });
+
+    it('keeps a failed modernize call and the last render failure (REV-132)', () => {
+      const modernize = { auditId: '0123456789abcdef01234567', source: 'failed', error: 'call_failed', message: 'timeout' };
+      const renderFailure = { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', level: 'modern', message: 'timeout', at: new Date('2026-10-04T12:00:00Z') };
+      const doc = new MvpProject({
+        auditId: new mongoose.Types.ObjectId(),
+        leadId: new mongoose.Types.ObjectId(),
+        previewSlug: 's',
+        fullPreviewUrl: 'u',
+        storageHtmlPath: 'p',
+        modernize,
+        renderFailure,
+      });
+      expect(doc.toObject().modernize).toEqual(modernize);
+      expect(doc.toObject().renderFailure).toEqual(renderFailure);
     });
   });
 });

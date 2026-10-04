@@ -38,6 +38,12 @@ vi.mock('bullmq', () => {
         opts,
       };
     }),
+    UnrecoverableError: class UnrecoverableError extends Error {
+      constructor(message?: string) {
+        super(message);
+        this.name = 'UnrecoverableError';
+      }
+    },
   };
 });
 
@@ -153,6 +159,8 @@ describe('DeployWorker (@revamp/workers)', () => {
       data: {
         leadId: mockLeadId,
         auditId: mockAuditId,
+        // A Bento layout picked for the run: this audit has no sections from the vision model (REV-132)
+        layout: 'compact',
       },
     };
 
@@ -187,7 +195,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         comparisonBannerUrl: 'http://localhost:9000/revamp-assets/banners/stomatologiya-ulybka-456789.webp',
         mvpGeneratedAt: expect.any(Date),
       },
-      $unset: { generationError: '' },
+      $unset: { generationError: '', generationFailure: '' },
     });
 
     // REV-31: one MvpProject per lead, stamped with the generation time and run count
@@ -201,8 +209,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       { upsert: true, new: true },
     );
 
-    // REV-54: the layout is picked from the audit, rendered, and recorded on the MvpProject.
-    // No services and no photos on this site, so the short compact layout fits.
+    // REV-54: the picked layout is rendered with the look derived from the audit, and recorded on the MvpProject
     expect(bentoTemplateService.renderFromAudit).toHaveBeenCalledWith(
       mockLead,
       mockAudit,
@@ -214,12 +221,11 @@ describe('DeployWorker (@revamp/workers)', () => {
     expect(MvpProject.findOneAndUpdate).toHaveBeenCalledWith(
       { leadId: mockLeadId },
       expect.objectContaining({
-        layout: {
+        layout: expect.objectContaining({
           variant: 'compact',
-          // No sections read on this audit, so no rebuild (REV-110); no original layout either: the rules
-          // chose, and the fallback is marked (REV-104)
-          reasons: ['rebuild:unread', 'rule:small_brochure', 'complexity:UNKNOWN', 'niche:dental', 'images:0', 'services:0', 'site_layout:unread'],
-        },
+          // The operator's pick, with the audit facts (REV-84); no original layout was read (REV-104)
+          reasons: expect.arrayContaining(['rule:manual', 'niche:dental', 'site_layout:unread']),
+        }),
       }),
       { upsert: true, new: true },
     );
@@ -262,7 +268,7 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     const result = await capturedProcessor!({
       id: 'job-deploy-regen',
-      data: { leadId, auditId: 'audit-1', forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' },
+      data: { leadId, auditId: 'audit-1', forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL', layout: 'bento' },
     });
 
     // The operator's custom design survives the regeneration (REV-92)
@@ -293,7 +299,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       density: 'airy',
     };
 
-    const regenerate = async (existing: Record<string, unknown> | null) => {
+    const regenerate = async (existing: Record<string, unknown> | null, jobData: Record<string, unknown> = {}) => {
       createDeployWorker();
       const lead = { _id: leadId, businessName: 'Pod Lipą', domain: 'podlipa.pl', niche: 'restaurant', toObject: () => lead };
       const audit = {
@@ -315,7 +321,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }) } as any);
       vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
       vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
-      await capturedProcessor!({ id: 'job-derived', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-derived', data: { leadId, auditId: 'audit-1', ...jobData } });
       const saved = vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![1] as Record<string, any>;
       return { saved, rendered: vi.mocked(bentoTemplateService.renderFromAudit).mock.calls[0]! };
     };
@@ -327,18 +333,18 @@ describe('DeployWorker (@revamp/workers)', () => {
       header: { layout: 'centered', links: true },
     };
 
-    it('derives the layout from the audit, saves it with its design and renders it', async () => {
-      const { saved, rendered } = await regenerate(null);
+    it('renders a Bento pick for the run with the look derived from the audit, and saves it (REV-132)', async () => {
+      const { saved, rendered } = await regenerate(null, { layout: 'split' });
       expect(saved.layout.variant).toBe('split');
-      // No sections read on this audit: Bento, with the rebuild's fallback reason first (REV-110)
-      expect(saved.layout.reasons.slice(0, 2)).toEqual(['rebuild:unread', 'rule:derived']);
+      expect(saved.layout.reasons[0]).toBe('rule:manual');
+      expect(saved.layout.reasons).toContain('hero:side-left');
       expect(saved.layout.design).toEqual(derivedDesign);
       expect(rendered[3]).toBe('split');
       expect(rendered[5]).toEqual(derivedDesign);
     });
 
     it("renders the operator's design over the derived one on a regeneration", async () => {
-      const { rendered } = await regenerate({ previewSlug: 'pod-lipa-1', design: { theme: { corners: 'sharp' }, header: { links: false } } });
+      const { rendered } = await regenerate({ previewSlug: 'pod-lipa-1', design: { theme: { corners: 'sharp' }, header: { links: false } } }, { layout: 'split' });
       expect(rendered[5]).toEqual({
         ...derivedDesign,
         theme: { density: 'airy', corners: 'sharp' },
@@ -355,22 +361,22 @@ describe('DeployWorker (@revamp/workers)', () => {
       expect(rendered[3]).toBe('editorial');
     });
 
-    it("renders Bento for a manual original pick that cannot be rebuilt, keeping the pick and the operator's design (REV-110)", async () => {
-      const { saved, rendered } = await regenerate({
-        previewSlug: 'pod-lipa-1',
-        layout: { variant: 'original', reasons: ['rule:manual'] },
-        design: { theme: { corners: 'sharp' } },
-      });
-      expect(saved.layout.variant).toBe('split');
-      expect(saved.layout.reasons.slice(0, 3)).toEqual(['rule:manual', 'manual:original', 'rebuild:unread']);
-      expect(saved.$unset).toEqual({ rebuild: '' });
-      expect(rendered[3]).toBe('split');
-      expect(rendered[5]).toEqual({ ...derivedDesign, theme: { density: 'airy', corners: 'sharp' } });
+    it('fails a manual original pick that cannot be rebuilt, and renders no Bento in its place (REV-132)', async () => {
+      const error = await regenerate({ previewSlug: 'pod-lipa-1', layout: { variant: 'original', reasons: ['rule:manual'] } }).then(
+        () => undefined,
+        (e: Error & { failure?: unknown }) => e,
+      );
+      expect(error?.failure).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:unread' });
+      expect(bentoTemplateService.renderFromAudit).not.toHaveBeenCalled();
+      expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
-    it('replaces an automatic layout with the new derivation', async () => {
-      const { saved } = await regenerate({ previewSlug: 'pod-lipa-1', layout: { variant: 'compact', reasons: ['rule:small_brochure'] } });
-      expect(saved.layout.variant).toBe('split');
+    it('does not keep an automatic layout: a regeneration tries the rebuild again (REV-132)', async () => {
+      const error = await regenerate({ previewSlug: 'pod-lipa-1', layout: { variant: 'compact', reasons: ['rule:small_brochure'] } }).then(
+        () => undefined,
+        (e: Error & { failure?: unknown }) => e,
+      );
+      expect(error?.failure).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:unread' });
     });
   });
 
@@ -410,7 +416,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       setUpDeploy();
       const checkSpy = vi.spyOn(mvpCompletenessService, 'assess');
 
-      await capturedProcessor!({ id: 'job-completeness', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-completeness', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       expect(checkSpy).toHaveBeenCalledWith(mvpHtml, expect.objectContaining({ _id: leadId }), expect.objectContaining({ _id: 'audit-1' }));
       const report = savedReport();
@@ -441,7 +447,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       setUpDeploy();
       vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
 
-      const result = await capturedProcessor!({ id: 'job-rejected', data: { leadId, auditId: 'audit-1' } });
+      const result = await capturedProcessor!({ id: 'job-rejected', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       expect(result.success).toBe(true);
       // The only lead write is guarded on GENERATING, so a REJECTED lead is not moved to review
@@ -452,14 +458,14 @@ describe('DeployWorker (@revamp/workers)', () => {
 
     it('recomputes the report on every regeneration', async () => {
       setUpDeploy();
-      await capturedProcessor!({ id: 'job-1', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-1', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
       const first = savedReport();
 
       vi.mocked(MvpProject.findOneAndUpdate).mockClear();
       vi.mocked(bentoTemplateService.renderFromAudit).mockReturnValue(
         '<html><body><h1>Smile Dental</h1><a href="mailto:info@smile.pl">info@smile.pl</a><a href="tel:+48221234567">+48 22 123 45 67</a></body></html>',
       );
-      await capturedProcessor!({ id: 'job-2', data: { leadId, auditId: 'audit-1', forceRegenerate: true } });
+      await capturedProcessor!({ id: 'job-2', data: { leadId, auditId: 'audit-1', forceRegenerate: true, layout: 'bento' } });
       const second = savedReport();
 
       expect(first.hasCriticalIssues).toBe(true);
@@ -474,7 +480,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       });
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-      const result = await capturedProcessor!({ id: 'job-completeness-err', data: { leadId, auditId: 'audit-1' } });
+      const result = await capturedProcessor!({ id: 'job-completeness-err', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       expect(result.success).toBe(true);
       expect(savedReport()).toEqual(
@@ -496,6 +502,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         data: {
           leadId,
           auditId: 'audit-1',
+          layout: 'bento',
           generationSource: {
             provider: 'deterministic',
             modelUsed: 'deterministic-fallback',
@@ -520,7 +527,7 @@ describe('DeployWorker (@revamp/workers)', () => {
 
       await capturedProcessor!({
         id: 'job-default',
-        data: { leadId, auditId: 'audit-1', generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' } },
+        data: { leadId, auditId: 'audit-1', layout: 'bento', generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' } },
       });
 
       expect(savedUpdate()).toMatchObject({ provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' });
@@ -530,7 +537,7 @@ describe('DeployWorker (@revamp/workers)', () => {
     it('leaves the source fields alone for jobs queued without one', async () => {
       setUpDeploy();
 
-      await capturedProcessor!({ id: 'job-legacy', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-legacy', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       expect(savedUpdate()).not.toHaveProperty('provider');
       expect(savedUpdate()).not.toHaveProperty('$unset.requestedProvider');
@@ -576,7 +583,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         standardsChecks: allChecks,
       });
 
-      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       expect(fetchMock).toHaveBeenCalledWith('http://minio/screens/mobile.webp');
       const input = bannerInput();
@@ -595,7 +602,7 @@ describe('DeployWorker (@revamp/workers)', () => {
       const beforeRev118 = Object.fromEntries(Object.entries(allChecks).filter(([check]) => check !== 'metaDescription' && check !== 'singleH1'));
       setUpDeploy({ screenshotUrls: {}, webVitals: { cls: 0.1 }, standardsChecks: beforeRev118 });
 
-      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       const input = bannerInput();
       expect(input.originalMobileBuffer).toBeUndefined();
@@ -611,7 +618,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         vi.stubGlobal('fetch', fetchMock);
         setUpDeploy({ screenshotUrls: { mobileOriginal: 'http://minio/screens/mobile.webp' } });
 
-        await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+        await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
         expect(bannerInput().originalMobileBuffer).toBeUndefined();
       }
@@ -625,7 +632,7 @@ describe('DeployWorker (@revamp/workers)', () => {
         throw new Error('unparsable');
       });
 
-      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1' } });
+      await capturedProcessor!({ id: 'job-banner', data: { leadId, auditId: 'audit-1', layout: 'bento' } });
 
       expect(bannerInput().newStandardsScore).toBeUndefined();
       expect(savedStandards()).toBeUndefined();

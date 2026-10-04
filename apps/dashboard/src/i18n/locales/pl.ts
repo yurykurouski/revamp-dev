@@ -259,13 +259,27 @@ export const pl: Translation = {
       no_content: 'Nie można odtworzyć oryginalnej strony, ponieważ nie znaleziono na niej sekcji z treścią.',
       low_coverage: 'Nie można odtworzyć oryginalnej strony, ponieważ udało się odczytać tylko {{percent}}% jej treści.',
       flat: 'Nie można odtworzyć oryginalnej strony, ponieważ odczytano ją jako kilka długich bloków bez nagłówków.',
+      invalid: 'Nie można odtworzyć oryginalnej strony, ponieważ odtworzona strona nie przeszła walidacji.',
+      too_large: 'Nie można odtworzyć oryginalnej strony, ponieważ odtworzona strona jest zbyt duża.',
+      grouping: {
+        not_configured: 'Nie można odtworzyć oryginalnej strony: nie skonfigurowano modelu AI z rozpoznawaniem obrazu, który odczytuje jej treść. Skonfiguruj go i wykonaj audyt ponownie albo użyj szablonu.',
+        call_failed: 'Nie można odtworzyć oryginalnej strony: wywołanie modelu AI podczas odczytu strony nie powiodło się. Wykonaj audyt ponownie albo użyj szablonu.',
+        invalid_answer: 'Nie można odtworzyć oryginalnej strony: model AI nie podał poprawnego odczytu strony. Wykonaj audyt ponownie albo użyj szablonu.',
+        ineligible: 'Nie można odtworzyć oryginalnej strony: odczyt strony przez model AI jest zbyt niepełny, by ją odtworzyć. Użyj szablonu.',
+        rules_reading: 'Nie można odtworzyć oryginalnej strony: audyt wykonano, zanim odtwarzanie zaczęło korzystać wyłącznie z odczytu AI. Wykonaj audyt ponownie albo użyj szablonu.',
+      },
     },
     level: {
       label: 'Wygląd',
       faithful: 'Wierna kopia',
       modern: 'Odświeżony',
       suggested: 'Sugerowane: oryginalna strona wygląda na przestarzałą',
-      defaultDesign: 'Standardowy nowoczesny projekt (wybór AI był niedostępny)',
+      unavailableTitle: 'Odświeżony wygląd niedostępny',
+      unavailable: {
+        not_configured: 'Nie skonfigurowano modelu AI, który wybiera odświeżony wygląd. Strona pozostaje bez zmian.',
+        call_failed: 'Wywołanie modelu AI dla odświeżonego wyglądu nie powiodło się. Strona pozostaje bez zmian; wybierz „Odświeżony”, aby spróbować ponownie.',
+        invalid_answer: 'Model AI nie podał poprawnego odświeżonego wyglądu. Strona pozostaje bez zmian; wybierz „Odświeżony”, aby spróbować ponownie.',
+      },
     },
     rerendering: 'Ponowne renderowanie strony…',
     fallback: {
@@ -276,6 +290,11 @@ export const pl: Translation = {
       invalid: 'Odtworzona strona nie przeszła walidacji, więc użyto szablonu.',
       too_large: 'Odtworzona strona była za duża, więc użyto szablonu.',
     },
+  },
+  mvpFailure: {
+    title: 'MVP nie został wygenerowany',
+    useTemplate: 'Wygeneruj z szablonu',
+    useTemplateHint: 'Tworzy MVP z szablonu Bento zamiast odtwarzać oryginalną stronę.',
   },
   llm: {
     provider: 'Dostawca LLM',
@@ -707,6 +726,7 @@ export const pl: Translation = {
       modernizeManual: 'Część nowoczesnego wyglądu wybranego przez operatora.',
       modernizeDated: 'Część nowoczesnego wyglądu: oryginał rozpoznano jako przestarzały (wynik {{score}}).',
       modernizeDatedUnscored: 'Część nowoczesnego wyglądu: oryginał rozpoznano jako przestarzały.',
+      modernizeLegacyDefault: 'Część standardowego nowoczesnego wyglądu zastosowanego, zanim każdy odświeżony wygląd zaczął wybierać AI; wyrenderuj stronę ponownie, by wybrało go AI.',
     },
     changes: {
       unknown: {

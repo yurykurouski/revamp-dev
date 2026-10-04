@@ -9,6 +9,7 @@ import {
   RebuildPlanSchema,
   UpdateMvpLayoutSchema,
   manualMvpLayout,
+  MvpRenderFailureSchema,
   rebuildEligibility,
   siteSectionChars,
 } from '../src/index.js';
@@ -22,6 +23,7 @@ const sections = (ratio: number, roles: Array<'header' | 'hero' | 'content' | 'f
   })),
   skipped: [],
   coverage: { pageChars: 1000, capturedChars: Math.round(ratio * 1000), ratio, uncaptured: [] },
+  source: 'llm',
 });
 
 describe('rebuildEligibility (REV-110)', () => {
@@ -39,6 +41,18 @@ describe('rebuildEligibility (REV-110)', () => {
     expect(rebuildEligibility({})).toMatchObject({ ok: false, reason: 'rebuild:unread' });
     expect(rebuildEligibility(null)).toMatchObject({ ok: false, reason: 'rebuild:unread' });
   });
+  it("names the vision model's failure when it gave no sections (REV-132)", () => {
+    for (const reason of ['not_configured', 'call_failed', 'invalid_answer', 'ineligible'] as const) {
+      expect(rebuildEligibility({ siteSectionsError: 'No vision model', siteSectionsErrorReason: reason })).toEqual({
+        ok: false, reason: `grouping:${reason}`, facts: [],
+      });
+    }
+  });
+  it('refuses a reading the rules made, stored before REV-132 (REV-132)', () => {
+    expect(rebuildEligibility({ siteSections: { ...sections(1), source: 'rules' } })).toEqual({ ok: false, reason: 'grouping:rules_reading', facts: [] });
+    const beforeRev113: ISiteSections = { ...sections(1), source: undefined };
+    expect(rebuildEligibility({ siteSections: beforeRev113 })).toMatchObject({ ok: false, reason: 'grouping:rules_reading' });
+  });
   it('falls back with only a header and a footer', () => {
     expect(rebuildEligibility({ siteSections: sections(1, ['header', 'footer']) })).toMatchObject({
       ok: false, reason: 'rebuild:no_content',
@@ -54,7 +68,7 @@ const block = (index: number, role: ISiteSection['role'], chars: number, heading
 });
 const reading = (pageChars: number, list: ISiteSection[]): ISiteSections => {
   const captured = list.reduce((sum, section) => sum + siteSectionChars(section), 0);
-  return { sections: list, skipped: [], coverage: { pageChars, capturedChars: captured, ratio: 0.99, uncaptured: [] } };
+  return { sections: list, skipped: [], coverage: { pageChars, capturedChars: captured, ratio: 0.99, uncaptured: [] }, source: 'llm' };
 };
 
 // The shapes read from Mongo (REV-112): anident.pl and reskor.pl are table layouts read as a few giant
@@ -113,6 +127,18 @@ describe('rebuildEligibility: flat readings (REV-112)', () => {
   });
   it('is not flat when the sections hold only media', () => {
     expect(rebuildEligibility({ siteSections: reading(3000, [block(0, 'hero', 0), block(1, 'content', 0)]) })).toEqual({ ok: true });
+  });
+});
+
+describe('MvpRenderFailureSchema (REV-132)', () => {
+  const at = new Date('2026-10-04T12:00:00Z');
+  it('pairs the rebuild code with a rebuild reason and the modernize code with a modernize reason', () => {
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'grouping:not_configured', at }).success).toBe(true);
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:too_large', at }).success).toBe(true);
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', level: 'modern', message: 'timeout', at }).success).toBe(true);
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_REBUILD_UNAVAILABLE', reason: 'call_failed', at }).success).toBe(false);
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'grouping:call_failed', at }).success).toBe(false);
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_NOT_FOUND', reason: 'call_failed', at }).success).toBe(false);
   });
 });
 

@@ -197,7 +197,13 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, locked })
             disabled={pickersDisabled}
             disabledReason={disabled ? t('mvpLayout.locked') : t('mvpEdit.busy')}
             reason={liveLayout.levelReason}
+            unavailable={liveLayout.modernUnavailable}
           />
+        )}
+        {tools.hasMvp && liveLayout.renderFailure && (
+          <Typography variant="caption" color="warning.main" role="status" data-testid="mvp-render-failure">
+            {liveLayout.renderFailure}
+          </Typography>
         )}
         {tools.hasMvp && liveLayout.rerendering && (
           <Typography variant="caption" color="text.secondary" role="status">

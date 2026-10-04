@@ -82,6 +82,7 @@ export const createAiWorker = (): Worker => {
         auditId: audit._id.toString(),
         forceRegenerate,
         previousStatus,
+        ...(job.data.layout ? { layout: job.data.layout } : {}),
         generationSource: {
           provider: generationResult.provider,
           modelUsed: generationResult.modelUsed,

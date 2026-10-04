@@ -905,7 +905,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       // Atomic: only a lead still in the status that was checked moves to GENERATING (REV-62)
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
         { _id: leadId, status: 'AUDITED' },
-        { $set: { status: 'GENERATING' }, $unset: { generationError: '' } },
+        { $set: { status: 'GENERATING' }, $unset: { generationError: '', generationFailure: '' } },
       );
       expect(addAiGenerationJob).toHaveBeenCalledWith({
         leadId,
@@ -1072,6 +1072,24 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, ...choice });
 
+      expect(res.status).toBe(400);
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
+    });
+
+    it('passes a Bento layout the operator picked to the run, and clears the previous failure (REV-132)', async () => {
+      mockLeadWithStatus('AUDITED');
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, layout: 'split' });
+      expect(res.status).toBe(202);
+      expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ layout: 'split' }));
+      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.at(-1)![1]).toEqual({
+        $set: { status: 'GENERATING' },
+        $unset: { generationError: '', generationFailure: '' },
+      });
+    });
+
+    it('returns 400 for a layout pick that is not a Bento template (REV-132)', async () => {
+      mockLeadWithStatus('AUDITED');
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, layout: 'original' });
       expect(res.status).toBe(400);
       expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
@@ -1417,7 +1435,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       // The facts behind the automatic choice stay; the rule becomes the operator's
       expect(saveSpy).toHaveBeenCalledWith(
         projectId,
-        { $set: { layout: { variant: 'split', reasons: ['rule:manual', 'complexity:MULTI_PAGE', 'images:3'] } } },
+        { $set: { layout: { variant: 'split', reasons: ['rule:manual', 'complexity:MULTI_PAGE', 'images:3'] } }, $unset: { renderFailure: '' } },
         { new: true },
       );
       expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
@@ -1437,7 +1455,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.status).toBe(200);
       expect(saveSpy).toHaveBeenCalledWith(
         projectId,
-        { $set: { layout: { variant: 'bento', reasons: ['rule:manual', 'hero:side-right'], design } } },
+        { $set: { layout: { variant: 'bento', reasons: ['rule:manual', 'hero:side-right'], design } }, $unset: { renderFailure: '' } },
         { new: true },
       );
     });
@@ -1452,7 +1470,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.status).toBe(200);
       expect(saveSpy).toHaveBeenCalledWith(
         projectId,
-        { $set: { layout: { variant: 'editorial', reasons: ['rule:manual'] } } },
+        { $set: { layout: { variant: 'editorial', reasons: ['rule:manual'] } }, $unset: { renderFailure: '' } },
         { new: true },
       );
     });
@@ -1758,6 +1776,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         sections: [{ index: 1, role: 'hero' }],
         skipped: [],
         coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
+        source: 'llm',
       },
     };
     const mockAudit = (doc: unknown) =>
@@ -1816,6 +1835,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
           sections: [block(0, 4700), block(1, 3500), block(2, 350)],
           skipped: [],
           coverage: { pageChars: 8605, capturedChars: 8550, ratio: 0.994, uncaptured: [] },
+          source: 'llm',
         },
       });
       const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
@@ -1828,6 +1848,36 @@ describe('API Routes Integration Tests (Supertest)', () => {
       });
       expect(addMvpRelayoutJob).not.toHaveBeenCalled();
       expect(save).not.toHaveBeenCalled();
+    });
+
+    it.each(['not_configured', 'call_failed', 'invalid_answer', 'ineligible'])(
+      "refuses a switch to original with the vision model's failure in details.reason (%s, REV-132)",
+      async (reason) => {
+        mockProject('split');
+        mockLead('NEEDS_APPROVAL');
+        const find = mockAudit({ siteSectionsError: 'No vision model for the section grouping', siteSectionsErrorReason: reason });
+        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+        save.mockClear();
+        const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original', level: 'modern' });
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatchObject({
+          code: 'MVP_REBUILD_UNAVAILABLE',
+          details: { reason: `grouping:${reason}`, error: 'No vision model for the section grouping' },
+        });
+        expect(res.body.error.message).toContain('No vision model for the section grouping');
+        expect(find.mock.results[0]!.value.select).toHaveBeenCalledWith('siteSections siteSectionsError siteSectionsErrorReason');
+        expect(save).not.toHaveBeenCalled();
+        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      },
+    );
+
+    it('refuses a switch to original on a reading the rules made before REV-132', async () => {
+      mockProject('split');
+      mockLead('NEEDS_APPROVAL');
+      mockAudit({ siteSections: { ...rebuildableAudit.siteSections, source: 'rules' } });
+      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
+      expect(res.status).toBe(409);
+      expect(res.body.error).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', details: { reason: 'grouping:rules_reading' } });
     });
 
     it('refuses a switch to original when the audit is missing', async () => {
@@ -1848,6 +1898,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
           sections: [{ index: 1, role: 'hero' }],
           skipped: [],
           coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
+          source: 'llm',
         },
       });
       vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
@@ -1914,6 +1965,29 @@ describe('API Routes Integration Tests (Supertest)', () => {
         expect(layout.variant).toBe('original');
         expect(layout.rebuildLevel).toBe('modern');
         expect(layout.reasons).toEqual(expect.arrayContaining(['rule:manual', 'modernize:manual']));
+        expect(addMvpRelayoutJob).toHaveBeenCalledTimes(1);
+      });
+
+      it('queues the same pick again after a failed re-render, so the model is asked again (REV-132)', async () => {
+        vi.spyOn(MvpProject, 'findById').mockReturnValue({
+          exec: vi.fn().mockResolvedValue({
+            _id: projectId,
+            leadId,
+            auditId,
+            layout: { variant: 'original', rebuildLevel: 'modern', reasons: ['rule:manual', 'modernize:manual'] },
+            renderFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', at: new Date() },
+          }),
+        } as any);
+        mockLead('NEEDS_APPROVAL');
+        mockAudit(rebuildableAudit);
+        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'original', rebuildLevel: 'modern', reasons: [] } }),
+        } as any);
+        save.mockClear();
+        const res = await patch({ variant: 'original', level: 'modern' });
+        expect(res.status).toBe(200);
+        // The new pick clears the old failure, so the dashboard waits for this job's outcome
+        expect(save.mock.calls[0]![1]).toMatchObject({ $unset: { renderFailure: '' } });
         expect(addMvpRelayoutJob).toHaveBeenCalledTimes(1);
       });
 

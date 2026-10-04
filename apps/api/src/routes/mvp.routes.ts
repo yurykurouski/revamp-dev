@@ -41,7 +41,7 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { auditId, forceRegenerate, provider, model } = req.body;
+      const { auditId, forceRegenerate, provider, model, layout } = req.body;
 
       if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
         throw new AppError(400, 'LLM_PROVIDER_NOT_ALLOWED', `Provider "${provider}" is not available in production`);
@@ -77,7 +77,7 @@ router.post(
       const previousStatus = lead.status;
       const claimed = await Lead.findOneAndUpdate(
         { _id: lead._id, status: previousStatus },
-        { $set: { status: 'GENERATING' }, $unset: { generationError: '' } },
+        { $set: { status: 'GENERATING' }, $unset: { generationError: '', generationFailure: '' } },
       ).exec();
       if (!claimed) {
         throw new AppError(409, 'MVP_GENERATION_NOT_ALLOWED', 'The lead changed while generation was being queued; try again');
@@ -89,6 +89,8 @@ router.post(
         forceRegenerate: mode === 'regenerate',
         previousStatus,
         ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
+        // A Bento layout the operator picked, e.g. when the rebuild cannot be made (REV-132)
+        ...(layout ? { layout } : {}),
       });
 
       res.status(202).json({
@@ -245,26 +247,32 @@ router.patch(
 
       // A missing level counts as faithful; a request without one keeps the current level (REV-114)
       const currentLevel = project.layout?.rebuildLevel ?? 'faithful';
-      if (project.layout?.variant === variant && (level ?? currentLevel) === currentLevel) {
+      // A pick whose last re-render failed is queued again, so the model is asked again (REV-132)
+      if (project.layout?.variant === variant && (level ?? currentLevel) === currentLevel && !project.renderFailure) {
         res.status(200).json({ success: true, message: 'The MVP already uses this layout', data: project });
         return;
       }
 
       // A switch to the rebuild (REV-110) only when the audit's sections can be rebuilt
       if (variant === 'original') {
-        const audit = await Audit.findById(project.auditId).select('siteSections siteSectionsError').exec();
+        const audit = await Audit.findById(project.auditId).select('siteSections siteSectionsError siteSectionsErrorReason').exec();
         const eligible = rebuildEligibility(audit);
         if (!eligible.ok) {
-          throw new AppError(409, 'MVP_REBUILD_UNAVAILABLE', `The original site cannot be rebuilt: ${eligible.reason}`, {
-            reason: eligible.reason,
-            facts: eligible.facts,
-          });
+          // The vision model's failure, when it gave no sections (REV-132)
+          const visionError = audit?.siteSectionsErrorReason ? audit.siteSectionsError : undefined;
+          throw new AppError(
+            409,
+            'MVP_REBUILD_UNAVAILABLE',
+            `The original site cannot be rebuilt: ${eligible.reason}${visionError ? ` (${visionError})` : ''}`,
+            { reason: eligible.reason, facts: eligible.facts, ...(visionError ? { error: visionError } : {}) },
+          );
         }
       }
 
       // The audit facts and the derived look (REV-104) are kept; the rule becomes the operator's
       const layout = manualMvpLayout(project.layout, variant, level);
-      const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout } }, { new: true }).exec();
+      // The new pick's outcome replaces the last failed re-render's (REV-132)
+      const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout }, $unset: { renderFailure: '' } }, { new: true }).exec();
       if (!saved) {
         throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
       }

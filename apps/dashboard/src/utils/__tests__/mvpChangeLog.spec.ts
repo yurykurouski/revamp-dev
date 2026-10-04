@@ -229,6 +229,15 @@ describe('buildMvpChangeLog (REV-119)', () => {
     expect(say(log.find((e) => e.id === 'render:level')!.what)).toContain('Modernized rebuild');
   });
 
+  it('says a page modernized before REV-132 got the standard look, not the AI choice', () => {
+    const log = buildMvpChangeLog(
+      rebuilt({ level: 'modern', tuning: ['modernize:cards:2'] }, { layout: { variant: 'original', reasons: ['rule:rebuild', 'modernize:dated', 'dated:5', 'modernize:default'] } }),
+      audit(),
+    )!;
+    expect(log.find((e) => e.id === 'render:level')!.why).toEqual({ key: 'mvpChangeLog.sources.modernizeLegacyDefault' });
+    expect(log.find((e) => e.id === 'code:modernize:cards:2')!.why).toEqual({ key: 'mvpChangeLog.sources.modernizeLegacyDefault' });
+  });
+
   it('lists omissions per kind and reason with their samples, as what visitors lose', () => {
     const entries = omissionEntries([
       { what: 'nav_link', reason: 'other_page', sample: 'Blog' },

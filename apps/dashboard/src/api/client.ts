@@ -16,6 +16,8 @@ import {
   ICriticalFlaw,
   ILead,
   IMvpProject,
+  IMvpRenderFailure,
+  BentoLayoutVariant,
   Serialized,
   IDiscoveryImportResult,
   IDiscoveryJobStatus,
@@ -50,6 +52,8 @@ export interface ILeadItem {
   mvpGeneratedAt?: string;
   /** Why the last MVP generation failed, if it did (REV-31) */
   generationError?: string;
+  /** The code and reason when a rebuild model gave no answer (REV-132) */
+  generationFailure?: Serialized<IMvpRenderFailure>;
   /** Why the last audit failed for good, if it did (REV-44) */
   auditError?: string;
   /** How much of the original site's key data the MVP kept (REV-36) */
@@ -100,6 +104,7 @@ export const mapServerLead = (l: IServerLead): ILeadItem => {
     comparisonBannerUrl: l.comparisonBannerUrl,
     mvpGeneratedAt: l.mvpGeneratedAt,
     generationError: l.generationError,
+    generationFailure: l.generationFailure,
     auditError: l.auditError,
     completeness: l.completeness,
     siteComplexity: l.siteComplexity,
@@ -340,7 +345,7 @@ export const apiClient = {
    */
   async generateMvp(
     auditId: string,
-    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string } = {},
+    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string; layout?: BentoLayoutVariant } = {},
   ): Promise<{ success: boolean; status: LeadStatus }> {
     // Validated before the request, so an invalid provider/model never reaches the API
     const payload = GenerateMvpSchema.parse({
@@ -348,6 +353,7 @@ export const apiClient = {
       forceRegenerate: options.forceRegenerate ?? false,
       provider: options.provider,
       model: options.model,
+      layout: options.layout,
     });
     const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
       method: 'POST',

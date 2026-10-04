@@ -591,6 +591,25 @@ describe('Prototype step layout picker (REV-84)', () => {
       );
     });
 
+    it.each(['not_configured', 'call_failed', 'invalid_answer', 'ineligible', 'rules_reading'] as const)(
+      "says the vision model gave no sections when the switch is refused with grouping:%s (REV-132)",
+      async (reason) => {
+        render(mvpWith('bento'));
+        vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(
+          new ApiError(`The original site cannot be rebuilt: grouping:${reason}`, 409, 'MVP_REBUILD_UNAVAILABLE', {
+            reason: `grouping:${reason}`,
+            facts: [],
+            error: 'No vision model for the section grouping',
+          }),
+        );
+        click('original');
+        await vi.waitFor(() =>
+          expect(document.body.textContent).toContain(en.mvpLayout.saveFailed.replace('{{message}}', en.mvpLayout.rebuildRefused.grouping[reason])),
+        );
+        expect(pressed()).toEqual(['bento']);
+      },
+    );
+
     it("shows the server's message for a refusal without a known reason", async () => {
       render(mvpWith('bento'));
       vi.spyOn(apiClient, 'updateMvpLayout').mockRejectedValue(

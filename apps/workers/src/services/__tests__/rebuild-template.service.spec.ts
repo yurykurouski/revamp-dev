@@ -6,7 +6,7 @@ import { checkMvpStandards } from '../mvp-standards.js';
 const siteSections = (ratio = 0.98): ISiteSections => ({
   sections: [{ index: 1, role: 'hero', kind: 'other', arrangement: 'banner', intro: { heading: 'Witamy', text: ['Tekst'], links: [] }, items: [], extra: [], images: [], embeds: [], style: {} }],
   typography: { heading: { family: 'Lato', size: 32, weight: 700, uppercase: false }, body: { family: 'Lato', size: 16, weight: 400 }, button: { radius: 4, filled: true, uppercase: false, background: '#c2185b' } },
-  skipped: [], coverage: { pageChars: 100, capturedChars: 98, ratio, uncaptured: [] },
+  skipped: [], coverage: { pageChars: 100, capturedChars: 98, ratio, uncaptured: [] }, source: 'llm',
 });
 const audit = (over: Partial<IAudit> = {}): Partial<IAudit> => ({ siteSections: siteSections(), extractedContacts: { phone: '+48 1 2 3' } as IAudit['extractedContacts'], extractedContent: { language: 'pl' } as IAudit['extractedContent'], ...over });
 
@@ -20,6 +20,12 @@ describe('rebuildTemplateService (REV-110)', () => {
     expect(() => rebuildTemplateService.renderFromAudit({ businessName: 'X' }, audit({ siteSections: siteSections(0.5) })))
       .toThrow(expect.objectContaining({ reason: 'rebuild:low_coverage', facts: ['coverage:0.5'] }));
     expect(() => rebuildTemplateService.renderFromAudit({ businessName: 'X' }, {})).toThrow(RebuildUnavailable);
+  });
+  it("never rebuilds a reading the rules made, or an audit without the model's grouping (REV-132)", () => {
+    expect(() => rebuildTemplateService.renderFromAudit({ businessName: 'X' }, audit({ siteSections: { ...siteSections(), source: 'rules' } })))
+      .toThrow(expect.objectContaining({ reason: 'grouping:rules_reading' }));
+    expect(() => rebuildTemplateService.renderFromAudit({ businessName: 'X' }, audit({ siteSections: undefined, siteSectionsError: 'No vision model', siteSectionsErrorReason: 'not_configured' })))
+      .toThrow(expect.objectContaining({ reason: 'grouping:not_configured' }));
   });
   it('throws rebuild:too_large over 300 KB', () => {
     const big = siteSections();

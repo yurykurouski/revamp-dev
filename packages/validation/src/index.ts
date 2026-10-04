@@ -37,7 +37,10 @@ import {
   RebuildLevel,
   SITE_DATED_SIGNS,
   IRebuildEditAnswer,
-  RebuildFallbackReason,
+  RebuildUnavailableReason,
+  SiteGroupingFailure,
+  MODERNIZE_FAILURES,
+  REBUILD_UNAVAILABLE_REASONS,
   ISiteLink,
   ISiteSection,
   ISiteSectionItem,
@@ -619,6 +622,8 @@ export const GenerateMvpSchema = z
     forceRegenerate: z.boolean().optional().default(false),
     provider: LlmProviderSchema.optional(),
     model: z.string().trim().min(1).max(100).optional(),
+    /** A Bento layout the operator picked for this run, e.g. when the rebuild cannot be made (REV-132) */
+    layout: z.enum(BENTO_LAYOUT_VARIANTS).optional(),
   })
   .superRefine((value, ctx) => {
     if (value.model === undefined) return;
@@ -1385,17 +1390,24 @@ function flatReading(read: ISiteSections): string[] | undefined {
   return [`flat:share=${share}`, `flat:headings=${headed}/${body.length}`];
 }
 
-export type RebuildEligibility = { ok: true } | { ok: false; reason: RebuildFallbackReason; facts: string[] };
+export type RebuildEligibility = { ok: true } | { ok: false; reason: RebuildUnavailableReason; facts: string[] };
 
 /**
  * Whether the audit's sections can be rebuilt (REV-110). The plan and size checks happen at render
- * time; these are the checks the API can make before it accepts a switch to `original`.
+ * time; these are the checks the API can make before it accepts a switch to `original`. Only the vision
+ * model's grouping is rebuilt (REV-132): its failure is the reason, and a reading the rules made is refused.
  */
 export function rebuildEligibility(
-  audit: { siteSections?: ISiteSections | null; siteSectionsError?: string | null } | null | undefined,
+  audit:
+    | { siteSections?: ISiteSections | null; siteSectionsError?: string | null; siteSectionsErrorReason?: SiteGroupingFailure | null }
+    | null
+    | undefined,
 ): RebuildEligibility {
+  if (audit?.siteSectionsErrorReason) return { ok: false, reason: `grouping:${audit.siteSectionsErrorReason}`, facts: [] };
   const read = audit?.siteSections;
   if (!read || audit?.siteSectionsError) return { ok: false, reason: 'rebuild:unread', facts: [] };
+  // A reading stored before REV-113 has no source; it was made by the rules too
+  if (read.source !== 'llm') return { ok: false, reason: 'grouping:rules_reading', facts: [] };
   if (!read.sections.some((section) => section.role === 'hero' || section.role === 'content')) {
     return { ok: false, reason: 'rebuild:no_content', facts: [] };
   }
@@ -1707,15 +1719,36 @@ export const RebuildEditAnswerSchema = z
 /** What the modernize level may decide (REV-114): the look fields of the edit, never order, hiding, dropping or CSS */
 export const RebuildModernizeAnswerSchema = RebuildEditAnswerSchema.omit({ order: true, hidden: true, dropped: true, customCss: true }).strict();
 
-/** The saved modernize design, with the audit its ids were read from */
-export const RebuildModernizeSchema = z
-  .object({
-    auditId: z.string().regex(/^[a-f0-9]{24}$/i),
-    source: z.enum(['llm', 'default']),
-    design: RebuildModernizeAnswerSchema,
-    error: z.string().max(300).optional(),
-  })
-  .strict();
+/** The saved modernize design, with the audit its ids were read from; a failure has its reason and no design (REV-132) */
+export const RebuildModernizeSchema = z.discriminatedUnion('source', [
+  z.object({ auditId: z.string().regex(/^[a-f0-9]{24}$/i), source: z.literal('llm'), design: RebuildModernizeAnswerSchema }).strict(),
+  z
+    .object({
+      auditId: z.string().regex(/^[a-f0-9]{24}$/i),
+      source: z.literal('failed'),
+      error: z.enum(MODERNIZE_FAILURES),
+      message: z.string().max(300).optional(),
+    })
+    .strict(),
+]);
+
+/** Why a render that needs a model was not made (REV-132): each code with its own reasons */
+export const MvpRenderFailureSchema = z.discriminatedUnion('code', [
+  z.object({
+    code: z.literal('MVP_REBUILD_UNAVAILABLE'),
+    reason: z.enum(REBUILD_UNAVAILABLE_REASONS),
+    level: z.enum(REBUILD_LEVELS).optional(),
+    message: z.string().max(300).optional(),
+    at: z.coerce.date(),
+  }),
+  z.object({
+    code: z.literal('MVP_MODERNIZE_UNAVAILABLE'),
+    reason: z.enum(MODERNIZE_FAILURES),
+    level: z.enum(REBUILD_LEVELS).optional(),
+    message: z.string().max(300).optional(),
+    at: z.coerce.date(),
+  }),
+]);
 
 /** The saved edit: the answer plus the audit its ids belong to (set by the worker, never by the model) */
 export const RebuildEditSchema = RebuildEditAnswerSchema.extend({ auditId: z.string().regex(/^[a-f0-9]{24}$/i) }).strict();
