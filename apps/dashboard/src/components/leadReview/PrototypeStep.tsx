@@ -27,7 +27,8 @@ import { MvpPreviewFrame } from '../MvpPreviewFrame.js';
 import { MvpGenerationFailure, hasGenerationFailure } from './MvpGenerationFailure.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
-import { showInPreview } from '../../utils/mvpChangeLog.js';
+import { showFactInPreview } from '../../utils/previewFrame.js';
+import { MvpGroundingFlags } from './MvpGroundingFlags.js';
 import { MvpDesignTools, useMvpDesignTools } from './MvpDesignTools.js';
 import { leadPreviewPath } from '../../routes/paths.js';
 
@@ -288,8 +289,11 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
         </Box>
       </Box>
 
+      {/* Facts the original site does not support, for the operator to check in the preview (REV-140) */}
+      <MvpGroundingFlags flags={mvp?.grounding ?? []} onShow={(text) => showFactInPreview(iframeRef.current, text)} />
+
       {/* What the MVP changed compared with the original site (REV-81), under the preview (REV-94) */}
-      <MvpChangeSummary mvp={mvp} audit={audit} onShowSection={(anchor) => showInPreview(iframeRef.current, previewUrl, anchor)} />
+      <MvpChangeSummary mvp={mvp} audit={audit} />
     </Card>
   );
 };

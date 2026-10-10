@@ -1,11 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { ICompletenessCheck, IMvpGeneratedContent, IMvpProject } from '@revamp/shared-types';
+import type { ICompletenessCheck, IMvpGeneratedContent } from '@revamp/shared-types';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { isMvpChangeSummaryEmpty, summarizeMvpChanges } from '../mvpChanges.js';
-
-/** Stored copy and palette as older or malformed records hold them; the summary reads them defensively */
-const content = (value: object) => value as IMvpGeneratedContent;
-const palette = (value: Partial<IMvpProjectDetail['colorPalette']>) => value as IMvpProject['colorPalette'];
 
 const audit = (overrides: Partial<IAuditDetail> = {}): IAuditDetail => ({
   id: 'audit-1',
@@ -30,142 +26,87 @@ const check = (field: ICompletenessCheck['field'], status: ICompletenessCheck['s
   tier: 'critical',
 });
 
-describe('summarizeMvpChanges (REV-81)', () => {
+const performance = (overrides: Partial<NonNullable<IMvpProjectDetail['performance']>> = {}): NonNullable<IMvpProjectDetail['performance']> => ({
+  webVitals: { lcp: 1400, cls: 0.02 },
+  host: 'demo.example',
+  measuredAt: '2026-10-10T12:00:00.000Z',
+  ...overrides,
+});
+
+describe('summarizeMvpChanges: measured facts only (REV-140)', () => {
   it('is null until an MVP exists', () => {
     expect(summarizeMvpChanges(null, audit())).toBeNull();
-    expect(summarizeMvpChanges(undefined, undefined)).toBeNull();
   });
 
-  it('summarizes a fully recorded MVP', () => {
-    const summary = summarizeMvpChanges(
-      mvp({
-        layout: { variant: 'split', reasons: ['complexity:ONE_PAGE_BROCHURE', 'rule:visual_niche'] },
-        provider: 'anthropic',
-        modelUsed: 'claude-sonnet-5',
-        generatedContent: content({
-          about: { heading: 'About us', body: 'Since 2004' },
-          services: [{ title: 'Cut' }, { title: 'Color' }, { title: 'Beard' }],
-          trustSignals: [{ metric: '20', label: 'years' }],
-        }),
-        colorPalette: palette({ primary: '#123456' }),
-        completenessReport: {
-          status: 'verified',
-          hasCriticalIssues: true,
-          checkedAt: '2026-09-27T00:00:00Z',
-          checks: [
-            check('phone', 'present'),
-            check('email', 'altered'),
-            check('address', 'missing'),
-            check('workingHours', 'unsourced'),
-            check('rating', 'not_in_source'),
-          ],
-        },
-      }),
-      audit({
-        originalServiceCount: 2,
-        colorPalette: { primary: '#ABCDEF' },
-        quickWins: ['Add a call button', '  ', 'Shorten the hero text '],
-      }),
-    );
-
-    expect(summary).toEqual({
-      layout: { variant: 'split', rule: 'visual_niche' },
-      copySource: { actual: expect.stringContaining('Anthropic') },
-      sections: { services: { original: 2, mvp: 3 }, about: true, trustSignals: 1 },
-      palette: { original: '#ABCDEF', mvp: '#123456' },
-      businessData: {
-        kept: 1,
-        checked: 4,
-        issues: [
-          { field: 'workingHours', status: 'unsourced' },
-          { field: 'address', status: 'missing' },
-          { field: 'email', status: 'altered' },
-        ],
-      },
-      critiqueGuidance: ['Add a call button', 'Shorten the hero text'],
+  it('compares LCP and CLS with the host named', () => {
+    const summary = summarizeMvpChanges(mvp({ performance: performance() }), audit({ lcpSeconds: 3.2, cls: 0.21 }))!;
+    expect(summary.performance).toEqual({
+      host: 'demo.example',
+      measuredAt: '2026-10-10T12:00:00.000Z',
+      lcp: { mvp: 1.4, original: 3.2 },
+      cls: { mvp: 0.02, original: 0.21 },
     });
   });
 
-  it('leaves out every part the pipeline did not record', () => {
-    const summary = summarizeMvpChanges(mvp(), null);
-    expect(summary).toEqual({ critiqueGuidance: [] });
-    expect(isMvpChangeSummaryEmpty(summary!)).toBe(true);
+  it('leaves out what was not measured, never a zero', () => {
+    const noOriginal = summarizeMvpChanges(mvp({ performance: performance() }), audit())!;
+    expect(noOriginal.performance?.lcp).toEqual({ mvp: 1.4 });
+    expect(noOriginal.performance?.cls).toEqual({ mvp: 0.02 });
+
+    const failed = summarizeMvpChanges(mvp({ performance: performance({ webVitals: {}, error: 'navigation timeout' }) }), audit({ lcpSeconds: 3.2 }))!;
+    expect(failed.performance).toEqual({ host: 'demo.example', measuredAt: '2026-10-10T12:00:00.000Z', error: 'navigation timeout' });
+
+    expect(summarizeMvpChanges(mvp(), audit({ lcpSeconds: 3.2 }))!.performance).toBeUndefined();
   });
 
-  it('leaves out what stayed as it was on the original site', () => {
+  it("reports the original's accessibility violations, which the MVP does not measure", () => {
+    expect(summarizeMvpChanges(mvp(), audit({ a11yViolationsCount: 7 }))!.accessibility).toEqual({ originalViolations: 7 });
+    expect(summarizeMvpChanges(mvp(), audit({ a11yViolationsCount: 0 }))!.accessibility).toEqual({ originalViolations: 0 });
+    expect(summarizeMvpChanges(mvp(), audit())!.accessibility).toBeUndefined();
+  });
+
+  it('lists no layout, copy, palette, sections or critique', () => {
     const summary = summarizeMvpChanges(
       mvp({
-        generatedContent: content({ services: [{}, {}], trustSignals: [] }),
-        colorPalette: palette({ primary: '#aabbcc' }),
-        completenessReport: {
-          status: 'verified',
-          hasCriticalIssues: false,
-          checkedAt: '',
-          checks: [check('phone', 'present'), check('logo', 'present'), check('rating', 'not_in_source')],
-        },
+        layout: { variant: 'editorial', reasons: ['rule:professional_niche'] },
+        provider: 'deterministic',
+        colorPalette: { primary: '#0000aa', secondary: '#ffffff', accent: '#0000aa' },
+        generatedContent: { services: [{ title: 'A' }] } as unknown as IMvpGeneratedContent,
       }),
-      // Same service count and the same color in another case
-      audit({ originalServiceCount: 2, colorPalette: { primary: '#AABBCC' } }),
+      audit({ quickWins: ['Add a sticky call button'], colorPalette: { primary: '#aa0000' }, originalServiceCount: 2 }),
     )!;
-    expect(summary.sections).toBeUndefined();
-    expect(summary.palette).toBeUndefined();
-    expect(summary.businessData).toBeUndefined();
+    expect(Object.keys(summary).sort()).toEqual([]);
     expect(isMvpChangeSummaryEmpty(summary)).toBe(true);
   });
 
-  it('keeps the other section changes when the service count is unchanged', () => {
-    const summary = summarizeMvpChanges(
-      mvp({ generatedContent: content({ services: [{}], about: { heading: 'About' }, trustSignals: [{}, {}] }) }),
-      audit({ originalServiceCount: 1 }),
-    )!;
-    expect(summary.sections).toEqual({ services: undefined, about: true, trustSignals: 2 });
-  });
-
-  it('never guesses the original values it does not have', () => {
-    const summary = summarizeMvpChanges(
-      mvp({ generatedContent: content({ services: [{}] }), colorPalette: palette({ primary: '#5c5bed' }) }),
-      audit(),
-    )!;
-    // No crawler count: nothing to compare the services with
-    expect(summary.sections).toBeUndefined();
-    // No brand color on the site: the MVP's color is the default, reported as such
-    expect(summary.palette).toEqual({ original: undefined, mvp: '#5c5bed' });
-  });
-
-  it('compares with a service list the crawler did not find', () => {
-    const summary = summarizeMvpChanges(mvp({ generatedContent: content({ services: [{}, {}, {}] }) }), audit({ originalServiceCount: 0 }))!;
-    expect(summary.sections?.services).toEqual({ original: 0, mvp: 3 });
-  });
-
-  it('ignores malformed copy and unknown layouts', () => {
+  it('lists the business data the MVP lost, changed or made up', () => {
     const summary = summarizeMvpChanges(
       mvp({
-        layout: { variant: 'masonry' as never, reasons: [] },
-        generatedContent: content({ hero: 'not an object', services: 'many', about: { heading: ' ' } }),
+        completenessReport: {
+          status: 'verified',
+          hasCriticalIssues: true,
+          checkedAt: '2026-10-10T00:00:00Z',
+          checks: [check('phone', 'present'), check('address', 'missing'), check('email', 'not_in_source'), check('workingHours', 'unsourced')],
+        },
       }),
-      audit({ originalServiceCount: 3 }),
+      audit(),
     )!;
-    expect(summary.layout).toBeUndefined();
-    expect(summary.sections).toBeUndefined();
-  });
-
-  it('keeps a layout without a known rule', () => {
-    expect(summarizeMvpChanges(mvp({ layout: { variant: 'bento', reasons: [] } }), null)!.layout).toEqual({
-      variant: 'bento',
-      rule: undefined,
+    expect(summary.businessData).toEqual({
+      kept: 1,
+      checked: 3,
+      issues: [
+        { field: 'workingHours', status: 'unsourced' },
+        { field: 'address', status: 'missing' },
+      ],
     });
   });
 
   it('leaves out a data check that could not run', () => {
     const summary = summarizeMvpChanges(
-      mvp({ completenessReport: { status: 'unverified', hasCriticalIssues: false, checks: [], checkedAt: '' } }),
-      null,
+      mvp({ completenessReport: { status: 'unverified', hasCriticalIssues: false, checkedAt: '2026-10-10T00:00:00Z', checks: [check('address', 'missing')] } }),
+      audit(),
     )!;
     expect(summary.businessData).toBeUndefined();
-  });
-
-  it('reports the deterministic fallback as its own copy source', () => {
-    expect(summarizeMvpChanges(mvp({ provider: 'deterministic' }), null)!.copySource).toEqual({ actual: 'deterministic' });
   });
 });
 
@@ -177,8 +118,8 @@ describe('summarizeMvpChanges SEO and web standards (REV-118)', () => {
 
   it('lists the checks the published MVP fixed, with both scores', () => {
     const summary = summarizeMvpChanges(mvp({ standards: { checks, score: 100 } }), audit({ standardsChecks: original }))!;
-    expect(summary.seo).toEqual({ originalScore: 70, mvpScore: 100, fixed: ['metaDescription', 'structuredData', 'openGraph'], regressed: [] });
-    expect(isMvpChangeSummaryEmpty({ critiqueGuidance: [], seo: summary.seo })).toBe(false);
+    expect(summary.standards).toEqual({ originalScore: 70, mvpScore: 100, fixed: ['metaDescription', 'structuredData', 'openGraph'], regressed: [] });
+    expect(isMvpChangeSummaryEmpty({ standards: summary.standards })).toBe(false);
   });
 
   it('lists a check the MVP lost', () => {
@@ -186,11 +127,16 @@ describe('summarizeMvpChanges SEO and web standards (REV-118)', () => {
       mvp({ standards: { checks: { ...checks, favicon: false }, score: 90 } }),
       audit({ standardsChecks: original }),
     )!;
-    expect(summary.seo?.regressed).toEqual(['favicon']);
+    expect(summary.standards?.regressed).toEqual(['favicon']);
   });
 
-  it('leaves the card out when nothing differs or the MVP was not checked', () => {
-    expect(summarizeMvpChanges(mvp({ standards: { checks: original, score: 70 } }), audit({ standardsChecks: original }))!.seo).toBeUndefined();
-    expect(summarizeMvpChanges(mvp(), audit({ standardsChecks: original }))!.seo).toBeUndefined();
+  it('keeps the score once the MVP page was checked, even when no check differs', () => {
+    expect(summarizeMvpChanges(mvp({ standards: { checks: original, score: 70 } }), audit({ standardsChecks: original }))!.standards).toEqual({
+      originalScore: 70,
+      mvpScore: 70,
+      fixed: [],
+      regressed: [],
+    });
+    expect(summarizeMvpChanges(mvp(), audit({ standardsChecks: original }))!.standards).toBeUndefined();
   });
 });

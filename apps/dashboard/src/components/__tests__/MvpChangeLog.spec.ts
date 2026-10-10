@@ -4,7 +4,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React, { act } from 'react';
 import { createRoot, Root } from 'react-dom/client';
-import { renderToStaticMarkup } from 'react-dom/server';
 import { ThemeProvider } from '@mui/material';
 import '../../i18n/index.js';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
@@ -12,7 +11,6 @@ import { getTheme } from '../../theme/theme.js';
 import { useLanguageStore } from '../../store/useLanguageStore.js';
 import { buildMvpChangeLog } from '../../utils/mvpChangeLog.js';
 import { MvpChangeLog } from '../leadReview/MvpChangeLog.js';
-import { MvpChangeSummary } from '../leadReview/MvpChangeSummary.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -117,22 +115,5 @@ describe('MvpChangeLog (REV-119)', () => {
     expect(container.textContent).toContain('Каждое изменение и его причина');
     expect(container.querySelector('[data-change="code:contrast:3"]')!.textContent).toContain('Почему: Контраст был 2.8:1');
     act(() => useLanguageStore.getState().setLanguage('en'));
-  });
-});
-
-describe('MvpChangeSummary with the change log (REV-119)', () => {
-  it('lists the changes under the overview cards', () => {
-    const html = renderToStaticMarkup(
-      React.createElement(ThemeProvider, { theme: getTheme('light') }, React.createElement(MvpChangeSummary, { mvp, audit })),
-    );
-    expect(html).toContain('data-testid="mvp-change-log"');
-    expect(html).toContain('Every change, with its reason');
-  });
-
-  it('shows the log for a page whose summary cards are empty, and nothing before an MVP', () => {
-    const bare: IMvpProjectDetail = { leadId: 'l', fullPreviewUrl: 'u', performance: mvp.performance };
-    const html = renderToStaticMarkup(React.createElement(MvpChangeSummary, { mvp: bare, audit }));
-    expect(html).toContain('Largest content shown after 1.2 s (original: 4.8 s)');
-    expect(renderToStaticMarkup(React.createElement(MvpChangeSummary, { mvp: null, audit }))).toBe('');
   });
 });

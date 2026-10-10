@@ -240,6 +240,16 @@ describe('Design tools for a model-designed page (REV-140)', () => {
     await vi.waitFor(() => expect(error()!.textContent).toContain('may still be published'));
   });
 
+  it('lists the facts to check under the preview, and Show in preview posts the fact to the frame', () => {
+    render({}, { ...mvp, grounding: [{ kind: 'number', text: '15', context: 'Ponad 15 lat doświadczenia' }] });
+    const flags = container.querySelector<HTMLElement>('[data-testid="mvp-grounding-flags"]')!;
+    expect(flags.textContent).toContain('Check these facts (1)');
+    const frame = container.querySelector('iframe')!;
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage').mockImplementation(() => undefined);
+    act(() => flags.querySelector('button')!.click());
+    expect(post).toHaveBeenCalledWith({ type: 'REVAMP_SHOW_TEXT', text: '15' }, '*');
+  });
+
   it('offers only Regenerate on an MVP from the previous generator', () => {
     const previous: IMvpProjectDetail = {
       id: 'mvp-1',

@@ -197,6 +197,26 @@ describe('LeadReview (REV-77)', () => {
     expect(currentStep()).toBe('email');
   });
 
+  it('shows the count of facts to check on the Prototype tab (REV-140)', async () => {
+    vi.mocked(apiClient.getMvp).mockResolvedValue({
+      id: 'mvp-1',
+      leadId: 'lead-1',
+      fullPreviewUrl: 'about:blank#mvp',
+      grounding: [
+        { kind: 'number', text: '15', context: 'Ponad 15 lat' },
+        { kind: 'name', text: 'Anna', context: 'Dr Anna' },
+      ],
+    });
+    await mount();
+    const tab = container.querySelector<HTMLElement>('#lead-review-tab-prototype')!;
+    await vi.waitFor(() => expect(tab.textContent).toContain('2 to check'));
+  });
+
+  it('shows no fact chip without flags', async () => {
+    await mount();
+    expect(container.querySelector<HTMLElement>('#lead-review-tab-prototype')!.textContent).not.toContain('to check');
+  });
+
   it('keeps the prototype in a sandboxed iframe', async () => {
     await mount();
     const iframe = panel('prototype').querySelector('iframe')!;

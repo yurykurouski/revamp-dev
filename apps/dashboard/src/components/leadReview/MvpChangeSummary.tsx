@@ -1,21 +1,16 @@
 import React, { useState } from 'react';
 import { Box, Button, Chip, Collapse, LinearProgress, Typography } from '@mui/material';
+import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import DashboardCustomizeIcon from '@mui/icons-material/DashboardCustomize';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
-import LightbulbOutlinedIcon from '@mui/icons-material/LightbulbOutlined';
-import PaletteOutlinedIcon from '@mui/icons-material/PaletteOutlined';
+import SpeedIcon from '@mui/icons-material/Speed';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
-import ViewQuiltOutlinedIcon from '@mui/icons-material/ViewQuiltOutlined';
 import { useTranslation } from 'react-i18next';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { isMvpChangeSummaryEmpty, MvpChangeSummary as Summary, summarizeMvpChanges } from '../../utils/mvpChanges.js';
 import { COMPLETENESS_STATUS_COLOR } from '../../utils/completeness.js';
-import { buildMvpChangeLog } from '../../utils/mvpChangeLog.js';
-import { MvpChangeLog } from './MvpChangeLog.js';
 
 type Tone = 'success' | 'info' | 'warning' | 'error' | 'default';
 interface Tag {
@@ -26,8 +21,6 @@ interface Tag {
 interface MvpChangeSummaryProps {
   mvp?: IMvpProjectDetail | null;
   audit?: IAuditDetail | null;
-  /** Scrolls the preview to an element of the published page (REV-119) */
-  onShowSection?: (anchor: string) => void;
 }
 
 /** One kind of change: an icon tile, its name, a tag saying what happened, and the details */
@@ -108,40 +101,17 @@ const Stat: React.FC<{ value: React.ReactNode; label: string; before?: React.Rea
   </Box>
 );
 
-const Swatch: React.FC<{ color?: string; caption: string; empty: string }> = ({ color, caption, empty }) => (
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-    <Box
-      aria-hidden
-      sx={{
-        width: 28,
-        height: 28,
-        borderRadius: 1.5,
-        flexShrink: 0,
-        border: '1px dashed',
-        borderColor: color ? 'transparent' : 'border.strong',
-        // The swatch shows the stored brand color itself, not a theme token
-        backgroundColor: color ?? 'transparent',
-      }}
-    />
-    <Box sx={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-      <Text muted>{caption}</Text>
-      <Typography variant="caption" sx={{ fontWeight: 700, fontFamily: 'monospace' }}>
-        {color ?? empty}
-      </Typography>
-    </Box>
-  </Box>
-);
-
 const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
   const { t } = useTranslation();
-  const { layout, copySource, sections, palette, businessData, seo, critiqueGuidance } = summary;
+  const { standards, accessibility, performance, businessData } = summary;
   const fieldLabel = (field: string) => t(`completeness.fields.${field}` as 'completeness.fields.phone');
   const checkLabel = (check: string) => t(`seo.checks.${check}` as 'seo.checks.https');
-
-  const paletteTag: Tag | undefined = palette
-    ? palette.original
-      ? { label: t('mvpChanges.tags.changed'), tone: 'warning' }
-      : { label: t('mvpChanges.tags.default'), tone: 'default' }
+  const standardsTag: Tag | undefined = standards
+    ? standards.regressed.length > 0
+      ? { label: t('mvpChanges.tags.check'), tone: 'warning' }
+      : standards.fixed.length > 0
+        ? { label: t('mvpChanges.tags.improved'), tone: 'success' }
+        : undefined
     : undefined;
 
   return (
@@ -149,67 +119,42 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
       component="ul"
       sx={{ listStyle: 'none', m: 0, p: 0, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: 1.25 }}
     >
-      {layout && (
-        <ChangeCard
-          icon={<DashboardCustomizeIcon />}
-          title={t('mvpChanges.layout')}
-          tag={{ label: t('mvpChanges.tags.newLayout'), tone: 'info' }}
-        >
-          <Typography variant="body2" sx={{ fontWeight: 700 }}>
-            {t(`mvpLayout.variants.${layout.variant}`)}
-          </Typography>
-          {layout.rule && <Text muted>{t(`mvpLayout.rules.${layout.rule}`)}</Text>}
+      {standards && (
+        <ChangeCard icon={<TravelExploreIcon />} title={t('mvpChanges.seo')} tag={standardsTag}>
+          <Stat
+            before={standards.originalScore}
+            value={standards.mvpScore}
+            label={t(standards.originalScore !== undefined ? 'mvpChanges.seoScore' : 'mvpChanges.seoMvpScore')}
+          />
+          {standards.fixed.length > 0 && <Text>{t('seo.fixed', { checks: standards.fixed.map(checkLabel).join(', ') })}</Text>}
+          {standards.regressed.length > 0 && (
+            <Text muted>{t('seo.regressed', { checks: standards.regressed.map(checkLabel).join(', ') })}</Text>
+          )}
         </ChangeCard>
       )}
 
-      {copySource && (
-        <ChangeCard
-          icon={<AutoAwesomeIcon />}
-          title={t('mvpChanges.copy')}
-          tag={
-            copySource.actual === 'deterministic'
-              ? { label: t('mvpChanges.tags.template'), tone: 'default' }
-              : { label: t('mvpChanges.tags.rewritten'), tone: 'info' }
-          }
-        >
-          <Typography variant="body2" sx={{ fontWeight: 700, overflowWrap: 'anywhere' }}>
-            {copySource.actual === 'deterministic' ? t('llm.deterministic') : copySource.actual}
-          </Typography>
-          {copySource.requested && <Text muted>{t('llm.requested', { name: copySource.requested })}</Text>}
-        </ChangeCard>
-      )}
-
-      {sections && (
-        <ChangeCard icon={<ViewQuiltOutlinedIcon />} title={t('mvpChanges.sections')}>
-          {(sections.services || sections.trustSignals > 0) && (
+      {performance && (
+        <ChangeCard icon={<SpeedIcon />} title={t('mvpChanges.performance')}>
+          {performance.lcp || performance.cls ? (
             <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2.5 }}>
-              {/* The original count is what the crawler extracted as a list, not everything the site mentions */}
-              {sections.services && (
-                <Stat
-                  before={sections.services.original || '—'}
-                  value={sections.services.mvp}
-                  label={t(sections.services.original === 0 ? 'mvpChanges.servicesNoneFound' : 'mvpChanges.servicesCompared')}
-                />
+              {performance.lcp && (
+                <Stat before={performance.lcp.original?.toFixed(1)} value={performance.lcp.mvp.toFixed(1)} label={t('mvpChanges.lcp')} />
               )}
-              {sections.trustSignals > 0 && <Stat value={sections.trustSignals} label={t('mvpChanges.trustSignals')} />}
+              {performance.cls && (
+                <Stat before={performance.cls.original?.toFixed(2)} value={performance.cls.mvp.toFixed(2)} label={t('mvpChanges.cls')} />
+              )}
             </Box>
+          ) : (
+            <Text muted>{t('mvpChanges.perfNotMeasured', { error: performance.error ?? '' })}</Text>
           )}
-          {sections.about && (
-            <Box>
-              <Chip label={t('mvpChanges.aboutSection')} size="small" color="success" sx={{ height: 22, fontSize: '0.7rem', fontWeight: 600 }} />
-            </Box>
-          )}
+          <Text muted>{t('mvpChanges.measuredOn', { host: performance.host })}</Text>
         </ChangeCard>
       )}
 
-      {palette && (
-        <ChangeCard icon={<PaletteOutlinedIcon />} title={t('mvpChanges.palette')} tag={paletteTag}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.25, flexWrap: 'wrap' }}>
-            <Swatch color={palette.original} caption={t('mvpChanges.paletteOriginal')} empty={t('mvpChanges.paletteNone')} />
-            <ArrowForwardIcon aria-hidden sx={{ fontSize: 16, color: 'text.secondary' }} />
-            <Swatch color={palette.mvp} caption={t('mvpChanges.paletteMvp')} empty={t('mvpChanges.paletteNone')} />
-          </Box>
-          {!palette.original && <Text muted>{t('mvpChanges.paletteDefault')}</Text>}
+      {accessibility && (
+        <ChangeCard icon={<AccessibilityNewIcon />} title={t('mvpChanges.accessibility')}>
+          <Text>{t('mvpChanges.a11yOriginal', { count: accessibility.originalViolations })}</Text>
+          <Text muted>{t('mvpChanges.a11yNotMeasured')}</Text>
         </ChangeCard>
       )}
 
@@ -246,62 +191,18 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
           </Box>
         </ChangeCard>
       )}
-
-      {seo && (
-        <ChangeCard
-          icon={<TravelExploreIcon />}
-          title={t('mvpChanges.seo')}
-          tag={
-            seo.regressed.length > 0
-              ? { label: t('mvpChanges.tags.check'), tone: 'warning' }
-              : { label: t('mvpChanges.tags.improved'), tone: 'success' }
-          }
-        >
-          <Stat
-            before={seo.originalScore}
-            value={seo.mvpScore}
-            label={t(seo.originalScore !== undefined ? 'mvpChanges.seoScore' : 'mvpChanges.seoMvpScore')}
-          />
-          {seo.fixed.length > 0 && (
-            <Text>{t('seo.fixed', { checks: seo.fixed.map(checkLabel).join(', ') })}</Text>
-          )}
-          {seo.regressed.length > 0 && (
-            <Text muted>{t('seo.regressed', { checks: seo.regressed.map(checkLabel).join(', ') })}</Text>
-          )}
-        </ChangeCard>
-      )}
-
-      {critiqueGuidance.length > 0 && (
-        <ChangeCard
-          wide
-          icon={<LightbulbOutlinedIcon />}
-          title={t('mvpChanges.critique')}
-          tag={{ label: t('mvpChanges.tags.guidance'), tone: 'default' }}
-        >
-          <Text muted>{t('mvpChanges.critiqueNote')}</Text>
-          <Box component="ol" sx={{ m: 0, pl: 2.5, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-            {critiqueGuidance.map((win, idx) => (
-              <li key={idx}>
-                <Text>{win}</Text>
-              </li>
-            ))}
-          </Box>
-        </ChangeCard>
-      )}
     </Box>
   );
 };
 
 /**
- * "What changed": the generated MVP compared with the original site (REV-81), built only from
- * data the pipeline stored (AGENTS.md §3.2.2). Renders nothing until an MVP exists.
+ * "What changed": the published MVP compared with the original site (REV-81), from measured facts only
+ * (REV-140, AGENTS.md §3.2.2). Renders nothing until an MVP exists.
  */
-export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit, onShowSection }) => {
+export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit }) => {
   const { t } = useTranslation();
   const [open, setOpen] = useState(true);
   const summary = summarizeMvpChanges(mvp, audit);
-  // Every change with its reason (REV-119), from the same stored MVP, so it follows each re-publish
-  const log = buildMvpChangeLog(mvp, audit) ?? [];
   if (!summary) return null;
 
   return (
@@ -323,15 +224,12 @@ export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit, 
       </Box>
       <Collapse in={open}>
         <Box id="mvp-changes-body" sx={{ pt: 1, pb: 0.5, maxHeight: 520, overflowY: 'auto' }}>
-          {isMvpChangeSummaryEmpty(summary) && log.length === 0 ? (
+          {isMvpChangeSummaryEmpty(summary) ? (
             <Typography variant="caption" color="text.secondary">
               {t('mvpChanges.empty')}
             </Typography>
           ) : (
-            <>
-              {!isMvpChangeSummaryEmpty(summary) && <SummaryCards summary={summary} />}
-              {log.length > 0 && <MvpChangeLog entries={log} onShowSection={onShowSection} />}
-            </>
+            <SummaryCards summary={summary} />
           )}
         </Box>
       </Collapse>
