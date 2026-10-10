@@ -10,6 +10,7 @@ import {
 } from '@revamp/shared-types';
 import { withHtmlDocument } from './html-document.js';
 import { checkPageCss, readMvpTheme } from './mvp-page-css.js';
+import { allowedAttribute, allowedElement, isSvgElement, TEXT_ATTRIBUTES, urlScheme } from './mvp-page-allowlist.js';
 
 // Whether a model-written page may be accepted (REV-136). The model designs the page freely; code makes sure it runs
 // and loads nothing, shows only the site's own images, declares the theme variables, leaves every contact to a
@@ -25,8 +26,6 @@ export interface MvpPageCheckResult {
 /** `{{name}}` as the model writes it; the name is checked separately, so `{{ Phone }}` is caught too */
 export const PLACEHOLDER_PATTERN = /\{\{([^{}]*)\}\}/g;
 
-const ACTIVE_ELEMENTS = 'script, iframe, frame, frameset, object, embed, applet, form, base, portal';
-const MEDIA_ELEMENTS = 'video, audio, track';
 const FONT_ORIGINS = new Set(['https://fonts.googleapis.com', 'https://fonts.gstatic.com']);
 const originOf = (url: string) => {
   try {
@@ -36,8 +35,12 @@ const originOf = (url: string) => {
   }
 };
 const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
-/** A phone-like run: digits with spaces, dashes or brackets between, at least 9 digits (dates and prices stay below) */
-const PHONE = /(?:\+|\b)\d[\d\s()-]{6,}\d/g;
+/** A phone-like run: digits with spaces, dots, dashes or brackets between, at least 9 digits (dates and prices stay below) */
+const PHONE = /(?:\+|\b)\d[\d\s().-]{6,}\d/g;
+/** Registry and bank numbers a business prints in its footer; a long digit run right after one of these is not a phone */
+const REGISTRY_NUMBER = /(?:\b(?:NIP|REGON|KRS|PESEL|IBAN|BIC|SWIFT|VAT|EIN|konto|rachunek|account|bank|PVM|УНП|ИНН|ОГРН|КПП|БИК|ОКПО)\b[^\d]{0,15}|\b[A-Z]{2}\d{2}\s?)$/iu;
+/** CSS string literals: text that `content` can put on the page */
+const CSS_STRING = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g;
 const MAX_MESSAGES_PER_CODE = 5;
 
 const textNodes = (doc: Document): Text[] => {
@@ -45,7 +48,7 @@ const textNodes = (doc: Document): Text[] => {
   const walk = (node: Node) => {
     for (const child of Array.from(node.childNodes)) {
       if (child.nodeType === 3) nodes.push(child as Text);
-      else if (child.nodeType === 1 && !['STYLE', 'SCRIPT', 'TEMPLATE'].includes((child as Element).tagName)) walk(child);
+      else if (child.nodeType === 1 && (child as Element).tagName.toLowerCase() !== 'style') walk(child);
     }
   };
   walk(doc.documentElement);
@@ -87,16 +90,34 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
   return withHtmlDocument(html, (doc) => {
     const all = Array.from(doc.querySelectorAll('*'));
 
-    // page:script
-    for (const el of Array.from(doc.querySelectorAll(ACTIVE_ELEMENTS))) report('page:script', `<${el.tagName.toLowerCase()}> is not allowed`);
-    for (const el of Array.from(doc.querySelectorAll('meta'))) {
-      if ((el.getAttribute('http-equiv') ?? '').toLowerCase() === 'refresh') report('page:script', '<meta http-equiv="refresh"> is not allowed');
-    }
+    // page:script: only plain content elements and attributes (mvp-page-allowlist.ts), no markup hidden in comments
     for (const el of all) {
-      for (const attr of Array.from(el.attributes)) {
-        if (attr.name.toLowerCase().startsWith('on')) report('page:script', `the ${attr.name} attribute is not allowed`);
-        if (/^(javascript|vbscript):/i.test(attr.value.trim())) report('page:script', `${attr.name}="${attr.value.trim().slice(0, 40)}" runs code`);
+      if (!allowedElement(el)) {
+        report('page:script', `<${el.tagName.toLowerCase()}> is not allowed`);
+        continue;
       }
+      for (const attr of Array.from(el.attributes)) {
+        if (!allowedAttribute(el, attr.name)) report('page:script', `the ${attr.name} attribute is not allowed on <${el.tagName.toLowerCase()}>`);
+      }
+    }
+    const comments: string[] = [];
+    const collectComments = (node: Node) => {
+      for (const child of Array.from(node.childNodes)) {
+        if (child.nodeType === 8) comments.push(child.textContent ?? '');
+        else if (child.nodeType === 1) collectComments(child);
+      }
+    };
+    collectComments(doc);
+    if (comments.some((c) => /[<>]/.test(c))) report('page:script', 'comments may not contain "<" or ">"');
+
+    // Links: same page, relative or http(s); contacts only through placeholders
+    for (const el of Array.from(doc.querySelectorAll('a[href]'))) {
+      const href = el.getAttribute('href') ?? '';
+      const scheme = urlScheme(href);
+      if (!scheme || scheme === 'http' || scheme === 'https') continue;
+      if (['tel', 'mailto', 'sms'].includes(scheme)) {
+        report('page:contact', `href="${href.trim().slice(0, 40)}" writes a contact out; use href="{{phone}}" or href="{{email}}"`);
+      } else report('page:script', `a ${scheme}: link is not allowed; links are https, relative or #anchors`);
     }
 
     // page:external
@@ -106,12 +127,11 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
       const fonts = (rel.includes('stylesheet') || rel.includes('preconnect')) && FONT_ORIGINS.has(originOf(href));
       if (!fonts) report('page:external', `<link rel="${rel.join(' ')}" href="${href.slice(0, 80)}"> is not allowed; only Google Fonts may be linked`);
     }
-    for (const el of Array.from(doc.querySelectorAll(MEDIA_ELEMENTS))) report('page:external', `<${el.tagName.toLowerCase()}> is not allowed`);
     for (const el of Array.from(doc.querySelectorAll('source'))) {
       if (el.parentElement?.tagName !== 'PICTURE') report('page:external', '<source> is only allowed inside <picture>');
     }
 
-    // page:image
+    // page:image; inside SVG, references stay on the page (href="#id", url(#id))
     const checkImage = (url: string) => {
       if (!allowedImages.has(url)) report('page:image', `${url.slice(0, 80)} is not one of the site's images`);
     };
@@ -121,9 +141,15 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
       const srcset = el.getAttribute('srcset');
       if (srcset) for (const entry of srcset.split(',')) checkImage(entry.trim().split(/\s+/)[0] ?? '');
     }
-    for (const el of Array.from(doc.querySelectorAll('image, use'))) {
-      const href = el.getAttribute('href') ?? el.getAttribute('xlink:href') ?? '';
-      if (href && !href.startsWith('#')) checkImage(href.trim());
+    for (const el of all.filter(isSvgElement)) {
+      for (const attr of Array.from(el.attributes)) {
+        const name = attr.name.toLowerCase();
+        const value = attr.value.trim();
+        if ((name === 'href' || name === 'xlink:href') && !value.startsWith('#')) report('page:external', `<${el.tagName.toLowerCase()} ${name}="${value.slice(0, 60)}"> must point to an element on the page`);
+        for (const url of value.matchAll(/url\(([^)]*)\)/gi)) {
+          if (!/^\s*['"]?#[\w-]+['"]?\s*$/.test(url[1] ?? '')) report('page:external', `${name}="${value.slice(0, 60)}" must point to an element on the page`);
+        }
+      }
     }
 
     // page:css and page:theme
@@ -138,7 +164,23 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
       report('page:theme', `:root must declare ${missing.map((key) => MVP_THEME_VARS[key]).join(', ')}`);
     }
 
+    const cssStrings = [...styleBlocks, ...Array.from(doc.querySelectorAll('[style]')).map((el) => el.getAttribute('style') ?? '')].flatMap((css) =>
+      Array.from(css.matchAll(CSS_STRING), (m) => m[1] ?? m[2] ?? ''),
+    );
+
     // page:placeholder
+    const strayBraces = (value: string) => {
+      for (const m of value.matchAll(PLACEHOLDER_PATTERN)) {
+        const at = m.index ?? 0;
+        if (value[at - 1] === '{' || value[at + m[0].length] === '}') return true;
+      }
+      const rest = value.replace(PLACEHOLDER_PATTERN, ' ');
+      return rest.includes('{{') || rest.includes('}}');
+    };
+    if ([...textNodes(doc).map((n) => n.textContent ?? ''), ...all.flatMap((el) => Array.from(el.attributes, (a) => a.value))].some(strayBraces)) {
+      report('page:placeholder', 'a placeholder must be written whole, as {{name}}, with no other braces around it');
+    }
+    if (cssStrings.some((text) => text.includes('{{'))) report('page:placeholder', 'placeholders cannot go in CSS');
     const placeholderName = (raw: string) => {
       if (!/^[a-z]+$/.test(raw)) {
         report('page:placeholder', `{{${raw}}} is not a placeholder; write the name in lowercase with no spaces`);
@@ -166,18 +208,24 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
       if (el.getAttribute('id') === 'booking') report('page:placeholder', 'id="booking" is reserved for the booking form, which is added for you');
     }
 
-    // page:contact
+    // page:contact: the text, the attributes a visitor reads, CSS strings and links
     const checkContact = (value: string, where: string) => {
       const text = value.replace(PLACEHOLDER_PATTERN, ' ');
       if (EMAIL.test(text)) report('page:contact', `${where} has an email address; use {{email}}`);
-      const phone = Array.from(text.matchAll(PHONE)).some((m) => (m[0].match(/\d/g) ?? []).length >= 9);
+      const phone = Array.from(text.matchAll(PHONE)).some(
+        (m) => (m[0].match(/\d/g) ?? []).length >= 9 && !REGISTRY_NUMBER.test(text.slice(Math.max(0, (m.index ?? 0) - 30), m.index)),
+      );
       if (phone) report('page:contact', `${where} has a phone number; use {{phone}}`);
     };
     for (const node of textNodes(doc)) checkContact(node.textContent ?? '', 'the text');
-    for (const el of Array.from(doc.querySelectorAll('[href]'))) {
-      const href = (el.getAttribute('href') ?? '').trim();
-      if (/^(tel|mailto|sms):/i.test(href)) report('page:contact', `href="${href.slice(0, 40)}" writes a contact out; use href="{{phone}}" or href="{{email}}"`);
-      else checkContact(href, 'a link');
+    for (const el of all) {
+      for (const attr of Array.from(el.attributes)) {
+        if (TEXT_ATTRIBUTES.has(attr.name.toLowerCase())) checkContact(attr.value, `the ${attr.name} attribute`);
+      }
+    }
+    for (const text of cssStrings) checkContact(text, 'the CSS');
+    for (const el of Array.from(doc.querySelectorAll('a[href]'))) {
+      if (!urlScheme(el.getAttribute('href') ?? '')) checkContact(el.getAttribute('href') ?? '', 'a link');
     }
 
     // page:h1
