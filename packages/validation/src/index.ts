@@ -68,6 +68,8 @@ import {
   MVP_GROUNDING_KINDS,
   MVP_PAGE_FAILURES,
   MVP_PAGE_VERSION_KINDS,
+  MVP_FONT_CHOICES,
+  MVP_MIN_CONTRAST,
   MVP_PLACEHOLDERS,
 } from '@revamp/shared-types';
 
@@ -772,27 +774,6 @@ export function summarizeCompletenessReport(
   };
 }
 
-/**
- * Schema for PATCH /api/v1/mvp/:id/tokens
- */
-export const UpdateMvpTokensSchema = z.object({
-  primaryColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
-  secondaryColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
-  accentColor: z.string().regex(/^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$/).optional(),
-  headline: z.string().max(90).optional(),
-  subheadline: z.string().max(180).optional(),
-  services: z
-    .array(
-      z.object({
-        title: z.string().max(50),
-        description: z.string().max(120),
-        icon: z.string().optional(),
-      }),
-    )
-    .optional(),
-});
-
-export type UpdateMvpTokensDto = z.infer<typeof UpdateMvpTokensSchema>;
 
 /**
  * Schema for POST /api/v1/outreach/:id/approve (HITL Gate)
@@ -1992,6 +1973,60 @@ export const MvpThemeControlsSchema = z
   })
   .strict();
 
+/** WCAG 2.x relative luminance of a `#rrggbb` color */
+export function relativeLuminance(hex: string): number {
+  const channel = (i: number) => {
+    const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
+}
+
+/** WCAG 2.x contrast ratio of two `#rrggbb` colors, 1 to 21, in either order */
+export function contrastRatio(a: string, b: string): number {
+  const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x) as [number, number];
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+/**
+ * PATCH /api/v1/mvp/:id/tokens (REV-139): the operator's palette and fonts over the model's theme. A group given
+ * replaces the saved one, `null` clears it, a missing one is kept. The text must read on the background and the
+ * surface (WCAG AA), and the fonts are one of the fixed pairings.
+ */
+export const UpdateMvpTokensSchema = z
+  .object({
+    colors: z
+      .object({ primary: mvpHex, accent: mvpHex, bg: mvpHex, surface: mvpHex, text: mvpHex })
+      .strict()
+      .superRefine((colors, ctx) => {
+        const low = [colors.bg, colors.surface].find((under) => contrastRatio(colors.text, under) < MVP_MIN_CONTRAST);
+        if (low) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['text'],
+            message: `The text color must have a contrast of at least ${MVP_MIN_CONTRAST}:1 on ${low === colors.bg ? 'the background' : 'the surface'}`,
+          });
+        }
+      })
+      .nullable()
+      .optional(),
+    fonts: z
+      .object({ heading: z.string(), body: z.string() })
+      .strict()
+      .refine((fonts) => MVP_FONT_CHOICES.some((choice) => choice.heading === fonts.heading && choice.body === fonts.body), {
+        message: 'The fonts must be one of the listed pairings',
+      })
+      .nullable()
+      .optional(),
+  })
+  .strict()
+  .refine((body) => body.colors !== undefined || body.fonts !== undefined, { message: 'Give colors, fonts or both' });
+
+export type UpdateMvpTokensDto = z.infer<typeof UpdateMvpTokensSchema>;
+
+/** The version number in POST /api/v1/mvp/:id/versions/:n/restore (REV-139) */
+export const MvpVersionParamsSchema = z.object({ n: z.coerce.number().int().min(1) });
+
 export const MvpGroundingFlagSchema = z
   .object({
     kind: z.enum(MVP_GROUNDING_KINDS),
@@ -2007,6 +2042,7 @@ export const MvpPageVersionSchema = z
     n: z.number().int().min(1),
     kind: z.enum(MVP_PAGE_VERSION_KINDS),
     instruction: z.string().max(2000).optional(),
+    from: z.number().int().min(1).optional(),
     jobId: z.string().max(100).optional(),
     provider: z.string().max(50).optional(),
     model: z.string().max(100).optional(),

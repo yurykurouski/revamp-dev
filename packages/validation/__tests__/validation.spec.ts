@@ -3,7 +3,6 @@ import {
   CreateLeadSchema,
   TriggerAuditSchema,
   GenerateMvpSchema,
-  UpdateMvpTokensSchema,
   ApproveOutreachSchema,
   RejectOutreachSchema,
   TestEmailOutreachSchema,
@@ -312,25 +311,6 @@ describe('Validation Schemas (@revamp/validation)', () => {
 
     it('rejects a report without a fields list', () => {
       expect(CompletenessJudgeOutputSchema.safeParse({ unsourced: [] }).success).toBe(false);
-    });
-  });
-
-  describe('UpdateMvpTokensSchema', () => {
-    it('should validate hex colors', () => {
-      const valid = {
-        primaryColor: '#0070f3',
-        secondaryColor: '#fff',
-        accentColor: '#123456',
-        headline: 'Modern Dentistry',
-      };
-      const parsed = UpdateMvpTokensSchema.parse(valid);
-      expect(parsed.primaryColor).toBe('#0070f3');
-      expect(parsed.secondaryColor).toBe('#fff');
-    });
-
-    it('should reject invalid hex color', () => {
-      expect(() => UpdateMvpTokensSchema.parse({ primaryColor: 'blue' })).toThrow();
-      expect(() => UpdateMvpTokensSchema.parse({ primaryColor: '#12345' })).toThrow();
     });
   });
 

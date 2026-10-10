@@ -1,4 +1,5 @@
 import { IMvpSeo, IMvpTheme, MVP_THEME_VARS, MvpThemeKey } from '@revamp/shared-types';
+import { contrastRatio } from '@revamp/validation';
 import { escapeHtml } from '../templates/html.js';
 import { getMvpStrings } from '../templates/mvp-locale.js';
 import { bookingFormHtml, bookingScript } from '../templates/shared/booking.js';
@@ -53,21 +54,10 @@ export const MVP_BOOKING_CSS = `
 
 const isHex = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim());
 
-const luminance = (hex: string) => {
-  const channel = (i: number) => {
-    const c = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
-    return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
-  };
-  return 0.2126 * channel(0) + 0.7152 * channel(1) + 0.0722 * channel(2);
-};
-
 /** Near-black when it reads at least as well as white on the color (the rebuild's rule); white for a color not in hex */
 function onColor(color: string): string {
   if (!isHex(color)) return '#ffffff';
-  const bg = luminance(color);
-  const dark = (Math.max(bg, luminance('#111111')) + 0.05) / (Math.min(bg, luminance('#111111')) + 0.05);
-  const light = (1 + 0.05) / (bg + 0.05);
-  return dark >= light ? '#111111' : '#ffffff';
+  return contrastRatio('#111111', color) >= contrastRatio('#ffffff', color) ? '#111111' : '#ffffff';
 }
 
 function placeholderHref(name: string, contacts: VerifiedContacts): string {
