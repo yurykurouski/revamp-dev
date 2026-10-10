@@ -428,6 +428,14 @@ describe('Prototype step layout picker (REV-84)', () => {
         vi.advanceTimersByTime(ms);
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
       });
+    /**
+     * Moves the clock once the poll is running. The wait is shown as soon as it is committed, but the
+     * effect that starts the poll's interval runs later; under load, a tick before it skips the poll (REV-125)
+     */
+    const poll = async (ms: number) => {
+      await vi.waitFor(() => expect(vi.getTimerCount()).toBeGreaterThan(0));
+      await tick(ms);
+    };
 
     beforeEach(() => {
       // Only the polling interval and the clock are faked; React Query keeps its real timeouts
@@ -455,13 +463,13 @@ describe('Prototype step layout picker (REV-84)', () => {
       // The MVP is polled until the worker has re-published it
       const getMvp = vi.mocked(apiClient.getMvp);
       getMvp.mockClear();
-      await tick(2000);
+      await poll(2000);
       await vi.waitFor(() => expect(getMvp).toHaveBeenCalled());
       expect(rerendering()).toBe(true);
 
       const republished = { ...mvpWith('original', ['rule:rebuild']), editedAt: '2026-09-30T12:00:00.000Z' };
       getMvp.mockResolvedValue(republished);
-      await tick(2000);
+      await poll(2000);
       await vi.waitFor(() => expect(rerendering()).toBe(false));
       // The new page is loaded rather than switched in place
       expect(container.querySelector('iframe')!.getAttribute('src')).not.toBe(src);
@@ -479,7 +487,7 @@ describe('Prototype step layout picker (REV-84)', () => {
       click('original');
       await vi.waitFor(() => expect(rerendering()).toBe(true));
 
-      await tick(92_000);
+      await poll(92_000);
       await vi.waitFor(() => expect(rerendering()).toBe(false), { timeout: 5000 });
     });
 
@@ -494,7 +502,7 @@ describe('Prototype step layout picker (REV-84)', () => {
 
       const republished = { ...mvpWith('compact', ['rule:manual']), editedAt: '2026-09-30T12:00:00.000Z' };
       vi.mocked(apiClient.getMvp).mockResolvedValue(republished);
-      await tick(2000);
+      await poll(2000);
       await vi.waitFor(() => expect(rerendering()).toBe(false));
     });
 
@@ -506,7 +514,7 @@ describe('Prototype step layout picker (REV-84)', () => {
 
       // The worker records the fallback on the layout; the page stays a template, so no new editedAt
       vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('split', ['rebuild:invalid', 'manual:original', 'rule:derived']));
-      await tick(2000);
+      await poll(2000);
       await vi.waitFor(() => expect(rerendering()).toBe(false));
       expect(container.querySelector('.MuiChip-colorWarning')?.textContent).toBe(en.mvpLayout.variants.split);
       expect(pressed()).toEqual(['split']);
@@ -523,7 +531,7 @@ describe('Prototype step layout picker (REV-84)', () => {
 
       // The worker writes back the very same fallback layout, with no new editedAt
       vi.mocked(apiClient.getMvp).mockResolvedValue(mvpWith('bento', fallback));
-      await tick(2000);
+      await poll(2000);
       await vi.waitFor(() => expect(rerendering()).toBe(false));
       expect(pressed()).toEqual(['bento']);
 
