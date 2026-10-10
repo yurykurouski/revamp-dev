@@ -1942,8 +1942,6 @@ export const API_ERROR_CODES = [
   'MVP_PREVIOUS_GENERATOR',
   'MVP_VERSION_NOT_FOUND',
   'MVP_VERSION_UNUSABLE',
-  // REV-138's refusal on the old routes; removed with them in REV-139 Task 5
-  'MVP_MODEL_DESIGNED',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',

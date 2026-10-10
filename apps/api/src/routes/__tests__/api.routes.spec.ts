@@ -10,10 +10,9 @@ import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import * as auditQueue from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
-import { addMvpRelayoutJob } from '../../queues/deploy.queue.js';
 import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { sendTestEmailJob } from '../../queues/email-test.queue.js';
-import { runMvpEditJob } from '../../queues/mvp-edit.queue.js';
+import { runMvpPageJob } from '../../queues/mvp-page.queue.js';
 import { env } from '../../config/env.js';
 import { redisConnection } from '../../queues/connection.js';
 import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
@@ -40,8 +39,10 @@ vi.mock('../../queues/email.queue.js', () => ({
 vi.mock('../../queues/email-test.queue.js', () => ({
   sendTestEmailJob: vi.fn(),
 }));
-vi.mock('../../queues/mvp-edit.queue.js', () => ({
-  runMvpEditJob: vi.fn(),
+vi.mock('../../queues/mvp-page.queue.js', () => ({
+  runMvpPageJob: vi.fn(),
+  MVP_PAGE_CHANGE_WAIT_MS: 420_000,
+  MVP_PAGE_PUBLISH_WAIT_MS: 120_000,
 }));
 
 describe('API Routes Integration Tests (Supertest)', () => {
@@ -1253,338 +1254,16 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
   });
 
-  describe('the old layout and design routes refuse a model-designed MVP (REV-138)', () => {
+  describe('changes to a model-designed MVP (REV-139)', () => {
     const projectId = new mongoose.Types.ObjectId().toString();
     const leadId = new mongoose.Types.ObjectId().toString();
-
-    it.each([
-      ['patch', 'tokens', { primaryColor: '#4F46E5' }],
-      ['patch', 'layout', { variant: 'bento' }],
-      ['post', 'edit', { instruction: 'Make the hero darker' }],
-      ['delete', 'design', undefined],
-    ] as const)('%s /mvp/:id/%s answers 409 MVP_MODEL_DESIGNED and writes nothing', async (method, path, body) => {
-      vi.spyOn(MvpProject, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId: leadId, page: '<!DOCTYPE html><html></html>' }),
-      } as any);
-      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'NEEDS_APPROVAL' }) } as any);
-      const update = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-      const call = request(app)[method](`/api/v1/mvp/${projectId}/${path}`);
-      const res = body ? await call.send(body) : await call;
-      expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('MVP_MODEL_DESIGNED');
-      expect(update).not.toHaveBeenCalled();
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-    });
-  });
-
-  describe('PATCH /api/v1/mvp/:id/tokens', () => {
-    const projectId = new mongoose.Types.ObjectId().toString();
-    const leadId = new mongoose.Types.ObjectId().toString();
-    const auditId = new mongoose.Types.ObjectId().toString();
-    const project = (colorPalette: Record<string, string> = { primary: '#d0001c' }) => ({
-      _id: projectId,
-      leadId,
-      auditId,
-      colorPalette,
-    });
-    const mockProject = (doc: unknown) =>
-      vi.spyOn(MvpProject, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
-    const mockLead = (status: string | null) =>
-      vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
-      } as any);
-    const mockSave = (doc: unknown) =>
-      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
-
-    it('should save the palette, return the updated MVP and re-render the published MVP (REV-90)', async () => {
-      mockProject(project());
-      mockLead('NEEDS_APPROVAL');
-      const saved = project({ primary: '#4F46E5', secondary: '#A5B4FC', accent: '#4F46E5' });
-      const updateSpy = mockSave(saved);
-
-      const res = await request(app)
-        .patch(`/api/v1/mvp/${projectId}/tokens`)
-        .send({
-          primaryColor: '#4F46E5',
-          secondaryColor: '#A5B4FC',
-          accentColor: '#4F46E5',
-        });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.colorPalette).toEqual(saved.colorPalette);
-      expect(updateSpy).toHaveBeenCalledWith(
-        projectId,
-        {
-          $set: {
-            'colorPalette.primary': '#4F46E5',
-            'colorPalette.secondary': '#A5B4FC',
-            'colorPalette.accent': '#4F46E5',
-          },
-        },
-        { new: true },
-      );
-      // The same debounced re-publish as a layout change; never a new generation
-      expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
-      expect(addAiGenerationJob).not.toHaveBeenCalled();
-      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
-    });
-
-    it('should only set the colors present in the body (REV-65)', async () => {
-      mockProject(project());
-      mockLead('NEEDS_APPROVAL');
-      const updateSpy = mockSave(project({ primary: '#123456' }));
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#123456' });
-
-      expect(res.status).toBe(200);
-      expect(updateSpy).toHaveBeenCalledWith(projectId, { $set: { 'colorPalette.primary': '#123456' } }, { new: true });
-    });
-
-    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED', 'AUDITED'])(
-      'should return 409 MVP_PALETTE_CHANGE_NOT_ALLOWED while the lead is %s (REV-90)',
-      async (status) => {
-        mockProject(project());
-        mockLead(status);
-        const updateSpy = mockSave(null);
-
-        const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
-
-        expect(res.status).toBe(409);
-        expect(res.body).toEqual({
-          success: false,
-          error: {
-            code: 'MVP_PALETTE_CHANGE_NOT_ALLOWED',
-            message: `The MVP palette cannot be changed while the lead is ${status}`,
-            details: { status },
-          },
-        });
-        expect(updateSpy).not.toHaveBeenCalled();
-        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-      },
-    );
-
-    it('should return 400 INVALID_ID for an id that is not an ObjectId and write nothing (REV-65)', async () => {
-      const findSpy = vi.spyOn(MvpProject, 'findById');
-      const updateSpy = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-
-      const res = await request(app).patch('/api/v1/mvp/demo/tokens').send({ primaryColor: '#4F46E5' });
-
-      expect(res.status).toBe(400);
-      expect(res.body).toEqual({
-        success: false,
-        error: { code: 'INVALID_ID', message: 'A valid 24-character hexadecimal ObjectId is required' },
-      });
-      expect(findSpy).not.toHaveBeenCalled();
-      expect(updateSpy).not.toHaveBeenCalled();
-    });
-
-    it('should return 404 MVP_NOT_FOUND for an unknown MVP id (REV-65)', async () => {
-      mockProject(null);
-      const updateSpy = mockSave(null);
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
-
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } });
-      expect(updateSpy).not.toHaveBeenCalled();
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-    });
-
-    it('should return 404 LEAD_NOT_FOUND when the MVP has no lead', async () => {
-      mockProject(project());
-      mockLead(null);
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
-
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-    });
-
-    it('should return 500 when the re-render cannot be queued', async () => {
-      mockProject(project());
-      mockLead('NEEDS_APPROVAL');
-      mockSave(project({ primary: '#4F46E5' }));
-      vi.mocked(addMvpRelayoutJob).mockRejectedValueOnce(new Error('Redis down'));
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/tokens`).send({ primaryColor: '#4F46E5' });
-
-      expect(res.status).toBe(500);
-      expect(res.body.success).toBe(false);
-    });
-
-    it('should return 400 when primaryColor is an invalid hex string', async () => {
-      const res = await request(app)
-        .patch('/api/v1/mvp/demo/tokens')
-        .send({
-          primaryColor: 'invalid-hex',
-        });
-
-      expect(res.status).toBe(400);
-      expect(res.body.success).toBe(false);
-    });
-  });
-
-  describe('PATCH /api/v1/mvp/:id/layout (REV-84)', () => {
-    const projectId = new mongoose.Types.ObjectId().toString();
-    const leadId = new mongoose.Types.ObjectId().toString();
-    const auditId = new mongoose.Types.ObjectId().toString();
-    const project = (variant = 'bento', reasons = ['rule:default', 'complexity:MULTI_PAGE', 'images:3']) => ({
-      _id: projectId,
-      leadId,
-      auditId,
-      layout: { variant, reasons },
-    });
-    const mockProject = (doc: unknown) =>
-      vi.spyOn(MvpProject, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
-    const mockLead = (status: string | null) =>
-      vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
-      } as any);
-    const mockSave = (doc: unknown) =>
-      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) } as any);
-
-    it('saves the layout as the operator choice and queues a re-render of the published MVP', async () => {
-      mockProject(project());
-      mockLead('NEEDS_APPROVAL');
-      const saved = { ...project('split', ['rule:manual', 'complexity:MULTI_PAGE', 'images:3']) };
-      const saveSpy = mockSave(saved);
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data.layout).toEqual(saved.layout);
-      // The facts behind the automatic choice stay; the rule becomes the operator's
-      expect(saveSpy).toHaveBeenCalledWith(
-        projectId,
-        { $set: { layout: { variant: 'split', reasons: ['rule:manual', 'complexity:MULTI_PAGE', 'images:3'] } }, $unset: { renderFailure: '' } },
-        { new: true },
-      );
-      expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
-      // A layout change is never a new generation (no LLM call)
-      expect(addAiGenerationJob).not.toHaveBeenCalled();
-      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
-    });
-
-    it('keeps the look derived from the original site under the picked layout (REV-104)', async () => {
-      const design = { sectionOrder: ['gallery', 'services'], header: { links: true } };
-      mockProject({ ...project('split', ['rule:derived', 'hero:side-right']), layout: { variant: 'split', reasons: ['rule:derived', 'hero:side-right'], design } });
-      mockLead('NEEDS_APPROVAL');
-      const saveSpy = mockSave(project('bento', ['rule:manual']));
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'bento' });
-
-      expect(res.status).toBe(200);
-      expect(saveSpy).toHaveBeenCalledWith(
-        projectId,
-        { $set: { layout: { variant: 'bento', reasons: ['rule:manual', 'hero:side-right'], design } }, $unset: { renderFailure: '' } },
-        { new: true },
-      );
-    });
-
-    it('saves a layout on an MVP generated before layouts were recorded', async () => {
-      mockProject({ ...project(), layout: undefined });
-      mockLead('NEEDS_APPROVAL');
-      const saveSpy = mockSave(project('editorial', ['rule:manual']));
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'editorial' });
-
-      expect(res.status).toBe(200);
-      expect(saveSpy).toHaveBeenCalledWith(
-        projectId,
-        { $set: { layout: { variant: 'editorial', reasons: ['rule:manual'] } }, $unset: { renderFailure: '' } },
-        { new: true },
-      );
-    });
-
-    it('answers 200 without writing or re-rendering when the MVP already uses the layout', async () => {
-      mockProject(project('compact'));
-      mockLead('NEEDS_APPROVAL');
-      const saveSpy = mockSave(null);
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'compact' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.data.layout.variant).toBe('compact');
-      expect(saveSpy).not.toHaveBeenCalled();
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-    });
-
-    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED', 'AUDITED'])(
-      'returns 409 MVP_LAYOUT_CHANGE_NOT_ALLOWED while the lead is %s',
-      async (status) => {
-        mockProject(project());
-        mockLead(status);
-        const saveSpy = mockSave(null);
-
-        const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
-
-        expect(res.status).toBe(409);
-        expect(res.body).toEqual({
-          success: false,
-          error: {
-            code: 'MVP_LAYOUT_CHANGE_NOT_ALLOWED',
-            message: `The MVP layout cannot be changed while the lead is ${status}`,
-            details: { status },
-          },
-        });
-        expect(saveSpy).not.toHaveBeenCalled();
-        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-      },
-    );
-
-    it('returns 400 INVALID_ID for an id that is not an ObjectId', async () => {
-      const findSpy = vi.spyOn(MvpProject, 'findById');
-      const res = await request(app).patch('/api/v1/mvp/demo/layout').send({ variant: 'split' });
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('INVALID_ID');
-      expect(findSpy).not.toHaveBeenCalled();
-    });
-
-    it.each([{}, { variant: 'masonry' }, { variant: 3 }])('returns 400 VALIDATION_ERROR for body %j', async (body) => {
-      const findSpy = vi.spyOn(MvpProject, 'findById');
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send(body);
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('VALIDATION_ERROR');
-      expect(findSpy).not.toHaveBeenCalled();
-    });
-
-    it('returns 404 MVP_NOT_FOUND for an unknown MVP id', async () => {
-      mockProject(null);
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } });
-    });
-
-    it('returns 404 LEAD_NOT_FOUND when the MVP has no lead', async () => {
-      mockProject(project());
-      mockLead(null);
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-    });
-
-    it('returns 500 when the re-render cannot be queued', async () => {
-      mockProject(project());
-      mockLead('NEEDS_APPROVAL');
-      mockSave(project('split', ['rule:manual']));
-      vi.mocked(addMvpRelayoutJob).mockRejectedValueOnce(new Error('Redis down'));
-
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
-
-      expect(res.status).toBe(500);
-      expect(res.body.success).toBe(false);
-    });
-  });
-
-  describe('POST /api/v1/mvp/:id/edit (REV-85)', () => {
-    const projectId = new mongoose.Types.ObjectId().toString();
-    const leadId = new mongoose.Types.ObjectId().toString();
-    const project = { _id: projectId, leadId, layout: { variant: 'bento', reasons: [] } };
-    const instruction = 'Make the headline punchier';
+    const versions = [
+      { n: 1, kind: 'generate', storagePath: 'v/s/versions/1.html', createdAt: '2026-10-10T10:00:00.000Z' },
+      { n: 2, kind: 'change', instruction: 'ciemniej', storagePath: 'v/s/versions/2.html', createdAt: '2026-10-10T11:00:00.000Z' },
+    ];
+    const project = { _id: projectId, leadId, page: '<!DOCTYPE html><html></html>', versions };
+    const saved = { ...project, editedAt: '2026-10-10T12:00:00.000Z' };
+    const colors = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#ffffff', text: '#222222' };
     const mockProject = (...docs: unknown[]) => {
       const spy = vi.spyOn(MvpProject, 'findById');
       for (const doc of docs) spy.mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(doc) } as any);
@@ -1594,448 +1273,199 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.spyOn(Lead, 'findById').mockReturnValue({
         exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
       } as any);
-
-    it('applies the change through the workers and returns the result with the saved MVP', async () => {
-      const saved = { ...project, layout: { variant: 'split', reasons: ['rule:manual'] }, editedAt: '2026-09-28T07:00:00.000Z' };
-      mockProject(project, saved);
-      mockLead('NEEDS_APPROVAL');
-      const result = { applied: true, summary: 'Punchier headline and a split layout', changes: ['content', 'layout'] };
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
-
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: `  ${instruction} ` });
-
-      expect(res.status).toBe(200);
-      expect(res.body.success).toBe(true);
-      expect(res.body.data).toEqual({ ...result, mvp: saved });
-      expect(runMvpEditJob).toHaveBeenCalledWith({ mvpProjectId: projectId, instruction });
-      // A change is never a new generation, and the lead's status stays as it is
-      expect(addAiGenerationJob).not.toHaveBeenCalled();
-      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
-    });
-
-    it('answers 200 with the model reason when nothing could be changed', async () => {
-      mockProject(project, project);
-      mockLead('NEEDS_APPROVAL');
-      const result = { applied: false, summary: 'The site lists no prices, so none were added.', changes: [] };
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
-
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Add prices' });
-
-      expect(res.status).toBe(200);
-      expect(res.body.message).toBe('Nothing was changed');
-      expect(res.body.data).toEqual({ ...result, mvp: project });
-    });
-
-    it('returns 502 MVP_EDIT_FAILED with the worker reason, e.g. no LLM configured', async () => {
-      mockProject(project);
-      mockLead('NEEDS_APPROVAL');
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'failed', reason: 'No LLM provider is configured' });
-
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
-
-      expect(res.status).toBe(502);
-      expect(res.body).toEqual({
-        success: false,
-        error: { code: 'MVP_EDIT_FAILED', message: 'The change was not applied: No LLM provider is configured' },
-      });
-    });
-
-    it('returns 504 MVP_EDIT_TIMEOUT when the workers do not answer in time', async () => {
-      mockProject(project);
-      mockLead('NEEDS_APPROVAL');
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'timeout' });
-
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
-
-      expect(res.status).toBe(504);
-      expect(res.body.error.code).toBe('MVP_EDIT_TIMEOUT');
-    });
-
-    it.each(['GENERATING', 'SCHEDULED', 'SENT', 'REJECTED', 'AUDITED'])(
-      'returns 409 MVP_EDIT_NOT_ALLOWED while the lead is %s',
-      async (status) => {
-        mockProject(project);
-        mockLead(status);
-
-        const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
-
-        expect(res.status).toBe(409);
-        expect(res.body).toEqual({
-          success: false,
-          error: {
-            code: 'MVP_EDIT_NOT_ALLOWED',
-            message: `The MVP cannot be changed while the lead is ${status}`,
-            details: { status },
-          },
-        });
-        expect(runMvpEditJob).not.toHaveBeenCalled();
-      },
-    );
-
-    it('returns 400 INVALID_ID for an id that is not an ObjectId', async () => {
-      const findSpy = vi.spyOn(MvpProject, 'findById');
-      const res = await request(app).post('/api/v1/mvp/demo/edit').send({ instruction });
-      expect(res.status).toBe(400);
-      expect(res.body.error.code).toBe('INVALID_ID');
-      expect(findSpy).not.toHaveBeenCalled();
-    });
-
-    it.each([{}, { instruction: 'ab' }, { instruction: 'a'.repeat(501) }, { instruction: 7 }])(
-      'returns 400 VALIDATION_ERROR for body %j',
-      async (body) => {
-        const findSpy = vi.spyOn(MvpProject, 'findById');
-        const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send(body);
-        expect(res.status).toBe(400);
-        expect(res.body.error.code).toBe('VALIDATION_ERROR');
-        expect(findSpy).not.toHaveBeenCalled();
-        expect(runMvpEditJob).not.toHaveBeenCalled();
-      },
-    );
-
-    it('returns 404 MVP_NOT_FOUND for an unknown MVP id', async () => {
-      mockProject(null);
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('MVP_NOT_FOUND');
-      expect(runMvpEditJob).not.toHaveBeenCalled();
-    });
-
-    it('returns 404 LEAD_NOT_FOUND when the MVP has no lead', async () => {
-      mockProject(project);
-      mockLead(null);
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
-      expect(runMvpEditJob).not.toHaveBeenCalled();
-    });
-
-    it('returns 500 when the change cannot be queued', async () => {
-      mockProject(project);
-      mockLead('NEEDS_APPROVAL');
-      vi.mocked(runMvpEditJob).mockRejectedValueOnce(new Error('Redis down'));
-
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction });
-
-      expect(res.status).toBe(500);
-      expect(res.body.success).toBe(false);
-    });
-  });
-
-  describe('DELETE /api/v1/mvp/:id/design (REV-92)', () => {
-    const projectId = new mongoose.Types.ObjectId().toString();
-    const leadId = new mongoose.Types.ObjectId().toString();
-    const project = { _id: projectId, leadId, design: { hidden: ['gallery'] } };
-    const mockProject = (...docs: unknown[]) => {
-      const spy = vi.spyOn(MvpProject, 'findById');
-      for (const doc of docs) spy.mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(doc) } as any);
-      return spy;
-    };
-    const mockLead = (status: string | null) =>
-      vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue(status ? { _id: leadId, status } : null),
-      } as any);
-
-    it('drops the design through the workers, without a model, and returns the saved MVP', async () => {
-      const saved = { _id: projectId, leadId, editedAt: '2026-09-28T18:00:00.000Z' };
-      mockProject(project, saved);
-      mockLead('NEEDS_APPROVAL');
-      const result = { applied: true, summary: 'The custom design was removed.', changes: ['design'] };
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
-
-      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
-
-      expect(res.status).toBe(200);
-      expect(res.body.data).toEqual({ ...result, mvp: saved });
-      expect(runMvpEditJob).toHaveBeenCalledWith({ mvpProjectId: projectId, instruction: '', action: 'reset-design' });
-    });
-
-    it.each(['GENERATING', 'SCHEDULED', 'SENT'])('returns 409 MVP_EDIT_NOT_ALLOWED while the lead is %s', async (status) => {
-      mockProject(project);
-      mockLead(status);
-      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
-      expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('MVP_EDIT_NOT_ALLOWED');
-      expect(runMvpEditJob).not.toHaveBeenCalled();
-    });
-
-    it('returns 400 INVALID_ID and 404 MVP_NOT_FOUND', async () => {
-      expect((await request(app).delete('/api/v1/mvp/demo/design')).body.error.code).toBe('INVALID_ID');
-      mockProject(null);
-      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
-      expect(res.status).toBe(404);
-      expect(res.body.error.code).toBe('MVP_NOT_FOUND');
-    });
-
-    it('returns 502 MVP_EDIT_FAILED and 504 MVP_EDIT_TIMEOUT from the workers', async () => {
-      mockProject(project);
-      mockLead('NEEDS_APPROVAL');
-      vi.mocked(runMvpEditJob).mockResolvedValueOnce({ status: 'failed', reason: 'Storage unavailable' });
-      const failed = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
-      expect(failed.status).toBe(502);
-      expect(failed.body.error.message).toBe('The change was not applied: Storage unavailable');
-
-      mockProject(project);
-      vi.mocked(runMvpEditJob).mockResolvedValueOnce({ status: 'timeout' });
-      expect((await request(app).delete(`/api/v1/mvp/${projectId}/design`)).status).toBe(504);
-    });
-  });
-
-  describe('rebuilt MVPs (REV-110)', () => {
-    const projectId = new mongoose.Types.ObjectId().toString();
-    const leadId = new mongoose.Types.ObjectId().toString();
-    const auditId = new mongoose.Types.ObjectId().toString();
-    const mockProject = (variant: string, rebuildLevel?: string) =>
-      vi.spyOn(MvpProject, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({
-          _id: projectId,
-          leadId,
-          auditId,
-          layout: { variant, reasons: ['rule:derived'], ...(rebuildLevel ? { rebuildLevel } : {}) },
-        }),
-      } as any);
-    const mockLead = (status: string) =>
-      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, status }) } as any);
-    const rebuildableAudit = {
-      siteSections: {
-        sections: [{ index: 1, role: 'hero' }],
-        skipped: [],
-        coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
-        source: 'llm',
-      },
-    };
-    const mockAudit = (doc: unknown) =>
-      vi.spyOn(Audit, 'findById').mockReturnValue({
-        select: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(doc) }),
-      } as any);
+    const edit = (id = projectId) => request(app).post(`/api/v1/mvp/${id}/edit`).send({ instruction: '  Krótszy nagłówek ' });
+    const tokens = (body: unknown, id = projectId) => request(app).patch(`/api/v1/mvp/${id}/tokens`).send(body as object);
+    const restore = (n: string | number, id = projectId) => request(app).post(`/api/v1/mvp/${id}/versions/${n}/restore`);
 
     beforeEach(() => {
-      vi.mocked(addMvpRelayoutJob).mockClear();
-      vi.mocked(runMvpEditJob).mockClear();
+      vi.mocked(runMvpPageJob).mockReset();
     });
 
-    it('runs a free-text change on the rebuild through the workers (REV-111)', async () => {
-      mockProject('original');
-      mockLead('NEEDS_APPROVAL');
-      const result = { applied: true, summary: 'Moved the reviews up', changes: ['design'] };
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
-      const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Reviews first' });
-      expect(res.status).toBe(200);
-      expect(res.body.data).toMatchObject(result);
-      expect(runMvpEditJob).toHaveBeenCalledWith({ mvpProjectId: projectId, instruction: 'Reviews first' });
-    });
-
-    it('runs a design reset on the rebuild through the workers (REV-111)', async () => {
-      mockProject('original');
-      mockLead('NEEDS_APPROVAL');
-      const result = { applied: true, summary: 'The custom design was removed.', changes: ['design'] };
-      vi.mocked(runMvpEditJob).mockResolvedValue({ status: 'done', result } as any);
-      const res = await request(app).delete(`/api/v1/mvp/${projectId}/design`);
-      expect(res.status).toBe(200);
-      expect(runMvpEditJob).toHaveBeenCalledWith(expect.objectContaining({ mvpProjectId: projectId, action: 'reset-design' }));
-    });
-
-    it('refuses a switch to original when the audit has no read sections (pre-REV-109 audit)', async () => {
-      mockProject('split');
-      mockLead('NEEDS_APPROVAL');
-      mockAudit({});
-      const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-      save.mockClear();
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
-      expect(res.status).toBe(409);
-      expect(res.body.error).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', details: { reason: 'rebuild:unread' } });
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-      expect(save).not.toHaveBeenCalled();
-    });
-
-    it('refuses a switch to original when the reading is flat (REV-112)', async () => {
-      mockProject('split');
-      mockLead('NEEDS_APPROVAL');
-      const block = (index: number, chars: number) => ({
-        index, role: 'content', kind: 'other', arrangement: 'text',
-        intro: { text: ['x'.repeat(chars)], links: [] }, items: [], extra: [], images: [], embeds: [], style: {},
-      });
-      mockAudit({
-        siteSections: {
-          sections: [block(0, 4700), block(1, 3500), block(2, 350)],
-          skipped: [],
-          coverage: { pageChars: 8605, capturedChars: 8550, ratio: 0.994, uncaptured: [] },
-          source: 'llm',
-        },
-      });
-      const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-      save.mockClear();
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
-      expect(res.status).toBe(409);
-      expect(res.body.error).toMatchObject({
-        code: 'MVP_REBUILD_UNAVAILABLE',
-        details: { reason: 'rebuild:flat', facts: ['flat:share=0.55', 'flat:headings=0/3'] },
-      });
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-      expect(save).not.toHaveBeenCalled();
-    });
-
-    it.each(['not_configured', 'call_failed', 'invalid_answer', 'ineligible'])(
-      "refuses a switch to original with the vision model's failure in details.reason (%s, REV-132)",
-      async (reason) => {
-        mockProject('split');
+    describe('POST /mvp/:id/edit', () => {
+      it('runs the change on the workers, waits up to 7 min and returns the result with the saved MVP', async () => {
+        mockProject(project, saved);
         mockLead('NEEDS_APPROVAL');
-        const find = mockAudit({ siteSectionsError: 'No vision model for the section grouping', siteSectionsErrorReason: reason });
-        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-        save.mockClear();
-        const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original', level: 'modern' });
-        expect(res.status).toBe(409);
-        expect(res.body.error).toMatchObject({
-          code: 'MVP_REBUILD_UNAVAILABLE',
-          details: { reason: `grouping:${reason}`, error: 'No vision model for the section grouping' },
-        });
-        expect(res.body.error.message).toContain('No vision model for the section grouping');
-        expect(find.mock.results[0]!.value.select).toHaveBeenCalledWith('siteSections siteSectionsError siteSectionsErrorReason');
-        expect(save).not.toHaveBeenCalled();
-        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-      },
-    );
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: true, version: 3 } });
 
-    it('refuses a switch to original on a reading the rules made before REV-132', async () => {
-      mockProject('split');
-      mockLead('NEEDS_APPROVAL');
-      mockAudit({ siteSections: { ...rebuildableAudit.siteSections, source: 'rules' } });
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
-      expect(res.status).toBe(409);
-      expect(res.body.error).toMatchObject({ code: 'MVP_REBUILD_UNAVAILABLE', details: { reason: 'grouping:rules_reading' } });
-    });
+        const res = await edit();
 
-    it('refuses a switch to original when the audit is missing', async () => {
-      mockProject('split');
-      mockLead('NEEDS_APPROVAL');
-      mockAudit(null);
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
-      expect(res.status).toBe(409);
-      expect(res.body.error.code).toBe('MVP_REBUILD_UNAVAILABLE');
-      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-    });
-
-    it('accepts a switch to original when the audit can be rebuilt', async () => {
-      mockProject('split');
-      mockLead('NEEDS_APPROVAL');
-      mockAudit({
-        siteSections: {
-          sections: [{ index: 1, role: 'hero' }],
-          skipped: [],
-          coverage: { pageChars: 1, capturedChars: 1, ratio: 1, uncaptured: [] },
-          source: 'llm',
-        },
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ applied: true, version: 3, mvp: saved });
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'change', instruction: 'Krótszy nagłówek' }, 420_000);
+        expect(addAiGenerationJob).not.toHaveBeenCalled();
+        expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
       });
-      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'original', reasons: [] } }),
-      } as any);
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'original' });
-      expect(res.status).toBe(200);
-      expect(addMvpRelayoutJob).toHaveBeenCalledWith({ leadId, auditId, mvpProjectId: projectId });
-    });
 
-    describe('rebuild level (REV-114)', () => {
-      const patch = (body: unknown) => request(app).patch(`/api/v1/mvp/${projectId}/layout`).send(body as object);
+      it('answers 200 when nothing changed', async () => {
+        mockProject(project, project);
+        mockLead('NEEDS_APPROVAL');
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: false, reason: 'unchanged' } });
+        const res = await edit();
+        expect(res.status).toBe(200);
+        expect(res.body.message).toBe('Nothing was changed');
+        expect(res.body.data).toMatchObject({ applied: false, reason: 'unchanged' });
+      });
 
-      it('returns 400 VALIDATION_ERROR for a level on a layout other than original', async () => {
-        const find = vi.spyOn(MvpProject, 'findById');
-        find.mockClear();
-        const res = await patch({ variant: 'bento', level: 'modern' });
+      it('answers 502 MVP_EDIT_FAILED with the reason and the problems when the model gave no page', async () => {
+        mockProject(project);
+        mockLead('NEEDS_APPROVAL');
+        const problems = [{ code: 'page:script', message: 'a script' }];
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: false, reason: 'invalid_page', message: 'rejected twice', problems } });
+        const res = await edit();
+        expect(res.status).toBe(502);
+        expect(res.body.error).toMatchObject({ code: 'MVP_EDIT_FAILED', details: { reason: 'invalid_page', problems } });
+        expect(res.body.error.message).toContain('rejected twice');
+      });
+
+      it('answers 502 when the job failed and 504 when it timed out', async () => {
+        mockProject(project);
+        mockLead('NEEDS_APPROVAL');
+        vi.mocked(runMvpPageJob).mockResolvedValueOnce({ status: 'failed', reason: 'The MVP cannot be changed while the lead is GENERATING.' });
+        const failed = await edit();
+        expect(failed.status).toBe(502);
+        expect(failed.body.error.message).toContain('GENERATING');
+
+        mockProject(project);
+        vi.mocked(runMvpPageJob).mockResolvedValueOnce({ status: 'timeout' });
+        const late = await edit();
+        expect(late.status).toBe(504);
+        expect(late.body.error.code).toBe('MVP_EDIT_TIMEOUT');
+      });
+
+      it('answers 400 for an instruction that is too short', async () => {
+        const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'x' });
         expect(res.status).toBe(400);
         expect(res.body.error.code).toBe('VALIDATION_ERROR');
-        expect(find).not.toHaveBeenCalled();
+        expect(runMvpPageJob).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('PATCH /mvp/:id/tokens', () => {
+      it('runs the palette and fonts on the workers and returns the saved MVP', async () => {
+        mockProject(project, saved);
+        mockLead('NEEDS_APPROVAL');
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: true } });
+
+        const res = await tokens({ colors, fonts: null });
+
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ applied: true, mvp: saved });
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'controls', controls: { colors, fonts: null } }, 120_000);
+        expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
       });
 
-      it('returns 409 MVP_REBUILD_UNAVAILABLE for original at the modern level on an audit that cannot be rebuilt', async () => {
-        mockProject('split');
-        mockLead('NEEDS_APPROVAL');
-        mockAudit({});
-        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-        save.mockClear();
-        const res = await patch({ variant: 'original', level: 'modern' });
-        expect(res.status).toBe(409);
-        expect(res.body.error.code).toBe('MVP_REBUILD_UNAVAILABLE');
-        expect(save).not.toHaveBeenCalled();
-        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+      it('answers 400 for text below 4.5:1 on the background, naming colors.text', async () => {
+        const res = await tokens({ colors: { ...colors, text: '#777777' } });
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        expect(res.body.error.message).toContain('colors.text');
+        expect(res.body.error.details.issues[0].path).toEqual(['colors', 'text']);
+        expect(runMvpPageJob).not.toHaveBeenCalled();
       });
 
       it.each([
-        ['an explicit faithful level on an MVP without one', undefined, { variant: 'original', level: 'faithful' }],
-        ['no level on an MVP without one', undefined, { variant: 'original' }],
-        ['the same modern level', 'modern', { variant: 'original', level: 'modern' }],
-        ['no level on a modern MVP', 'modern', { variant: 'original' }],
-      ])('answers 200 without writing or queueing for %s', async (_name, current, body) => {
-        mockProject('original', current);
-        mockLead('NEEDS_APPROVAL');
-        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate');
-        save.mockClear();
-        const res = await patch(body);
-        expect(res.status).toBe(200);
-        expect(save).not.toHaveBeenCalled();
-        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
-      });
-
-      it('saves and queues a level change on the same original layout', async () => {
-        mockProject('original');
-        mockLead('NEEDS_APPROVAL');
-        mockAudit(rebuildableAudit);
-        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-          exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'original', reasons: [] } }),
-        } as any);
-        save.mockClear();
-        const res = await patch({ variant: 'original', level: 'modern' });
-        expect(res.status).toBe(200);
-        expect(save).toHaveBeenCalledTimes(1);
-        const layout = (save.mock.calls[0]![1] as any).$set.layout;
-        expect(layout.variant).toBe('original');
-        expect(layout.rebuildLevel).toBe('modern');
-        expect(layout.reasons).toEqual(expect.arrayContaining(['rule:manual', 'modernize:manual']));
-        expect(addMvpRelayoutJob).toHaveBeenCalledTimes(1);
-      });
-
-      it('queues the same pick again after a failed re-render, so the model is asked again (REV-132)', async () => {
-        vi.spyOn(MvpProject, 'findById').mockReturnValue({
-          exec: vi.fn().mockResolvedValue({
-            _id: projectId,
-            leadId,
-            auditId,
-            layout: { variant: 'original', rebuildLevel: 'modern', reasons: ['rule:manual', 'modernize:manual'] },
-            renderFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', at: new Date() },
-          }),
-        } as any);
-        mockLead('NEEDS_APPROVAL');
-        mockAudit(rebuildableAudit);
-        const save = vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-          exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'original', rebuildLevel: 'modern', reasons: [] } }),
-        } as any);
-        save.mockClear();
-        const res = await patch({ variant: 'original', level: 'modern' });
-        expect(res.status).toBe(200);
-        // The new pick clears the old failure, so the dashboard waits for this job's outcome
-        expect(save.mock.calls[0]![1]).toMatchObject({ $unset: { renderFailure: '' } });
-        expect(addMvpRelayoutJob).toHaveBeenCalledTimes(1);
-      });
-
-      it('returns 409 MVP_LAYOUT_CHANGE_NOT_ALLOWED outside review', async () => {
-        mockProject('original');
-        mockLead('SENT');
-        const res = await patch({ variant: 'original', level: 'modern' });
-        expect(res.status).toBe(409);
-        expect(res.body.error.code).toBe('MVP_LAYOUT_CHANGE_NOT_ALLOWED');
-        expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+        ['an unlisted font pair', { fonts: { heading: 'Lora', body: 'Inter' } }],
+        ['the old palette body', { primaryColor: '#4F46E5' }],
+        ['an empty body', {}],
+      ])('answers 400 for %s', async (_name, body) => {
+        const res = await tokens(body);
+        expect(res.status).toBe(400);
+        expect(runMvpPageJob).not.toHaveBeenCalled();
       });
     });
 
-    it('still allows a switch away from the rebuild without reading the audit', async () => {
-      mockProject('original');
-      mockLead('NEEDS_APPROVAL');
-      const audit = mockAudit({});
-      audit.mockClear();
-      vi.spyOn(MvpProject, 'findByIdAndUpdate').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId, layout: { variant: 'split', reasons: [] } }),
-      } as any);
-      const res = await request(app).patch(`/api/v1/mvp/${projectId}/layout`).send({ variant: 'split' });
-      expect(res.status).toBe(200);
-      expect(audit).not.toHaveBeenCalled();
+    describe('POST /mvp/:id/versions/:n/restore', () => {
+      it('runs the restore on the workers and returns the result with the saved MVP', async () => {
+        mockProject(project, saved);
+        mockLead('NEEDS_APPROVAL');
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: true, version: 3 } });
+        const res = await restore(1);
+        expect(res.status).toBe(200);
+        expect(res.body.data).toEqual({ applied: true, version: 3, mvp: saved });
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'restore', version: 1 }, 120_000);
+      });
+
+      it.each(['0', 'x', '1.5'])('answers 400 for version %s', async (n) => {
+        const res = await restore(n);
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      });
+
+      it('answers 404 MVP_VERSION_NOT_FOUND for a version that is not listed', async () => {
+        mockProject(project);
+        mockLead('NEEDS_APPROVAL');
+        const res = await restore(9);
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('MVP_VERSION_NOT_FOUND');
+        expect(runMvpPageJob).not.toHaveBeenCalled();
+      });
+
+      it('answers 409 MVP_VERSION_UNUSABLE with the problems when the version no longer fits the audit', async () => {
+        mockProject(project);
+        mockLead('NEEDS_APPROVAL');
+        const problems = [{ code: 'page:placeholder', message: '{{hours}} has no verified value' }];
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: false, reason: 'unusable_version', message: 'Version 1 no longer fits the audit', problems } });
+        const res = await restore(1);
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatchObject({ code: 'MVP_VERSION_UNUSABLE', details: { problems } });
+      });
+    });
+
+    describe('every change', () => {
+      const routes = [
+        ['edit', (id?: string) => edit(id)],
+        ['tokens', (id?: string) => tokens({ fonts: null }, id)],
+        ['restore', (id?: string) => restore(1, id)],
+      ] as const;
+
+      it.each(routes)('%s answers 400 INVALID_ID for a malformed id', async (_name, call) => {
+        const res = await call('not-an-id');
+        expect(res.status).toBe(400);
+        expect(res.body.error.code).toBe('INVALID_ID');
+      });
+
+      it.each(routes)('%s answers 404 MVP_NOT_FOUND for an unknown MVP', async (_name, call) => {
+        mockProject(null);
+        const res = await call();
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('MVP_NOT_FOUND');
+        expect(runMvpPageJob).not.toHaveBeenCalled();
+      });
+
+      it.each(routes)('%s answers 409 MVP_PREVIOUS_GENERATOR for an MVP made before the model designed pages', async (_name, call) => {
+        mockProject({ _id: projectId, leadId, layout: { variant: 'bento', reasons: [] } });
+        mockLead('NEEDS_APPROVAL');
+        const res = await call();
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('MVP_PREVIOUS_GENERATOR');
+        expect(runMvpPageJob).not.toHaveBeenCalled();
+      });
+
+      it.each(routes)('%s answers 404 LEAD_NOT_FOUND when the lead is gone', async (_name, call) => {
+        mockProject(project);
+        mockLead(null);
+        const res = await call();
+        expect(res.status).toBe(404);
+        expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+      });
+
+      it.each(routes)('%s answers 409 MVP_EDIT_NOT_ALLOWED outside review', async (_name, call) => {
+        mockProject(project);
+        mockLead('SCHEDULED');
+        const res = await call();
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatchObject({ code: 'MVP_EDIT_NOT_ALLOWED', details: { status: 'SCHEDULED' } });
+        expect(runMvpPageJob).not.toHaveBeenCalled();
+      });
+    });
+
+    it.each([
+      ['patch', 'layout', { variant: 'bento' }],
+      ['delete', 'design', undefined],
+    ] as const)('%s /mvp/:id/%s is gone (404)', async (method, path, body) => {
+      const call = request(app)[method](`/api/v1/mvp/${projectId}/${path}`);
+      const res = body ? await call.send(body) : await call;
+      expect(res.status).toBe(404);
     });
   });
 

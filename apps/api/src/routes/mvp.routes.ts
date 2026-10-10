@@ -2,26 +2,22 @@ import { Router, Request, Response, NextFunction } from 'express';
 import {
   EditMvpSchema,
   GenerateMvpSchema,
-  UpdateMvpLayoutSchema,
+  MvpVersionParamsSchema,
   UpdateMvpTokensSchema,
   canChangeMvpLayout,
-  manualMvpLayout,
   mvpGenerationMode,
-  rebuildEligibility,
 } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { Lead } from '../models/Lead.model.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
-import { addMvpRelayoutJob } from '../queues/deploy.queue.js';
-import { runMvpEditJob } from '../queues/mvp-edit.queue.js';
+import { MVP_PAGE_CHANGE_WAIT_MS, MVP_PAGE_PUBLISH_WAIT_MS, runMvpPageJob } from '../queues/mvp-page.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { redisConnection } from '../queues/connection.js';
 import { getLlmProviders } from '../services/llm-providers.service.js';
 import { env } from '../config/env.js';
-import { findLlmProvider } from '@revamp/shared-types';
+import { IMvpPageJobData, IMvpPageVersion, findLlmProvider } from '@revamp/shared-types';
 import mongoose from 'mongoose';
 
 const router = Router();
@@ -155,229 +151,105 @@ router.get('/preview/:slug', async (req: Request, res: Response, next: NextFunct
   }
 });
 
-// PATCH /mvp/:id/tokens: saves the palette on the MVP record by its _id, then the published bundle is
-
-/** The layout, palette and design tools edit the rebuild or Bento copy; a page the model designed has neither (REV-138) */
-function refuseModelDesigned(project: { page?: string | null }): void {
-  if (project.page) {
-    throw new AppError(409, 'MVP_MODEL_DESIGNED', 'This MVP was designed by the model: the layout and design tools do not apply to it');
+/**
+ * The MVP a change applies to (REV-139): a page the model designed, whose lead is still in review. A change re-publishes
+ * the page, so the rule of a regeneration applies: never while one runs, nor once outreach is scheduled or sent (HITL).
+ */
+async function loadChangeableMvp(id: string) {
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
   }
+  const project = await MvpProject.findById(id).exec();
+  if (!project) {
+    throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
+  }
+  if (!project.page) {
+    throw new AppError(409, 'MVP_PREVIOUS_GENERATOR', 'This MVP was made by the previous generator: only a regeneration applies to it');
+  }
+  const lead = await Lead.findById(project.leadId).exec();
+  if (!lead) {
+    throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
+  }
+  if (!canChangeMvpLayout(lead.status)) {
+    throw new AppError(409, 'MVP_EDIT_NOT_ALLOWED', `The MVP cannot be changed while the lead is ${lead.status}`, { status: lead.status });
+  }
+  return project;
 }
 
-// re-rendered in it (REV-90), under the same rule as a layout change; no LLM call.
+/**
+ * Runs a change on the workers and answers with its result and the MVP as saved after it (REV-85, REV-139). Nothing
+ * is published when the model gave no page or a version no longer fits the audit; the reason is returned.
+ */
+async function runPageChange(res: Response, id: string, job: Omit<IMvpPageJobData, 'deadline' | 'mvpProjectId'>, waitMs: number): Promise<void> {
+  const outcome = await runMvpPageJob({ mvpProjectId: id, ...job }, waitMs);
+  if (outcome.status === 'timeout') {
+    throw new AppError(504, 'MVP_EDIT_TIMEOUT', 'The change took too long and was not applied. Check that the workers are running, then try again.');
+  }
+  if (outcome.status === 'failed') {
+    throw new AppError(502, 'MVP_EDIT_FAILED', `The change was not applied: ${outcome.reason}`);
+  }
+  const result = outcome.result;
+  if (!result.applied && result.reason === 'unusable_version') {
+    throw new AppError(409, 'MVP_VERSION_UNUSABLE', result.message, { problems: result.problems ?? [] });
+  }
+  if (!result.applied && result.reason !== 'unchanged') {
+    throw new AppError(502, 'MVP_EDIT_FAILED', `The change was not applied: ${result.message}`, {
+      reason: result.reason,
+      ...(result.problems ? { problems: result.problems } : {}),
+    });
+  }
+  const saved = await MvpProject.findById(id).exec();
+  res.status(200).json({
+    success: true,
+    message: result.applied ? 'Change applied; the published MVP was re-published' : 'Nothing was changed',
+    data: { ...result, mvp: saved },
+  });
+}
+
+// POST /mvp/:id/edit: the operator describes a change in their own words; the model returns the whole page with it,
+// checked like a generation, and the page is re-published as a new version (REV-139). The request waits for the result.
+router.post(
+  '/:id/edit',
+  validateBody(EditMvpSchema),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const id = req.params['id'] || '';
+      await loadChangeableMvp(id);
+      await runPageChange(res, id, { action: 'change', instruction: req.body.instruction }, MVP_PAGE_CHANGE_WAIT_MS);
+    } catch (error) {
+      next(error);
+    }
+  },
+);
+
+// PATCH /mvp/:id/tokens: the operator's palette and fonts over the model's theme (REV-139); readable text and a listed
+// font pairing are required by the schema. The stored page is re-finished and re-published; no model call, no version.
 router.patch(
   '/:id/tokens',
   validateBody(UpdateMvpTokensSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const id = req.params['id'] || '';
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
-      }
-
-      const { primaryColor, secondaryColor, accentColor } = req.body;
-      const palette: Record<string, string> = {};
-      if (primaryColor) palette['colorPalette.primary'] = primaryColor;
-      if (secondaryColor) palette['colorPalette.secondary'] = secondaryColor;
-      if (accentColor) palette['colorPalette.accent'] = accentColor;
-
-      // An unknown id used to answer 200 without writing anything (REV-65)
-      const project = await MvpProject.findById(id).exec();
-      if (!project) {
-        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
-      }
-      refuseModelDesigned(project);
-      const lead = await Lead.findById(project.leadId).exec();
-      if (!lead) {
-        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
-      }
-      // The published page changes, so the same rule as a layout change applies (HITL)
-      if (!canChangeMvpLayout(lead.status)) {
-        throw new AppError(
-          409,
-          'MVP_PALETTE_CHANGE_NOT_ALLOWED',
-          `The MVP palette cannot be changed while the lead is ${lead.status}`,
-          { status: lead.status },
-        );
-      }
-
-      const saved = await MvpProject.findByIdAndUpdate(id, { $set: palette }, { new: true }).exec();
-      if (!saved) {
-        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
-      }
-
-      await addMvpRelayoutJob({
-        leadId: lead._id.toString(),
-        auditId: saved.auditId.toString(),
-        mvpProjectId: saved._id.toString(),
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'Palette saved; the published MVP is being re-rendered in it',
-        data: saved,
-      });
+      await loadChangeableMvp(id);
+      await runPageChange(res, id, { action: 'controls', controls: req.body }, MVP_PAGE_PUBLISH_WAIT_MS);
     } catch (error) {
       next(error);
     }
   },
 );
 
-// PATCH /mvp/:id/layout: the operator's layout for the MVP (REV-84). Saved on the MVP record by its
-// _id, then the published bundle is re-rendered from the stored copy in that layout; no LLM call.
-router.patch(
-  '/:id/layout',
-  validateBody(UpdateMvpLayoutSchema),
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      const id = req.params['id'] || '';
-      if (!mongoose.Types.ObjectId.isValid(id)) {
-        throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
-      }
-      const { variant, level } = req.body;
-
-      const project = await MvpProject.findById(id).exec();
-      if (!project) {
-        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
-      }
-      refuseModelDesigned(project);
-      const lead = await Lead.findById(project.leadId).exec();
-      if (!lead) {
-        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
-      }
-      // Same rule as a regeneration: never while one runs, nor once outreach is scheduled or sent (HITL)
-      if (!canChangeMvpLayout(lead.status)) {
-        throw new AppError(
-          409,
-          'MVP_LAYOUT_CHANGE_NOT_ALLOWED',
-          `The MVP layout cannot be changed while the lead is ${lead.status}`,
-          { status: lead.status },
-        );
-      }
-
-      // A missing level counts as faithful; a request without one keeps the current level (REV-114)
-      const currentLevel = project.layout?.rebuildLevel ?? 'faithful';
-      // A pick whose last re-render failed is queued again, so the model is asked again (REV-132)
-      if (project.layout?.variant === variant && (level ?? currentLevel) === currentLevel && !project.renderFailure) {
-        res.status(200).json({ success: true, message: 'The MVP already uses this layout', data: project });
-        return;
-      }
-
-      // A switch to the rebuild (REV-110) only when the audit's sections can be rebuilt
-      if (variant === 'original') {
-        const audit = await Audit.findById(project.auditId).select('siteSections siteSectionsError siteSectionsErrorReason').exec();
-        const eligible = rebuildEligibility(audit);
-        if (!eligible.ok) {
-          // The vision model's failure, when it gave no sections (REV-132)
-          const visionError = audit?.siteSectionsErrorReason ? audit.siteSectionsError : undefined;
-          throw new AppError(
-            409,
-            'MVP_REBUILD_UNAVAILABLE',
-            `The original site cannot be rebuilt: ${eligible.reason}${visionError ? ` (${visionError})` : ''}`,
-            { reason: eligible.reason, facts: eligible.facts, ...(visionError ? { error: visionError } : {}) },
-          );
-        }
-      }
-
-      // The audit facts and the derived look (REV-104) are kept; the rule becomes the operator's
-      const layout = manualMvpLayout(project.layout, variant, level);
-      // The new pick's outcome replaces the last failed re-render's (REV-132)
-      const saved = await MvpProject.findByIdAndUpdate(id, { $set: { layout }, $unset: { renderFailure: '' } }, { new: true }).exec();
-      if (!saved) {
-        throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
-      }
-
-      await addMvpRelayoutJob({
-        leadId: lead._id.toString(),
-        auditId: saved.auditId.toString(),
-        mvpProjectId: saved._id.toString(),
-      });
-
-      res.status(200).json({
-        success: true,
-        message: 'Layout saved; the published MVP is being re-rendered in it',
-        data: saved,
-      });
-    } catch (error) {
-      next(error);
-    }
-  },
-);
-
-/**
- * Runs a change to an MVP on the workers and answers with its result (REV-85, REV-92). The MVP must exist
- * and its lead must still be in review: the published page changes, so the rule of a layout change applies.
- */
-async function runMvpChange(
-  req: Request,
-  res: Response,
-  job: { action: 'edit' | 'reset-design'; instruction: string },
-): Promise<void> {
-  const id = req.params['id'] || '';
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    throw new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
-  }
-
-  const project = await MvpProject.findById(id).exec();
-  if (!project) {
-    throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
-  }
-  refuseModelDesigned(project);
-  const lead = await Lead.findById(project.leadId).exec();
-  if (!lead) {
-    throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
-  }
-  if (!canChangeMvpLayout(lead.status)) {
-    throw new AppError(409, 'MVP_EDIT_NOT_ALLOWED', `The MVP cannot be changed while the lead is ${lead.status}`, {
-      status: lead.status,
-    });
-  }
-
-  const outcome = await runMvpEditJob({
-    mvpProjectId: id,
-    instruction: job.instruction,
-    ...(job.action === 'reset-design' ? { action: 'reset-design' as const } : {}),
-  });
-  if (outcome.status === 'timeout') {
-    throw new AppError(
-      504,
-      'MVP_EDIT_TIMEOUT',
-      'The change took too long and was not applied. Check that the workers are running, then try again.',
-    );
-  }
-  if (outcome.status === 'failed') {
-    throw new AppError(502, 'MVP_EDIT_FAILED', `The change was not applied: ${outcome.reason}`);
-  }
-
-  const saved = await MvpProject.findById(id).exec();
-  res.status(200).json({
-    success: true,
-    message: outcome.result.applied ? 'Change applied; the published MVP was re-rendered' : 'Nothing was changed',
-    data: { ...outcome.result, mvp: saved ?? project },
-  });
-}
-
-// POST /mvp/:id/edit: the operator describes a change in their own words; the workers' LLM applies it to
-// the copy, palette, layout and/or custom design (REV-92) under Strict Grounding, or to the rebuilt page's
-// sections by id (REV-111), and the page is re-published (REV-85). The request waits for the result, so the operator is told what changed or why
-// nothing did.
-router.post(
-  '/:id/edit',
-  validateBody(EditMvpSchema),
-  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-    try {
-      await runMvpChange(req, res, { action: 'edit', instruction: req.body.instruction });
-    } catch (error) {
-      next(error);
-    }
-  },
-);
-
-// DELETE /mvp/:id/design: drops the MVP's custom design and re-publishes it in the template's own look
-// (REV-92); no LLM call.
-router.delete('/:id/design', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+// POST /mvp/:id/versions/:n/restore: re-publishes a stored version of the page, with the current palette and fonts, as
+// a new version (REV-139); a version that no longer fits the audit (contacts, images) is refused with its problems.
+router.post('/:id/versions/:n/restore', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    await runMvpChange(req, res, { action: 'reset-design', instruction: '' });
+    // A ZodError answers 400 VALIDATION_ERROR through the error handler
+    const { n } = MvpVersionParamsSchema.parse({ n: req.params['n'] });
+    const id = req.params['id'] || '';
+    const project = await loadChangeableMvp(id);
+    if (!((project.versions ?? []) as IMvpPageVersion[]).some((v) => v.n === n)) {
+      throw new AppError(404, 'MVP_VERSION_NOT_FOUND', `Version ${n} of this MVP is not stored`);
+    }
+    await runPageChange(res, id, { action: 'restore', version: n }, MVP_PAGE_PUBLISH_WAIT_MS);
   } catch (error) {
     next(error);
   }
