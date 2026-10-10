@@ -108,6 +108,25 @@ describe('LlmClient (REV-37)', () => {
       ]);
     });
 
+    it('calls OpenAI and Gemini without JSON mode for a text answer (REV-137)', async () => {
+      const openai = okJson({ choices: [{ message: { content: '<!DOCTYPE html>' } }] });
+      await new LlmClient({ provider: 'openai', openaiApiKey: 'k', customFetcher: openai as unknown as typeof fetch }).complete({ ...request, format: 'text' });
+      expect(JSON.parse(openai.mock.calls[0]![1].body)).not.toHaveProperty('response_format');
+      const gemini = okJson({ candidates: [{ content: { parts: [{ text: '<!DOCTYPE html>' }] } }] });
+      await new LlmClient({ provider: 'gemini', geminiApiKey: 'k', customFetcher: gemini as unknown as typeof fetch }).complete({ ...request, format: 'text' });
+      expect(JSON.parse(gemini.mock.calls[0]![1].body).generationConfig).not.toHaveProperty('responseMimeType');
+    });
+
+    it("passes a call's timeout to the local CLI (REV-137)", async () => {
+      const runner = vi.fn().mockResolvedValue('cli answer');
+      const vision = vi.fn().mockResolvedValue({ text: 'seen' });
+      const client = new LlmClient({ provider: 'claude-cli', claudeCliRunner: runner, claudeCliVisionRunner: vision });
+      await client.complete({ ...request, timeoutMs: 300_000 });
+      await client.complete({ ...request, timeoutMs: 300_000, images: [{ mediaType: 'image/png', data: Buffer.from('x') }] });
+      expect(runner.mock.calls[0]![0]).toMatchObject({ timeoutMs: 300_000 });
+      expect(vision.mock.calls[0]![0]).toMatchObject({ timeoutMs: 300_000 });
+    });
+
     it('calls Gemini with the system prompt folded into the content', async () => {
       const fetcher = okJson({ candidates: [{ content: { parts: [{ text: 'gem' }] } }] });
       const client = new LlmClient({ provider: 'gemini', geminiApiKey: 'key', customFetcher: fetcher as unknown as typeof fetch });

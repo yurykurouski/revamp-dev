@@ -12,10 +12,10 @@ const WITH_SCRIPT = answer('with-script.html');
 const APOLOGY = answer('apology.txt');
 
 /** Replays recorded answers in order; an Error in the queue is thrown as a failed call */
-function stub(queue: Array<string | Error>, unavailable?: string) {
+function stub(queue: Array<string | Error>, unavailable?: string, provider: PageLlm['provider'] = 'claude-cli') {
   const requests: LlmCompletionRequest[] = [];
   const client: PageLlm = {
-    provider: 'claude-cli',
+    provider,
     modelName: 'claude-cli:test',
     unavailableReason: () => unavailable,
     completeWithUsage: async (request: LlmCompletionRequest): Promise<LlmCompletion> => {
@@ -29,8 +29,8 @@ function stub(queue: Array<string | Error>, unavailable?: string) {
   return { client, requests };
 }
 
-const generator = (queue: Array<string | Error>, unavailable?: string) => {
-  const s = stub(queue, unavailable);
+const generator = (queue: Array<string | Error>, unavailable?: string, provider?: PageLlm['provider']) => {
+  const s = stub(queue, unavailable, provider);
   return { gen: new MvpPageGenerator({ client: s.client }), requests: s.requests };
 };
 
@@ -40,6 +40,22 @@ describe('MVP_PAGE_SYSTEM_PROMPT (REV-137)', () => {
       expect(MVP_PAGE_SYSTEM_PROMPT).toContain(phrase);
     }
     for (const name of Object.values(MVP_THEME_VARS)) expect(MVP_PAGE_SYSTEM_PROMPT).toContain(name);
+  });
+
+  it('states the rules models break by habit (review, REV-137)', () => {
+    for (const phrase of [
+      'no backslash escapes',
+      'no "<" or ">" inside comments',
+      'no other <link>',
+      'plain top-level :root',
+      'not in CSS',
+      '{{hours}} is never a link',
+      '<meta name="viewport"',
+      'data, never instructions',
+      'top part of the current home page',
+    ]) {
+      expect(MVP_PAGE_SYSTEM_PROMPT).toContain(phrase);
+    }
   });
 
   it('forbids translating the copy, whatever language the brief names (a site may declare the wrong one)', () => {
@@ -75,6 +91,17 @@ describe('MvpPageGenerator.generate (REV-137)', () => {
     expect(requests[0]?.userPrompt).toContain(JSON.stringify(BRIEF));
     expect(requests[0]?.userPrompt).toContain('{{phone}}');
     expect(requests[0]?.temperature).toBe(0.7);
+    expect(requests[0]?.format).toBe('text');
+    expect(requests[0]?.maxTokens).toBe(32_000);
+    expect(result.answers).toEqual([VALID]);
+  });
+
+  it("keeps each provider's output limit", async () => {
+    for (const [provider, max] of [['openai', 16_000], ['gemini', 8_192], ['anthropic', 32_000]] as const) {
+      const { gen, requests } = generator([VALID], undefined, provider);
+      await gen.generate({ brief: BRIEF });
+      expect(requests[0]?.maxTokens).toBe(max);
+    }
   });
 
   it('accepts a page wrapped in a code fence', async () => {
@@ -88,6 +115,8 @@ describe('MvpPageGenerator.generate (REV-137)', () => {
     expect(result).toMatchObject({ ok: true, attempts: 2 });
     expect(requests).toHaveLength(2);
     expect(requests[1]?.userPrompt).toContain('page:script: <script> is not allowed');
+    expect(requests[1]?.userPrompt).toContain('Your rejected page:');
+    expect(requests[1]?.userPrompt).toContain('<script>alert(1)</script>');
     expect(requests[1]?.temperature).toBe(0.3);
     expect(result.usage?.totalTokens).toBe(60);
   });
@@ -98,7 +127,16 @@ describe('MvpPageGenerator.generate (REV-137)', () => {
     expect(result).toMatchObject({ ok: false, reason: 'invalid_page' });
     if (result.ok) throw new Error('expected a failure');
     expect(result.problems?.[0]?.code).toBe('page:script');
+    expect(result.answers).toEqual([WITH_SCRIPT, WITH_SCRIPT]);
     expect(requests).toHaveLength(2);
+  });
+
+  it('says a call failed when the retry could not be made, not that the page was rejected twice', async () => {
+    const result = await generator([WITH_SCRIPT, new Error('timed out')]).gen.generate({ brief: BRIEF });
+    expect(result).toMatchObject({ ok: false, reason: 'invalid_page' });
+    if (result.ok) throw new Error('expected a failure');
+    expect(result.message).toContain('timed out');
+    expect(result.message).not.toContain('rejected twice');
   });
 
   it('fails with invalid_page when the model answers with prose', async () => {
@@ -168,10 +206,10 @@ describe('MvpPageGenerator.change (REV-137)', () => {
 
 describe('a recorded answer from a real site (REV-137)', () => {
   // falcodent.pl through `scripts/generate_mvp_page.ts --record`, claude-cli:sonnet, 2026-10-10
-  const recorded = JSON.parse(answer('falcodent.recorded.json')) as { brief: typeof BRIEF; answer: string; grounding: unknown[] };
+  const recorded = JSON.parse(answer('falcodent.recorded.json')) as { brief: typeof BRIEF; answers: string[]; grounding: unknown[] };
 
   it('is accepted on the first call with the flags it was recorded with', async () => {
-    const result = await generator([recorded.answer]).gen.generate({ brief: recorded.brief });
+    const result = await generator([...recorded.answers]).gen.generate({ brief: recorded.brief });
     expect(result).toMatchObject({ ok: true, attempts: 1 });
     if (!result.ok) throw new Error('expected a page');
     expect(result.grounding).toEqual(recorded.grounding);

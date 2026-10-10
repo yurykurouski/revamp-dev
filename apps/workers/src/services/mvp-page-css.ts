@@ -63,14 +63,15 @@ const VAR_TO_KEY = new Map<string, MvpThemeKey>(
   (Object.entries(MVP_THEME_VARS) as Array<[MvpThemeKey, string]>).map(([key, name]) => [name, key]),
 );
 
-/** The theme variables declared in `:root` rules, the last declaration of each winning; blocks that don't parse are skipped */
+/** The theme variables declared in top-level `:root` rules, the last declaration of each winning; blocks that don't parse are skipped */
 export function readMvpTheme(cssBlocks: string[]): Partial<IMvpTheme> {
   const theme: Partial<IMvpTheme> = {};
   for (const css of cssBlocks) {
     const root = parse(css);
     if (typeof root === 'string') continue;
     root.walkRules((rule) => {
-      if (rule.selector.trim() !== ':root') return;
+      // Only a top-level :root: a variant inside @media (dark mode, print) is not the page's theme
+      if (rule.selector.trim() !== ':root' || rule.parent?.type !== 'root') return;
       rule.walkDecls((decl) => {
         const key = VAR_TO_KEY.get(decl.prop);
         if (key && decl.value.trim()) theme[key] = decl.value.trim();

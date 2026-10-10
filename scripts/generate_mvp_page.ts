@@ -8,7 +8,7 @@
  * writes `<host>.raw.html` (the model's page, placeholders unfilled) and `<host>.html` (finished with the verified
  * contacts, search tags and booking form). It prints the attempts, model, tokens, grounding flags and the finished
  * page's standards score; on failure the reason and the checks' problems.
- * `--record <dir>` saves `<host>.json` with the brief and the result for the recorded-answer tests.
+ * `--record <dir>` saves `<host>.json` `{ url, brief, answers, result }` (every raw answer) for the recorded-answer tests.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { LLM_PROVIDER_IDS, type LlmProviderId } from '@revamp/shared-types';
@@ -72,7 +72,9 @@ try {
       const tokens = result.usage ? `${result.usage.promptTokens}+${result.usage.completionTokens} tokens` : 'tokens not reported';
       if (recordDir) {
         mkdirSync(recordDir, { recursive: true });
-        writeFileSync(`${recordDir}/${host}.json`, JSON.stringify({ url, brief, result }, null, 2) + '\n');
+        // The shape the recorded-answer tests replay: every raw answer, in call order, with the result
+        const { answers, ...rest } = result;
+        writeFileSync(`${recordDir}/${host}.json`, JSON.stringify({ url, brief, answers, result: rest }, null, 2) + '\n');
       }
       if (!result.ok) {
         console.log(`${host}: FAILED ${result.reason} after ${seconds}s (${result.modelUsed}, ${tokens}): ${result.message}`);

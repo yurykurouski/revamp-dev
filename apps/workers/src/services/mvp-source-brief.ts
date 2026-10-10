@@ -1,5 +1,6 @@
 import { IAudit, ILead, IMvpSourceBrief, MVP_BRIEF_LIMITS, MvpPlaceholder } from '@revamp/shared-types';
 import { MvpSourceBriefSchema } from '@revamp/validation';
+import { contactsIn } from './mvp-page-check.js';
 
 // What the model may read about the business (REV-136). Built by code from the audit's verified data: the original's
 // own copy, services, brand and images. Contact values never enter it; the model gets placeholder names instead and
@@ -55,10 +56,28 @@ function unique<T>(items: T[] | undefined, key: (item: T) => string, max: number
   return out;
 }
 
+const fold = (text: string) => text.toLowerCase().replace(/\s+/g, ' ').trim();
+
+/**
+ * Whether a text carries a contact: an email address or phone number, or the verified address. Such text is left out of
+ * the brief, so no contact value reaches the model; the page shows contacts only through placeholders.
+ */
+function carriesContact(text: string, contacts: VerifiedContacts): boolean {
+  const found = contactsIn(text);
+  if (found.email || found.phone) return true;
+  const address = contacts.address && fold(contacts.address);
+  return Boolean(address && address.length >= 8 && fold(text).includes(address));
+}
+
 export function buildMvpSourceBrief(audit: BriefAudit, lead: BriefLead): IMvpSourceBrief {
   const content = audit.extractedContent;
   const brand = audit.extractedBrandTokens;
   const contacts = verifiedContacts(audit, lead);
+  const clean = (text: string) => !carriesContact(text, contacts);
+  const copyText = (value?: string) => {
+    const v = short(value);
+    return v && clean(v) ? v : undefined;
+  };
   const placeholders: MvpPlaceholder[] = [
     ...(['phone', 'email', 'address', 'hours'] as const).filter((name) => contacts[name]),
     'booking',
@@ -76,12 +95,12 @@ export function buildMvpSourceBrief(audit: BriefAudit, lead: BriefLead): IMvpSou
     return true;
   };
   const text = (s: string) => s.trim();
-  const headings = unique(content?.headings, text, MVP_BRIEF_LIMITS.headings).map(text).filter((h) => fits(h.length));
-  const paragraphs = unique(content?.paragraphs, text, MVP_BRIEF_LIMITS.paragraphs).map(text).filter((p) => fits(p.length));
-  const serviceItems = unique(content?.serviceItems, (s) => s.title, MVP_BRIEF_LIMITS.serviceItems)
+  const headings = unique(content?.headings?.filter(clean), text, MVP_BRIEF_LIMITS.headings).map(text).filter((h) => fits(h.length));
+  const paragraphs = unique(content?.paragraphs?.filter(clean), text, MVP_BRIEF_LIMITS.paragraphs).map(text).filter((p) => fits(p.length));
+  const serviceItems = unique(content?.serviceItems?.filter((s) => clean(`${s.title} ${s.description ?? ''}`)), (s) => s.title, MVP_BRIEF_LIMITS.serviceItems)
     .map((s) => ({ title: s.title.trim(), ...(short(s.description) ? { description: short(s.description) } : {}) }))
     .filter((s) => fits(s.title.length + (s.description?.length ?? 0)));
-  const testimonials = unique(content?.testimonials, (t) => t.text, MVP_BRIEF_LIMITS.testimonials)
+  const testimonials = unique(content?.testimonials?.filter((t) => clean(t.text)), (t) => t.text, MVP_BRIEF_LIMITS.testimonials)
     .map((t) => ({ text: t.text.trim(), ...(filled(t.author) && (t.author ?? '').trim().length <= MAX_NAME ? { author: filled(t.author) } : {}) }))
     .filter((t) => fits(t.text.length));
 
@@ -97,9 +116,9 @@ export function buildMvpSourceBrief(audit: BriefAudit, lead: BriefLead): IMvpSou
     ...(content?.language ? { language: content.language } : {}),
     services: unique((audit.extractedServices ?? []).filter((s) => s.trim().length <= MAX_NAME), (s) => s, MVP_BRIEF_LIMITS.services).map(text),
     copy: {
-      ...(short(content?.title) ? { title: short(content?.title) } : {}),
-      ...(short(content?.metaDescription) ? { metaDescription: short(content?.metaDescription) } : {}),
-      ...(short(content?.h1) ? { h1: short(content?.h1) } : {}),
+      ...(copyText(content?.title) ? { title: copyText(content?.title) } : {}),
+      ...(copyText(content?.metaDescription) ? { metaDescription: copyText(content?.metaDescription) } : {}),
+      ...(copyText(content?.h1) ? { h1: copyText(content?.h1) } : {}),
       headings,
       paragraphs,
       serviceItems,
