@@ -130,7 +130,7 @@ describe('checkMvpPage (REV-136)', () => {
   });
 
   it('page:lang expects English when the brief has no language', () => {
-    const { language: _l, ...brief } = BRIEF;
+    const brief = { ...BRIEF, language: undefined };
     expect(codes(VALID, brief)).toEqual(['page:lang']);
     expect(codes(swap('<html lang="pl">', '<html lang="en-GB">'), brief)).toEqual([]);
   });

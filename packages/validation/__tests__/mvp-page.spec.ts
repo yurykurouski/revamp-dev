@@ -79,8 +79,7 @@ describe('MvpThemeSchema / MvpThemeControlsSchema (REV-136)', () => {
   });
 
   it('rejects a theme without the body font', () => {
-    const { fontBody: _omit, ...rest } = theme;
-    expect(MvpThemeSchema.safeParse(rest).success).toBe(false);
+    expect(MvpThemeSchema.safeParse({ ...theme, fontBody: undefined }).success).toBe(false);
   });
 
   it('accepts empty controls and a single color', () => {
