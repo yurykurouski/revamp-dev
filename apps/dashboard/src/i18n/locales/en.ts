@@ -318,6 +318,7 @@ export const en = {
       apply: 'Apply colors',
       reset: 'Use the page\'s colors',
       contrast: 'Text contrast {{bg}}:1 on background, {{surface}}:1 on surface',
+      invalid: 'Enter each color as #rrggbb',
       contrastLow: 'Text needs at least {{min}}:1 on the background and the surface',
     },
     fonts: {

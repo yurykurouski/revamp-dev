@@ -238,6 +238,8 @@ describe('Design tools for a model-designed page (REV-140)', () => {
     type('Make the headline shorter');
     await act(async () => applyButton().click());
     await vi.waitFor(() => expect(error()!.textContent).toContain('may still be published'));
+    // The API says it may still publish; the panel must not wrap it in "could not apply"
+    expect(error()!.textContent).not.toContain('Could not apply');
   });
 
   it('lists the facts to check under the preview, and Show in preview posts the fact to the frame', () => {

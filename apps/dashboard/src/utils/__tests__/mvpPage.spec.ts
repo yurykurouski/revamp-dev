@@ -44,6 +44,15 @@ describe('model-designed page helpers (REV-140)', () => {
     });
   });
 
+  it('seeds #rrggbb from a short hex or an rgb() color the model declared, and keeps what it cannot read', () => {
+    expect(seedColors({ theme: { ...theme, bg: '#FFF', surface: 'rgb(245, 247, 250)', text: 'rgba(17,17,17,1)' } })).toMatchObject({
+      bg: '#ffffff',
+      surface: '#f5f7fa',
+      text: '#111111',
+    });
+    expect(seedColors({ theme: { ...theme, accent: 'var(--x)' } })!.accent).toBe('var(--x)');
+  });
+
   it('has no colors to seed without a theme, also for an MVP of the previous generator', () => {
     expect(seedColors({})).toBeNull();
     expect(seedColors({ controls: { primary: '#aa0000' } })).toBeNull();

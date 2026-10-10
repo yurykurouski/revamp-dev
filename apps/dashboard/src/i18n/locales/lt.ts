@@ -317,6 +317,7 @@ export const lt: Translation = {
       apply: 'Taikyti spalvas',
       reset: 'Grąžinti puslapio spalvas',
       contrast: 'Teksto kontrastas {{bg}}:1 ant fono, {{surface}}:1 ant paviršiaus',
+      invalid: 'Įveskite kiekvieną spalvą kaip #rrggbb',
       contrastLow: 'Tekstui reikia bent {{min}}:1 kontrasto ant fono ir paviršiaus',
     },
     fonts: {

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Box, Divider, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
-import type { IAuditDetail, ILeadItem, IMvpProjectDetail } from '../../api/client.js';
+import { ApiError, type IAuditDetail, type ILeadItem, type IMvpProjectDetail } from '../../api/client.js';
 import { MvpPageAction, mvpRecordId, useMvpPageMutation } from '../../hooks/useLeads.js';
 import {
   brandColors,
@@ -31,6 +31,8 @@ interface Answer {
   leadId: string;
   outcome?: { text: MvpText; tone: 'success' | 'info' };
   error?: string;
+  /** The API stopped waiting on a running job, which may still publish: its words are shown as they are */
+  timedOut?: boolean;
 }
 
 /**
@@ -56,7 +58,8 @@ export function useMvpDesignTools({ lead, audit, mvp }: UseMvpDesignToolsOptions
         setAnswer({ leadId, outcome: { text: pageResultText(action.action, result), tone: result.applied ? 'success' : 'info' } });
         if (result.applied) onApplied?.();
       },
-      onError: (err) => setAnswer({ leadId, error: err instanceof Error ? err.message : String(err) }),
+      onError: (err) =>
+        setAnswer({ leadId, error: err instanceof Error ? err.message : String(err), timedOut: err instanceof ApiError && err.status === 504 }),
     });
   };
 
@@ -75,6 +78,7 @@ export function useMvpDesignTools({ lead, audit, mvp }: UseMvpDesignToolsOptions
     pendingVersion: running?.action === 'restore' ? running.version : undefined,
     outcome: mine?.outcome ?? null,
     error: mine?.error ?? null,
+    timedOut: Boolean(mine?.timedOut),
     clearAnswer: () => setAnswer(null),
   };
 }
@@ -126,8 +130,8 @@ export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, lead, loc
             </Alert>
           )}
           {tools.error && (
-            <Alert severity="error" onClose={tools.clearAnswer} data-testid="mvp-page-error" sx={{ py: 0 }}>
-              {t('mvpEdit.failed', { message: tools.error })}
+            <Alert severity={tools.timedOut ? 'warning' : 'error'} onClose={tools.clearAnswer} data-testid="mvp-page-error" sx={{ py: 0 }}>
+              {tools.timedOut ? tools.error : t('mvpEdit.failed', { message: tools.error })}
             </Alert>
           )}
           <Divider flexItem />

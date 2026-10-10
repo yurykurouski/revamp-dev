@@ -189,7 +189,7 @@ export function previewScript(): string {
         }
         if (!match) return;
         match.setAttribute('data-revamp-shown', '');
-        match.style.outline = '3px solid var(--rv-accent)';
+        match.style.outline = '3px solid var(${MVP_THEME_VARS.accent}, #f59e0b)';
         match.style.outlineOffset = '4px';
         match.scrollIntoView({ block: 'center', behavior: 'smooth' });
         var shown = match;

@@ -317,6 +317,7 @@ export const pl: Translation = {
       apply: 'Zastosuj kolory',
       reset: 'Przywróć kolory strony',
       contrast: 'Kontrast tekstu {{bg}}:1 na tle, {{surface}}:1 na powierzchni',
+      invalid: 'Podaj każdy kolor jako #rrggbb',
       contrastLow: 'Tekst potrzebuje kontrastu co najmniej {{min}}:1 na tle i na powierzchni',
     },
     fonts: {

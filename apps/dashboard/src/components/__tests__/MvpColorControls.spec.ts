@@ -77,6 +77,7 @@ describe('MvpColorControls (REV-140)', () => {
     act(() => role('accent').click());
     type('#12');
     expect(apply().disabled).toBe(true);
+    expect(container.textContent).toContain('Enter each color as #rrggbb');
     act(() => apply().click());
     expect(onApply).not.toHaveBeenCalled();
   });

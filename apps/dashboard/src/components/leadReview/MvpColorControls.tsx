@@ -118,6 +118,7 @@ export const MvpColorControls: React.FC<MvpColorControlsProps> = ({ seed, saved,
           size="small"
           label={t('mvpPage.colors.hex')}
           value={draft[role]}
+          error={!HEX.test(draft[role])}
           disabled={disabled}
           onChange={(event) => set(event.target.value)}
           inputProps={{ maxLength: 7, spellCheck: false }}
@@ -125,13 +126,13 @@ export const MvpColorControls: React.FC<MvpColorControlsProps> = ({ seed, saved,
           sx={{ width: 120 }}
         />
       </Box>
-      {contrast.valid && (
-        <Typography variant="caption" color={contrast.ok ? 'text.secondary' : 'warning.main'} role="status">
-          {contrast.ok
+      <Typography variant="caption" color={contrast.ok ? 'text.secondary' : 'warning.main'} role="status">
+        {!contrast.valid
+          ? t('mvpPage.colors.invalid')
+          : contrast.ok
             ? t('mvpPage.colors.contrast', { bg: contrast.onBg, surface: contrast.onSurface })
             : t('mvpPage.colors.contrastLow', { min: MVP_MIN_CONTRAST })}
-        </Typography>
-      )}
+      </Typography>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
         {saved && (
           <Button size="small" variant="text" color="inherit" disabled={disabled} onClick={onReset} data-testid="mvp-colors-reset" sx={{ mr: 'auto' }}>

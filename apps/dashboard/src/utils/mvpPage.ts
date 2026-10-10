@@ -20,11 +20,26 @@ const HEX = /^#[0-9a-f]{6}$/i;
 /** A page the model designed declares its theme; an MVP of the previous generator has none */
 export const isModelDesigned = (mvp: Pick<IMvpProjectDetail, 'theme'> | null | undefined): boolean => Boolean(mvp?.theme);
 
-/** The operator's saved colors over the page's theme, lowercase #rrggbb; null without a theme */
+const hex2 = (value: number) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, '0');
+
+/**
+ * A color as #rrggbb when it can be read: #rgb is expanded and rgb()/rgba() converted, since the model may declare
+ * its theme either way. Anything else is kept as it is, for the operator to retype.
+ */
+export function toHexColor(value: string): string {
+  const color = value.trim().toLowerCase();
+  const short = color.match(/^#([0-9a-f])([0-9a-f])([0-9a-f])$/);
+  if (short) return `#${short[1]!.repeat(2)}${short[2]!.repeat(2)}${short[3]!.repeat(2)}`;
+  const rgb = color.match(/^rgba?\(\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*(?:[,/]\s*[\d.]+%?\s*)?\)$/);
+  if (rgb) return `#${hex2(Number(rgb[1]))}${hex2(Number(rgb[2]))}${hex2(Number(rgb[3]))}`;
+  return color;
+}
+
+/** The operator's saved colors over the page's theme, as #rrggbb where they can be read; null without a theme */
 export function seedColors(mvp: Pick<IMvpProjectDetail, 'theme' | 'controls'> | null | undefined): MvpColors | null {
   const theme = mvp?.theme;
   if (!theme) return null;
-  const pick = (role: MvpColorRole) => (mvp.controls?.[role] ?? theme[role]).toLowerCase();
+  const pick = (role: MvpColorRole) => toHexColor(mvp.controls?.[role] ?? theme[role]);
   return Object.fromEntries(MVP_COLOR_ROLES.map((role) => [role, pick(role)])) as MvpColors;
 }
 

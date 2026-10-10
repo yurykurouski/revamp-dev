@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { Window } from 'happy-dom';
+import { MVP_THEME_VARS } from '@revamp/shared-types';
 import { checkMvpStandards } from '../mvp-standards.js';
 import { finishMvpPage, MvpFinishContext } from '../mvp-page-finish.js';
 import { withHtmlDocument } from '../html-document.js';
@@ -186,6 +187,8 @@ describe('showing a flagged fact on request (REV-140)', () => {
     const { scroll, post, shown, window } = await load();
     post({ type: 'REVAMP_SHOW_TEXT', text: '15 lat doświadczenia' });
     expect(shown().map((el) => el.tagName)).toEqual(['P']);
+    // The page's own accent variable, with a fallback, so the outline is never an invalid declaration
+    expect((shown()[0] as HTMLElement).style.outline).toContain(`var(${MVP_THEME_VARS.accent},`);
     expect(scroll).toHaveBeenCalledTimes(1);
     await window.happyDOM.close();
   });
