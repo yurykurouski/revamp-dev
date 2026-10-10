@@ -2012,3 +2012,7 @@ export interface IMvpGroundingFlag {
   /** The text around it on the page, at most 80 characters */
   context: string;
 }
+
+/** Why the model gave no page (REV-137): no provider, every call failed, or every answer was rejected by the checks */
+export const MVP_PAGE_FAILURES = ['not_configured', 'call_failed', 'invalid_page'] as const;
+export type MvpPageFailure = (typeof MVP_PAGE_FAILURES)[number];
