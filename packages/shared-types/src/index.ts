@@ -1923,3 +1923,92 @@ export interface IApiErrorResponse {
   success: false;
   error: IApiError;
 }
+
+// Model-designed MVP page (REV-136): the model writes the page's HTML and CSS from a brief built by code; code checks
+// it, flags facts the original does not support and fills every contact itself.
+
+/** Contacts and the booking anchor, written by the model as `{{name}}` and filled by code */
+export const MVP_PLACEHOLDERS = ['phone', 'email', 'address', 'hours', 'booking'] as const;
+export type MvpPlaceholder = (typeof MVP_PLACEHOLDERS)[number];
+
+/** The CSS custom properties every page declares in `:root`; the operator's palette and font controls override them */
+export const MVP_THEME_VARS = {
+  primary: '--rv-color-primary',
+  accent: '--rv-color-accent',
+  bg: '--rv-color-bg',
+  surface: '--rv-color-surface',
+  text: '--rv-color-text',
+  fontHeading: '--rv-font-heading',
+  fontBody: '--rv-font-body',
+} as const;
+export type MvpThemeKey = keyof typeof MVP_THEME_VARS;
+export type IMvpTheme = Record<MvpThemeKey, string>;
+
+/** Why a model-written page was rejected (`checkMvpPage`) */
+export const MVP_PAGE_CHECKS = [
+  'page:parse',
+  'page:script',
+  'page:external',
+  'page:image',
+  'page:css',
+  'page:theme',
+  'page:placeholder',
+  'page:contact',
+  'page:h1',
+  'page:lang',
+] as const;
+export type MvpPageCheck = (typeof MVP_PAGE_CHECKS)[number];
+
+export interface IMvpPageProblem {
+  code: MvpPageCheck;
+  message: string;
+}
+
+/** The largest page the model may return, in UTF-8 bytes */
+export const MVP_PAGE_MAX_BYTES = 300_000;
+
+/** Caps on what the brief carries, so the prompt stays within budget */
+export const MVP_BRIEF_LIMITS = {
+  services: 30,
+  headings: 40,
+  paragraphs: 60,
+  /** Summed length of headings, paragraphs, service items and testimonials; whole texts only */
+  copyChars: 12_000,
+  serviceItems: 30,
+  testimonials: 10,
+  images: 24,
+} as const;
+
+/** Everything the model may read about the business; built by code from verified audit data, no contact values */
+export interface IMvpSourceBrief {
+  business: { name: string; niche: string; city?: string; originalUrl: string };
+  language?: string;
+  services: string[];
+  copy: {
+    title?: string;
+    metaDescription?: string;
+    h1?: string;
+    headings: string[];
+    paragraphs: string[];
+    serviceItems: Array<{ title: string; description?: string }>;
+    testimonials: Array<{ text: string; author?: string }>;
+    rating?: { value: number; count?: number };
+    foundingYear?: number;
+  };
+  brand: { primary: string; secondary: string; accent: string; fonts: string[]; logoUrl?: string };
+  /** The original's image URLs, the only images the page may show besides the logo */
+  images: string[];
+  /** The placeholders the page may use: one per verified contact, `booking` always */
+  placeholders: MvpPlaceholder[];
+}
+
+export const MVP_GROUNDING_KINDS = ['number', 'name'] as const;
+export type MvpGroundingKind = (typeof MVP_GROUNDING_KINDS)[number];
+
+/** A fact on the page that the original site's copy does not contain; shown to the operator, never a rejection */
+export interface IMvpGroundingFlag {
+  kind: MvpGroundingKind;
+  text: string;
+  /** The text around it on the page, at most 80 characters */
+  context: string;
+}

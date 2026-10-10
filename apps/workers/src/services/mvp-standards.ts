@@ -1,7 +1,7 @@
-import { Window } from 'happy-dom';
 import { IMvpStandards, IStandardsChecks, STANDARDS_CHECKS, STANDARDS_POINTS } from '@revamp/shared-types';
 import { MvpStandardsSchema } from '@revamp/validation';
 import { readStandardsInDocument } from './standards.page.js';
+import { withHtmlDocument } from './html-document.js';
 
 /** Elements and attributes that load a resource into the page */
 const RESOURCE_ATTRIBUTES: Array<[selector: string, attribute: string]> = [
@@ -39,24 +39,12 @@ export function isHttpsReady(doc: Document): boolean {
  * favicon is the icon link alone.
  */
 export function checkMvpStandards(html: string): IMvpStandards {
-  const window = new Window({
-    settings: {
-      // Script evaluation is off by default; nothing on the page is loaded or run
-      disableJavaScriptFileLoading: true,
-      disableCSSFileLoading: true,
-      disableComputedStyleRendering: true,
-      navigation: { disableMainFrameNavigation: true, disableChildFrameNavigation: true, disableChildPageNavigation: true },
-    },
-  });
-  try {
-    const doc = new window.DOMParser().parseFromString(html, 'text/html');
-    const { faviconLink, ...dom } = readStandardsInDocument(doc as unknown as Document);
-    const checks = { https: isHttpsReady(doc as unknown as Document), ...dom, favicon: faviconLink };
+  return withHtmlDocument(html, (doc) => {
+    const { faviconLink, ...dom } = readStandardsInDocument(doc);
+    const checks = { https: isHttpsReady(doc), ...dom, favicon: faviconLink };
     const score = STANDARDS_CHECKS.reduce((sum, check) => sum + (checks[check] ? STANDARDS_POINTS[check] : 0), 0);
     return MvpStandardsSchema.parse({ checks, score }) as IMvpStandards;
-  } finally {
-    void window.happyDOM.close();
-  }
+  });
 }
 
 /**
