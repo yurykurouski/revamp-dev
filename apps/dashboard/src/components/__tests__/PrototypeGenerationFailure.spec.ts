@@ -98,7 +98,8 @@ describe('Prototype step: a page the model could not make (REV-132, REV-140)', (
   });
 
   it('shows a generic text for a failure of the previous generator, never a raw key', () => {
-    render({ ...audited, generationFailure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:flat', level: 'faithful', at: '2026-10-04T12:00:00.000Z' } });
+    // A failure the previous generator stored; the type no longer names its code
+    render({ ...audited, generationFailure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:flat', level: 'faithful', at: '2026-10-04T12:00:00.000Z' } as never });
     expect(panel()!.textContent).toContain(en.mvpFailure.page.previous);
     expect(panel()!.textContent).not.toMatch(/mvp(Failure|Layout)\./);
   });

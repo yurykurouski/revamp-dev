@@ -11,7 +11,7 @@ import {
   UpdateMvpTokensSchema,
   contrastRatio,
 } from '../src/index.js';
-import { MVP_FONT_CHOICES } from '@revamp/shared-types';
+import { AUDIT_MEASUREMENTS, MVP_FONT_CHOICES } from '@revamp/shared-types';
 
 const fullBrief = {
   business: { name: 'Falco-Dent', niche: 'DENTAL', city: 'Kraków', originalUrl: 'https://falco-dent.pl' },
@@ -194,5 +194,11 @@ describe('changes, controls and restore (REV-139)', () => {
     expect(MvpVersionParamsSchema.parse({ n: '2' })).toEqual({ n: 2 });
     expect(MvpVersionParamsSchema.safeParse({ n: '0' }).success).toBe(false);
     expect(MvpVersionParamsSchema.safeParse({ n: 'x' }).success).toBe(false);
+  });
+});
+
+describe('the old pipeline is gone (REV-141)', () => {
+  it('AUDIT_MEASUREMENTS has no sections', () => {
+    expect(AUDIT_MEASUREMENTS).not.toContain('sections');
   });
 });

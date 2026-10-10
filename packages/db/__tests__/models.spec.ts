@@ -136,67 +136,6 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(unknown.validateSync()).toBeDefined();
     });
 
-    it('keeps the original site layout and the reason it could not be read (REV-104)', () => {
-      const siteLayout = {
-        sections: [{ kind: 'services', heading: 'Usługi' }],
-        hero: { media: 'side', mediaSide: 'right', align: 'left', tone: 'light' },
-        nav: { itemCount: 5, centeredLogo: false, sticky: true, hasCta: true },
-        density: 'airy',
-      };
-      const read = new Audit({ leadId: new mongoose.Types.ObjectId(), siteLayout });
-      expect(read.toObject().siteLayout).toEqual(siteLayout);
-      const unread = new Audit({ leadId: new mongoose.Types.ObjectId(), siteLayoutError: 'No block starts on the first screen' });
-      expect(unread.toObject().siteLayoutError).toBe('No block starts on the first screen');
-      expect(unread.toObject().siteLayout).toBeUndefined();
-    });
-
-    it('keeps the original site sections and the reason they could not be read (REV-109)', () => {
-      const siteSections = {
-        sections: [
-          {
-            index: 1,
-            role: 'hero',
-            kind: 'other',
-            arrangement: 'banner',
-            intro: { heading: 'Gabinet', headingLevel: 1, text: ['Witamy.'], links: [] },
-            items: [],
-            extra: [],
-            images: [],
-            embeds: [],
-            style: { background: '#112233' },
-          },
-        ],
-        skipped: [{ index: 3, reason: 'noise', sample: 'Wszelkie prawa zastrzeżone' }],
-        coverage: { pageChars: 100, capturedChars: 97, ratio: 0.97, uncaptured: [] },
-      };
-      const read = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSections });
-      expect(read.toObject().siteSections).toEqual(siteSections);
-      const unread = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsError: 'layout walk failed: timeout' });
-      expect(unread.toObject().siteSectionsError).toBe('layout walk failed: timeout');
-      expect(unread.toObject().siteSections).toBeUndefined();
-    });
-
-    it("keeps why the vision model gave no sections (REV-132)", () => {
-      const audit = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsError: 'No vision model', siteSectionsErrorReason: 'not_configured' });
-      expect(audit.toObject().siteSectionsErrorReason).toBe('not_configured');
-      expect(new Audit({ leadId: new mongoose.Types.ObjectId(), siteSectionsErrorReason: 'nope' }).validateSync()?.errors['siteSectionsErrorReason']).toBeDefined();
-    });
-
-    it('keeps the reading source and a sections measurement error (REV-113)', () => {
-      const siteSections = {
-        sections: [],
-        skipped: [{ index: 1, reason: 'unassigned', sample: 'Licznik odwiedzin' }],
-        coverage: { pageChars: 100, capturedChars: 90, ratio: 0.9, uncaptured: [] },
-        source: 'llm',
-      };
-      const measurementErrors = [{ measurement: 'sections', message: 'No vision model' }];
-      const audit = new Audit({ leadId: new mongoose.Types.ObjectId(), siteSections, measurementErrors });
-      expect(audit.validateSync()).toBeUndefined();
-      const read = audit.toObject();
-      expect(read.siteSections).toEqual(siteSections);
-      expect(read.measurementErrors?.map(({ measurement, message }) => ({ measurement, message }))).toEqual(measurementErrors);
-    });
-
     it('should fail validation if leadId is missing', () => {
       const audit = new Audit({});
       const err = audit.validateSync();
@@ -298,46 +237,6 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
   });
 
   describe('MvpProject Model', () => {
-    it('keeps the rebuild summary (REV-110)', () => {
-      const doc = new MvpProject({
-        auditId: new mongoose.Types.ObjectId(),
-        leadId: new mongoose.Types.ObjectId(),
-        previewSlug: 's',
-        fullPreviewUrl: 'u',
-        storageHtmlPath: 'p',
-        rebuild: { coverage: 0.98, sections: 2, omitted: [], tuning: ['alt:1'] },
-      });
-      expect(doc.toObject().rebuild).toEqual({ coverage: 0.98, sections: 2, omitted: [], tuning: ['alt:1'] });
-    });
-
-    it('keeps the rebuild edit (REV-111)', () => {
-      const rebuildEdit = { auditId: '0123456789abcdef01234567', hidden: ['s-2'], sections: { 's-1': { align: 'center' } } };
-      const doc = new MvpProject({
-        auditId: new mongoose.Types.ObjectId(),
-        leadId: new mongoose.Types.ObjectId(),
-        previewSlug: 's',
-        fullPreviewUrl: 'u',
-        storageHtmlPath: 'p',
-        rebuildEdit,
-      });
-      expect(doc.toObject().rebuildEdit).toEqual(rebuildEdit);
-    });
-
-    it('keeps a failed modernize call and the last render failure (REV-132)', () => {
-      const modernize = { auditId: '0123456789abcdef01234567', source: 'failed', error: 'call_failed', message: 'timeout' };
-      const renderFailure = { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'call_failed', level: 'modern', message: 'timeout', at: new Date('2026-10-04T12:00:00Z') };
-      const doc = new MvpProject({
-        auditId: new mongoose.Types.ObjectId(),
-        leadId: new mongoose.Types.ObjectId(),
-        previewSlug: 's',
-        fullPreviewUrl: 'u',
-        storageHtmlPath: 'p',
-        modernize,
-        renderFailure,
-      });
-      expect(doc.toObject().modernize).toEqual(modernize);
-      expect(doc.toObject().renderFailure).toEqual(renderFailure);
-    });
 
     it('validates a model-designed page without the old copy and palette, and keeps its page fields (REV-138)', () => {
       const theme = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#f5f7fa', text: '#111111', fontHeading: 'serif', fontBody: 'sans-serif' };

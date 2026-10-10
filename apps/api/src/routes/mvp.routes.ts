@@ -37,7 +37,7 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { auditId, forceRegenerate, provider, model, layout } = req.body;
+      const { auditId, forceRegenerate, provider, model } = req.body;
 
       if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
         throw new AppError(400, 'LLM_PROVIDER_NOT_ALLOWED', `Provider "${provider}" is not available in production`);
@@ -85,8 +85,6 @@ router.post(
         forceRegenerate: mode === 'regenerate',
         previousStatus,
         ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
-        // A Bento layout the operator picked, e.g. when the rebuild cannot be made (REV-132)
-        ...(layout ? { layout } : {}),
       });
 
       res.status(202).json({

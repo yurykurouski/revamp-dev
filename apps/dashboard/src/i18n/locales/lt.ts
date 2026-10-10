@@ -500,7 +500,6 @@ export const lt: Translation = {
       accessibility: 'Prieinamumas (axe)',
       standards: 'Žiniatinklio standartai ir SEO (HTTPS, viewport, title, aprašas, h1, favicon, Schema.org, OpenGraph)',
       design: 'Dizaino vertinimas (Vision modelis)',
-      sections: 'Puslapio skiltys (vaizdo modelis)',
     },
     fullPage: 'Viso puslapio vaizdas · slinkite, kad pamatytumėte visą svetainę',
     firstScreen: 'Tik pirmasis ekranas',

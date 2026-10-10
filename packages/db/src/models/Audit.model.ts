@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { IAudit, AuditStatus, AUDIT_MEASUREMENTS, SITE_GROUPING_FAILURES } from '@revamp/shared-types';
+import { IAudit, AuditStatus, AUDIT_MEASUREMENTS } from '@revamp/shared-types';
 
 export interface IAuditDocument
   extends Omit<IAudit, '_id' | 'leadId' | 'createdAt' | 'completedAt'>,
@@ -128,14 +128,6 @@ const AuditSchema = new Schema<IAuditDocument>(
     extractedContent: { type: Schema.Types.Mixed },
     // REV-38: deterministic complexity class, the DOM signals behind it, and reason codes
     siteComplexity: { type: Schema.Types.Mixed },
-    // REV-104: the original home page's layout (validated by SiteLayoutSchema), or why it could not be read
-    siteLayout: { type: Schema.Types.Mixed },
-    siteLayoutError: { type: String },
-    // REV-109: the original home page read section by section (validated by SiteSectionsSchema), or why it could not be read
-    siteSections: { type: Schema.Types.Mixed },
-    siteSectionsError: { type: String },
-    // REV-132: why the vision model gave no sections; the rules reading never stands in for it
-    siteSectionsErrorReason: { type: String, enum: SITE_GROUPING_FAILURES },
     // REV-114: how dated the original home page looks (validated by SiteEraSchema), or why it could not be read
     siteEra: { type: Schema.Types.Mixed },
     siteEraError: { type: String },
@@ -158,9 +150,6 @@ const AuditSchema = new Schema<IAuditDocument>(
     extractedServices: {
       type: [String],
       default: [],
-    },
-    generatedContent: {
-      type: Schema.Types.Mixed,
     },
     completedAt: {
       type: Date,

@@ -500,7 +500,6 @@ export const pl: Translation = {
       accessibility: 'Dostępność (axe)',
       standards: 'Standardy sieciowe i SEO (HTTPS, viewport, title, opis, h1, favicon, Schema.org, OpenGraph)',
       design: 'Ocena projektu (model Vision)',
-      sections: 'Sekcje strony (model wizyjny)',
     },
     fullPage: 'Zrzut całej strony · przewiń, aby zobaczyć całość',
     firstScreen: 'Tylko pierwszy ekran',

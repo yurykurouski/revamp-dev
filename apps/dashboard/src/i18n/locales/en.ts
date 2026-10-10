@@ -501,7 +501,6 @@ export const en = {
       accessibility: 'Accessibility (axe)',
       standards: 'Web standards and SEO (HTTPS, viewport, title, description, h1, favicon, Schema.org, OpenGraph)',
       design: 'Design critique (Vision model)',
-      sections: 'Page sections (vision model)',
     },
     fullPage: 'Full-page capture · scroll to view the whole site',
     firstScreen: 'First screen only',

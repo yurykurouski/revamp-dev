@@ -500,7 +500,6 @@ export const be: Translation = {
       accessibility: 'Даступнасць (axe)',
       standards: 'Вэб-стандарты і SEO (HTTPS, viewport, title, апісанне, h1, фавікон, Schema.org, OpenGraph)',
       design: 'Ацэнка дызайну (мадэль Vision)',
-      sections: 'Секцыі старонкі (візуальная мадэль)',
     },
     fullPage: 'Здымак усёй старонкі · пракруціце, каб убачыць сайт цалкам',
     firstScreen: 'Толькі першы экран',

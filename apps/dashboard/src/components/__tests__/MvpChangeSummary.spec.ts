@@ -80,7 +80,7 @@ describe('MvpChangeSummary: measured facts only (REV-140)', () => {
   });
 
   it('shows no layout, copy, palette or critique', () => {
-    const text = textOf(render({ ...fullMvp, layout: { variant: 'editorial', reasons: ['rule:professional_niche'] }, provider: 'deterministic' }));
+    const text = textOf(render({ ...fullMvp, layout: { variant: 'editorial', reasons: ['rule:professional_niche'] }, provider: 'deterministic' } as IMvpProjectDetail));
     expect(text).not.toContain('Add a sticky call button');
     expect(text).not.toContain('Editorial');
     expect(text).not.toContain('Every change, with its reason');

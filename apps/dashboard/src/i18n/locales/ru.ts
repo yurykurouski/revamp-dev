@@ -500,7 +500,6 @@ export const ru: Translation = {
       accessibility: 'Доступность (axe)',
       standards: 'Веб-стандарты и SEO (HTTPS, viewport, title, описание, h1, фавикон, Schema.org, OpenGraph)',
       design: 'Оценка дизайна (модель Vision)',
-      sections: 'Секции страницы (визуальная модель)',
     },
     fullPage: 'Снимок всей страницы · прокрутите, чтобы увидеть сайт целиком',
     firstScreen: 'Только первый экран',

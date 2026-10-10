@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ICompletenessCheck, IMvpGeneratedContent } from '@revamp/shared-types';
+import type { ICompletenessCheck } from '@revamp/shared-types';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { isMvpChangeSummaryEmpty, summarizeMvpChanges } from '../mvpChanges.js';
 
@@ -67,12 +67,13 @@ describe('summarizeMvpChanges: measured facts only (REV-140)', () => {
 
   it('lists no layout, copy, palette, sections or critique', () => {
     const summary = summarizeMvpChanges(
+      // A record of the previous generator, with fields the types no longer declare
       mvp({
         layout: { variant: 'editorial', reasons: ['rule:professional_niche'] },
         provider: 'deterministic',
         colorPalette: { primary: '#0000aa', secondary: '#ffffff', accent: '#0000aa' },
-        generatedContent: { services: [{ title: 'A' }] } as unknown as IMvpGeneratedContent,
-      }),
+        generatedContent: { services: [{ title: 'A' }] },
+      } as Partial<IMvpProjectDetail>),
       audit({ quickWins: ['Add a sticky call button'], colorPalette: { primary: '#aa0000' }, originalServiceCount: 2 }),
     )!;
     expect(Object.keys(summary).sort()).toEqual([]);
