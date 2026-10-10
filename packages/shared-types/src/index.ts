@@ -1239,13 +1239,8 @@ export interface IDeployJobData {
   generationSource?: IMvpGenerationSource;
   /** A Bento layout the operator picked for this run (REV-132) */
   layout?: BentoLayoutVariant;
-  /** The model's page to publish (REV-138); a deploy without it renders the old way */
-  page?: IMvpPageJob;
-  /**
-   * `relayout`: re-render the published bundle in the MVP's saved layout from its stored copy, with no
-   * LLM call and no status change (REV-84). A full deploy when absent.
-   */
-  mode?: 'deploy' | 'relayout';
+  /** The model's page to publish (REV-138); the only kind of deploy since REV-141 */
+  page: IMvpPageJob;
 }
 
 /** What a free-text change altered on an MVP of the previous generator (REV-85); removed in REV-141 */

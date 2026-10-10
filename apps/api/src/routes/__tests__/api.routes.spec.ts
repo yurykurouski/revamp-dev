@@ -28,7 +28,6 @@ vi.mock('../../queues/ai.queue.js', () => ({
   aiGenerationQueue: {} as any,
 }));
 vi.mock('../../queues/deploy.queue.js', () => ({
-  addMvpRelayoutJob: vi.fn().mockResolvedValue({ id: 'mock-relayout-job-1' }),
   deployQueue: {} as any,
 }));
 vi.mock('../../queues/email.queue.js', () => ({
