@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createDeployWorker, republishSavedMvp } from '../deploy.worker.js';
-import { processMvpEditJob } from '../mvp-edit.worker.js';
 import { Lead } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
 import { findGenerationAudit } from '../../services/audit-lookup.js';
@@ -218,9 +217,4 @@ describe('the old layout tools refuse a model-designed MVP (REV-138)', () => {
     expect(storageService.uploadHtml).not.toHaveBeenCalled();
   });
 
-  it('the free-text change worker refuses it', async () => {
-    vi.mocked(MvpProject.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1', leadId: LEAD_ID, page: VALID }) } as any);
-    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...lead, status: 'NEEDS_APPROVAL' }) } as any);
-    await expect(processMvpEditJob({ mvpProjectId: 'mvp-1', action: 'edit', instruction: 'x', deadline: Date.now() + 60_000 } as any)).rejects.toThrow('designed by the model');
-  });
 });

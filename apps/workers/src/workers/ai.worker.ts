@@ -9,31 +9,13 @@ import { findGenerationAudit } from '../services/audit-lookup.js';
 import { buildMvpSourceBrief } from '../services/mvp-source-brief.js';
 import { MvpPageGenerator, defaultPageGenerator } from '../services/mvp-page-generator.js';
 import { addDeployJob } from '../queues/deploy.queue.js';
+import { desktopCapture } from '../services/desktop-capture.js';
 import { handleGenerationFailure } from './generation-failure.js';
 
 /** A page the model could not make (REV-138): final, so BullMQ does not retry; the code and reason go on the lead */
 export class MvpPageUnavailableError extends UnrecoverableError {
   constructor(readonly failure: IMvpRenderFailure) {
     super(failure.message ?? `The model gave no page (${failure.reason})`);
-  }
-}
-
-/** A capture that takes longer than this is left out rather than holding the generation */
-const CAPTURE_TIMEOUT_MS = 15_000;
-
-/** The audit's full desktop capture for the model; a capture that cannot be loaded leaves a text-only call */
-async function desktopCapture(url: string | undefined): Promise<Buffer | undefined> {
-  if (!url) return undefined;
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS) });
-    if (!res.ok) {
-      console.warn(`[AiWorker] The desktop capture was not loaded (HTTP ${res.status}); generating without it`);
-      return undefined;
-    }
-    return Buffer.from(await res.arrayBuffer());
-  } catch (error) {
-    console.warn('[AiWorker] The desktop capture was not loaded; generating without it:', error);
-    return undefined;
   }
 }
 

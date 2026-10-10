@@ -94,6 +94,8 @@ export interface MvpPageInput {
   brief: IMvpSourceBrief;
   /** The audit's full-page desktop capture (PNG); the call is text-only without it */
   screenshot?: Buffer;
+  /** Epoch ms by which every call must end (REV-139): a call gets at most the time left, none once it is gone */
+  deadline?: number;
 }
 
 export interface MvpPageChangeInput extends MvpPageInput {
@@ -186,6 +188,11 @@ export class MvpPageGenerator {
       const retry = rejected
         ? `\n\nYour previous answer was rejected:\n${rejected.problems.map((p) => `- ${p.code}: ${p.message}`).join('\n')}\n\nYour rejected page:\n${rejected.page.slice(0, REJECTED_PAGE_CHARS)}\n\nAnswer again with the whole page, keeping its design and fixing all of these.`
         : '';
+      const left = input.deadline === undefined ? TIMEOUT_MS : input.deadline - Date.now();
+      if (left <= 0) {
+        lastError = 'out of time: the operator stopped waiting';
+        break;
+      }
       let text: string;
       try {
         const res = await this.client.completeWithUsage({
@@ -194,7 +201,7 @@ export class MvpPageGenerator {
           images,
           temperature,
           maxTokens: (this.client.provider && MAX_TOKENS[this.client.provider]) ?? DEFAULT_MAX_TOKENS,
-          timeoutMs: TIMEOUT_MS,
+          timeoutMs: Math.min(TIMEOUT_MS, left),
           format: 'text',
         });
         usage = addUsage(usage, res.usage);

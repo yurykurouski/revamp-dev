@@ -90,6 +90,20 @@ describe('finishMvpPage (REV-136)', () => {
     });
   });
 
+  it('drops a control that is not a hex color or a plain font name, so nothing reaches the CSS (REV-139)', () => {
+    const html = finishMvpPage(VALID, ctx({ controls: { primary: 'red;}body{display:none', fontBody: 'Comic"Sans' } }));
+    expect(html).not.toContain('rv-controls');
+    expect(html).not.toContain('display:none');
+    expect(html).not.toContain('Comic');
+  });
+
+  it("falls back to the pairing's generic family for a font control (REV-139)", () => {
+    const html = finishMvpPage(VALID, ctx({ controls: { fontHeading: 'Lora', fontBody: 'Inter' } }));
+    const controls = read(html, (doc) => doc.querySelector('style#rv-controls')?.textContent ?? '');
+    expect(controls).toContain('--rv-font-heading:"Lora",serif');
+    expect(controls).toContain('--rv-font-body:"Inter",sans-serif');
+  });
+
   it('adds no controls style when there are no controls', () => {
     expect(finishMvpPage(VALID, ctx())).not.toContain('rv-controls');
   });

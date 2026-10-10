@@ -6,7 +6,7 @@ import { createDeployWorker } from './workers/deploy.worker.js';
 import { createEmailWorker } from './workers/email.worker.js';
 import { createEmailTestWorker } from './workers/email-test.worker.js';
 import { createDiscoveryWorker } from './workers/discovery.worker.js';
-import { createMvpEditWorker } from './workers/mvp-edit.worker.js';
+import { createMvpPageWorker } from './workers/mvp-page.worker.js';
 import { redisConnection } from './queues/connection.js';
 import { browserService } from './services/browser.service.js';
 import { Lead } from './models/Lead.model.js';
@@ -62,7 +62,7 @@ async function startWorkers(): Promise<void> {
     const emailWorker = createEmailWorker();
     const emailTestWorker = createEmailTestWorker();
     const discoveryWorker = createDiscoveryWorker();
-    const mvpEditWorker = createMvpEditWorker();
+    const mvpPageWorker = createMvpPageWorker();
 
     console.log('[Workers] All background workers are active and listening.');
     for (const warning of providerConfigWarnings()) console.warn(`[Workers] ${warning}`);
@@ -84,7 +84,7 @@ async function startWorkers(): Promise<void> {
         emailWorker.close(),
         emailTestWorker.close(),
         discoveryWorker.close(),
-        mvpEditWorker.close(),
+        mvpPageWorker.close(),
       ]);
       await browserService.close();
       await redisConnection.quit();

@@ -970,7 +970,9 @@ export const QUEUE_NAMES = {
   EMAIL_TEST: 'email-test-queue',
   DISCOVERY: 'discovery-queue',
   /** An operator's free-text change to a generated MVP, interpreted by the LLM (REV-85) */
+  /** The previous generator's free-text change; replaced by MVP_PAGE (REV-139), removed with its worker */
   MVP_EDIT: 'mvp-edit-queue',
+  MVP_PAGE: 'mvp-page-queue',
 } as const;
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
@@ -1246,30 +1248,58 @@ export interface IDeployJobData {
   mode?: 'deploy' | 'relayout';
 }
 
-/** What a free-text change altered on the MVP (REV-85) */
+/** What a free-text change altered on an MVP of the previous generator (REV-85); removed in REV-141 */
 export type MvpEditChange = 'content' | 'palette' | 'layout' | 'design';
 
-/** An operator's free-text change to a generated MVP (REV-85) */
+/** A free-text change to an MVP of the previous generator (REV-85); removed in REV-141 */
 export interface IMvpEditJobData {
   mvpProjectId: string;
-  /** `reset-design` drops the custom design (REV-92) without asking the model; `edit` when absent */
   action?: 'edit' | 'reset-design';
-  /** The operator's own words, e.g. "make the headline punchier"; empty for a reset */
   instruction: string;
+  deadline: number;
+}
+
+/** The previous generator's change result (REV-85); removed in REV-141 */
+export interface IMvpEditJobResult {
+  applied: boolean;
+  summary: string;
+  changes: MvpEditChange[];
+}
+
+/** What the operator does to a model-designed page (REV-139): a change in their words, palette and fonts, or a restore */
+export const MVP_PAGE_ACTIONS = ['change', 'controls', 'restore'] as const;
+export type MvpPageAction = (typeof MVP_PAGE_ACTIONS)[number];
+
+/** The operator's palette and fonts: a group given replaces the saved one, `null` clears it, a missing one is kept */
+export interface IMvpControlsUpdate {
+  colors?: { primary: string; accent: string; bg: string; surface: string; text: string } | null;
+  fonts?: { heading: string; body: string } | null;
+}
+
+/** A job of the mvp-page queue (REV-139); the API waits for its result */
+export interface IMvpPageJobData {
+  mvpProjectId: string;
+  action: MvpPageAction;
+  /** The operator's words (`change`) */
+  instruction?: string;
+  /** `controls` */
+  controls?: IMvpControlsUpdate;
+  /** The version to restore (`restore`) */
+  version?: number;
   /**
-   * Epoch ms after which the change is no longer applied: the API has stopped waiting and told the
-   * operator it timed out, so a late answer must not change the page behind their back.
+   * Epoch ms after which the job is no longer applied: the API has stopped waiting and told the operator it
+   * timed out, so a late answer must not change the page behind their back.
    */
   deadline: number;
 }
 
-export interface IMvpEditJobResult {
-  /** false when the model found nothing it could change within the grounding rules */
-  applied: boolean;
-  /** The model's one-line account of what it changed, or why it changed nothing */
-  summary: string;
-  changes: MvpEditChange[];
-}
+/** Why an action published nothing: the model failed, or the version no longer fits the audit (REV-139) */
+export type MvpPageRefusal = MvpPageFailure | 'unusable_version';
+
+export type IMvpPageJobResult =
+  | { applied: true; /** The version it published; absent for palette and fonts */ version?: number }
+  | { applied: false; reason: 'unchanged' }
+  | { applied: false; reason: MvpPageRefusal; message: string; problems?: IMvpPageProblem[] };
 
 export interface IEmailDispatchJobData {
   campaignId: string;
@@ -1908,8 +1938,10 @@ export const API_ERROR_CODES = [
   'MVP_EDIT_TIMEOUT',
   'MVP_REBUILD_UNAVAILABLE',
   'MVP_MODERNIZE_UNAVAILABLE',
-  // REV-138: the layout and design tools do not apply to a page the model designed (REV-139 adds its own)
-  'MVP_MODEL_DESIGNED',
+  // REV-139: a page from before the model designed it takes only a regeneration; a version to restore
+  'MVP_PREVIOUS_GENERATOR',
+  'MVP_VERSION_NOT_FOUND',
+  'MVP_VERSION_UNUSABLE',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',
@@ -2033,11 +2065,34 @@ export interface IMvpGroundingFlag {
 export const MVP_PAGE_FAILURES = ['not_configured', 'call_failed', 'invalid_page'] as const;
 export type MvpPageFailure = (typeof MVP_PAGE_FAILURES)[number];
 
+/** The lowest WCAG contrast the operator's text color may have on the background and the surface (AA, REV-139) */
+export const MVP_MIN_CONTRAST = 4.5;
+
+/** The fonts the operator may pick (REV-139): fixed Google Fonts pairings, names safe in CSS */
+export const MVP_FONT_CHOICES = [
+  { id: 'classic', heading: 'Playfair Display', body: 'Source Sans 3', headingGeneric: 'serif', bodyGeneric: 'sans-serif' },
+  { id: 'modern', heading: 'Poppins', body: 'Inter', headingGeneric: 'sans-serif', bodyGeneric: 'sans-serif' },
+  { id: 'friendly', heading: 'Nunito', body: 'Open Sans', headingGeneric: 'sans-serif', bodyGeneric: 'sans-serif' },
+  { id: 'editorial', heading: 'Lora', body: 'Lato', headingGeneric: 'serif', bodyGeneric: 'sans-serif' },
+  { id: 'bold', heading: 'Montserrat', body: 'Roboto', headingGeneric: 'sans-serif', bodyGeneric: 'sans-serif' },
+  { id: 'elegant', heading: 'DM Serif Display', body: 'DM Sans', headingGeneric: 'serif', bodyGeneric: 'sans-serif' },
+] as const satisfies readonly {
+  id: string;
+  heading: string;
+  body: string;
+  headingGeneric: 'serif' | 'sans-serif';
+  bodyGeneric: 'serif' | 'sans-serif';
+}[];
+export type MvpFontChoice = (typeof MVP_FONT_CHOICES)[number];
+
 /** At most this many published versions are kept per MVP; the oldest is removed from storage (REV-138) */
 export const MVP_MAX_VERSIONS = 20;
 
-/** What made a version: a generation, the operator's free-text change, palette/font controls, or a restore */
-export const MVP_PAGE_VERSION_KINDS = ['generate', 'change', 'controls', 'restore'] as const;
+/**
+ * What made a version: a generation, the operator's free-text change, or a restore (REV-139). Palette and font
+ * controls are not part of the raw page, so they make no version
+ */
+export const MVP_PAGE_VERSION_KINDS = ['generate', 'change', 'restore'] as const;
 export type MvpPageVersionKind = (typeof MVP_PAGE_VERSION_KINDS)[number];
 
 export interface IMvpPageVersion {
@@ -2046,6 +2101,8 @@ export interface IMvpPageVersion {
   kind: MvpPageVersionKind;
   /** The operator's words for a change */
   instruction?: string;
+  /** The version a restore re-published (REV-139) */
+  from?: number;
   /** The page job (`IMvpPageJob.id`) that published it, so a retried job reuses its version */
   jobId?: string;
   provider?: string;

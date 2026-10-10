@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MVP_THEME_VARS } from '@revamp/shared-types';
 import type { LlmCompletion, LlmCompletionRequest } from '../llm-client.js';
 import { MVP_PAGE_SYSTEM_PROMPT, MvpPageGenerator, stripCodeFence, type PageLlm } from '../mvp-page-generator.js';
@@ -201,6 +201,49 @@ describe('MvpPageGenerator.change (REV-137)', () => {
     const result = await generator([WITH_SCRIPT, APOLOGY]).gen.change({ brief: BRIEF, currentPage: VALID, instruction: 'x' });
     expect(result.ok).toBe(false);
     expect(result).not.toHaveProperty('page');
+  });
+});
+
+describe('a deadline (REV-139)', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('makes no call once the deadline has passed', async () => {
+    const { gen, requests } = generator([VALID]);
+    const result = await gen.generate({ brief: BRIEF, deadline: Date.now() - 1 });
+    expect(requests).toHaveLength(0);
+    expect(result).toMatchObject({ ok: false, reason: 'call_failed' });
+    expect(result.ok === false && result.message).toContain('time');
+  });
+
+  it('gives a call no more than the time left', async () => {
+    const { gen, requests } = generator([VALID]);
+    await gen.generate({ brief: BRIEF, deadline: Date.now() + 10_000 });
+    expect(requests[0]?.timeoutMs).toBeLessThanOrEqual(10_000);
+    expect(requests[0]?.timeoutMs).toBeGreaterThan(9_000);
+  });
+
+  it('keeps the full call timeout without a deadline', async () => {
+    const { gen, requests } = generator([VALID]);
+    await gen.generate({ brief: BRIEF });
+    expect(requests[0]?.timeoutMs).toBe(300_000);
+  });
+
+  it('skips the retry when the deadline passed during the first call, reporting the rejection', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-10-10T10:00:00Z'));
+    const deadline = Date.now() + 60_000;
+    const s = stub([WITH_SCRIPT, VALID]);
+    const call = s.client.completeWithUsage;
+    s.client.completeWithUsage = async (request) => {
+      const res = await call(request);
+      vi.setSystemTime(new Date(deadline + 1));
+      return res;
+    };
+    const result = await new MvpPageGenerator({ client: s.client }).change({ brief: BRIEF, currentPage: VALID, instruction: 'x', deadline });
+    expect(s.requests).toHaveLength(1);
+    expect(result).toMatchObject({ ok: false, reason: 'invalid_page' });
   });
 });
 
