@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient, useIsMutating, keepPreviousData } from '@tanstack/react-query';
-import { apiClient, ILeadItem, IEmailDraft, IMvpProjectDetail } from '../api/client.js';
-import { QuickAddLeadInput, hasRebuildEdit, mvpGenerationMode } from '@revamp/validation';
-import { BentoLayoutVariant, ILeadStats, LeadStatus, LlmProviderId, MvpLayoutVariant, RebuildLevel } from '@revamp/shared-types';
+import { ApiError, apiClient, ILeadItem, IEmailDraft, IMvpPageResult, IMvpProjectDetail } from '../api/client.js';
+import { QuickAddLeadInput, mvpGenerationMode } from '@revamp/validation';
+import { ILeadStats, IMvpControlsUpdate, LeadStatus, LlmProviderId } from '@revamp/shared-types';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 
 export const LEADS_QUERY_KEY = ['leads'];
@@ -119,86 +119,41 @@ export const useRetryAuditMutation = () => {
 export const mvpRecordId = (mvp?: Pick<IMvpProjectDetail, 'id' | '_id'> | null): string | undefined =>
   mvp?.id || mvp?._id || undefined;
 
-export const useUpdateMvpTokensMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({
-      mvpId,
-      tokens,
-    }: {
-      mvpId: string;
-      leadId: string;
-      tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string };
-    }) => apiClient.updateMvpTokens(mvpId, tokens),
-    // The saved MVP comes back from the server; keep the lead's cached MVP in step with it
-    onSuccess: (saved, { leadId }) => {
-      queryClient.setQueryData(['mvp', leadId], saved);
-    },
-  });
-};
+/** One of the operator's changes to a model-designed page (REV-139, REV-140), for the lead it was asked for */
+export type MvpPageAction =
+  | { action: 'change'; instruction: string }
+  | { action: 'controls'; controls: IMvpControlsUpdate }
+  | { action: 'restore'; version: number };
+export type MvpPageActionVariables = { mvpId: string; leadId: string } & MvpPageAction;
 
-export interface UpdateMvpLayoutVariables {
-  mvpId: string;
-  leadId: string;
-  variant: MvpLayoutVariant;
-  /** The rebuild level (REV-114), with the `original` variant only */
-  level?: RebuildLevel;
-}
-
-export const UPDATE_MVP_LAYOUT_MUTATION_KEY = ['update-mvp-layout'];
-
-/** Saves the operator's layout for the MVP (REV-84); no generation is started */
-export const useUpdateMvpLayoutMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationKey: UPDATE_MVP_LAYOUT_MUTATION_KEY,
-    mutationFn: ({ mvpId, variant, level }: UpdateMvpLayoutVariables) => (level ? apiClient.updateMvpLayout(mvpId, variant, level) : apiClient.updateMvpLayout(mvpId, variant)),
-    // One save at a time, so quick picks reach the server in the order they were made
-    scope: { id: 'update-mvp-layout' },
-    // The saved MVP carries the new layout, so the layout chip and the change summary follow it
-    onSuccess: (saved, { leadId }) => {
-      queryClient.setQueryData(['mvp', leadId], saved);
-    },
-  });
-};
-
-export interface EditMvpVariables {
-  mvpId: string;
-  leadId: string;
-  instruction: string;
-}
-
-/**
- * Applies the operator's free-text change to the MVP (REV-85). The saved MVP comes back with the answer,
- * so the preview, palette and layout follow it at once.
- */
-export const useEditMvpMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ mvpId, instruction }: EditMvpVariables) => apiClient.editMvp(mvpId, instruction),
-    onSuccess: (result, { leadId }) => {
-      if (result.applied) queryClient.setQueryData(['mvp', leadId], result.mvp);
-    },
-  });
-};
-
-/** Drops the MVP's custom design (REV-92); the saved MVP comes back with the answer */
-export const useResetMvpDesignMutation = () => {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: ({ mvpId }: { mvpId: string; leadId: string }) => apiClient.resetMvpDesign(mvpId),
-    onSuccess: (result, { leadId }) => {
-      if (result.applied) queryClient.setQueryData(['mvp', leadId], result.mvp);
-    },
-  });
+const runMvpPageAction = (variables: MvpPageActionVariables): Promise<IMvpPageResult> => {
+  switch (variables.action) {
+    case 'change':
+      return apiClient.editMvp(variables.mvpId, variables.instruction);
+    case 'controls':
+      return apiClient.updateMvpTokens(variables.mvpId, variables.controls);
+    case 'restore':
+      return apiClient.restoreMvpVersion(variables.mvpId, variables.version);
+  }
 };
 
 /**
- * Whether the MVP has a custom design the operator can reset: the rebuild edit on a rebuilt page (REV-111),
- * else the Bento design (REV-92); each applies only to its own renderer, as the workers reset it
+ * A free-text change, colors and fonts, or a restore of a model-designed page (REV-140). The API answers once the
+ * page is re-published, with the MVP as saved, so the preview reloads at once. A refusal is an answer, not an error.
+ * A 504 on a job the worker had started may still publish, so the MVP is fetched again.
  */
-export const mvpHasCustomDesign = (mvp: Pick<IMvpProjectDetail, 'design' | 'rebuildEdit' | 'layout'> | null | undefined): boolean =>
-  mvp?.layout?.variant === 'original' ? hasRebuildEdit(mvp.rebuildEdit) : Boolean(mvp?.design && Object.keys(mvp.design).length > 0);
+export const useMvpPageMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation<IMvpPageResult, Error, MvpPageActionVariables>({
+    mutationFn: runMvpPageAction,
+    onSuccess: (result, { leadId }) => {
+      queryClient.setQueryData(['mvp', leadId], result.mvp);
+    },
+    onError: (error, { leadId }) => {
+      if (error instanceof ApiError && error.status === 504) void queryClient.invalidateQueries({ queryKey: ['mvp', leadId] });
+    },
+  });
+};
 
 export interface GenerateMvpVariables {
   auditId: string;
@@ -208,16 +163,13 @@ export interface GenerateMvpVariables {
   /** Provider/model for this run; the server default applies when absent (REV-32) */
   provider?: LlmProviderId;
   model?: string;
-  /** A Bento layout for this run, e.g. when the rebuild cannot be made (REV-132) */
-  layout?: BentoLayoutVariant;
 }
 
 /** Sends a generate or regenerate request (REV-31); exported for tests */
-export const generateMvpRequest = ({ auditId, forceRegenerate, provider, model, layout }: GenerateMvpVariables) =>
+export const generateMvpRequest = ({ auditId, forceRegenerate, provider, model }: GenerateMvpVariables) =>
   apiClient.generateMvp(auditId, {
     forceRegenerate: forceRegenerate ?? false,
     ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
-    ...(layout ? { layout } : {}),
   });
 
 export const LLM_PROVIDERS_QUERY_KEY = ['llm-providers'] as const;

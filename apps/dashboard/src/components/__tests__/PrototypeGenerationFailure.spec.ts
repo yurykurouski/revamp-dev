@@ -89,7 +89,7 @@ describe('Prototype step: a generation a rebuild model could not make (REV-132)'
     const generate = vi.spyOn(apiClient, 'generateMvp').mockResolvedValue({ success: true, status: 'GENERATING' });
     render(audited);
     act(() => templateButton()!.click());
-    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: false, layout: 'bento' }));
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: false }));
   });
 
   it('regenerates over an MVP the lead already has, which stays published', async () => {
@@ -99,7 +99,7 @@ describe('Prototype step: a generation a rebuild model could not make (REV-132)'
     expect(panel()).not.toBeNull();
     expect(container.querySelector('iframe')).not.toBeNull();
     act(() => templateButton()!.click());
-    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: true, layout: 'bento' }));
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: true }));
   });
 
   it('shows nothing while a generation runs, or without a recorded failure', () => {

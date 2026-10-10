@@ -63,7 +63,6 @@ export const MvpGenerationFailure: React.FC<MvpGenerationFailureProps> = ({ lead
                 leadId: lead.id,
                 // A lead with an MVP regenerates over it; a first generation does not
                 forceRegenerate: lead.status !== 'AUDITED',
-                layout: 'bento',
               })
             }
             sx={{ fontWeight: 600 }}

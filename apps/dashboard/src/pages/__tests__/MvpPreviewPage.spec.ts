@@ -44,8 +44,19 @@ const mvp: IMvpProjectDetail = {
   id: 'mvp-1',
   leadId: 'lead-1',
   fullPreviewUrl: 'about:blank#mvp',
-  layout: { variant: 'bento', reasons: ['rule:default'] },
-  colorPalette: { primary: '#059669', secondary: '#b8c4fe', accent: '#059669' },
+  theme: {
+    primary: '#059669',
+    accent: '#f2a900',
+    bg: '#ffffff',
+    surface: '#ffffff',
+    text: '#111111',
+    fontHeading: 'Lora, serif',
+    fontBody: 'Lato, sans-serif',
+  },
+  versions: [
+    { n: 1, kind: 'generate', storagePath: 'v/s/versions/1.html', createdAt: '2026-10-10T10:00:00.000Z' },
+    { n: 2, kind: 'change', instruction: 'Shorter heading', storagePath: 'v/s/versions/2.html', createdAt: '2026-10-10T11:00:00.000Z' },
+  ],
 };
 
 describe('MvpPreviewPage (REV-91)', () => {
@@ -115,17 +126,8 @@ describe('MvpPreviewPage (REV-91)', () => {
 
   const viewport = () => container.querySelector<HTMLElement>('[data-testid="mvp-preview-viewport"]')!;
   const panel = () => container.querySelector<HTMLElement>('[data-testid="mvp-tools-panel"]')!;
-  const colorInput = () => container.querySelector<HTMLInputElement>('#brand-color-picker-input')!;
-  const layoutButton = (variant: string) =>
-    Array.from(container.querySelectorAll<HTMLButtonElement>('[data-testid="mvp-layout-picker"] button')).find(
-      (el) => el.value === variant,
-    )!;
-  const pick = (hex: string) =>
-    act(() => {
-      const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
-      setValue.call(colorInput(), hex);
-      colorInput().dispatchEvent(new Event('input', { bubbles: true }));
-    });
+  const hex = () => container.querySelector<HTMLInputElement>('[data-testid="mvp-color-hex"] input')!;
+  const restore = (n: number) => container.querySelector<HTMLButtonElement>(`[data-testid="mvp-version-restore-${n}"]`)!;
 
   it('shows the MVP full-window in the sandboxed iframe with the Design tools over it', async () => {
     await render([lead]);
@@ -134,9 +136,11 @@ describe('MvpPreviewPage (REV-91)', () => {
     expect(frame.getAttribute('src')).toBe('about:blank#mvp');
     expect(panel().parentElement).toBe(viewport());
     expect(panel().contains(frame)).toBe(false);
-    expect(panel().querySelector('[data-testid="mvp-layout-picker"]')).not.toBeNull();
-    // Starts from the palette saved on the MVP
-    expect(colorInput().value).toBe('#059669');
+    // The same Design tools as the Prototype step (REV-140), starting from the page's own colors
+    for (const testId of ['mvp-edit-prompt', 'mvp-color-controls', 'mvp-font-control', 'mvp-version-list']) {
+      expect(panel().querySelector(`[data-testid="${testId}"]`), testId).not.toBeNull();
+    }
+    expect(hex().value).toBe('#059669');
   });
 
   it('links back to the review and to the page the lead receives', async () => {
@@ -151,39 +155,26 @@ describe('MvpPreviewPage (REV-91)', () => {
     expect(published.getAttribute('target')).toBe('_blank');
   });
 
-  it('applies a color live and saves it on the MVP', async () => {
+  it('restores a version from the full-window preview (REV-140)', async () => {
     await render([lead]);
-    const save = vi.spyOn(apiClient, 'updateMvpTokens').mockResolvedValue({ ...mvp, colorPalette: { primary: '#e11d48', secondary: '#b8c4fe', accent: '#e11d48' } });
-    pick('#e11d48');
-    expect(posted).toContainEqual({ type: 'REVAMP_UPDATE_THEME', palette: { primary: '#e11d48', accent: '#e11d48' } });
-    await vi.waitFor(() => expect(save).toHaveBeenCalledWith('mvp-1', { primaryColor: '#e11d48', accentColor: '#e11d48' }));
+    const save = vi.spyOn(apiClient, 'restoreMvpVersion').mockResolvedValue({ applied: true, version: 3, mvp });
+    await act(async () => restore(1).click());
+    expect(save).toHaveBeenCalledWith('mvp-1', 1);
   });
 
-  it('switches the layout live and saves it', async () => {
+  it('reports a failed change', async () => {
     await render([lead]);
-    const save = vi.spyOn(apiClient, 'updateMvpLayout').mockResolvedValue({ ...mvp, layout: { variant: 'split', reasons: ['rule:manual'] } });
-    act(() => layoutButton('split').click());
-    expect(posted).toContainEqual({ type: 'REVAMP_SET_LAYOUT', layout: 'split', animate: true });
-    await vi.waitFor(() => expect(save).toHaveBeenCalledWith('mvp-1', 'split'));
-  });
-
-  it('reports a failed palette save', async () => {
-    await render([lead]);
-    vi.spyOn(apiClient, 'updateMvpTokens').mockRejectedValue(
-      new ApiError('The MVP palette cannot be changed while the lead is SCHEDULED', 409, 'MVP_PALETTE_CHANGE_NOT_ALLOWED'),
+    vi.spyOn(apiClient, 'restoreMvpVersion').mockRejectedValue(
+      new ApiError('The MVP cannot be changed while the lead is SCHEDULED', 409, 'MVP_EDIT_NOT_ALLOWED'),
     );
-    pick('#e11d48');
-    await vi.waitFor(() =>
-      expect(document.body.textContent).toContain(
-        en.colorPicker.saveFailed.replace('{{message}}', 'The MVP palette cannot be changed while the lead is SCHEDULED'),
-      ),
-    );
+    await act(async () => restore(1).click());
+    await vi.waitFor(() => expect(document.body.textContent).toContain('The MVP cannot be changed while the lead is SCHEDULED'));
   });
 
-  it.each(['SCHEDULED', 'SENT', 'GENERATING'] as const)('locks both pickers while the lead is %s', async (status) => {
+  it.each(['SCHEDULED', 'SENT', 'GENERATING'] as const)('locks the tools while the lead is %s', async (status) => {
     await render([{ ...lead, status }]);
-    expect(colorInput().disabled).toBe(true);
-    expect(layoutButton('split').disabled).toBe(true);
+    expect(hex().disabled).toBe(true);
+    expect(restore(1).disabled).toBe(true);
   });
 
   it('says so when the lead has no MVP yet', async () => {

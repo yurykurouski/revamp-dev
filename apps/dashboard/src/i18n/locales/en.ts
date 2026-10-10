@@ -305,6 +305,7 @@ export const en = {
     },
   },
   mvpPage: {
+    previousGenerator: 'This MVP was made with the previous generator. Regenerate it to change it here.',
     colors: {
       title: 'Colors',
       roles: {
@@ -1060,36 +1061,11 @@ export const en = {
     placeholder: 'e.g. Reviews above services, serif headings, a dark hero, pill buttons',
     hint: '{{count}}/{{max}} · Enter to apply, Shift+Enter for a new line',
     grounding: 'AI rewrites and restyles what the site already says; it never adds facts or contacts.',
-    placeholderRebuild: 'e.g. Reviews above services, hide the gallery, serif headings, more spacing',
-    groundingRebuild: 'AI reorders, hides and restyles the original page\'s sections; it never writes text.',
     apply: 'Apply',
     applying: 'Applying…',
-    applied: 'Applied: {{summary}}',
-    unchanged: 'Nothing changed: {{summary}}',
     failed: 'Could not apply the change: {{message}}',
     locked: 'The MVP can be changed only while it awaits review',
     busy: 'Wait until the AI has applied the change',
-    resetDesign: 'Reset custom design',
-    designReset: 'The custom design was removed; the page is back to the look of its layout.',
-    noDesign: 'The MVP has no custom design to reset.',
-  },
-  colorPicker: {
-    brandPalette: 'Brand palette:',
-    saveFailed: 'Could not save the palette: {{message}}',
-    presets: {
-      Indigo: 'Indigo',
-      Violet: 'Violet',
-      Cyan: 'Cyan',
-      Emerald: 'Emerald',
-      Amber: 'Amber',
-      Rose: 'Rose',
-      Blue: 'Blue',
-      Slate: 'Slate',
-    },
-    custom: 'Pick a custom HEX color',
-    restore: 'Restore original color ({{color}})',
-    reset: 'Reset',
-    locked: 'The palette can be changed only while the MVP awaits review',
   },
   email: {
     variables: {

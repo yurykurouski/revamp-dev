@@ -304,6 +304,7 @@ export const lt: Translation = {
     },
   },
   mvpPage: {
+    previousGenerator: 'Šis MVP sukurtas ankstesniu generatoriumi. Sugeneruokite jį iš naujo, kad galėtumėte keisti čia.',
     colors: {
       title: 'Spalvos',
       roles: {
@@ -1059,36 +1060,11 @@ export const lt: Translation = {
     placeholder: 'Pvz.: atsiliepimai virš paslaugų, antraštės su užraitais, tamsus pirmas ekranas, apvalūs mygtukai',
     hint: '{{count}}/{{max}} · Enter — pritaikyti, Shift+Enter — nauja eilutė',
     grounding: 'DI perrašo ir pertvarko tai, kas jau yra svetainėje; jis niekada neprideda faktų ar kontaktų.',
-    placeholderRebuild: 'Pvz.: atsiliepimai virš paslaugų, paslėpti galeriją, antraštės su užraitais, daugiau erdvės',
-    groundingRebuild: 'DI pertvarko, slepia ir perdažo originalaus puslapio skyrius; teksto jis nerašo.',
     apply: 'Pritaikyti',
     applying: 'Taikoma…',
-    applied: 'Pritaikyta: {{summary}}',
-    unchanged: 'Nieko nepakeista: {{summary}}',
     failed: 'Nepavyko pritaikyti pakeitimo: {{message}}',
     locked: 'MVP galima keisti tik tol, kol jis laukia peržiūros',
     busy: 'Palaukite, kol DI pritaikys pakeitimą',
-    resetDesign: 'Atkurti numatytąjį dizainą',
-    designReset: 'Savas dizainas pašalintas: puslapis vėl atrodo kaip pasirinktame makete.',
-    noDesign: 'MVP neturi savo dizaino, nėra ko atkurti.',
-  },
-  colorPicker: {
-    brandPalette: 'Prekės ženklo paletė:',
-    saveFailed: 'Nepavyko išsaugoti paletės: {{message}}',
-    presets: {
-      Indigo: 'Indigo',
-      Violet: 'Violetinė',
-      Cyan: 'Žydra',
-      Emerald: 'Smaragdinė',
-      Amber: 'Gintarinė',
-      Rose: 'Rožinė',
-      Blue: 'Mėlyna',
-      Slate: 'Grafitinė',
-    },
-    custom: 'Pasirinkti savo HEX spalvą',
-    restore: 'Atkurti originalią spalvą ({{color}})',
-    reset: 'Atstatyti',
-    locked: 'Paletę galima keisti tik kol MVP laukia peržiūros',
   },
   email: {
     variables: {
