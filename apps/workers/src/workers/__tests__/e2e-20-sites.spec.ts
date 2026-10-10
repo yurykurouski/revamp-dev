@@ -4,11 +4,11 @@ import { ImageService } from '../../services/image.service.js';
 import { BrandExtractorService, RawBrandExtractionData } from '../../services/brand-extractor.service.js';
 import { DesignCritiqueService } from '../../services/design-critique.service.js';
 import { ScoringService } from '../../services/scoring.service.js';
-import { GenerateMvpContentInput, MvpContentService } from '../../services/mvp-content.service.js';
-import { bentoTemplateService } from '../../services/template.service.js';
+import { finishMvpPage } from '../../services/mvp-page-finish.js';
+import { VALID } from '../../services/__tests__/fixtures/page-gen/page.js';
 import { emailService, IEmailProvider } from '../../services/email.service.js';
 import { checkMvpStandards } from '../../services/mvp-standards.js';
-import { AnalyticsEventType, ILead, IAudit } from '@revamp/shared-types';
+import { AnalyticsEventType } from '@revamp/shared-types';
 
 interface TestSiteConfig {
   id: string;
@@ -287,13 +287,12 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
       tokenUsage?: { promptTokens: number; completionTokens: number; totalTokens: number };
       maxDimension?: number;
       bannerSize?: number;
-      bentoBundleSize?: number;
+      pageSize?: number;
       error?: string;
     }> = [];
 
     // Canned model answers; no LLM is called and none is needed to be configured (REV-45)
     const cannedCritique = new DesignCritiqueService();
-    const cannedCopy = new MvpContentService();
 
     for (const site of DATASET_20_SITES) {
       console.log(`\n======================================================`);
@@ -400,51 +399,22 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
         expect(scores.total).toBeGreaterThanOrEqual(50);
         expect(scores.total).toBeLessThanOrEqual(100);
 
-        // --- 7. Bento Landing MVP Generation ---
-        const contentInput: GenerateMvpContentInput = {
+        // --- 7-8. The model-designed page (REV-136), finished by code with this site's verified contacts ---
+        // The page comes from the recorded fixture: no model is called here (REV-141)
+        const pageHtml = finishMvpPage(VALID, {
           businessName: site.businessName,
-          niche: site.niche,
-          city: site.city,
-          originalUrl: site.url,
-          extractedServices: brandResult.services,
+          language: 'en',
+          services: brandResult.services,
           contacts: {
-            phone: brandResult.contacts.phone,
-            email: brandResult.contacts.email,
+            ...(brandResult.contacts.phone ? { phone: brandResult.contacts.phone } : {}),
+            ...(brandResult.contacts.email ? { email: brandResult.contacts.email } : {}),
           },
-          critiqueQuickWins: critiqueResult.critique.quickWins,
-          ownerName: site.ownerName,
-        };
-        const mvpContentService = new MvpContentService({
-          provider: 'anthropic',
-          model: 'claude-sonnet-5',
-          anthropicApiKey: 'test-key',
-          customFetcher: anthropicReplying(cannedCopy.generateDeterministicFallback(contentInput)),
+          seo: {},
+          theme: { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#f5f7fa', text: '#111111', fontHeading: 'Lora, serif', fontBody: 'Lato, sans-serif' },
         });
-        const mvpResult = await mvpContentService.generateContent(contentInput);
-        expect(mvpResult.aiFallbackUsed).toBe(false);
-
-        expect(mvpResult.content.hero.headline).toBeTruthy();
-        expect(mvpResult.content.services.length).toBeGreaterThanOrEqual(1);
-
-        // --- 8. Render Bento Static HTML ---
-        const mockLead: Partial<ILead> = {
-          _id: site.id as any,
-          businessName: site.businessName,
-          contactPhone: brandResult.contacts.phone,
-          contactEmail: brandResult.contacts.email,
-          city: site.city,
-        };
-
-        const mockAudit: Partial<IAudit> = {
-          extractedBrandTokens: brandResult.tokens,
-          scores,
-        };
-
-        const bentoHtml = bentoTemplateService.renderFromAudit(mockLead, mockAudit, mvpResult.content);
-        expect(bentoHtml).toContain('<!DOCTYPE html>');
-        const escapedName = site.businessName.replace(/&/g, '&amp;');
-        expect(bentoHtml.includes(site.businessName) || bentoHtml.includes(escapedName)).toBe(true);
-        expect(Buffer.byteLength(bentoHtml, 'utf8')).toBeLessThan(300 * 1024);
+        expect(pageHtml).toContain('<!DOCTYPE html>');
+        expect(pageHtml).not.toContain('{{');
+        expect(Buffer.byteLength(pageHtml, 'utf8')).toBeLessThan(300 * 1024);
 
         // --- 9. Before/After 1200x630 Marketing Banner ---
         const bannerWebp = await ImageService.createComparisonBanner({
@@ -453,7 +423,7 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
           businessName: site.businessName,
           oldLcpSeconds: 3.5,
           oldA11yViolationsCount: 8,
-          newStandardsScore: checkMvpStandards(bentoHtml).score,
+          newStandardsScore: checkMvpStandards(pageHtml).score,
         });
 
         const bannerMeta = await sharp(bannerWebp).metadata();
@@ -495,7 +465,7 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
           tokenUsage: critiqueResult.tokenUsage,
           maxDimension: Math.max(mobileMeta.width ?? 0, mobileMeta.height ?? 0),
           bannerSize: bannerWebp.length,
-          bentoBundleSize: Buffer.byteLength(bentoHtml, 'utf8'),
+          pageSize: Buffer.byteLength(pageHtml, 'utf8'),
         });
       } catch (err: unknown) {
         failureCount++;

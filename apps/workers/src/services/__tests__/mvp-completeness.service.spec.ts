@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { IAudit, ILead, IMvpGeneratedContent } from '@revamp/shared-types';
+import { IAudit, ILead } from '@revamp/shared-types';
 import { CompletenessJudgeOutput, MvpCompletenessReportSchema } from '@revamp/validation';
 import type { CompletenessJudge } from '../mvp-completeness-judge.js';
 import {
@@ -15,7 +15,8 @@ import {
   tokenCoverage,
   wordsMatch,
 } from '../mvp-completeness.service.js';
-import { bentoTemplateService } from '../template.service.js';
+import { finishMvpPage } from '../mvp-page-finish.js';
+import { pageContext } from '../mvp-page-publish.js';
 
 // Code only: the LLM path is tested with a fake judge below
 const service = new MvpCompletenessService({ judge: null });
@@ -453,19 +454,24 @@ describe('MvpCompletenessService (REV-36)', () => {
         images: ['https://usmiech.pl/img/1.jpg'],
       },
     } as unknown as Partial<IAudit>;
-    const content: IMvpGeneratedContent = {
-      hero: { badge: 'x', headline: 'Piękny uśmiech', subheadline: 'Sub', primaryCtaText: 'Umów', secondaryCtaText: 'Zadzwoń' },
-      services: [
-        { title: 'Wybielanie zębów', description: 'Opis', lucideIconName: 'Sparkles' },
-        { title: 'Leczenie kanałowe', description: 'Opis', lucideIconName: 'Sparkles' },
-      ],
-      trustSignals: [],
-      offerNotice: '',
+    // A page as the model writes it (REV-136): contacts only as placeholders, filled by code
+    const PAGE = `<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>Zdrowy Uśmiech</title>
+<style>:root{--rv-color-primary:#123456;--rv-color-accent:#123456;--rv-color-bg:#ffffff;--rv-color-surface:#f5f5f5;--rv-color-text:#111111;--rv-font-heading:Lora, serif;--rv-font-body:Lato, sans-serif}</style></head>
+<body><header><img src="https://usmiech.pl/logo.png" alt="Zdrowy Uśmiech"></header>
+<main><h1>Zdrowy Uśmiech</h1><section><h2>Usługi</h2><ul><li>Wybielanie zębów</li><li>Leczenie kanałowe</li></ul></section>
+<section><blockquote>Wspaniała obsługa, polecam każdemu! — Anna</blockquote><img src="https://usmiech.pl/img/1.jpg" alt=""></section>
+<section>{{booking}}</section></main>
+<footer><p><a href="{{phone}}">{{phone}}</a> <a href="{{email}}">{{email}}</a></p><p>{{address}}</p><p>{{hours}}</p>
+<p><a href="https://www.facebook.com/usmiech/">Facebook</a></p></footer></body></html>`;
+    const THEME = { primary: '#123456', accent: '#123456', bg: '#ffffff', surface: '#f5f5f5', text: '#111111', fontHeading: 'Lora, serif', fontBody: 'Lato, sans-serif' };
+    const finished = (l: Partial<ILead>, a: Partial<IAudit>) => {
+      const { finish } = pageContext(l as ILead, a as IAudit);
+      return finishMvpPage(PAGE, { ...finish, theme: THEME });
     };
 
-    it('finds all key data in a real Bento MVP, with nothing flagged as made up', () => {
-      const html = bentoTemplateService.renderFromAudit(lead, audit, content);
-      const report = service.check(html, lead, audit);
+
+    it('finds all key data in a finished model-designed page, with nothing flagged as made up (REV-141)', () => {
+      const report = service.check(finished(lead, audit), lead, audit);
 
       expect(report.status).toBe('verified');
       expect(report.hasCriticalIssues).toBe(false);
@@ -473,28 +479,13 @@ describe('MvpCompletenessService (REV-36)', () => {
       for (const field of ['businessName', 'phone', 'email', 'address', 'workingHours', 'services', 'socialLinks']) {
         expect(checkOf(report, field)?.status, field).toBe('present');
       }
-      expect(report.score).toBe(100);
     });
 
-    it.each(['split', 'editorial', 'compact'] as const)(
-      'finds all key data in the %s layout too, with nothing made up (REV-54)',
-      (layout) => {
-        const report = service.check(bentoTemplateService.renderFromAudit(lead, audit, content, layout), lead, audit);
-
-        expect(report.status).toBe('verified');
-        expect(report.hasCriticalIssues).toBe(false);
-        expect(report.checks.some((c) => c.status === 'unsourced')).toBe(false);
-        expect(report.score).toBe(100);
-      },
-    );
-
-    it('flags an MVP rendered without the business contacts', () => {
-      const html = bentoTemplateService.renderFromAudit(
-        { ...lead, contactEmail: undefined },
-        { ...audit, extractedContacts: { socialLinks: [] } },
-        content,
-      );
-      const report = service.check(html, lead, audit);
+    it('flags a page without the business contacts', () => {
+      // Without verified contacts the brief offers no placeholders for them, so the page has none (REV-136)
+      const bare = PAGE.replace(/<footer>[\s\S]*<\/footer>/, '<footer></footer>');
+      const { finish } = pageContext(lead as ILead, audit as IAudit);
+      const report = service.check(finishMvpPage(bare, { ...finish, theme: THEME }), lead, audit);
       expect(report.hasCriticalIssues).toBe(true);
       expect(checkOf(report, 'phone')?.status).toBe('missing');
       expect(checkOf(report, 'address')?.status).toBe('missing');
