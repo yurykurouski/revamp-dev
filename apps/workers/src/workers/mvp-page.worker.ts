@@ -30,7 +30,10 @@ import { storageService } from '../services/storage.service.js';
 // restore of an earlier version. Each publishes the page again, or publishes nothing and says why. The API waits for
 // the result; the queue runs one job at a time, so two publishes of one MVP never interleave.
 
-/** Time kept back from the model for finishing, uploading and measuring the page before the API stops waiting */
+/**
+ * Time kept for finishing, uploading and measuring the page before the API stops waiting: the model's deadline ends
+ * this much earlier, and no action starts publishing with less left
+ */
 export const PUBLISH_MARGIN_MS = 90_000;
 
 export const PREVIOUS_GENERATOR_REFUSAL = 'This MVP was made by the previous generator: only a regeneration applies to it.';
@@ -143,8 +146,9 @@ export async function processMvpPageJob(
       throw new Error(`Unknown MVP page action ${String((data as { action?: unknown }).action)}.`);
   }
 
-  // The model may take a while: the operator may have given up, or the lead moved on meanwhile
-  if (now() > data.deadline) throw expired();
+  // The model may take a while, or the job waited behind another: publishing starts only with its reserve left, so the
+  // page never goes live after the API has answered that it was not applied. The lead may have moved on meanwhile too
+  if (now() > data.deadline - PUBLISH_MARGIN_MS) throw expired();
   const latest = await Lead.findById(leadId).exec();
   if (!latest || !canChangeMvpLayout(latest.status)) throw leadLocked(latest?.status);
 

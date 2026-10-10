@@ -1326,10 +1326,20 @@ describe('API Routes Integration Tests (Supertest)', () => {
         expect(failed.body.error.message).toContain('GENERATING');
 
         mockProject(project);
-        vi.mocked(runMvpPageJob).mockResolvedValueOnce({ status: 'timeout' });
+        vi.mocked(runMvpPageJob).mockResolvedValueOnce({ status: 'timeout', running: false });
         const late = await edit();
         expect(late.status).toBe(504);
         expect(late.body.error.code).toBe('MVP_EDIT_TIMEOUT');
+        expect(late.body.error.message).toContain('was not applied');
+
+        // A job still publishing when the API stops waiting may yet go live: the answer must not say it was not applied
+        mockProject(project);
+        vi.mocked(runMvpPageJob).mockResolvedValueOnce({ status: 'timeout', running: true });
+        const running = await edit();
+        expect(running.status).toBe(504);
+        expect(running.body.error.code).toBe('MVP_EDIT_TIMEOUT');
+        expect(running.body.error.message).toContain('may still be published');
+        expect(running.body.error.message).not.toContain('was not applied');
       });
 
       it('answers 400 for an instruction that is too short', async () => {

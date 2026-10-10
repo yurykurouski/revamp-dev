@@ -74,15 +74,15 @@ describe('runMvpPageJob (REV-85, REV-139)', () => {
     job.waitUntilFinished.mockRejectedValue(new Error('timed out'));
     job.getState.mockResolvedValue('waiting');
 
-    await expect(runMvpPageJob(data, 1000)).resolves.toEqual({ status: 'timeout' });
+    await expect(runMvpPageJob(data, 1000)).resolves.toEqual({ status: 'timeout', running: false });
     expect(job.remove).toHaveBeenCalledTimes(1);
   });
 
-  it('times out without removing a job a worker is running; its deadline stops it applying', async () => {
+  it('times out without removing a job a worker is running, and says it may still publish', async () => {
     job.waitUntilFinished.mockRejectedValue(new Error('timed out'));
     job.getState.mockResolvedValue('active');
 
-    await expect(runMvpPageJob(data, 1000)).resolves.toEqual({ status: 'timeout' });
+    await expect(runMvpPageJob(data, 1000)).resolves.toEqual({ status: 'timeout', running: true });
     expect(job.remove).not.toHaveBeenCalled();
   });
 

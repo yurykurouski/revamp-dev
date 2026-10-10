@@ -183,6 +183,9 @@ async function loadChangeableMvp(id: string) {
 async function runPageChange(res: Response, id: string, job: Omit<IMvpPageJobData, 'deadline' | 'mvpProjectId'>, waitMs: number): Promise<void> {
   const outcome = await runMvpPageJob({ mvpProjectId: id, ...job }, waitMs);
   if (outcome.status === 'timeout') {
+    if (outcome.running) {
+      throw new AppError(504, 'MVP_EDIT_TIMEOUT', 'The change is taking longer than expected and may still be published. Reload the MVP in a minute before trying again.');
+    }
     throw new AppError(504, 'MVP_EDIT_TIMEOUT', 'The change took too long and was not applied. Check that the workers are running, then try again.');
   }
   if (outcome.status === 'failed') {

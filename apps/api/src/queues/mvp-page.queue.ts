@@ -38,11 +38,13 @@ export async function closeMvpPageEvents(): Promise<void> {
 export type MvpPageOutcome =
   | { status: 'done'; result: IMvpPageJobResult }
   | { status: 'failed'; reason: string }
-  | { status: 'timeout' };
+  /** `running`: a worker had started the job, which may still publish within its reserve */
+  | { status: 'timeout'; running: boolean };
 
 /**
  * Queues an operator's change to a model-designed page (REV-85, REV-139) and waits for the worker's result. The job
- * carries the moment the API stops waiting, after which the worker no longer applies it.
+ * carries the moment the API stops waiting; the worker starts publishing only with time left before it, but a publish
+ * that overruns its reserve may still go live, which the timeout reports as `running`.
  */
 export async function runMvpPageJob(data: Omit<IMvpPageJobData, 'deadline'>, timeoutMs: number): Promise<MvpPageOutcome> {
   const events = getQueueEvents();
@@ -57,7 +59,8 @@ export async function runMvpPageJob(data: Omit<IMvpPageJobData, 'deadline'>, tim
     if (state === 'failed') {
       return { status: 'failed', reason: error instanceof Error ? error.message : String(error) };
     }
-    if (state === 'waiting' || state === 'delayed' || state === 'prioritized') await job.remove().catch(() => undefined);
-    return { status: 'timeout' };
+    const queued = state === 'waiting' || state === 'delayed' || state === 'prioritized';
+    if (queued) await job.remove().catch(() => undefined);
+    return { status: 'timeout', running: state === 'active' };
   }
 }

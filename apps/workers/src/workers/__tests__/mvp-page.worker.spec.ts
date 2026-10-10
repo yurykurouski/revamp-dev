@@ -146,6 +146,22 @@ describe('a free-text change (REV-139)', () => {
     nothingPublished();
   });
 
+  it('publishes nothing when too little time is left to publish before the operator stops waiting', async () => {
+    let t = NOW;
+    change.mockImplementation(async () => {
+      t = DEADLINE - PUBLISH_MARGIN_MS + 1;
+      return { ok: true, page: NEW_PAGE, theme: THEME, grounding: [], attempts: 1, answers: [], modelUsed: 'm' };
+    });
+    await expect(run({ action: 'change', instruction: 'x' }, () => t)).rejects.toThrow('stopped waiting');
+    nothingPublished();
+  });
+
+  it('keeps the publish reserve for palette and fonts too: a job started late publishes nothing', async () => {
+    const colors = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#ffffff', text: '#222222' };
+    await expect(run({ action: 'controls', controls: { colors } }, () => DEADLINE - PUBLISH_MARGIN_MS + 1)).rejects.toThrow('stopped waiting');
+    nothingPublished();
+  });
+
   it('refuses a job that already missed its deadline, before any work', async () => {
     await expect(run({ action: 'change', instruction: 'x' }, () => DEADLINE + 1)).rejects.toThrow('stopped waiting');
     expect(change).not.toHaveBeenCalled();
