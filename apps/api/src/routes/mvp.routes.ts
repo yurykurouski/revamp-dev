@@ -156,6 +156,14 @@ router.get('/preview/:slug', async (req: Request, res: Response, next: NextFunct
 });
 
 // PATCH /mvp/:id/tokens: saves the palette on the MVP record by its _id, then the published bundle is
+
+/** The layout, palette and design tools edit the rebuild or Bento copy; a page the model designed has neither (REV-138) */
+function refuseModelDesigned(project: { page?: string | null }): void {
+  if (project.page) {
+    throw new AppError(409, 'MVP_MODEL_DESIGNED', 'This MVP was designed by the model: the layout and design tools do not apply to it');
+  }
+}
+
 // re-rendered in it (REV-90), under the same rule as a layout change; no LLM call.
 router.patch(
   '/:id/tokens',
@@ -178,6 +186,7 @@ router.patch(
       if (!project) {
         throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
       }
+      refuseModelDesigned(project);
       const lead = await Lead.findById(project.leadId).exec();
       if (!lead) {
         throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
@@ -231,6 +240,7 @@ router.patch(
       if (!project) {
         throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
       }
+      refuseModelDesigned(project);
       const lead = await Lead.findById(project.leadId).exec();
       if (!lead) {
         throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
@@ -312,6 +322,7 @@ async function runMvpChange(
   if (!project) {
     throw new AppError(404, 'MVP_NOT_FOUND', 'MVP not found');
   }
+  refuseModelDesigned(project);
   const lead = await Lead.findById(project.leadId).exec();
   if (!lead) {
     throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');

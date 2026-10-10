@@ -1,14 +1,41 @@
-import { Worker, Job } from 'bullmq';
-import { IAiGenerationJobData } from '@revamp/shared-types';
+import { randomUUID } from 'node:crypto';
+import { UnrecoverableError, Worker, Job } from 'bullmq';
+import { IAiGenerationJobData, IAudit, ILead, IMvpRenderFailure } from '@revamp/shared-types';
 import { leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
-import { Audit } from '../models/Audit.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
-import { MvpContentService, mvpContentService } from '../services/mvp-content.service.js';
+import { buildMvpSourceBrief } from '../services/mvp-source-brief.js';
+import { MvpPageGenerator, defaultPageGenerator } from '../services/mvp-page-generator.js';
 import { addDeployJob } from '../queues/deploy.queue.js';
 import { handleGenerationFailure } from './generation-failure.js';
+
+/** A page the model could not make (REV-138): final, so BullMQ does not retry; the code and reason go on the lead */
+export class MvpPageUnavailableError extends UnrecoverableError {
+  constructor(readonly failure: IMvpRenderFailure) {
+    super(failure.message ?? `The model gave no page (${failure.reason})`);
+  }
+}
+
+/** A capture that takes longer than this is left out rather than holding the generation */
+const CAPTURE_TIMEOUT_MS = 15_000;
+
+/** The audit's full desktop capture for the model; a capture that cannot be loaded leaves a text-only call */
+async function desktopCapture(url: string | undefined): Promise<Buffer | undefined> {
+  if (!url) return undefined;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS) });
+    if (!res.ok) {
+      console.warn(`[AiWorker] The desktop capture was not loaded (HTTP ${res.status}); generating without it`);
+      return undefined;
+    }
+    return Buffer.from(await res.arrayBuffer());
+  } catch (error) {
+    console.warn('[AiWorker] The desktop capture was not loaded; generating without it:', error);
+    return undefined;
+  }
+}
 
 export const createAiWorker = (): Worker => {
   const worker = new Worker<IAiGenerationJobData>(
@@ -16,12 +43,10 @@ export const createAiWorker = (): Worker => {
     async (job: Job<IAiGenerationJobData>) => {
       const { leadId, auditId, forceRegenerate = false, previousStatus, provider, model } = job.data;
       console.log(
-        `[AiWorker] Processing AI content generation for leadId: ${leadId}, auditId: ${auditId}` +
-          (forceRegenerate ? ' (regenerating: previous copy is discarded)' : '') +
+        `[AiWorker] Designing the MVP page for leadId: ${leadId}, auditId: ${auditId}` +
+          (forceRegenerate ? ' (regenerating)' : '') +
           (provider ? ` with ${provider}${model ? `/${model}` : ''}` : ''),
       );
-      // The operator's provider/model applies to this job only; others keep the env default (REV-32)
-      const contentService = provider ? new MvpContentService({ provider, model }) : mvpContentService;
 
       const lead = await Lead.findById(leadId).exec();
       if (!lead) {
@@ -46,64 +71,40 @@ export const createAiWorker = (): Worker => {
         return { success: false, skipped: true, leadId, reason };
       }
 
-      // 2. Synthesize high-converting MVP copy with Strict Grounding. Always a fresh LLM run: the
-      // copy stored on the audit is never reused, so a regeneration (REV-31) gets new copy.
-      const generationResult = await contentService.generateContent({
-        businessName: lead.businessName,
-        niche: lead.niche,
-        city: lead.city,
-        originalUrl: lead.originalUrl,
-        extractedServices: audit.extractedServices,
-        // Verified contacts: extracted from the original site first, then operator-entered lead data
-        contacts: {
-          phone: audit.extractedContacts?.phone || lead.contactPhone,
-          email: audit.extractedContacts?.email || lead.contactEmail,
-          address: audit.extractedContacts?.address,
-          workingHours: audit.extractedContacts?.workingHours,
-        },
-        siteContent: audit.extractedContent,
-        critiqueQuickWins: audit.designCritique?.quickWins,
-        ownerName: lead.ownerName,
-      });
+      // 2. The model designs the page from the brief code built (no contact values) and the current site's look.
+      // The operator's provider/model applies to this job only (REV-32)
+      const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as IAudit;
+      const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as ILead;
+      const brief = buildMvpSourceBrief(auditData, leadData);
+      const screenshot = await desktopCapture(auditData.screenshotUrls?.desktopFull);
+      const generator = provider ? new MvpPageGenerator({ provider, model }) : defaultPageGenerator();
+      const result = await generator.generate({ brief, ...(screenshot ? { screenshot } : {}) });
 
-      // 3. Persist generated copy to Audit
-      await Audit.findByIdAndUpdate(audit._id, {
-        // Drop undefined keys: the Mongo driver would persist them as null
-        generatedContent: JSON.parse(JSON.stringify(generationResult.content)),
-        aiFallbackUsed: audit.aiFallbackUsed || generationResult.aiFallbackUsed,
-      }).exec();
+      if (!result.ok) {
+        console.warn(`[AiWorker] No page for lead ${leadId}: ${result.reason}: ${result.message}`);
+        // An unreachable model may answer on the job's next attempt; a missing model or a rejected page will not
+        if (result.reason === 'call_failed') throw new Error(result.message);
+        throw new MvpPageUnavailableError({ code: 'MVP_PAGE_UNAVAILABLE', reason: result.reason, message: result.message.slice(0, 300), at: new Date() });
+      }
 
-      // 4. Chain to the Deploy Queue for HTML synthesis, screenshots, and MinIO deployment. The lead
-      // stays GENERATING until the deploy worker publishes the new preview and moves it to
-      // NEEDS_APPROVAL (Human-In-The-Loop gate), so the dashboard never shows a stale preview as ready.
-      // A failed dispatch fails the job, so BullMQ retries it instead of leaving the lead stuck.
+      // 3. The deploy job finishes, publishes and measures the page and moves the lead to NEEDS_APPROVAL
+      // (Human-In-The-Loop gate). A failed dispatch fails the job, so BullMQ retries it instead of leaving the lead stuck.
       await addDeployJob({
         leadId,
-        auditId: audit._id.toString(),
+        auditId: String(audit._id),
         forceRegenerate,
         previousStatus,
-        ...(job.data.layout ? { layout: job.data.layout } : {}),
+        page: { id: randomUUID(), html: result.page, theme: result.theme, grounding: result.grounding, kind: 'generate' },
         generationSource: {
-          provider: generationResult.provider,
-          modelUsed: generationResult.modelUsed,
-          ...(provider ? { requestedProvider: provider, requestedModel: generationResult.requestedModel } : {}),
+          // A page always comes from a configured provider: without one the generator answers not_configured
+          provider: result.provider!,
+          modelUsed: result.modelUsed,
+          ...(provider ? { requestedProvider: provider, requestedModel: model } : {}),
         },
       });
-      console.log(`[AiWorker] Dispatched MVP Deploy job for lead ${leadId}`);
+      console.log(`[AiWorker] Page designed for ${lead.businessName} in ${result.attempts} attempt(s); deploy job dispatched.`);
 
-      console.log(
-        `[AiWorker] Content generated successfully for ${lead.businessName} (Fallback: ${generationResult.aiFallbackUsed}).`,
-      );
-
-      return {
-        success: true,
-        leadId,
-        auditId: audit._id.toString(),
-        content: generationResult.content,
-        aiFallbackUsed: generationResult.aiFallbackUsed,
-        provider: generationResult.provider,
-        modelUsed: generationResult.modelUsed,
-      };
+      return { success: true, leadId, auditId: String(audit._id), attempts: result.attempts, modelUsed: result.modelUsed, grounding: result.grounding.length };
     },
     {
       connection: redisConnection,

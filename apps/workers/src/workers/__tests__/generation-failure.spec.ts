@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { handleGenerationFailure, statusAfterFailedGeneration } from '../generation-failure.js';
 import { canTransition } from '@revamp/validation';
 import { Lead } from '../../models/Lead.model.js';
+import { MvpPageUnavailableError } from '../ai.worker.js';
 
 vi.mock('../../models/Lead.model.js');
 
@@ -65,6 +66,27 @@ describe('MVP generation failure handling (REV-31)', () => {
           generationFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'not_configured', level: 'modern', at },
         },
       },
+    );
+  });
+
+  it('records a page the model could not make at once, from the ai worker (REV-138)', async () => {
+    const at = new Date('2026-10-10T12:00:00Z');
+    const failure = { code: 'MVP_PAGE_UNAVAILABLE', reason: 'invalid_page', message: 'rejected twice', at };
+    const err = Object.assign(new Error('rejected twice'), { name: 'UnrecoverableError', failure });
+    await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 3), err, 'content');
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-1', status: 'GENERATING' },
+      { $set: { status: 'AUDITED', generationError: 'MVP content failed: rejected twice', generationFailure: failure } },
+    );
+  });
+
+  it('resets the lead at once for the real page error on its first attempt (review, REV-138)', async () => {
+    const failure = { code: 'MVP_PAGE_UNAVAILABLE' as const, reason: 'invalid_page' as const, message: 'rejected twice', at: new Date('2026-10-10T12:00:00Z') };
+    // The real bullmq class: its constructor names the error after the subclass
+    await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 1), new MvpPageUnavailableError(failure), 'content');
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-1', status: 'GENERATING' },
+      { $set: { status: 'AUDITED', generationError: 'MVP content failed: rejected twice', generationFailure: failure } },
     );
   });
 

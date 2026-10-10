@@ -41,14 +41,14 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     comparisonBannerUrl: {
       type: String,
     },
+    // Absent on a model-designed page (REV-138); removed with the rebuild in REV-141
     generatedContent: {
       type: Schema.Types.Mixed,
-      required: true,
     },
     colorPalette: {
-      primary: { type: String, required: true },
-      secondary: { type: String, required: true },
-      accent: { type: String, required: true },
+      primary: { type: String },
+      secondary: { type: String },
+      accent: { type: String },
     },
     isPublished: {
       type: Boolean,
@@ -89,6 +89,12 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     standards: { type: Schema.Types.Mixed },
     // REV-119: the published page's web vitals (MvpPerformanceSchema), measured on every publish
     performance: { type: Schema.Types.Mixed },
+    // REV-138: the model's page (placeholders unfilled), its theme, the operator's controls, grounding flags, versions
+    page: { type: String },
+    theme: { type: Schema.Types.Mixed },
+    controls: { type: Schema.Types.Mixed },
+    grounding: { type: Schema.Types.Mixed },
+    versions: { type: Schema.Types.Mixed },
   },
   {
     timestamps: true,

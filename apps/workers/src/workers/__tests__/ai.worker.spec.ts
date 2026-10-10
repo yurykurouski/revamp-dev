@@ -1,15 +1,16 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createAiWorker } from '../ai.worker.js';
-import { Audit } from '../../models/Audit.model.js';
 import { findGenerationAudit } from '../../services/audit-lookup.js';
 import { Lead } from '../../models/Lead.model.js';
-import { MvpContentService, mvpContentService } from '../../services/mvp-content.service.js';
+import { MvpPageGenerator, defaultPageGenerator } from '../../services/mvp-page-generator.js';
 import { addDeployJob } from '../../queues/deploy.queue.js';
 
-vi.mock('../../models/Audit.model.js');
 vi.mock('../../services/audit-lookup.js');
 vi.mock('../../models/Lead.model.js');
-vi.mock('../../services/mvp-content.service.js');
+vi.mock('../../services/mvp-page-generator.js', () => ({
+  MvpPageGenerator: vi.fn(),
+  defaultPageGenerator: vi.fn(),
+}));
 vi.mock('../../queues/deploy.queue.js', () => ({
   addDeployJob: vi.fn().mockResolvedValue({ id: 'mock-deploy-job' }),
 }));
@@ -18,533 +19,169 @@ vi.mock('../../queues/connection.js', () => ({
 }));
 
 let capturedProcessor: ((job: any) => Promise<any>) | null = null;
-const mockWorkerInstance = {
-  on: vi.fn(),
-  close: vi.fn().mockResolvedValue(undefined),
-};
+const mockWorkerInstance = { on: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
 
 vi.mock('bullmq', () => {
+  class UnrecoverableError extends Error {
+    constructor(message?: string) {
+      super(message);
+      // As bullmq does: a subclass is named after itself
+      this.name = this.constructor.name;
+    }
+  }
   return {
-    Queue: vi.fn().mockImplementation(() => ({
-      add: vi.fn().mockResolvedValue({ id: 'mock-job' }),
-    })),
+    UnrecoverableError,
     Worker: vi.fn().mockImplementation(function (queueName: string, processor: any, opts: any) {
       capturedProcessor = processor;
-      return {
-        ...mockWorkerInstance,
-        queueName,
-        opts,
-      };
+      return { ...mockWorkerInstance, queueName, opts };
     }),
   };
 });
 
-describe('AiWorker (@revamp/workers)', () => {
+const PHONE = '+48 22 542 18 04';
+const EMAIL = 'info@smile.pl';
+const THEME = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#f5f7fa', text: '#111111', fontHeading: 'serif', fontBody: 'sans-serif' };
+const PAGE = '<!DOCTYPE html><html lang="pl"></html>';
+
+const lead = {
+  _id: 'lead-123',
+  businessName: 'Smile Dental',
+  niche: 'dental',
+  city: 'Warszawa',
+  originalUrl: 'https://smile.pl',
+  contactEmail: EMAIL,
+  status: 'GENERATING',
+};
+const audit = {
+  _id: 'audit-456',
+  leadId: 'lead-123',
+  extractedServices: ['Implanty'],
+  extractedContacts: { phone: PHONE, address: 'ul. Topiel 11, Warszawa', socialLinks: [] },
+  extractedBrandTokens: { primaryColor: '#0a5c8a', secondaryColor: '#ffffff', accentColor: '#f2a900', fontFamilies: [] },
+  extractedContent: { language: 'pl', h1: 'Gabinet', headings: [], paragraphs: ['Leczymy z troską.'], serviceItems: [], navItems: [], testimonials: [], images: [] },
+  screenshotUrls: { desktopOriginal: 'http://s3/desktop.webp', mobileOriginal: 'http://s3/mobile.webp', desktopFull: 'http://s3/desktop-full.webp' },
+};
+
+const okResult = {
+  ok: true,
+  page: PAGE,
+  theme: THEME,
+  grounding: [{ kind: 'number', text: '15', context: '15 lat' }],
+  attempts: 1,
+  answers: [PAGE],
+  modelUsed: 'claude-cli:sonnet',
+  provider: 'claude-cli',
+};
+
+const generate = vi.fn();
+const job = (data: Record<string, unknown> = {}) => ({ id: 'job-1', data: { leadId: 'lead-123', auditId: 'audit-456', ...data } });
+
+describe('AiWorker on the model-designed page (REV-138)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedProcessor = null;
+    createAiWorker();
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+    vi.mocked(findGenerationAudit).mockResolvedValue(audit as any);
+    generate.mockResolvedValue(okResult);
+    vi.mocked(defaultPageGenerator).mockReturnValue({ generate } as any);
+    vi.mocked(MvpPageGenerator).mockImplementation(function () {
+      return { generate } as any;
+    } as any);
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }));
   });
 
-  it('should initialize worker for AI_GENERATION queue', () => {
-    const worker = createAiWorker();
-    expect(worker).toBeDefined();
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('registers the worker and a failed handler', () => {
     expect(capturedProcessor).toBeTypeOf('function');
+    expect(mockWorkerInstance.on).toHaveBeenCalledWith('failed', expect.any(Function));
   });
 
-  it('should process AI generation job, call MvpContentService, persist to Audit, and chain the deploy job', async () => {
-    createAiWorker();
-    expect(capturedProcessor).not.toBeNull();
+  it('asks the model for the page with the brief and the full desktop capture, then dispatches the deploy job with it', async () => {
+    const result = await capturedProcessor!(job({ forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' }));
 
-    const mockLead = {
-      _id: 'lead-123',
-      businessName: 'Smile Dental',
-      niche: 'dental',
-      city: 'Saint Petersburg',
-      originalUrl: 'https://smile.spb.ru',
-      contactPhone: '+7 812 000 11 22',
-      contactEmail: 'info@smile.spb.ru',
-    };
+    expect(fetch).toHaveBeenCalledWith('http://s3/desktop-full.webp', { signal: expect.any(AbortSignal) });
+    const input = generate.mock.calls[0]![0];
+    expect(input.screenshot).toEqual(Buffer.from([1, 2, 3]));
+    expect(input.brief.business).toMatchObject({ name: 'Smile Dental', niche: 'dental', city: 'Warszawa' });
+    expect(input.brief.placeholders).toEqual(['phone', 'email', 'address', 'booking']);
+    const prompt = JSON.stringify(input.brief);
+    for (const contact of [PHONE, EMAIL, 'ul. Topiel 11']) expect(prompt).not.toContain(contact);
 
-    const mockAudit = {
-      _id: 'audit-456',
-      leadId: 'lead-123',
-      extractedServices: ['Implants', 'Whitening'],
-      extractedContacts: {
-        phone: '+48 22 542 18 04',
-        address: 'ulica Topiel 11, 00-342 Warszawa',
-        workingHours: 'Pon - Pt 09:00 — 21:00',
-        socialLinks: [],
-      },
-      extractedContent: {
-        h1: 'Best dental clinic in town',
-        headings: [],
-        paragraphs: ['Real copy from the site.'],
-        serviceItems: [{ title: 'Implants' }],
-        navItems: [],
-        testimonials: [],
-        images: [],
-      },
-      aiFallbackUsed: false,
-    };
-
-    const mockGeneratedContent = {
-      hero: {
-        badge: '✨ Special',
-        headline: 'Healthy teeth without pain in Saint Petersburg',
-        subheadline: 'Premium quality with a 5-year guarantee.',
-        primaryCtaText: 'Book now',
-        secondaryCtaText: 'Call us',
-      },
-      services: [
-        {
-          title: 'Dental implants',
-          description: 'Lifetime guarantee on implants',
-          lucideIconName: 'shield-check',
-        },
-        {
-          title: 'Whitening',
-          description: 'Safe enamel whitening',
-          lucideIconName: 'sparkles',
-        },
-        {
-          title: 'Therapy',
-          description: 'Microscope-assisted cavity treatment',
-          lucideIconName: 'activity',
-        },
-      ],
-      trustSignals: [
-        { metric: '4.9 ★', label: 'On Google Maps' },
-        { metric: '10 yrs', label: 'Of experience' },
-        { metric: '100%', label: 'Guarantee' },
-      ],
-      offerNotice: 'Free consultation',
-    };
-
-    vi.mocked(Lead.findById).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockLead),
-    } as any);
-
-    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
-
-    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(true),
-    } as any);
-
-    vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(true),
-    } as any);
-
-    vi.mocked(mvpContentService.generateContent).mockResolvedValue({
-      content: mockGeneratedContent,
-      aiFallbackUsed: false,
-      provider: 'anthropic',
-      modelUsed: 'claude-opus-5',
-      requestedProvider: 'anthropic',
-      requestedModel: 'claude-opus-5',
-      attempts: 1,
-    });
-
-    const job = {
-      id: 'job-ai-1',
-      data: {
-        leadId: 'lead-123',
-        auditId: 'audit-456',
-      },
-    };
-
-    const result = await capturedProcessor!(job);
-
-    expect(result.success).toBe(true);
-    expect(result.leadId).toBe('lead-123');
-    expect(result.content).toEqual(mockGeneratedContent);
-    // The job's audit, resolved so a stale or failed audit of the same lead is never used (REV-55)
-    expect(findGenerationAudit).toHaveBeenCalledWith('lead-123', 'audit-456');
-
-    // The lead stays GENERATING; the deploy worker moves it to NEEDS_APPROVAL (HITL gate) once
-    // the new preview is published (REV-31)
-    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-123', status: { $in: ['AUDITED', 'NEEDS_APPROVAL', 'GENERATING'] } },
-      { $set: { status: 'GENERATING' } },
-    );
-    expect(Lead.findOneAndUpdate).not.toHaveBeenCalledWith(expect.anything(), { $set: { status: 'NEEDS_APPROVAL' } });
-    expect(addDeployJob).toHaveBeenCalledWith({
-      leadId: 'lead-123',
-      auditId: 'audit-456',
-      forceRegenerate: false,
-      previousStatus: undefined,
-      // No operator choice: only the actual provider/model travels on (REV-32)
-      generationSource: { provider: 'anthropic', modelUsed: 'claude-opus-5' },
-    });
-
-    // REV-23: generation is grounded in the site's own content and verified contacts
-    expect(mvpContentService.generateContent).toHaveBeenCalledWith(
-      expect.objectContaining({
-        siteContent: mockAudit.extractedContent,
-        contacts: {
-          phone: '+48 22 542 18 04',
-          email: 'info@smile.spb.ru',
-          address: 'ulica Topiel 11, 00-342 Warszawa',
-          workingHours: 'Pon - Pt 09:00 — 21:00',
-        },
-      }),
-    );
-
-    // Verify Audit persistence
-    expect(Audit.findByIdAndUpdate).toHaveBeenCalledWith(
-      'audit-456',
-      expect.objectContaining({
-        generatedContent: mockGeneratedContent,
-        aiFallbackUsed: false,
-      }),
-    );
-  });
-
-  it('should pass forceRegenerate and previousStatus through to the deploy job, generating fresh copy (REV-31)', async () => {
-    createAiWorker();
-    expect(capturedProcessor).not.toBeNull();
-
-    const mockLead = {
-      _id: 'lead-123',
-      businessName: 'Smile Dental',
-      niche: 'dental',
-      city: 'Saint Petersburg',
-      originalUrl: 'https://smile.spb.ru',
-      contactPhone: '+7 812 000 11 22',
-      contactEmail: 'info@smile.spb.ru',
-    };
-
-    const mockAudit = {
-      _id: 'audit-456',
-      leadId: 'lead-123',
-      extractedServices: ['Implants', 'Whitening'],
-      extractedContacts: {
-        phone: '+48 22 542 18 04',
-        address: 'ulica Topiel 11, 00-342 Warszawa',
-        workingHours: 'Pon - Pt 09:00 — 21:00',
-        socialLinks: [],
-      },
-      extractedContent: {
-        h1: 'Best dental clinic in town',
-        headings: [],
-        paragraphs: ['Real copy from the site.'],
-        serviceItems: [{ title: 'Implants' }],
-        navItems: [],
-        testimonials: [],
-        images: [],
-      },
-      aiFallbackUsed: false,
-    };
-
-    const mockGeneratedContent = {
-      hero: {
-        badge: '✨ Special',
-        headline: 'Healthy teeth without pain in Saint Petersburg',
-        subheadline: 'Premium quality with a 5-year guarantee.',
-        primaryCtaText: 'Book now',
-        secondaryCtaText: 'Call us',
-      },
-      services: [
-        {
-          title: 'Dental implants',
-          description: 'Lifetime guarantee on implants',
-          lucideIconName: 'shield-check',
-        },
-        {
-          title: 'Whitening',
-          description: 'Safe enamel whitening',
-          lucideIconName: 'sparkles',
-        },
-        {
-          title: 'Therapy',
-          description: 'Microscope-assisted cavity treatment',
-          lucideIconName: 'activity',
-        },
-      ],
-      trustSignals: [
-        { metric: '4.9 ★', label: 'On Google Maps' },
-        { metric: '10 yrs', label: 'Of experience' },
-        { metric: '100%', label: 'Guarantee' },
-      ],
-      offerNotice: 'Free consultation',
-    };
-
-    vi.mocked(Lead.findById).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockLead),
-    } as any);
-
-    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
-
-    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(true),
-    } as any);
-
-    vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(true),
-    } as any);
-
-    vi.mocked(mvpContentService.generateContent).mockResolvedValue({
-      content: mockGeneratedContent,
-      aiFallbackUsed: false,
-      provider: 'anthropic',
-      modelUsed: 'claude-opus-5',
-      requestedProvider: 'anthropic',
-      requestedModel: 'claude-opus-5',
-      attempts: 1,
-    });
-
-    const job = {
-      id: 'job-ai-regen',
-      data: { leadId: 'lead-123', auditId: 'audit-456', forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' },
-    };
-
-    await capturedProcessor!(job);
-
-    // The copy already stored on the audit is never reused
-    expect(mvpContentService.generateContent).toHaveBeenCalledTimes(1);
-    // No provider on the job: the env-default singleton is used, no per-job service (REV-32)
-    expect(MvpContentService).not.toHaveBeenCalled();
     expect(addDeployJob).toHaveBeenCalledWith({
       leadId: 'lead-123',
       auditId: 'audit-456',
       forceRegenerate: true,
       previousStatus: 'NEEDS_APPROVAL',
-      generationSource: { provider: 'anthropic', modelUsed: 'claude-opus-5' },
+      page: { id: expect.stringMatching(/^[0-9a-f-]{36}$/), html: PAGE, theme: THEME, grounding: okResult.grounding, kind: 'generate' },
+      generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' },
     });
+    expect(result).toMatchObject({ success: true, attempts: 1 });
   });
 
-  it('should fail the job when the deploy job cannot be dispatched, so BullMQ retries it', async () => {
-    createAiWorker();
-    expect(capturedProcessor).not.toBeNull();
+  it('moves the lead to GENERATING through the state machine', async () => {
+    await capturedProcessor!(job());
+    expect(vi.mocked(Lead.findOneAndUpdate).mock.calls[0]![0]).toMatchObject({ _id: 'lead-123', status: { $in: expect.arrayContaining(['AUDITED']) } });
+  });
 
-    const mockLead = {
-      _id: 'lead-123',
-      businessName: 'Smile Dental',
-      niche: 'dental',
-      city: 'Saint Petersburg',
-      originalUrl: 'https://smile.spb.ru',
-      contactPhone: '+7 812 000 11 22',
-      contactEmail: 'info@smile.spb.ru',
-    };
+  it('generates text-only when the capture cannot be loaded', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('ECONNREFUSED')));
+    await capturedProcessor!(job());
+    expect(generate.mock.calls[0]![0].screenshot).toBeUndefined();
+    expect(addDeployJob).toHaveBeenCalled();
+  });
 
-    const mockAudit = {
-      _id: 'audit-456',
-      leadId: 'lead-123',
-      extractedServices: ['Implants', 'Whitening'],
-      extractedContacts: {
-        phone: '+48 22 542 18 04',
-        address: 'ulica Topiel 11, 00-342 Warszawa',
-        workingHours: 'Pon - Pt 09:00 — 21:00',
-        socialLinks: [],
-      },
-      extractedContent: {
-        h1: 'Best dental clinic in town',
-        headings: [],
-        paragraphs: ['Real copy from the site.'],
-        serviceItems: [{ title: 'Implants' }],
-        navItems: [],
-        testimonials: [],
-        images: [],
-      },
-      aiFallbackUsed: false,
-    };
-
-    const mockGeneratedContent = {
-      hero: {
-        badge: '✨ Special',
-        headline: 'Healthy teeth without pain in Saint Petersburg',
-        subheadline: 'Premium quality with a 5-year guarantee.',
-        primaryCtaText: 'Book now',
-        secondaryCtaText: 'Call us',
-      },
-      services: [
-        {
-          title: 'Dental implants',
-          description: 'Lifetime guarantee on implants',
-          lucideIconName: 'shield-check',
-        },
-        {
-          title: 'Whitening',
-          description: 'Safe enamel whitening',
-          lucideIconName: 'sparkles',
-        },
-        {
-          title: 'Therapy',
-          description: 'Microscope-assisted cavity treatment',
-          lucideIconName: 'activity',
-        },
-      ],
-      trustSignals: [
-        { metric: '4.9 ★', label: 'On Google Maps' },
-        { metric: '10 yrs', label: 'Of experience' },
-        { metric: '100%', label: 'Guarantee' },
-      ],
-      offerNotice: 'Free consultation',
-    };
-
-    vi.mocked(Lead.findById).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(mockLead),
-    } as any);
-
-    vi.mocked(findGenerationAudit).mockResolvedValue(mockAudit as any);
-
-    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(true),
-    } as any);
-
-    vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(true),
-    } as any);
-
-    vi.mocked(mvpContentService.generateContent).mockResolvedValue({
-      content: mockGeneratedContent,
-      aiFallbackUsed: false,
-      provider: 'anthropic',
-      modelUsed: 'claude-opus-5',
+  it("builds a generator for the operator's provider and model and records both", async () => {
+    await capturedProcessor!(job({ provider: 'anthropic', model: 'claude-opus-5-5' }));
+    expect(MvpPageGenerator).toHaveBeenCalledWith({ provider: 'anthropic', model: 'claude-opus-5-5' });
+    expect(defaultPageGenerator).not.toHaveBeenCalled();
+    expect(vi.mocked(addDeployJob).mock.calls[0]![0].generationSource).toEqual({
+      provider: 'claude-cli',
+      modelUsed: 'claude-cli:sonnet',
       requestedProvider: 'anthropic',
-      requestedModel: 'claude-opus-5',
-      attempts: 1,
-    });
-
-    vi.mocked(addDeployJob).mockRejectedValueOnce(new Error('Redis down'));
-
-    await expect(
-      capturedProcessor!({ id: 'job-ai-dispatch', data: { leadId: 'lead-123', auditId: 'audit-456' } }),
-    ).rejects.toThrow('Redis down');
-  });
-
-  describe('per-job provider and model (REV-32)', () => {
-    const setUpLead = () => {
-      vi.mocked(Lead.findById).mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Smile Dental', niche: 'dental' }),
-      } as any);
-      vi.mocked(findGenerationAudit).mockResolvedValue({ _id: 'audit-456', leadId: 'lead-123' } as any);
-      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
-      vi.mocked(Audit.findByIdAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(true) } as any);
-    };
-
-    it.each([
-      ['anthropic', 'claude-sonnet-5'],
-      ['openai', 'gpt-4o-mini'],
-      ['gemini', 'gemini-1.5-flash'],
-      ['claude-cli', 'opus'],
-    ])('builds a %s/%s content service for that job only', async (provider, model) => {
-      createAiWorker();
-      setUpLead();
-      vi.mocked(MvpContentService).mockClear();
-      vi.mocked(MvpContentService.prototype.generateContent).mockResolvedValue({
-        content: { hero: {}, services: [], trustSignals: [], offerNotice: '' } as any,
-        aiFallbackUsed: false,
-        provider: provider as any,
-        modelUsed: provider === 'claude-cli' ? `claude-cli:${model}` : model,
-        requestedProvider: provider as any,
-        requestedModel: provider === 'claude-cli' ? `claude-cli:${model}` : model,
-        attempts: 1,
-      });
-
-      const result = await capturedProcessor!({
-        id: 'job-ai-choice',
-        data: { leadId: 'lead-123', auditId: 'audit-456', provider, model },
-      });
-
-      expect(MvpContentService).toHaveBeenCalledWith({ provider, model });
-      expect(result.provider).toBe(provider);
-      expect(addDeployJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          generationSource: {
-            provider,
-            modelUsed: provider === 'claude-cli' ? `claude-cli:${model}` : model,
-            requestedProvider: provider,
-            requestedModel: provider === 'claude-cli' ? `claude-cli:${model}` : model,
-          },
-        }),
-      );
-    });
-
-    it('records both the chosen and the actual source when the chosen provider falls back', async () => {
-      createAiWorker();
-      setUpLead();
-      vi.mocked(MvpContentService.prototype.generateContent).mockResolvedValue({
-        content: { hero: {}, services: [], trustSignals: [], offerNotice: '' } as any,
-        aiFallbackUsed: true,
-        provider: 'deterministic',
-        modelUsed: 'deterministic-fallback',
-        requestedProvider: 'openai',
-        requestedModel: 'gpt-4o',
-        attempts: 3,
-      });
-
-      await capturedProcessor!({
-        id: 'job-ai-fallback',
-        data: { leadId: 'lead-123', auditId: 'audit-456', provider: 'openai', model: 'gpt-4o' },
-      });
-
-      expect(addDeployJob).toHaveBeenCalledWith(
-        expect.objectContaining({
-          generationSource: {
-            provider: 'deterministic',
-            modelUsed: 'deterministic-fallback',
-            requestedProvider: 'openai',
-            requestedModel: 'gpt-4o',
-          },
-        }),
-      );
+      requestedModel: 'claude-opus-5-5',
     });
   });
 
-  it('should register a failed handler that resets the lead after the last attempt', () => {
-    createAiWorker();
-    expect(mockWorkerInstance.on).toHaveBeenCalledWith('failed', expect.any(Function));
+  it.each(['invalid_page', 'not_configured'] as const)('fails for good with MVP_PAGE_UNAVAILABLE on %s', async (reason) => {
+    generate.mockResolvedValue({ ok: false, reason, message: `the model said no (${reason})`, answers: [], modelUsed: 'm' });
+    const error = await capturedProcessor!(job()).catch((e: unknown) => e);
+    expect(error).toMatchObject({
+      name: 'MvpPageUnavailableError',
+      failure: { code: 'MVP_PAGE_UNAVAILABLE', reason, message: `the model said no (${reason})` },
+    });
+    expect((error as { failure: { at: unknown } }).failure.at).toBeInstanceOf(Date);
+    expect(addDeployJob).not.toHaveBeenCalled();
   });
 
-  it('should skip generation for a lead that was rejected or moved on since the job was queued (REV-62)', async () => {
-    createAiWorker();
-    vi.mocked(Lead.findById).mockReturnValue({
-      exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'X', status: 'REJECTED' }),
-    } as any);
-    vi.mocked(findGenerationAudit).mockResolvedValue({ _id: 'audit-1', status: 'COMPLETED' } as any);
+  it('throws a plain error on call_failed, so BullMQ tries the job again', async () => {
+    generate.mockResolvedValue({ ok: false, reason: 'call_failed', message: 'timed out', answers: [], modelUsed: 'm' });
+    const error = await capturedProcessor!(job()).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).not.toBe('UnrecoverableError');
+    expect((error as Error).message).toContain('timed out');
+  });
+
+  it('skips a lead that was rejected or moved on, without calling the model (REV-62)', async () => {
     vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
-
-    const result = await capturedProcessor!({ id: 'job-skip', data: { leadId: 'lead-123', auditId: 'audit-1' } });
-
-    expect(result).toMatchObject({ success: false, skipped: true, leadId: 'lead-123' });
-    expect(result.reason).toContain('REJECTED');
-    expect(mvpContentService.generateContent).not.toHaveBeenCalled();
-    expect(addDeployJob).not.toHaveBeenCalled();
+    const result = await capturedProcessor!(job());
+    expect(result).toMatchObject({ success: false, skipped: true });
+    expect(generate).not.toHaveBeenCalled();
   });
 
-  it('should throw error when Lead is not found', async () => {
-    createAiWorker();
-
-    vi.mocked(Lead.findById).mockReturnValue({
-      exec: vi.fn().mockResolvedValue(null),
-    } as any);
-
-    const job = {
-      id: 'job-ai-err',
-      data: {
-        leadId: 'lead-non-existent',
-        auditId: 'audit-err',
-      },
-    };
-
-    await expect(capturedProcessor!(job)).rejects.toThrow('Lead lead-non-existent not found');
+  it('fails when the lead is missing or has no completed audit (REV-55)', async () => {
+    vi.mocked(findGenerationAudit).mockResolvedValue(null as any);
+    await expect(capturedProcessor!(job())).rejects.toThrow('No completed audit found for lead lead-123');
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+    await expect(capturedProcessor!(job())).rejects.toThrow('Lead lead-123 not found');
   });
 
-  it('should fail the job without generating when the lead has no completed audit (REV-55)', async () => {
-    createAiWorker();
-    vi.mocked(Lead.findById).mockReturnValue({
-      exec: vi.fn().mockResolvedValue({ _id: 'lead-123', businessName: 'Biz' }),
-    } as any);
-    vi.mocked(findGenerationAudit).mockResolvedValue(null);
-    vi.mocked(Lead.findOneAndUpdate).mockClear();
-    vi.mocked(mvpContentService.generateContent).mockClear();
-    vi.mocked(addDeployJob).mockClear();
-
-    await expect(capturedProcessor!({ id: 'j', data: { leadId: 'lead-123', auditId: 'audit-failed' } })).rejects.toThrow(
-      'No completed audit found for lead lead-123',
-    );
-    expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
-    expect(mvpContentService.generateContent).not.toHaveBeenCalled();
-    expect(addDeployJob).not.toHaveBeenCalled();
+  it('fails the job when the deploy job cannot be dispatched, so BullMQ retries it', async () => {
+    vi.mocked(addDeployJob).mockRejectedValueOnce(new Error('Redis down'));
+    await expect(capturedProcessor!(job())).rejects.toThrow('Redis down');
   });
 });

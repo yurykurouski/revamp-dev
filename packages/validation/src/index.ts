@@ -67,6 +67,7 @@ import {
   MVP_BRIEF_LIMITS,
   MVP_GROUNDING_KINDS,
   MVP_PAGE_FAILURES,
+  MVP_PAGE_VERSION_KINDS,
   MVP_PLACEHOLDERS,
 } from '@revamp/shared-types';
 
@@ -1752,6 +1753,13 @@ export const MvpRenderFailureSchema = z.discriminatedUnion('code', [
     message: z.string().max(300).optional(),
     at: z.coerce.date(),
   }),
+  // A page the model could not make (REV-138)
+  z.object({
+    code: z.literal('MVP_PAGE_UNAVAILABLE'),
+    reason: z.enum(MVP_PAGE_FAILURES),
+    message: z.string().max(300).optional(),
+    at: z.coerce.date(),
+  }),
 ]);
 
 /** The saved edit: the answer plus the audit its ids belong to (set by the worker, never by the model) */
@@ -1993,3 +2001,16 @@ export const MvpGroundingFlagSchema = z
   .strict();
 
 export const MvpPageFailureSchema = z.enum(MVP_PAGE_FAILURES);
+
+export const MvpPageVersionSchema = z
+  .object({
+    n: z.number().int().min(1),
+    kind: z.enum(MVP_PAGE_VERSION_KINDS),
+    instruction: z.string().max(2000).optional(),
+    jobId: z.string().max(100).optional(),
+    provider: z.string().max(50).optional(),
+    model: z.string().max(100).optional(),
+    storagePath: z.string().min(1).max(500),
+    createdAt: z.coerce.date(),
+  })
+  .strict();

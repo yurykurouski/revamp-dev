@@ -737,8 +737,10 @@ export interface IMvpProject {
   fullPreviewUrl: string;
   storageHtmlPath: string;
   comparisonBannerUrl?: string;
-  generatedContent: IMvpGeneratedContent;
-  colorPalette: {
+  /** The Bento copy; absent on a model-designed page (REV-138) */
+  generatedContent?: IMvpGeneratedContent;
+  /** The Bento/rebuild palette; absent on a model-designed page, whose colors are its `theme` (REV-138) */
+  colorPalette?: {
     primary: string;
     secondary: string;
     accent: string;
@@ -775,6 +777,16 @@ export interface IMvpProject {
   standards?: IMvpStandards;
   /** The published page's web vitals (REV-119), measured on every publish; absent on MVPs published before it */
   performance?: IMvpPerformance;
+  /** The model's page as it wrote it, placeholders unfilled (REV-138); absent on a rebuilt or Bento MVP */
+  page?: string;
+  /** The theme the page declared in `:root` (REV-138) */
+  theme?: IMvpTheme;
+  /** The operator's palette and fonts over the theme (REV-139); cleared by a regeneration */
+  controls?: Partial<IMvpTheme>;
+  /** Facts on the page the original site does not support, for the operator to check (REV-138) */
+  grounding?: IMvpGroundingFlag[];
+  /** The published versions of the page, oldest first, at most `MVP_MAX_VERSIONS` (REV-138) */
+  versions?: IMvpPageVersion[];
   createdAt: string | Date;
   updatedAt: string | Date;
 }
@@ -1225,6 +1237,8 @@ export interface IDeployJobData {
   generationSource?: IMvpGenerationSource;
   /** A Bento layout the operator picked for this run (REV-132) */
   layout?: BentoLayoutVariant;
+  /** The model's page to publish (REV-138); a deploy without it renders the old way */
+  page?: IMvpPageJob;
   /**
    * `relayout`: re-render the published bundle in the MVP's saved layout from its stored copy, with no
    * LLM call and no status change (REV-84). A full deploy when absent.
@@ -1666,7 +1680,7 @@ export interface IRebuildModernize {
 }
 
 /** The API error codes a render that needs a model can fail with (REV-132) */
-export const MVP_RENDER_FAILURE_CODES = ['MVP_REBUILD_UNAVAILABLE', 'MVP_MODERNIZE_UNAVAILABLE'] as const;
+export const MVP_RENDER_FAILURE_CODES = ['MVP_REBUILD_UNAVAILABLE', 'MVP_MODERNIZE_UNAVAILABLE', 'MVP_PAGE_UNAVAILABLE'] as const;
 export type MvpRenderFailureCode = (typeof MVP_RENDER_FAILURE_CODES)[number];
 
 /**
@@ -1675,7 +1689,7 @@ export type MvpRenderFailureCode = (typeof MVP_RENDER_FAILURE_CODES)[number];
  */
 export interface IMvpRenderFailure {
   code: MvpRenderFailureCode;
-  reason: RebuildUnavailableReason | ModernizeFailure;
+  reason: RebuildUnavailableReason | ModernizeFailure | MvpPageFailure;
   /** The level the render was asked for */
   level?: RebuildLevel;
   message?: string;
@@ -1894,6 +1908,8 @@ export const API_ERROR_CODES = [
   'MVP_EDIT_TIMEOUT',
   'MVP_REBUILD_UNAVAILABLE',
   'MVP_MODERNIZE_UNAVAILABLE',
+  // REV-138: the layout and design tools do not apply to a page the model designed (REV-139 adds its own)
+  'MVP_MODEL_DESIGNED',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',
@@ -2016,3 +2032,36 @@ export interface IMvpGroundingFlag {
 /** Why the model gave no page (REV-137): no provider, every call failed, or every answer was rejected by the checks */
 export const MVP_PAGE_FAILURES = ['not_configured', 'call_failed', 'invalid_page'] as const;
 export type MvpPageFailure = (typeof MVP_PAGE_FAILURES)[number];
+
+/** At most this many published versions are kept per MVP; the oldest is removed from storage (REV-138) */
+export const MVP_MAX_VERSIONS = 20;
+
+/** What made a version: a generation, the operator's free-text change, palette/font controls, or a restore */
+export const MVP_PAGE_VERSION_KINDS = ['generate', 'change', 'controls', 'restore'] as const;
+export type MvpPageVersionKind = (typeof MVP_PAGE_VERSION_KINDS)[number];
+
+export interface IMvpPageVersion {
+  /** 1, 2, …; never reused for an MVP */
+  n: number;
+  kind: MvpPageVersionKind;
+  /** The operator's words for a change */
+  instruction?: string;
+  /** The page job (`IMvpPageJob.id`) that published it, so a retried job reuses its version */
+  jobId?: string;
+  provider?: string;
+  model?: string;
+  /** The raw page in the demos bucket: `v/<slug>/versions/<n>.html` */
+  storagePath: string;
+  createdAt: string | Date;
+}
+
+/** A page carried from the generation job to the deploy job (REV-138) */
+export interface IMvpPageJob {
+  /** A key unique to this page, so a retried deploy job finds the version it stored (BullMQ ids restart with Redis) */
+  id: string;
+  html: string;
+  theme: IMvpTheme;
+  grounding: IMvpGroundingFlag[];
+  kind: MvpPageVersionKind;
+  instruction?: string;
+}
