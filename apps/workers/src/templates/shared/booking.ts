@@ -100,7 +100,7 @@ export function bookingScript(opts: {
   t: MvpStrings;
   tracker: ReturnType<typeof resolveTrackerUrls>;
   trackingToken?: string;
-  /** `onPrimary`: the text color on the primary, set to near-black or white by contrast (the rebuild's `onColor`) */
+  /** `onPrimary`: the text color on the primary, set to near-black or white by contrast (`onColor` in `mvp-page-finish.ts`) */
   themeVars: { primary: string; primaryRgb?: string; onPrimary?: string; secondary?: string; accent?: string };
 }): string {
   const { t, tracker, trackingToken, themeVars } = opts;
@@ -115,7 +115,7 @@ export function bookingScript(opts: {
             document.documentElement.style.setProperty('${themeVars.primaryRgb}', r + ', ' + g + ', ' + b);
           }`
     : '';
-  // Same rule as onColor (rebuild-tuning.ts): #111111 when it reads at least as well as white on the primary
+  // Same rule as onColor (mvp-page-finish.ts): #111111 when it reads at least as well as white on the primary
   const onPrimaryBlock = themeVars.onPrimary
     ? `
           const onHex = palette.primary.replace('#', '');

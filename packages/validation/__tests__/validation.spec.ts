@@ -7,9 +7,7 @@ import {
   RejectOutreachSchema,
   TestEmailOutreachSchema,
   DesignCritiqueOutputSchema,
-  MvpContentOutputSchema,
   EmailDraftOutputSchema,
-  BentoTemplateDataSchema,
   MvpTrackEventSchema,
   StartDiscoverySchema,
   DiscoveredBusinessSchema,
@@ -129,13 +127,6 @@ describe('Validation Schemas (@revamp/validation)', () => {
 
     it('should reject empty auditId', () => {
       expect(() => GenerateMvpSchema.parse({ auditId: '' })).toThrow();
-    });
-
-    it('takes a Bento layout picked by the operator, never the rebuild (REV-132)', () => {
-      expect(GenerateMvpSchema.parse({ auditId: 'a', layout: 'split' }).layout).toBe('split');
-      expect(GenerateMvpSchema.parse({ auditId: 'a' }).layout).toBeUndefined();
-      expect(() => GenerateMvpSchema.parse({ auditId: 'a', layout: 'original' })).toThrow();
-      expect(() => GenerateMvpSchema.parse({ auditId: 'a', layout: 'nope' })).toThrow();
     });
 
     it('should accept forceRegenerate and reject non-boolean values (REV-31)', () => {
@@ -422,48 +413,6 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(() => DesignCritiqueOutputSchema.parse(invalidCritique)).toThrow();
     });
 
-    it('should validate MvpContentOutputSchema', () => {
-      const validContent = {
-        hero: {
-          badge: 'Top Rated in Chicago',
-          headline: 'Pain-Free Dental Care When You Need It Most',
-          subheadline: 'Advanced technology and gentle care for the entire family.',
-          primaryCtaText: 'Book Appointment',
-          secondaryCtaText: 'View Prices',
-        },
-        services: [
-          { title: 'Implants', description: 'Lifetime warranty implants', lucideIconName: 'shield' },
-          { title: 'Whitening', description: 'Laser teeth whitening', lucideIconName: 'sparkles' },
-          { title: 'Orthodontics', description: 'Invisible aligners', lucideIconName: 'smile' },
-        ],
-        trustSignals: [
-          { metric: '15+ Years', label: 'Serving Chicago' },
-          { metric: '4.9 ★', label: 'Google Rating' },
-          { metric: '5,000+', label: 'Happy Patients' },
-        ],
-        offerNotice: 'First checkup is free for new patients',
-      };
-
-      const parsed = MvpContentOutputSchema.parse(validContent);
-      expect(parsed.hero.headline).toBe('Pain-Free Dental Care When You Need It Most');
-      expect(parsed.services).toHaveLength(3);
-      expect(parsed.trustSignals).toHaveLength(3);
-    });
-
-    it('should accept grounded MVP content with no trust signals, an about block and a single service (REV-23)', () => {
-      const parsed = MvpContentOutputSchema.parse({
-        hero: { badge: '📍 Warsaw', headline: 'H', subheadline: 'S', primaryCtaText: 'Book', secondaryCtaText: 'Call' },
-        about: { heading: 'About us', body: 'Real story from the site.' },
-        servicesHeading: 'What we offer',
-        services: [{ title: 'Implants', description: 'Titanium implants', lucideIconName: 'shield-check' }],
-        trustSignals: [],
-        offerNotice: '',
-      });
-
-      expect(parsed.trustSignals).toEqual([]);
-      expect(parsed.about?.heading).toBe('About us');
-    });
-
     it('should reject MVP content with more than 3 trust signals or no services', () => {
       const base = {
         hero: { badge: 'b', headline: 'h', subheadline: 's', primaryCtaText: 'p', secondaryCtaText: 'c' },
@@ -503,146 +452,6 @@ describe('Validation Schemas (@revamp/validation)', () => {
       };
 
       expect(() => EmailDraftOutputSchema.parse(invalidDraft)).toThrow();
-    });
-  });
-
-  describe('BentoTemplateDataSchema (REV-11)', () => {
-    it('should validate a complete BentoTemplateData payload', () => {
-      const data = {
-        businessName: 'Smile Dental',
-        niche: 'dental',
-        palette: {
-          primary: '#5c5bed',
-          secondary: '#b8c4fe',
-          accent: '#5c5bed',
-        },
-        contacts: {
-          phone: '+7 (812) 123-45-67',
-          email: 'info@smiledental.ru',
-          address: '100 Nevsky Avenue',
-          city: 'Saint Petersburg',
-        },
-        hero: {
-          badge: '✨ Deal of the month',
-          headline: 'A perfect smile without pain or overpaying',
-          subheadline: 'Modern technology and pain-free treatment with a 5-year guarantee.',
-          primaryCtaText: 'Book online',
-          secondaryCtaText: 'Call us',
-        },
-        services: [
-          {
-            title: 'Dental implants',
-            description: 'Swiss implants with a lifetime guarantee from leading surgeons.',
-            lucideIconName: 'shield-check',
-            badge: 'Top pick',
-            highlight: true,
-          },
-          {
-            title: 'Zoom 4 whitening',
-            description: 'Whitens enamel up to 8 shades in a single visit.',
-            lucideIconName: 'sparkles',
-          },
-        ],
-        trustSignals: [
-          { metric: '4.9 ★', label: 'Rating on Google Maps' },
-          { metric: '15 yrs', label: 'Of flawless reputation' },
-        ],
-        reviews: [
-          {
-            author: 'Maria P.',
-            rating: 5,
-            comment: 'Great clinic, friendly doctors!',
-            source: 'Google Maps',
-          },
-        ],
-      };
-
-      const parsed = BentoTemplateDataSchema.parse(data);
-      expect(parsed.businessName).toBe('Smile Dental');
-      expect(parsed.palette.primary).toBe('#5c5bed');
-      expect(parsed.services).toHaveLength(2);
-      expect(parsed.reviews).toHaveLength(1);
-    });
-
-    it('should validate grounded site sections and reject non-URL images or socials (REV-23)', () => {
-      const base = {
-        businessName: 'Warsaw Dental Center',
-        palette: { primary: '#9a7d42', secondary: '#1e293b', accent: '#9a7d42' },
-        contacts: {},
-        hero: { headline: 'Best clinic', subheadline: 'Modern dental center' },
-        services: [{ title: 'Veneers', description: 'Thin ceramic shells' }],
-      };
-
-      const parsed = BentoTemplateDataSchema.parse({
-        ...base,
-        about: { heading: 'About us', body: 'Our story.' },
-        gallery: ['https://wdc.example/a.jpg'],
-        heroImageUrl: 'https://wdc.example/hero.jpg',
-        socialLinks: [{ platform: 'instagram', url: 'https://instagram.com/wdc' }],
-        reviews: [{ author: 'Anna', comment: 'Great experience overall', source: 'Website' }],
-      });
-      expect(parsed.reviews?.[0]?.rating).toBeUndefined();
-
-      expect(() => BentoTemplateDataSchema.parse({ ...base, gallery: ['not-a-url'] })).toThrow();
-      expect(() =>
-        BentoTemplateDataSchema.parse({ ...base, socialLinks: [{ platform: 'x', url: 'javascript:alert(1)' }] }),
-      ).toThrow();
-    });
-
-    it('should accept BCP 47 site language tags and reject malformed ones (REV-25)', () => {
-      const base = {
-        businessName: 'Galeria Bemowo',
-        palette: { primary: '#9a7d42', secondary: '#1e293b', accent: '#9a7d42' },
-        contacts: {},
-        hero: { headline: 'Zakupy', subheadline: 'Galeria handlowa' },
-        services: [{ title: 'Sklepy', description: 'Sklepy i usługi' }],
-      };
-
-      for (const language of ['pl', 'pl-PL', 'sr-Latn-RS', 'fil']) {
-        expect(BentoTemplateDataSchema.parse({ ...base, language }).language).toBe(language);
-      }
-      expect(BentoTemplateDataSchema.parse(base).language).toBeUndefined();
-      for (const language of ['', 'p', 'pl_PL', 'pl-', 'polish', 'pl"><script>']) {
-        expect(() => BentoTemplateDataSchema.parse({ ...base, language })).toThrow();
-      }
-    });
-
-    it('should reject invalid hex color in palette', () => {
-      const invalid = {
-        businessName: 'Auto Fix',
-        palette: {
-          primary: 'invalid-hex',
-          secondary: '#b8c4fe',
-          accent: '#5c5bed',
-        },
-        contacts: {},
-        hero: {
-          headline: 'Headline',
-          subheadline: 'Subheadline',
-        },
-        services: [{ title: 'Service', description: 'Description' }],
-      };
-
-      expect(() => BentoTemplateDataSchema.parse(invalid)).toThrow();
-    });
-
-    it('should reject empty services list', () => {
-      const emptyServices = {
-        businessName: 'Auto Fix',
-        palette: {
-          primary: '#5c5bed',
-          secondary: '#b8c4fe',
-          accent: '#5c5bed',
-        },
-        contacts: {},
-        hero: {
-          headline: 'Headline',
-          subheadline: 'Subheadline',
-        },
-        services: [],
-      };
-
-      expect(() => BentoTemplateDataSchema.parse(emptyServices)).toThrow();
     });
   });
 

@@ -28,7 +28,6 @@ vi.mock('../../queues/ai.queue.js', () => ({
   aiGenerationQueue: {} as any,
 }));
 vi.mock('../../queues/deploy.queue.js', () => ({
-  addMvpRelayoutJob: vi.fn().mockResolvedValue({ id: 'mock-relayout-job-1' }),
   deployQueue: {} as any,
 }));
 vi.mock('../../queues/email.queue.js', () => ({
@@ -1077,22 +1076,28 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
 
-    it('passes a Bento layout the operator picked to the run, and clears the previous failure (REV-132)', async () => {
+    it('ignores a layout an old client sends: every MVP is designed by the model (REV-141)', async () => {
       mockLeadWithStatus('AUDITED');
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, layout: 'split' });
       expect(res.status).toBe(202);
-      expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ layout: 'split' }));
-      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.at(-1)![1]).toEqual({
-        $set: { status: 'GENERATING' },
-        $unset: { generationError: '', generationFailure: '' },
-      });
+      expect(vi.mocked(addAiGenerationJob).mock.calls.at(-1)![0]).not.toHaveProperty('layout');
     });
 
-    it('returns 400 for a layout pick that is not a Bento template (REV-132)', async () => {
-      mockLeadWithStatus('AUDITED');
-      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, layout: 'original' });
-      expect(res.status).toBe(400);
-      expect(addAiGenerationJob).not.toHaveBeenCalled();
+    it('GET /mvp/:id still answers an MVP stored with the previous generator\'s fields (REV-141)', async () => {
+      const id = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(MvpProject, 'findOne').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({
+          _id: id,
+          leadId,
+          fullPreviewUrl: 'http://s3/v/old/index.html',
+          layout: { variant: 'bento', reasons: [] },
+          colorPalette: { primary: '#123456', secondary: '#ffffff', accent: '#123456' },
+          rebuild: { coverage: 0.9 },
+        }),
+      } as any);
+      const res = await request(app).get(`/api/v1/mvp/${id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.data.leadId).toBe(leadId);
     });
 
     it('should reject the removed mock provider (REV-45)', async () => {

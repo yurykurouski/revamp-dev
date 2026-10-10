@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { STANDARDS_CHECKS, STANDARDS_POINTS } from '@revamp/shared-types';
-import { BentoTemplateDataSchema, MvpSeoSchema, MvpStandardsSchema } from '../src/index';
+import { MvpSeoSchema, MvpStandardsSchema } from '../src/index';
 
 const ALL = Object.fromEntries(STANDARDS_CHECKS.map((check) => [check, true])) as Record<(typeof STANDARDS_CHECKS)[number], boolean>;
 
@@ -52,10 +52,5 @@ describe('MvpSeoSchema (REV-118)', () => {
     expect(MvpSeoSchema.safeParse({ localBusiness: { name: 'X', sameAs: ['data:x'] } }).success).toBe(false);
     expect(MvpSeoSchema.safeParse({ localBusiness: { name: 'X', email: 'nope', sameAs: [] } }).success).toBe(false);
     expect(MvpSeoSchema.safeParse({ localBusiness: { name: '', sameAs: [] } }).success).toBe(false);
-  });
-
-  it('keeps the tags on the Bento template data', () => {
-    const shape = BentoTemplateDataSchema.shape;
-    expect(shape.seo).toBeDefined();
   });
 });

@@ -90,7 +90,7 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   // From the regenerate click until the lead is back from GENERATING (REV-53)
   const isPreviewBusy = isGenerationRequestPending || lead.status === 'GENERATING';
   const isDesktop = breakpoint === 'desktop';
-  // The last generation a rebuild model could not make (REV-132); shown until a new one starts
+  // The last generation the model could not make (REV-132, REV-140); shown until a new one starts
   const failed = hasGenerationFailure(lead) && !isGenerationRequestPending;
 
   return (

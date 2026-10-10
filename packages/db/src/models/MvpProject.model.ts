@@ -41,15 +41,6 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     comparisonBannerUrl: {
       type: String,
     },
-    // Absent on a model-designed page (REV-138); removed with the rebuild in REV-141
-    generatedContent: {
-      type: Schema.Types.Mixed,
-    },
-    colorPalette: {
-      primary: { type: String },
-      secondary: { type: String },
-      accent: { type: String },
-    },
     isPublished: {
       type: Boolean,
       default: true,
@@ -71,20 +62,8 @@ const MvpProjectSchema = new Schema<IMvpProjectDocument>(
     modelUsed: { type: String },
     requestedProvider: { type: String },
     requestedModel: { type: String },
-    // REV-54: the layout this version was rendered with, and the audit facts behind the choice
-    layout: { type: Schema.Types.Mixed },
     // REV-85: when an operator's free-text change was last applied and re-published
     editedAt: { type: Date },
-    // REV-92: the operator's custom design spec, applied by the template on every render
-    design: { type: Schema.Types.Mixed },
-    // REV-110: what the rebuild of the original site left out and which fixes it applied
-    rebuild: { type: Schema.Types.Mixed },
-    // REV-111: the operator's change to the rebuilt page (ids and fixed values), applied on every rebuild render
-    rebuildEdit: { type: Schema.Types.Mixed },
-    // REV-114: the modernize level's design (ids and fixed values), applied under the operator's edit
-    modernize: { type: Schema.Types.Mixed },
-    // REV-132: why the last re-render was not published (MvpRenderFailureSchema); cleared by a publish
-    renderFailure: { type: Schema.Types.Mixed },
     // REV-118: the published page's standards checks and score (MvpStandardsSchema), re-checked on every publish
     standards: { type: Schema.Types.Mixed },
     // REV-119: the published page's web vitals (MvpPerformanceSchema), measured on every publish

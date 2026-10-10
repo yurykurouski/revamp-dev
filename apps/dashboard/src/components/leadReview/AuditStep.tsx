@@ -7,6 +7,7 @@ import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import CheckCircleOutlineIcon from '@mui/icons-material/CheckCircleOutline';
 import { useTranslation } from 'react-i18next';
+import { AUDIT_MEASUREMENTS } from '@revamp/shared-types';
 import type { IAuditDetail, IMvpProjectDetail } from '../../api/client.js';
 import { CompletenessChecklist } from '../CompletenessChecklist.js';
 import { SeoStandardsCard } from '../SeoStandardsCard.js';
@@ -68,9 +69,8 @@ const Metric: React.FC<MetricProps> = ({ icon, label, value, color, hint }) => (
  */
 export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, error }) => {
   const { t } = useTranslation();
-  // The total score counts only the scored measurements; the page's sections are not one (REV-113)
-  const scoredErrors = audit?.measurementErrors.filter((f) => f.measurement !== 'sections') ?? [];
-  const sectionsError = audit?.measurementErrors.find((f) => f.measurement === 'sections');
+  // Only the measurements the audit still takes; one from before REV-141 may list the section reading, which is gone
+  const scoredErrors = audit?.measurementErrors.filter((f) => (AUDIT_MEASUREMENTS as readonly string[]).includes(f.measurement)) ?? [];
   const [device, setDevice] = useState<ScreenshotDevice>('desktop');
   // Screenshot URL that failed to load; the viewer then says so instead of showing another image
   const [brokenScreenshotUrl, setBrokenScreenshotUrl] = useState<string | null>(null);
@@ -227,13 +227,6 @@ export const AuditStep: React.FC<AuditStepProps> = ({ audit, mvp, isLoading, err
             </Box>
           </Alert>
         )}
-        {/* The page's sections are not scored: the rules reading stood in for the vision model's (REV-113) */}
-        {sectionsError && (
-          <Alert severity="info" data-testid="sections-by-rules">
-            {t('inspector.sectionsByRules')}: {sectionsError.message}
-          </Alert>
-        )}
-
         {/* The original's SEO and web standards checks, and the published MVP's by the same checks (REV-118) */}
         <SeoStandardsCard audit={audit} mvp={mvp} />
 

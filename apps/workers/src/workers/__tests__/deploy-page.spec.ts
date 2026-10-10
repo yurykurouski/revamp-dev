@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { createDeployWorker, republishSavedMvp } from '../deploy.worker.js';
+import { UnrecoverableError } from 'bullmq';
+import { createDeployWorker } from '../deploy.worker.js';
 import { Lead } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
 import { findGenerationAudit } from '../../services/audit-lookup.js';
@@ -136,6 +137,8 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     expect(Object.keys(update.$unset)).toEqual(
       expect.arrayContaining(['generatedContent', 'colorPalette', 'layout', 'design', 'rebuild', 'rebuildEdit', 'modernize', 'renderFailure', 'controls', 'editedAt', 'requestedProvider', 'requestedModel']),
     );
+    // The legacy fields are no longer in the schema: without strict: false Mongoose drops them from the $unset (REV-141)
+    expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![2]).toEqual(expect.objectContaining({ strict: false }));
 
     const [filter, leadSet] = leadUpdate.mock.calls[0]!;
     expect(filter).toMatchObject({ _id: LEAD_ID, status: { $in: expect.arrayContaining(['GENERATING']) } });
@@ -204,17 +207,30 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
   });
 });
 
-describe('the old layout tools refuse a model-designed MVP (REV-138)', () => {
+describe('only model-designed pages are deployed (REV-141)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    existing = { previewSlug: SLUG, versions: [] };
+    createDeployWorker();
     arrange();
   });
 
-  it('relayout leaves the page published and says why', async () => {
-    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...lead, status: 'NEEDS_APPROVAL' }) } as any);
-    vi.mocked(MvpProject.findOne).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1', page: VALID }) } as any);
-    await expect(republishSavedMvp(LEAD_ID)).rejects.toThrow('designed by the model');
+  it('refuses a job without a page for good', async () => {
+    const error = await capturedProcessor!({ id: 'job-old', data: { leadId: LEAD_ID, auditId: AUDIT_ID } }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(UnrecoverableError);
+    expect((error as Error).message).toContain('without a page');
     expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    expect(storageService.uploadPageVersion).not.toHaveBeenCalled();
+    expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
   });
 
+  it('throws when the lead is not found', async () => {
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+    await expect(capturedProcessor!(job())).rejects.toThrow(`Lead ${LEAD_ID} not found`);
+  });
+
+  it('throws when no completed audit is found', async () => {
+    vi.mocked(findGenerationAudit).mockResolvedValue(null as any);
+    await expect(capturedProcessor!(job())).rejects.toThrow('No completed audit');
+  });
 });

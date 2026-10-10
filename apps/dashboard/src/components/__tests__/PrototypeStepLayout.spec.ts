@@ -41,7 +41,6 @@ const mvp: IMvpProjectDetail = {
   id: 'mvp-1',
   leadId: 'lead-1',
   fullPreviewUrl: 'about:blank#mvp',
-  layout: { variant: 'editorial', reasons: ['operator'] },
 };
 
 describe('Prototype step layout (REV-96)', () => {

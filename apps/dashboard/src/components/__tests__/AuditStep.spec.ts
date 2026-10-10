@@ -161,28 +161,27 @@ describe('AuditStep measurement errors (REV-100)', () => {
     expect(container.textContent).toContain('4.8s');
   });
 
-  it('shows a sections failure on its own line, outside the score alert (REV-113)', () => {
+  it('ignores a sections measurement error of an audit made before REV-141', () => {
     render({
       ...audit,
       measurementErrors: [
         { measurement: 'design', message: 'template' },
-        { measurement: 'sections', message: 'No vision model' },
+        { measurement: 'sections' as never, message: 'No vision model' },
       ],
     });
 
     const scoreAlert = container.querySelector('[data-testid="measurement-errors"]')!;
-    expect(scoreAlert.textContent).not.toContain('No vision model');
     expect([...scoreAlert.querySelectorAll('li')].map((li) => li.textContent)).toEqual(['Design critique (Vision model): template']);
-    expect(container.querySelector('[data-testid="sections-by-rules"]')!.textContent).toBe(
-      'Page sections were read by the rules, not the vision model: No vision model',
-    );
+    expect(container.textContent).not.toContain('No vision model');
+    expect(container.textContent).not.toMatch(/audit\.measurements|inspector\.sections/);
+    expect(container.querySelector('[data-testid="sections-by-rules"]')).toBeNull();
   });
 
-  it('shows no score alert when only the sections reading failed (REV-113)', () => {
-    render({ ...audit, measurementErrors: [{ measurement: 'sections', message: 'x' }] });
+  it('shows no score alert when only an old sections entry is listed', () => {
+    render({ ...audit, measurementErrors: [{ measurement: 'sections' as never, message: 'x' }] });
 
     expect(container.querySelector('[data-testid="measurement-errors"]')).toBeNull();
-    expect(container.querySelector('[data-testid="sections-by-rules"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="sections-by-rules"]')).toBeNull();
   });
 });
 

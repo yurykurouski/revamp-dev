@@ -253,14 +253,15 @@ describe('Design tools for a model-designed page (REV-140)', () => {
   });
 
   it('offers only Regenerate on an MVP from the previous generator', () => {
-    const previous: IMvpProjectDetail = {
+    // As the previous generator stored it: fields the types no longer declare, and no theme
+    const previous = {
       id: 'mvp-1',
       leadId: 'lead-1',
       fullPreviewUrl: 'about:blank#mvp',
       generatedAt: '2026-09-27T10:00:00.000Z',
       colorPalette: { primary: '#4F46E5', secondary: '#B8C4FE', accent: '#4F46E5' },
       layout: { variant: 'bento', reasons: ['rule:default'] },
-    };
+    } as IMvpProjectDetail;
     render({}, previous);
     expect(panel().textContent).toContain(en.mvpPage.previousGenerator);
     expect(panel().querySelector('[data-testid="mvp-regenerate"]')).not.toBeNull();

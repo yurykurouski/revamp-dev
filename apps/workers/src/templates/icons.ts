@@ -1,5 +1,5 @@
 /**
- * Lucide SVG Icons Inliner for Bento Landing Page Template.
+ * Lucide SVG icons inlined into the MVP page's shared parts.
  * Zero external network requests, fully sandboxed, lightweight (< 10 KB).
  */
 
