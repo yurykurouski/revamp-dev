@@ -1,5 +1,5 @@
-import { IMvpSeo, IMvpTheme, MVP_THEME_VARS, MvpThemeKey } from '@revamp/shared-types';
-import { contrastRatio } from '@revamp/validation';
+import { IMvpSeo, IMvpTheme, MVP_FONT_CHOICES, MVP_THEME_VARS, MvpThemeKey } from '@revamp/shared-types';
+import { MvpThemeControlsSchema, contrastRatio } from '@revamp/validation';
 import { escapeHtml } from '../templates/html.js';
 import { getMvpStrings } from '../templates/mvp-locale.js';
 import { bookingFormHtml, bookingScript } from '../templates/shared/booking.js';
@@ -75,13 +75,30 @@ function placeholderHref(name: string, contacts: VerifiedContacts): string {
 
 const placeholderText = (name: string, contacts: VerifiedContacts) => contacts[name as keyof VerifiedContacts] ?? '';
 
-/** A control value as CSS: colors as given (validated hex), fonts as a quoted family with a generic fallback */
-const controlValue = (key: MvpThemeKey, value: string) => (key.startsWith('font') ? `"${value}",sans-serif` : value);
+/** The generic family of a listed font (REV-139); sans-serif for any other */
+function genericFamily(font: string): string {
+  for (const choice of MVP_FONT_CHOICES) {
+    if (choice.heading === font) return choice.headingGeneric;
+    if (choice.body === font) return choice.bodyGeneric;
+  }
+  return 'sans-serif';
+}
+
+/** A control value as CSS: colors as given (validated hex), fonts as a quoted family with its generic fallback */
+const controlValue = (key: MvpThemeKey, value: string) => (key.startsWith('font') ? `"${value}",${genericFamily(value)}` : value);
+
+/** The controls that are safe in CSS: each value must pass its field's rule, anything else is dropped (REV-139) */
+function safeControls(controls: Partial<IMvpTheme> | undefined): Partial<IMvpTheme> {
+  const shape = MvpThemeControlsSchema.shape;
+  return Object.fromEntries(
+    Object.entries(controls ?? {}).filter(([key, value]) => value && key in shape && shape[key as MvpThemeKey].safeParse(value).success),
+  ) as Partial<IMvpTheme>;
+}
 
 export function finishMvpPage(page: string, ctx: MvpFinishContext): string {
   const t = getMvpStrings(ctx.language);
   const tracker = resolveTrackerUrls(ctx.publicApiUrl);
-  const controls = Object.fromEntries(Object.entries(ctx.controls ?? {}).filter(([, v]) => v)) as Partial<IMvpTheme>;
+  const controls = safeControls(ctx.controls);
   const primary = controls.primary ?? ctx.theme.primary;
 
   const html = withHtmlDocument(page, (doc) => {
