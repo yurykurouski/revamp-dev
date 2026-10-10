@@ -295,6 +295,27 @@ export const lt: Translation = {
     title: 'MVP nesugeneruotas',
     useTemplate: 'Generuoti pagal šabloną',
     useTemplateHint: 'Sukuria MVP pagal Bento šabloną, užuot atkūrus originalią svetainę.',
+    tryAgain: 'Bandyti dar kartą',
+    page: {
+      not_configured: 'Puslapiui generuoti nesukonfigūruotas joks AI teikėjas.',
+      call_failed: 'AI modelis neatsakė.',
+      invalid_page: 'AI puslapis du kartus neišlaikė patikrų, todėl nieko nepaskelbta.',
+      previous: 'Ankstesnis generatorius nesugebėjo sukurti puslapio.',
+    },
+  },
+  mvpPage: {
+    outcome: {
+      changed: 'Paskelbta kaip {{n}} versija.',
+      controls: 'Spalvos ir šriftai paskelbti.',
+      restored: 'Atkurta ir paskelbta kaip {{n}} versija.',
+      unchanged: 'Niekas nepasikeitė.',
+      refused: {
+        not_configured: 'AI teikėjas nesukonfigūruotas, todėl niekas nepakeista.',
+        call_failed: 'AI modelis neatsakė: {{message}}',
+        invalid_page: 'AI puslapis neišlaikė patikrų, todėl nieko nepaskelbta: {{message}}',
+        unusable_version: 'Ši versija nebeatitinka audito: {{message}}',
+      },
+    },
   },
   llm: {
     provider: 'LLM teikėjas',

@@ -296,6 +296,27 @@ export const en = {
     title: 'The MVP was not generated',
     useTemplate: 'Generate with a template layout',
     useTemplateHint: 'Builds the MVP from the Bento template instead of rebuilding the original site.',
+    tryAgain: 'Try again',
+    page: {
+      not_configured: 'No AI provider is configured for page generation.',
+      call_failed: 'The AI model did not answer.',
+      invalid_page: 'The AI\'s page did not pass the checks twice, so nothing was published.',
+      previous: 'The previous generator could not make the page.',
+    },
+  },
+  mvpPage: {
+    outcome: {
+      changed: 'Published as version {{n}}.',
+      controls: 'Colors and fonts published.',
+      restored: 'Restored and published as version {{n}}.',
+      unchanged: 'Nothing changed.',
+      refused: {
+        not_configured: 'No AI provider is configured, so nothing was changed.',
+        call_failed: 'The AI model did not answer: {{message}}',
+        invalid_page: 'The AI\'s page did not pass the checks, so nothing was published: {{message}}',
+        unusable_version: 'This version no longer fits the audit: {{message}}',
+      },
+    },
   },
   llm: {
     provider: 'LLM provider',

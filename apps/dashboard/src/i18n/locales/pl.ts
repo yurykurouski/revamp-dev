@@ -295,6 +295,27 @@ export const pl: Translation = {
     title: 'MVP nie został wygenerowany',
     useTemplate: 'Wygeneruj z szablonu',
     useTemplateHint: 'Tworzy MVP z szablonu Bento zamiast odtwarzać oryginalną stronę.',
+    tryAgain: 'Spróbuj ponownie',
+    page: {
+      not_configured: 'Nie skonfigurowano żadnego dostawcy AI do generowania strony.',
+      call_failed: 'Model AI nie odpowiedział.',
+      invalid_page: 'Strona od AI dwukrotnie nie przeszła kontroli, więc nic nie opublikowano.',
+      previous: 'Poprzedni generator nie zdołał utworzyć strony.',
+    },
+  },
+  mvpPage: {
+    outcome: {
+      changed: 'Opublikowano jako wersję {{n}}.',
+      controls: 'Kolory i czcionki opublikowane.',
+      restored: 'Przywrócono i opublikowano jako wersję {{n}}.',
+      unchanged: 'Nic się nie zmieniło.',
+      refused: {
+        not_configured: 'Nie skonfigurowano dostawcy AI, więc nic nie zmieniono.',
+        call_failed: 'Model AI nie odpowiedział: {{message}}',
+        invalid_page: 'Strona od AI nie przeszła kontroli, więc nic nie opublikowano: {{message}}',
+        unusable_version: 'Ta wersja nie pasuje już do audytu: {{message}}',
+      },
+    },
   },
   llm: {
     provider: 'Dostawca LLM',
