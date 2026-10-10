@@ -41,6 +41,11 @@ describe('MVP_PAGE_SYSTEM_PROMPT (REV-137)', () => {
     }
     for (const name of Object.values(MVP_THEME_VARS)) expect(MVP_PAGE_SYSTEM_PROMPT).toContain(name);
   });
+
+  it('forbids translating the copy, whatever language the brief names (a site may declare the wrong one)', () => {
+    expect(MVP_PAGE_SYSTEM_PROMPT).toContain('never translate');
+    expect(MVP_PAGE_SYSTEM_PROMPT).not.toContain("Write in the brief's language");
+  });
 });
 
 describe('stripCodeFence (REV-137)', () => {
@@ -158,5 +163,17 @@ describe('MvpPageGenerator.change (REV-137)', () => {
     const result = await generator([WITH_SCRIPT, APOLOGY]).gen.change({ brief: BRIEF, currentPage: VALID, instruction: 'x' });
     expect(result.ok).toBe(false);
     expect(result).not.toHaveProperty('page');
+  });
+});
+
+describe('a recorded answer from a real site (REV-137)', () => {
+  // falcodent.pl through `scripts/generate_mvp_page.ts --record`, claude-cli:sonnet, 2026-10-10
+  const recorded = JSON.parse(answer('falcodent.recorded.json')) as { brief: typeof BRIEF; answer: string; grounding: unknown[] };
+
+  it('is accepted on the first call with the flags it was recorded with', async () => {
+    const result = await generator([recorded.answer]).gen.generate({ brief: recorded.brief });
+    expect(result).toMatchObject({ ok: true, attempts: 1 });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.grounding).toEqual(recorded.grounding);
   });
 });
