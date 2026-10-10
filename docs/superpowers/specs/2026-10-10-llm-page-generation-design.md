@@ -58,7 +58,7 @@ The one place that decides what the model sees. Built by `buildMvpSourceBrief(au
   `serviceItems`, `testimonials`, `rating`, `foundingYear` (each only when extracted; lists capped so the
   prompt stays within budget, caps in `MVP_BRIEF_LIMITS`)
 - `brand`: brand colors and logo URL from the audit
-- `images`: the original's images with their size (URL, width, height), deduplicated, capped
+- `images`: the original's image URLs (`extractedContent.images`, no sizes), deduplicated, capped, logo excluded
 - `placeholders`: the names of the placeholders that may be used, one per verified contact
   (`{{booking}}` always)
 - `screenshot`: the audit's desktop screenshot (passed as an `LlmImage`, not in the JSON)
@@ -110,12 +110,18 @@ The values the model chose are read into `MvpProject.theme` (`IMvpTheme`). The o
 | `page:script` | `<script>`, `on*` attributes, `javascript:` URLs, `<iframe>`, `<object>`, `<embed>`, `<form>` |
 | `page:external` | Any external resource other than an allowed image or Google Fonts |
 | `page:image` | An `<img>` `src`/`srcset` or CSS `url()` not in the brief's image list or the logo |
-| `page:css` | A `<style>` block or `style` attribute that `sanitizeMvpCss` would change (the sanitizer is reused, never loosened) |
+| `page:css` | A `<style>` block or `style` attribute that fails `checkPageCss`: `@import`, `@font-face`, `<`, escapes, `expression(`, `javascript:`, `behavior`, `-moz-binding`, or a `url()` outside the allowed images. (`sanitizeMvpCss` guards small custom CSS on a template and rejects `:root`, element selectors and every `url()`, so it cannot check a whole page; it is left unchanged.) |
 | `page:theme` | A required `--rv-*` variable missing from `:root` |
 | `page:placeholder` | An unknown placeholder, or one for a contact that is not verified |
 | `page:contact` | A literal phone number or email address in the page instead of a placeholder |
 | `page:h1` | Not exactly one `<h1>` |
 | `page:lang` | `<html lang>` does not match the brief's language |
+
+Placeholder grammar: `{{name}}`, lowercase, no spaces. In text: `phone`, `email`, `address`, `hours`. In an
+`href`: `phone` → `tel:`, `email` → `mailto:`, `address` → a Google Maps search link, `booking` → `#booking`.
+Anything else (another attribute, `{{booking}}` in text, an unknown name, a contact that is not verified) and
+any `id="booking"` (reserved for the form code adds) is `page:placeholder`. `data:` URLs are `page:image`;
+icons are inline `<svg>`.
 
 ### 4.2 `checkMvpGrounding(html, brief)` → `IMvpGroundingFlag[]`
 
@@ -130,12 +136,13 @@ on `MvpProject.grounding` and shown to the operator.
 
 `apps/workers/src/services/mvp-page-finish.ts`. Runs on every publish from the stored raw page:
 
-1. Fill placeholders from verified contacts (phone → `tel:` link, email → `mailto:` link, address,
-   hours, `{{booking}}` → `#booking`).
-2. Apply `controls` over `theme` by rewriting the `--rv-*` values in `:root`.
-3. Add SEO tags (`buildMvpSeo` / `seoHeadTags`, kept), the Google Fonts link for the fonts in use, the
-   booking form (`templates/shared/booking.ts`, kept) before `</body>`, and the tracking already added by
-   the deploy worker.
+1. Fill placeholders from verified contacts (grammar in §4.1).
+2. Replace the model's own SEO head tags (meta description, `og:*`, `twitter:*`, canonical, icon links) with
+   `seoHeadTags` (`buildMvpSeo`, kept) and a favicon.
+3. Apply `controls` over `theme` as a trailing `<style id="rv-controls">:root{…}</style>`, so they win over
+   the model's `:root` without rewriting its CSS, plus a Google Fonts link for any font control.
+4. Add the booking form (`templates/shared/booking.ts`, kept) at the end of `<main>` (else before the body's
+   footer, else at the end of `<body>`), its styles on `--rv-*` variables, its script and the tracker.
 
 The deploy then runs the existing standards (`checkMvpStandards`), performance
 (`measureMvpPerformance`), completeness and comparison-banner steps on the finished page, and the
