@@ -24,12 +24,12 @@ export interface EmailDraft extends EmailDraftFields {
 export function defaultEmailDraft(lead: ILeadItem, audit?: IAuditDetail | null): EmailDraftFields {
   return {
     subject: `A new mobile website for ${lead.businessName} (higher conversion, faster LCP)`,
-    preheader: `We built an interactive prototype on a modern Bento stack${lead.city ? ` for ${lead.city}` : ''}`,
+    preheader: `We built an interactive prototype of your new website${lead.city ? ` for ${lead.city}` : ''}`,
     body: `Hello,
 
 ${auditSummarySentence(lead.domain, audit?.lcpSeconds)}
 
-To show what a modern, high-converting site could look like, our platform automatically generated a responsive Bento prototype for you:
+To show what a modern, high-converting site could look like, our platform automatically generated a responsive prototype for you:
 👉 {{demoUrl}}
 
 Key improvements in the prototype:

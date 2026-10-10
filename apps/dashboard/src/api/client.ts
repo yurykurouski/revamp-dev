@@ -51,7 +51,7 @@ export interface ILeadItem {
   mvpGeneratedAt?: string;
   /** Why the last MVP generation failed, if it did (REV-31) */
   generationError?: string;
-  /** The code and reason when a rebuild model gave no answer (REV-132) */
+  /** The code and reason when the model gave no page (REV-132, REV-140) */
   generationFailure?: Serialized<IMvpRenderFailure>;
   /** Why the last audit failed for good, if it did (REV-44) */
   auditError?: string;
