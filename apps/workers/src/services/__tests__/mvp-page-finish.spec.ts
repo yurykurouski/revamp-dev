@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { Window } from 'happy-dom';
 import { checkMvpStandards } from '../mvp-standards.js';
 import { finishMvpPage, MvpFinishContext } from '../mvp-page-finish.js';
 import { withHtmlDocument } from '../html-document.js';
@@ -156,5 +157,56 @@ describe('finishMvpPage (REV-136)', () => {
     expect(checks.metaDescription).toBe(true);
     expect(checks.favicon).toBe(true);
     expect(checks.openGraph).toBe(true);
+  });
+});
+
+describe('showing a flagged fact on request (REV-140)', () => {
+  const page = VALID.replace('</main>', '<section><p>Ponad  15 lat\ndoświadczenia</p></section></main>');
+
+  /** The finished page with its scripts running and a stubbed scroll; `maxTimeout` clamps the page's timers */
+  async function load(maxTimeout?: number) {
+    const window = new Window({
+      url: 'https://demo.example/v/falco/',
+      settings: {
+        enableJavaScriptEvaluation: true,
+        suppressInsecureJavaScriptEnvironmentWarning: true,
+        ...(maxTimeout !== undefined ? { timer: { maxTimeout } } : {}),
+      },
+    });
+    const scroll = vi.fn();
+    window.HTMLElement.prototype.scrollIntoView = scroll;
+    window.document.write(finishMvpPage(page, ctx()));
+    await window.happyDOM.waitUntilComplete();
+    // Delivered at once, so the outline is read before its timer clears it
+    const post = (data: unknown) => window.dispatchEvent(new window.MessageEvent('message', { data }));
+    return { window, scroll, post, shown: () => Array.from(window.document.querySelectorAll('[data-revamp-shown]')) };
+  }
+
+  it('outlines the smallest element holding the flagged text', async () => {
+    const { scroll, post, shown, window } = await load();
+    post({ type: 'REVAMP_SHOW_TEXT', text: '15 lat doświadczenia' });
+    expect(shown().map((el) => el.tagName)).toEqual(['P']);
+    expect(scroll).toHaveBeenCalledTimes(1);
+    await window.happyDOM.close();
+  });
+
+  it('ignores text it cannot find, other messages and non-strings', async () => {
+    const { scroll, post, shown, window } = await load();
+    post({ type: 'REVAMP_SHOW_TEXT', text: 'a(b[c"' });
+    post({ type: 'OTHER', text: 'Ponad' });
+    post({ type: 'REVAMP_SHOW_TEXT', text: 42 });
+    post({ type: 'REVAMP_SHOW_TEXT', text: 'P' });
+    expect(shown()).toEqual([]);
+    expect(scroll).not.toHaveBeenCalled();
+    await window.happyDOM.close();
+  });
+
+  it('clears the outline after its timer', async () => {
+    const { post, shown, window } = await load(1);
+    post({ type: 'REVAMP_SHOW_TEXT', text: '15 lat' });
+    expect(shown()).toHaveLength(1);
+    await window.happyDOM.waitUntilComplete();
+    expect(shown()).toEqual([]);
+    await window.happyDOM.close();
   });
 });
