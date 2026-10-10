@@ -54,7 +54,7 @@ export const MVP_BOOKING_CSS = `
 
 const isHex = (value: string) => /^#[0-9a-f]{6}$/i.test(value.trim());
 
-/** Near-black when it reads at least as well as white on the color (the rebuild's rule); white for a color not in hex */
+/** Near-black when it reads at least as well as white on the color (the booking form follows the same rule); white for a color not in hex */
 function onColor(color: string): string {
   if (!isHex(color)) return '#ffffff';
   return contrastRatio('#111111', color) >= contrastRatio('#ffffff', color) ? '#111111' : '#ffffff';

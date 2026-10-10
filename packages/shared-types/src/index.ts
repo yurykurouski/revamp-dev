@@ -123,7 +123,7 @@ export interface ILead {
   mvpGeneratedAt?: string | Date;
   /** Why the last MVP generation failed; cleared when a new run starts (REV-31) */
   generationError?: string;
-  /** The code and reason of a generation that failed because a rebuild model gave no answer (REV-132) */
+  /** The code and reason of a generation the model could not make (REV-132, REV-138) */
   generationFailure?: IMvpRenderFailure;
   /** Why the last audit failed for good, as one readable line; cleared when a new audit is queued (REV-44) */
   auditError?: string;
@@ -152,8 +152,7 @@ export interface IAuditScores {
 /**
  * Audit measurements that can fail on their own without failing the audit (REV-100). `design` is the
  * Vision model's critique: when it fails, the critique is a template and its ratings are not scored (REV-101).
- * `sections` is the vision model's grouping of the page (REV-113): when it fails, the rules reading is
- * stored instead; it is not scored.
+ * Audits from before REV-141 may also list `sections`, the removed section grouping; nothing reads it.
  */
 export const AUDIT_MEASUREMENTS = ['performance', 'accessibility', 'standards', 'design'] as const;
 export type AuditMeasurement = (typeof AUDIT_MEASUREMENTS)[number];
@@ -516,7 +515,7 @@ export interface IMvpProject {
   standards?: IMvpStandards;
   /** The published page's web vitals (REV-119), measured on every publish; absent on MVPs published before it */
   performance?: IMvpPerformance;
-  /** The model's page as it wrote it, placeholders unfilled (REV-138); absent on a rebuilt or Bento MVP */
+  /** The model's page as it wrote it, placeholders unfilled (REV-138); absent on an MVP of the previous generator */
   page?: string;
   /** The theme the page declared in `:root` (REV-138) */
   theme?: IMvpTheme;
@@ -1039,42 +1038,6 @@ export interface IEmailTestJobResult {
 /** Why an email could not be sent at all; shared so the API can recognise it in a failed job (REV-60) */
 export const EMAIL_PROVIDER_NOT_CONFIGURED =
   'No email provider is configured: set EMAIL_PROVIDER to resend, sendgrid or smtp';
-
-/**
- * The kinds of change the rebuild records as tuning codes (REV-119); `parseRebuildChange` (`@revamp/validation`) reads
- * a code into its kind. A new code needs a kind here, the parser, and an explanation in the dashboard in all five locales.
- */
-export const REBUILD_CHANGE_KINDS = [
-  'contrast',
-  'overlay',
-  'alt',
-  'font-body',
-  'line-height',
-  'collapse',
-  'h1-hidden',
-  'booking-replaced',
-  'booking-appended',
-  'footer-added',
-  'seo-description',
-  'seo-og',
-  'seo-jsonld',
-  'style',
-  'cards',
-  'side',
-  'fill',
-  'hero-photo',
-  'hero-cta',
-  'type',
-  'theme',
-  'order',
-  'css-dropped',
-  'text-wall',
-] as const;
-export type RebuildChangeKind = (typeof REBUILD_CHANGE_KINDS)[number];
-
-/** Who asked for a design change: the modernize layer (REV-114) or the operator's edit (REV-111) */
-export const REBUILD_CHANGE_SOURCES = ['modernize', 'edit'] as const;
-export type RebuildChangeSource = (typeof REBUILD_CHANGE_SOURCES)[number];
 
 /** The code a generation the model could not make is stored with (REV-132, REV-138) */
 export const MVP_RENDER_FAILURE_CODES = ['MVP_PAGE_UNAVAILABLE'] as const;

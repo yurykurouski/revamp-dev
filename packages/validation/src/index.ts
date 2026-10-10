@@ -3,8 +3,6 @@ import {
   DISCOVERY_MAX_EXCLUDED_DOMAINS,
   DiscoveryCandidateStatus,
   LLM_PROVIDER_IDS,
-  RebuildChangeKind,
-  RebuildChangeSource,
   STANDARDS_CHECKS,
   STANDARDS_POINTS,
   SITE_DATED_SIGNS,
@@ -722,59 +720,6 @@ export function sanitizeAuditError(error: unknown): string {
 
 export function isPermanentAuditError(message: string): boolean {
   return PERMANENT_AUDIT_ERROR.test(message);
-}
-
-/** One tuning code read into its kind (REV-119): the section index, a count or a photo id it names, and its source */
-export interface RebuildChange {
-  kind: RebuildChangeKind;
-  /** Set on the design changes (`style`, `cards`, …): the modernize layer or the operator */
-  source?: RebuildChangeSource;
-  /** The reader's section index (`s-<index>`) the change is in */
-  section?: number;
-  /** How many (`alt:<n>`) */
-  count?: number;
-}
-
-const EXACT_CODES: Record<string, RebuildChangeKind> = {
-  'font:body-16': 'font-body',
-  'line-height:1.5': 'line-height',
-  'h1:hidden': 'h1-hidden',
-  'booking:replaced': 'booking-replaced',
-  'booking:appended': 'booking-appended',
-  'footer:added': 'footer-added',
-  'seo:description': 'seo-description',
-  'seo:og': 'seo-og',
-  'seo:jsonld': 'seo-jsonld',
-};
-const SECTION_CODE = /^(contrast|overlay|collapse):(\d{1,3})$/;
-const SOURCED_SECTION_CODE = /^(modernize|edit):(style|cards|side|fill):(\d{1,3})$/;
-const SOURCED_CODE = /^(modernize|edit):(hero-cta|type|theme)$/;
-const HERO_PHOTO_CODE = /^(modernize|edit):hero-photo:s-(\d{1,3})\.m\d{1,3}$/;
-const EDIT_ONLY_CODE = /^edit:(order|css-dropped)$/;
-const WALL_CODE = /^wall:(\d{1,3})$/;
-
-/**
- * The kind of a rebuild tuning code (REV-119), or undefined for a code no kind covers. Every code `planRebuild` records
- * parses; the dashboard explains each kind.
- */
-export function parseRebuildChange(code: string): RebuildChange | undefined {
-  const exact = EXACT_CODES[code];
-  if (exact) return { kind: exact };
-  const alt = /^alt:(\d{1,4})$/.exec(code);
-  if (alt) return { kind: 'alt', count: Number(alt[1]) };
-  const section = SECTION_CODE.exec(code);
-  if (section) return { kind: section[1] as RebuildChangeKind, section: Number(section[2]) };
-  const sourced = SOURCED_SECTION_CODE.exec(code);
-  if (sourced) return { kind: sourced[2] as RebuildChangeKind, source: sourced[1] as RebuildChangeSource, section: Number(sourced[3]) };
-  const plain = SOURCED_CODE.exec(code);
-  if (plain) return { kind: plain[2] as RebuildChangeKind, source: plain[1] as RebuildChangeSource };
-  const photo = HERO_PHOTO_CODE.exec(code);
-  if (photo) return { kind: 'hero-photo', source: photo[1] as RebuildChangeSource, section: Number(photo[2]) };
-  const edit = EDIT_ONLY_CODE.exec(code);
-  if (edit) return { kind: edit[1] as RebuildChangeKind, source: 'edit' };
-  const wall = WALL_CODE.exec(code);
-  if (wall) return { kind: 'text-wall', section: Number(wall[1]) };
-  return undefined;
 }
 
 /** The published MVP's standards checks (REV-118): every check read, and the score their points add up to */
