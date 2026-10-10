@@ -324,7 +324,7 @@ export const be: Translation = {
   },
   addLead: {
     title: 'Дадаць сайт на аўдыт',
-    subtitle: 'Аўтаматычна запускае краўлер Playwright, крытыку Vision LLM і зборку Bento MVP',
+    subtitle: 'Аўтаматычна запускае краўлер Playwright, крытыку Vision LLM і дызайн старонкі MVP',
     urlLabel: 'URL сайта кампаніі',
     urlHelper: 'Любая HTTP/HTTPS-спасылка на рэальны сайт малога бізнесу',
     nicheLabel: 'Галіна (ніша)',
@@ -521,7 +521,7 @@ export const be: Translation = {
     building: 'Прататып збіраецца...',
     iframeTitle: 'Інтэрактыўны папярэдні прагляд MVP у пясочніцы',
     generatingTitle: 'Генерацыя і публікацыя інтэрактыўнага MVP...',
-    generatingBody: 'Фонавы воркер збірае Bento-макет і загружае бандл у ізаляванае сховішча MinIO.',
+    generatingBody: 'AI-мадэль праектуе старонку; потым яе правяраюць, дапрацоўваюць і загружаюць у ізаляванае сховішча MinIO.',
     regenerating: 'Перагенерацыя: бягучая версія застаецца бачнай, пакуль не будзе гатова новая',
     regeneratingTitle: 'ШІ перазбірае MVP…',
     regeneratingBody: 'Перапісваем тэксты і нанова публікуем старонку. Новая версія з\'явіцца тут, як толькі будзе гатовая.',

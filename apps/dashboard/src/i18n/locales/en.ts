@@ -325,7 +325,7 @@ export const en = {
   },
   addLead: {
     title: 'Add a site to audit',
-    subtitle: 'Runs the Playwright crawler, Vision LLM critique and Bento MVP build automatically',
+    subtitle: 'Runs the Playwright crawler, the Vision LLM critique and the MVP page design automatically',
     urlLabel: 'Business website URL',
     urlHelper: 'Any HTTP/HTTPS link to a real small-business website',
     nicheLabel: 'Industry (niche)',
@@ -522,7 +522,7 @@ export const en = {
     building: 'Prototype is being built...',
     iframeTitle: 'MVP interactive sandbox preview',
     generatingTitle: 'Generating and deploying the interactive MVP...',
-    generatingBody: 'A background worker is compiling the Bento layout and uploading the bundle to isolated MinIO storage.',
+    generatingBody: 'The AI model is designing the page; it is then checked, finished and uploaded to isolated MinIO storage.',
     regenerating: 'Regenerating: the current version stays visible until the new one is ready',
     regeneratingTitle: 'AI is rebuilding the MVP…',
     regeneratingBody: 'Rewriting the copy and redeploying the page. The new version appears here as soon as it is ready.',

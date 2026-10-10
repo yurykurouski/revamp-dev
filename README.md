@@ -100,7 +100,7 @@ All LLM settings live in `.env`. Nothing is faked when a provider is missing: wi
 | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | Enable the matching API provider |
 | `MVP_LLM_PROVIDER` | Default provider: `anthropic`, `openai`, `gemini` or `claude-cli`. When empty, the first provider with a key is used |
 | `CLAUDE_CLI_PATH`, `CLAUDE_CLI_MODEL`, `CLAUDE_CLI_TIMEOUT_MS` | `claude-cli` runs the local Claude Code CLI with the account it is logged into, so it needs no API key |
-| `VISION_LLM_PROVIDER` | Vision provider for the design critique: `anthropic`, `openai` or `claude-cli`. When empty, the critique uses the Anthropic key, then the OpenAI key, then the CLI if `CLAUDE_CLI_PATH` is found. The CLI receives the screenshots as images and uses `CLAUDE_CLI_MODEL` |
+| `VISION_LLM_PROVIDER` | Vision provider for the design critique and for the model that designs the MVP page (REV-137): `anthropic`, `openai` or `claude-cli`. When empty, the critique uses the Anthropic key, then the OpenAI key, then the CLI if `CLAUDE_CLI_PATH` is found; the page uses `MVP_LLM_PROVIDER`, then the first provider with a key, then the CLI. The CLI receives the screenshots as images and uses `CLAUDE_CLI_MODEL` |
 | `MVP_COMPLETENESS_LLM` | `true` lets the LLM judge the MVP completeness check (every verdict is verified in code); `false` uses the code-only check |
 
 The operator can override the provider and model for each generation from the dashboard.

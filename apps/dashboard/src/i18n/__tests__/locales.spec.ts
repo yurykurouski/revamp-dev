@@ -35,6 +35,12 @@ describe('Dashboard translations (REV-24)', () => {
         expect(entries.map(([key]) => key).sort()).toEqual([...english.keys()].sort());
       });
 
+      it('names no renderer the MVP no longer uses (REV-141)', () => {
+        for (const [key, text] of entries) {
+          expect(text, key).not.toMatch(/\bBento\b/i);
+        }
+      });
+
       it('has no empty texts', () => {
         for (const [key, text] of entries) {
           expect(text.trim(), key).not.toBe('');

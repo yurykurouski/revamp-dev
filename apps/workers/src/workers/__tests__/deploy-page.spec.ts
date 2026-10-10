@@ -137,6 +137,8 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     expect(Object.keys(update.$unset)).toEqual(
       expect.arrayContaining(['generatedContent', 'colorPalette', 'layout', 'design', 'rebuild', 'rebuildEdit', 'modernize', 'renderFailure', 'controls', 'editedAt', 'requestedProvider', 'requestedModel']),
     );
+    // The legacy fields are no longer in the schema: without strict: false Mongoose drops them from the $unset (REV-141)
+    expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![2]).toEqual(expect.objectContaining({ strict: false }));
 
     const [filter, leadSet] = leadUpdate.mock.calls[0]!;
     expect(filter).toMatchObject({ _id: LEAD_ID, status: { $in: expect.arrayContaining(['GENERATING']) } });

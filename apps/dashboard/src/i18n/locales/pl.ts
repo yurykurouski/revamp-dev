@@ -324,7 +324,7 @@ export const pl: Translation = {
   },
   addLead: {
     title: 'Dodaj stronę do audytu',
-    subtitle: 'Automatycznie uruchamia crawler Playwright, krytykę Vision LLM i budowę Bento MVP',
+    subtitle: 'Automatycznie uruchamia crawler Playwright, krytykę Vision LLM i projekt strony MVP',
     urlLabel: 'Adres URL strony firmy',
     urlHelper: 'Dowolny link HTTP/HTTPS do prawdziwej strony małej firmy',
     nicheLabel: 'Branża (nisza)',
@@ -521,7 +521,7 @@ export const pl: Translation = {
     building: 'Prototyp jest budowany...',
     iframeTitle: 'Interaktywny podgląd MVP w piaskownicy',
     generatingTitle: 'Generowanie i wdrażanie interaktywnego MVP...',
-    generatingBody: 'Proces w tle składa układ Bento i przesyła paczkę do odizolowanego magazynu MinIO.',
+    generatingBody: 'Model AI projektuje stronę; potem jest sprawdzana, dopracowywana i przesyłana do odizolowanego magazynu MinIO.',
     regenerating: 'Ponowne generowanie: obecna wersja pozostaje widoczna, dopóki nowa nie będzie gotowa',
     regeneratingTitle: 'AI przebudowuje MVP…',
     regeneratingBody: 'Przepisujemy teksty i ponownie publikujemy stronę. Nowa wersja pojawi się tutaj, gdy tylko będzie gotowa.',

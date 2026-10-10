@@ -324,7 +324,7 @@ export const lt: Translation = {
   },
   addLead: {
     title: 'Pridėti svetainę auditui',
-    subtitle: 'Automatiškai paleidžia Playwright naršyklę, Vision LLM kritiką ir Bento MVP kūrimą',
+    subtitle: 'Automatiškai paleidžia Playwright naršyklę, Vision LLM kritiką ir MVP puslapio dizainą',
     urlLabel: 'Įmonės svetainės URL',
     urlHelper: 'Bet kokia HTTP/HTTPS nuoroda į tikrą smulkaus verslo svetainę',
     nicheLabel: 'Sritis (niša)',
@@ -521,7 +521,7 @@ export const lt: Translation = {
     building: 'Prototipas kuriamas...',
     iframeTitle: 'Interaktyvi MVP peržiūra smėlio dėžėje',
     generatingTitle: 'Generuojamas ir diegiamas interaktyvus MVP...',
-    generatingBody: 'Foninis procesas surenka Bento maketą ir įkelia paketą į izoliuotą MinIO saugyklą.',
+    generatingBody: 'AI modelis kuria puslapį; tada jis patikrinamas, užbaigiamas ir įkeliamas į izoliuotą MinIO saugyklą.',
     regenerating: 'Generuojama iš naujo: dabartinė versija matoma, kol nauja bus paruošta',
     regeneratingTitle: 'DI perkuria MVP…',
     regeneratingBody: 'Perrašome tekstus ir iš naujo publikuojame puslapį. Nauja versija atsiras čia, kai tik bus paruošta.',
