@@ -68,6 +68,17 @@ describe('MVP generation failure handling (REV-31)', () => {
     );
   });
 
+  it('records a page the model could not make at once, from the ai worker (REV-138)', async () => {
+    const at = new Date('2026-10-10T12:00:00Z');
+    const failure = { code: 'MVP_PAGE_UNAVAILABLE', reason: 'invalid_page', message: 'rejected twice', at };
+    const err = Object.assign(new Error('rejected twice'), { name: 'UnrecoverableError', failure });
+    await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 3), err, 'content');
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+      { _id: 'lead-1', status: 'GENERATING' },
+      { $set: { status: 'AUDITED', generationError: 'MVP content failed: rejected twice', generationFailure: failure } },
+    );
+  });
+
   it('treats any final error BullMQ will not retry as the last attempt', async () => {
     const err = Object.assign(new Error('boom'), { name: 'UnrecoverableError' });
     await handleGenerationFailure(job({ leadId: 'lead-1' }, 1), err, 'deploy');

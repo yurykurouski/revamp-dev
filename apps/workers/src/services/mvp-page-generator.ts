@@ -224,4 +224,10 @@ export class MvpPageGenerator {
   }
 }
 
-export const mvpPageGenerator = new MvpPageGenerator();
+let defaultGenerator: MvpPageGenerator | undefined;
+
+/** The generator on the default provider, made on first use rather than at import (REV-138) */
+export function defaultPageGenerator(): MvpPageGenerator {
+  defaultGenerator ??= new MvpPageGenerator();
+  return defaultGenerator;
+}
