@@ -39,7 +39,7 @@ const LeadMvpPreview: React.FC<{ lead: ILeadItem }> = ({ lead }) => {
   const { data: mvp, isLoading: isMvpLoading } = useMvpQuery(lead.id);
   const isGenerationRequestPending = useIsMvpGenerationPending(lead.id);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const tools = useMvpDesignTools({ lead, audit, mvp, iframeRef });
+  const tools = useMvpDesignTools({ lead, audit, mvp });
 
   // Versioned by the generation or free-text change time, as in the Prototype step (REV-31, REV-85)
   const previewUrl = withPreviewVersion(mvp?.fullPreviewUrl || lead.previewUrl || '', mvpPreviewVersion(lead, mvp));
@@ -112,15 +112,14 @@ const LeadMvpPreview: React.FC<{ lead: ILeadItem }> = ({ lead }) => {
           <MvpPreviewFrame
             ref={iframeRef}
             previewUrl={previewUrl}
-            busy={isPreviewBusy || tools.edit.isPending}
-            onLoad={tools.liveLayout.onFrameLoad}
+            busy={isPreviewBusy || tools.pending !== null}
           />
         ) : (
           <Box sx={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <CircularProgress />
           </Box>
         )}
-        <MvpDesignTools tools={tools} locked={!previewUrl || isPreviewBusy} />
+        <MvpDesignTools tools={tools} lead={lead} locked={!previewUrl || isPreviewBusy} />
       </Box>
     </Box>
   );
@@ -128,7 +127,7 @@ const LeadMvpPreview: React.FC<{ lead: ILeadItem }> = ({ lead }) => {
 
 /**
  * `/leads/:id/preview` (REV-91): the lead's MVP full-window in the sandboxed iframe (AGENTS.md §3.2.3),
- * with the same Design tools as the Prototype step, so the operator can tune the palette and layout at
+ * with the same Design tools as the Prototype step (REV-140), so the operator can change the page at
  * full size. Outside the app shell; the published page itself is linked from the header.
  */
 export const MvpPreviewPage: React.FC = () => {

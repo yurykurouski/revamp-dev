@@ -22,8 +22,8 @@ const audited: ILeadItem = {
   niche: 'dental',
   status: 'AUDITED',
   auditId: 'audit-1',
-  generationError: 'MVP deploy failed: MVP_REBUILD_UNAVAILABLE: grouping:not_configured',
-  generationFailure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'grouping:not_configured', level: 'faithful', at: '2026-10-04T12:00:00.000Z' },
+  generationError: 'MVP deploy failed: MVP_PAGE_UNAVAILABLE: invalid_page',
+  generationFailure: { code: 'MVP_PAGE_UNAVAILABLE', reason: 'invalid_page', message: 'rejected twice', at: '2026-10-10T12:00:00.000Z' },
   createdAt: '2026-09-27T10:00:00.000Z',
 };
 
@@ -37,7 +37,7 @@ const audit: IAuditDetail = {
   designCritiqueFallback: false,
 };
 
-describe('Prototype step: a generation a rebuild model could not make (REV-132)', () => {
+describe('Prototype step: a page the model could not make (REV-132, REV-140)', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -68,38 +68,39 @@ describe('Prototype step: a generation a rebuild model could not make (REV-132)'
     });
   };
   const panel = () => container.querySelector<HTMLElement>('[data-testid="mvp-generation-failure"]');
-  const templateButton = () =>
-    Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === en.mvpFailure.useTemplate);
+  const tryAgain = () =>
+    Array.from(container.querySelectorAll<HTMLButtonElement>('button')).find((b) => b.textContent === en.mvpFailure.tryAgain);
 
-  it('says why in the interface language instead of a spinner, and offers a template layout', () => {
+  it('says why in the interface language instead of a spinner, and offers to try again', () => {
     render(audited);
     expect(panel()).not.toBeNull();
     expect(panel()!.textContent).toContain(en.mvpFailure.title);
-    expect(panel()!.textContent).toContain(en.mvpLayout.rebuildRefused.grouping.not_configured);
+    expect(panel()!.textContent).toContain(en.mvpFailure.page.invalid_page);
     expect(container.textContent).not.toContain(en.inspector.generatingTitle);
-    expect(templateButton()).toBeDefined();
+    expect(tryAgain()).toBeDefined();
   });
 
-  it('names a modernize failure too', () => {
-    render({ ...audited, generationFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'invalid_answer', level: 'modern', at: '2026-10-04T12:00:00.000Z' } });
-    expect(panel()!.textContent).toContain(en.mvpLayout.level.unavailable.invalid_answer);
-  });
-
-  it('generates with the Bento template when the operator asks', async () => {
+  it('explains a page failure and tries again without a layout', async () => {
     const generate = vi.spyOn(apiClient, 'generateMvp').mockResolvedValue({ success: true, status: 'GENERATING' });
     render(audited);
-    act(() => templateButton()!.click());
-    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: false, layout: 'bento' }));
+    act(() => tryAgain()!.click());
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: false }));
   });
 
   it('regenerates over an MVP the lead already has, which stays published', async () => {
     const generate = vi.spyOn(apiClient, 'generateMvp').mockResolvedValue({ success: true, status: 'GENERATING' });
-    const mvp: IMvpProjectDetail = { id: 'mvp-1', leadId: 'lead-1', fullPreviewUrl: 'about:blank#mvp', layout: { variant: 'original', reasons: [] } };
+    const mvp: IMvpProjectDetail = { id: 'mvp-1', leadId: 'lead-1', fullPreviewUrl: 'about:blank#mvp' };
     render({ ...audited, status: 'NEEDS_APPROVAL', previewUrl: 'about:blank#mvp' }, mvp);
     expect(panel()).not.toBeNull();
     expect(container.querySelector('iframe')).not.toBeNull();
-    act(() => templateButton()!.click());
-    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: true, layout: 'bento' }));
+    act(() => tryAgain()!.click());
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: true }));
+  });
+
+  it('shows a generic text for a failure of the previous generator, never a raw key', () => {
+    render({ ...audited, generationFailure: { code: 'MVP_REBUILD_UNAVAILABLE', reason: 'rebuild:flat', level: 'faithful', at: '2026-10-04T12:00:00.000Z' } });
+    expect(panel()!.textContent).toContain(en.mvpFailure.page.previous);
+    expect(panel()!.textContent).not.toMatch(/mvp(Failure|Layout)\./);
   });
 
   it('shows nothing while a generation runs, or without a recorded failure', () => {

@@ -87,6 +87,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
   };
 
   const stepIndex = REVIEW_STEPS.indexOf(step);
+  const flagCount = mvp?.grounding?.length ?? 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, height: '100%', minHeight: 0 }}>
@@ -154,7 +155,17 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
                 </Box>
               )
             }
-            label={t(`review.steps.${s}`)}
+            label={
+              s === 'prototype' && flagCount > 0 ? (
+                <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75 }}>
+                  {t(`review.steps.${s}`)}
+                  {/* Facts the operator should check before approving (REV-140) */}
+                  <Chip label={t('mvpPage.flags.chip', { count: flagCount })} size="small" color="warning" sx={{ height: 20, fontSize: '0.68rem', fontWeight: 700 }} />
+                </Box>
+              ) : (
+                t(`review.steps.${s}`)
+              )
+            }
             sx={{ minHeight: 40, textTransform: 'none', fontWeight: 700, gap: 0.5 }}
           />
         ))}

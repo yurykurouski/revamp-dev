@@ -158,8 +158,47 @@ export function finishMvpPage(page: string, ctx: MvpFinishContext): string {
     return `<!DOCTYPE html>\n${doc.documentElement.outerHTML}`;
   });
 
-  // 5. Scripts: the booking form's and the tracker, added after the checks' parse so nothing runs on the server
-  const scripts = `${bookingScript({ t, tracker, trackingToken: ctx.trackingToken, themeVars: { primary: MVP_THEME_VARS.primary, onPrimary: ON_PRIMARY } })}\n${trackerScriptTag(tracker, ctx.trackingToken)}\n`;
+  // 5. Scripts: the booking form's, the dashboard's fact highlight and the tracker, added after the checks' parse so
+  // nothing runs on the server
+  const scripts = `${bookingScript({ t, tracker, trackingToken: ctx.trackingToken, themeVars: { primary: MVP_THEME_VARS.primary, onPrimary: ON_PRIMARY } })}\n${previewScript()}\n${trackerScriptTag(tracker, ctx.trackingToken)}\n`;
   const end = html.lastIndexOf('</body>');
   return end === -1 ? `${html}${scripts}` : `${html.slice(0, end)}${scripts}${html.slice(end)}`;
+}
+
+/**
+ * Lets the dashboard show a flagged fact (REV-140): on `{ type: 'REVAMP_SHOW_TEXT', text }` the smallest element whose
+ * text holds it, whitespace collapsed, is scrolled into view and outlined for 4 s. Plain string search, never a
+ * RegExp; text it cannot find changes nothing. The page is shown in a sandboxed frame on another origin, so a message
+ * is the only way in, and it reveals nothing.
+ */
+export function previewScript(): string {
+  return `<script>
+    (function() {
+      var norm = function(value) { return String(value).replace(/\\s+/g, ' ').trim(); };
+      window.addEventListener('message', function(event) {
+        var data = event.data;
+        if (!data || data.type !== 'REVAMP_SHOW_TEXT' || typeof data.text !== 'string') return;
+        var needle = norm(data.text);
+        if (needle.length < 2 || !document.body) return;
+        var match = null;
+        var all = document.body.querySelectorAll('*');
+        for (var i = 0; i < all.length; i++) {
+          var el = all[i];
+          if (el.closest('script, style')) continue;
+          if (norm(el.textContent || '').indexOf(needle) !== -1) match = el;
+        }
+        if (!match) return;
+        match.setAttribute('data-revamp-shown', '');
+        match.style.outline = '3px solid var(${MVP_THEME_VARS.accent}, #f59e0b)';
+        match.style.outlineOffset = '4px';
+        match.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        var shown = match;
+        setTimeout(function() {
+          shown.removeAttribute('data-revamp-shown');
+          shown.style.outline = '';
+          shown.style.outlineOffset = '';
+        }, 4000);
+      });
+    })();
+  </script>`;
 }

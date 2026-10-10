@@ -574,26 +574,48 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.rejectLead('lead-2', 'x')).rejects.toThrow('Failed to fetch');
     });
 
-    it('should save the MVP palette and return the saved MVP (REV-65)', async () => {
-      const tokens = { primaryColor: '#7C3AED', secondaryColor: '#C4B5FD', accentColor: '#7C3AED' };
-      const saved = { id: 'mvp-1', leadId: 'lead-1', fullPreviewUrl: 'https://x', colorPalette: { primary: '#7C3AED', secondary: '#C4B5FD', accent: '#7C3AED' } };
-      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: saved }));
+    const mvp = { id: 'mvp-1', leadId: 'lead-1', fullPreviewUrl: 'https://x' };
+
+    it('changes a model-designed page in the operator\'s words (REV-140)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { applied: true, version: 4, mvp } }));
       vi.stubGlobal('fetch', fetchMock);
 
-      const result = await apiClient.updateMvpTokens('mvp-1', tokens);
-      expect(result.colorPalette?.primary).toBe('#7C3AED');
-      expect(fetchMock.mock.calls[0][0]).toContain('/mvp/mvp-1/tokens');
-      expect(fetchMock.mock.calls[0][1].method).toBe('PATCH');
+      await expect(apiClient.editMvp('mvp-1', 'Shorter heading')).resolves.toEqual({ applied: true, version: 4, mvp });
+      expect(fetchMock.mock.calls[0][0]).toContain('/mvp/mvp-1/edit');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ instruction: 'Shorter heading' });
     });
 
-    it('surfaces a failed token update', async () => {
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'VALIDATION_ERROR', message: 'Invalid color' } }, 400)));
-      await expect(apiClient.updateMvpTokens('mvp-1', { primaryColor: 'x' })).rejects.toThrow('Invalid color');
+    it('sends colors and fonts as the new tokens body (REV-140)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { applied: true, mvp } }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await apiClient.updateMvpTokens('mvp-1', { fonts: { heading: 'Lora', body: 'Lato' } });
+      expect(fetchMock.mock.calls[0][0]).toContain('/mvp/mvp-1/tokens');
+      expect(fetchMock.mock.calls[0][1].method).toBe('PATCH');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ fonts: { heading: 'Lora', body: 'Lato' } });
+    });
+
+    it('refuses low-contrast colors before any request (REV-140)', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      const colors = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#ffffff', text: '#777777' };
+
+      await expect(apiClient.updateMvpTokens('mvp-1', { colors })).rejects.toThrow();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
+    it('restores a version by its number (REV-140)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { applied: true, version: 5, mvp } }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(apiClient.restoreMvpVersion('mvp-1', 3)).resolves.toEqual({ applied: true, version: 5, mvp });
+      expect(fetchMock.mock.calls[0][0]).toContain('/mvp/mvp-1/versions/3/restore');
+      expect(fetchMock.mock.calls[0][1].method).toBe('POST');
     });
 
     it('surfaces an unknown MVP id instead of reporting success (REV-65)', async () => {
       vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'MVP_NOT_FOUND', message: 'MVP not found' } }, 404)));
-      await expect(apiClient.updateMvpTokens('507f1f77bcf86cd799439011', { primaryColor: '#123456' })).rejects.toThrow('MVP not found');
+      await expect(apiClient.updateMvpTokens('507f1f77bcf86cd799439011', { fonts: null })).rejects.toThrow('MVP not found');
     });
   });
 
@@ -762,6 +784,14 @@ describe('Dashboard apiClient', () => {
         provider: 'claude-cli',
         model: 'opus',
       });
+    });
+
+    it('never sends a layout: every MVP is designed by the model (REV-140)', async () => {
+      const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await apiClient.generateMvp('audit-1', { forceRegenerate: true, layout: 'bento' } as never);
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true });
     });
 
     it('refuses a model the provider does not offer before calling the API (REV-32)', async () => {

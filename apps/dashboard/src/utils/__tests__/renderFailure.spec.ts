@@ -34,7 +34,7 @@ describe('render failure texts (REV-132)', () => {
       expect(i18n.exists(text!.key, { lng: language, fallbackLng: false })).toBe(true);
       expect(String(i18n.t(text!.key as never, { lng: language, ...text!.values } as never))).not.toMatch(/{{/);
     }
-    for (const key of ['mvpFailure.title', 'mvpFailure.useTemplate', 'mvpFailure.useTemplateHint', 'mvpLayout.level.unavailableTitle']) {
+    for (const key of ['mvpFailure.title', 'mvpLayout.level.unavailableTitle']) {
       expect(i18n.exists(key, { lng: language, fallbackLng: false })).toBe(true);
     }
   });

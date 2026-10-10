@@ -1,29 +1,28 @@
 import React, { useState } from 'react';
-import { Alert, Box, Button, CircularProgress, TextField, Tooltip, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, TextField, Tooltip, Typography } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
-import RestartAltIcon from '@mui/icons-material/RestartAlt';
 import { useTranslation } from 'react-i18next';
 import { MVP_EDIT_INSTRUCTION_MAX } from '@revamp/validation';
-import type { MvpEditState } from './MvpDesignTools.js';
 
 /** The API's minimum, so the button only sends what it accepts */
 const MIN_INSTRUCTION_LENGTH = 3;
 
 interface MvpEditPromptProps {
-  edit: MvpEditState;
-  /** The MVP is the rebuilt original site (REV-111): sections are reordered, hidden and restyled, never rewritten */
-  rebuilt?: boolean;
+  edit: {
+    /** Sends the instruction; `onApplied` runs once the page was re-published */
+    submit: (instruction: string, onApplied: () => void) => void;
+    isPending: boolean;
+  };
   disabled: boolean;
   /** Why the prompt is disabled, shown as its tooltip */
   disabledReason: string;
 }
 
 /**
- * A free-text change to the MVP in the operator's own words (REV-85), part of the Design tools panel.
- * The workers' LLM applies it to the copy, palette and/or layout without inventing facts; the answer
- * tells the operator what changed, or why nothing did.
+ * A change to the MVP in the operator's own words (REV-85, REV-140), part of the Design tools panel. The model writes
+ * the page again without adding facts; the panel shows its answer. The instruction is cleared only once applied.
  */
-export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, rebuilt = false, disabled, disabledReason }) => {
+export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, disabled, disabledReason }) => {
   const { t } = useTranslation();
   const [instruction, setInstruction] = useState('');
   const trimmed = instruction.trim();
@@ -72,7 +71,7 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, rebuilt = fa
         fullWidth
         value={instruction}
         disabled={disabled || edit.isPending}
-        placeholder={t(rebuilt ? 'mvpEdit.placeholderRebuild' : 'mvpEdit.placeholder')}
+        placeholder={t('mvpEdit.placeholder')}
         onChange={(event) => setInstruction(event.target.value.slice(0, MVP_EDIT_INSTRUCTION_MAX))}
         onKeyDown={(event) => {
           // Enter sends, Shift+Enter starts a new line
@@ -85,23 +84,9 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, rebuilt = fa
         inputProps={{ maxLength: MVP_EDIT_INSTRUCTION_MAX }}
       />
       <Typography variant="caption" color="text.secondary">
-        {t(rebuilt ? 'mvpEdit.groundingRebuild' : 'mvpEdit.grounding')}
+        {t('mvpEdit.grounding')}
       </Typography>
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
-        {/* The layout, sections and styles the agent set (REV-92) can be dropped in one go */}
-        {edit.hasCustomDesign && (
-          <Button
-            size="small"
-            variant="text"
-            color="inherit"
-            disabled={disabled || edit.isPending}
-            onClick={edit.resetDesign}
-            startIcon={<RestartAltIcon sx={{ fontSize: 16 }} />}
-            sx={{ mr: 'auto' }}
-          >
-            {t('mvpEdit.resetDesign')}
-          </Button>
-        )}
         <Button
           type="submit"
           size="small"
@@ -112,27 +97,6 @@ export const MvpEditPrompt: React.FC<MvpEditPromptProps> = ({ edit, rebuilt = fa
           {edit.isPending ? t('mvpEdit.applying') : t('mvpEdit.apply')}
         </Button>
       </Box>
-      {edit.outcome && (
-        <Alert
-          severity={edit.outcome.applied ? 'success' : 'info'}
-          onClose={edit.clearOutcome}
-          data-testid="mvp-edit-outcome"
-          sx={{ py: 0 }}
-        >
-          {edit.outcome.reset
-            ? edit.outcome.applied
-              ? t('mvpEdit.designReset')
-              : t('mvpEdit.noDesign')
-            : edit.outcome.applied
-              ? t('mvpEdit.applied', { summary: edit.outcome.summary })
-              : t('mvpEdit.unchanged', { summary: edit.outcome.summary })}
-        </Alert>
-      )}
-      {edit.error && (
-        <Alert severity="error" onClose={edit.clearError} data-testid="mvp-edit-error" sx={{ py: 0 }}>
-          {t('mvpEdit.failed', { message: edit.error })}
-        </Alert>
-      )}
     </Box>
   );
 

@@ -24,12 +24,11 @@ import {
   withPreviewVersion,
 } from '../../hooks/useLeads.js';
 import { MvpPreviewFrame } from '../MvpPreviewFrame.js';
-import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
 import { MvpGenerationFailure, hasGenerationFailure } from './MvpGenerationFailure.js';
 import { MvpSourceChip } from '../MvpSourceChip.js';
-import { MvpLayoutChip } from '../MvpLayoutChip.js';
 import { MvpChangeSummary } from './MvpChangeSummary.js';
-import { showInPreview } from '../../utils/mvpChangeLog.js';
+import { showFactInPreview } from '../../utils/previewFrame.js';
+import { MvpGroundingFlags } from './MvpGroundingFlags.js';
 import { MvpDesignTools, useMvpDesignTools } from './MvpDesignTools.js';
 import { leadPreviewPath } from '../../routes/paths.js';
 
@@ -68,8 +67,8 @@ interface PrototypeStepProps {
 
 /**
  * Step 2 of a lead review (REV-77): the generated MVP in its sandboxed iframe (AGENTS.md §3.2.3) with the
- * device breakpoints, regenerate, the live color toolbar (REV-16) and layout picker (REV-84) in a panel
- * floating over the preview (REV-88), and the "What changed" summary (REV-81) under the preview (REV-94).
+ * device breakpoints, the Design tools in a panel floating over the preview (REV-88, REV-140), and the
+ * "What changed" summary (REV-81) under the preview (REV-94).
  * The toolbar and preview fill the card's height and the summary is scrolled into view below them (REV-96),
  * so a long summary never shrinks the preview.
  */
@@ -79,7 +78,7 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
   const isGenerationRequestPending = useIsMvpGenerationPending(lead.id);
 
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const tools = useMvpDesignTools({ lead, audit, mvp, iframeRef });
+  const tools = useMvpDesignTools({ lead, audit, mvp });
 
   // Versioned by the generation or free-text change (REV-85) time so the iframe reloads after a
   // regeneration (REV-31) or change, which overwrite the same preview URL
@@ -170,8 +169,6 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
               </Tooltip>
             )}
             <MvpSourceChip mvp={mvp} />
-            <MvpLayoutChip mvp={mvp} />
-            <RegenerateMvpButton lead={lead} variant="button" />
             <Chip
               icon={<SecurityIcon sx={{ fontSize: 14 }} />}
               label={t('inspector.sandbox')}
@@ -250,15 +247,14 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
               />
             )}
 
-            {/* Live color (REV-16) and layout (REV-84) pickers, floating over the preview (REV-88) */}
-            <MvpDesignTools tools={tools} locked={!previewUrl || isPreviewBusy} />
+            {/* The Design tools, floating over the preview (REV-88, REV-140) */}
+            <MvpDesignTools tools={tools} lead={lead} locked={!previewUrl || isPreviewBusy} />
 
             {previewUrl ? (
               <MvpPreviewFrame
                 ref={iframeRef}
                 previewUrl={previewUrl}
-                busy={isPreviewBusy || tools.edit.isPending}
-                onLoad={tools.liveLayout.onFrameLoad}
+                busy={isPreviewBusy || tools.pending !== null}
               />
             ) : (
               <Box
@@ -293,8 +289,11 @@ export const PrototypeStep: React.FC<PrototypeStepProps> = ({ lead, audit, mvp }
         </Box>
       </Box>
 
+      {/* Facts the original site does not support, for the operator to check in the preview (REV-140) */}
+      <MvpGroundingFlags flags={mvp?.grounding ?? []} onShow={(text) => showFactInPreview(iframeRef.current, text)} />
+
       {/* What the MVP changed compared with the original site (REV-81), under the preview (REV-94) */}
-      <MvpChangeSummary mvp={mvp} audit={audit} onShowSection={(anchor) => showInPreview(iframeRef.current, previewUrl, anchor)} />
+      <MvpChangeSummary mvp={mvp} audit={audit} />
     </Card>
   );
 };

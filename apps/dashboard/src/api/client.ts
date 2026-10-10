@@ -6,6 +6,7 @@ import {
   StartDiscoverySchema,
   GenerateMvpSchema,
   TriggerAuditSchema,
+  UpdateMvpTokensSchema,
 } from '@revamp/validation';
 import {
   ApiErrorCode,
@@ -17,16 +18,14 @@ import {
   ILead,
   IMvpProject,
   IMvpRenderFailure,
-  BentoLayoutVariant,
   Serialized,
   IDiscoveryImportResult,
   IDiscoveryJobStatus,
   ILlmProvidersResponse,
   LlmProviderId,
   IMvpCompletenessSummary,
-  IMvpEditJobResult,
-  MvpLayoutVariant,
-  RebuildLevel,
+  IMvpControlsUpdate,
+  IMvpPageJobResult,
   IReverseGeocodeResult,
   ILeadStats,
   LeadStatus,
@@ -281,51 +280,36 @@ export const apiClient = {
   },
 
   /**
-   * Saves the MVP's palette (primaryColor, accentColor, etc.) by the MVP's own id and returns the saved
-   * MVP; an invalid or unknown id throws (REV-65)
+   * Publishes the operator's colors and fonts over a model-designed page (REV-139, REV-140); `null` drops a group.
+   * Checked before the request, so a low-contrast set never reaches the API. Answers once the page is re-published.
    */
-  async updateMvpTokens(
-    mvpId: string,
-    tokens: { primaryColor?: string; secondaryColor?: string; accentColor?: string },
-  ): Promise<IMvpProjectDetail> {
+  async updateMvpTokens(mvpId: string, body: IMvpControlsUpdate): Promise<IMvpPageResult> {
+    const payload = UpdateMvpTokensSchema.parse(body);
     const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/tokens`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(tokens),
+      body: JSON.stringify(payload),
     });
-    return readDataOrThrow<IMvpProjectDetail>(res);
+    return readDataOrThrow<IMvpPageResult>(res);
   },
 
   /**
-   * Saves the layout the operator picked for the MVP, by the MVP's own id, and returns the saved MVP
-   * (REV-84). The server then re-renders the published page in it; a lead past review throws.
+   * Asks the model for a change to the page in the operator's own words (REV-85, REV-139). Answers once the page is
+   * re-published as a new version, or with why nothing was.
    */
-  async updateMvpLayout(mvpId: string, variant: MvpLayoutVariant, level?: RebuildLevel): Promise<IMvpProjectDetail> {
-    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/layout`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(level ? { variant, level } : { variant }),
-    });
-    return readDataOrThrow<IMvpProjectDetail>(res);
-  },
-
-  /**
-   * Asks for a change to the MVP in the operator's own words (REV-85). Answers once the workers' LLM has
-   * applied it and the page is re-published, or has explained why nothing changed.
-   */
-  async editMvp(mvpId: string, instruction: string): Promise<IMvpEditResult> {
+  async editMvp(mvpId: string, instruction: string): Promise<IMvpPageResult> {
     const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/edit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instruction }),
     });
-    return readDataOrThrow<IMvpEditResult>(res);
+    return readDataOrThrow<IMvpPageResult>(res);
   },
 
-  /** Drops the MVP's custom design (REV-92) and answers once the page is re-published without it */
-  async resetMvpDesign(mvpId: string): Promise<IMvpEditResult> {
-    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/design`, { method: 'DELETE' });
-    return readDataOrThrow<IMvpEditResult>(res);
+  /** Publishes version `n` of the page again, with the current colors and fonts, as a new version (REV-139) */
+  async restoreMvpVersion(mvpId: string, n: number): Promise<IMvpPageResult> {
+    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/versions/${n}/restore`, { method: 'POST' });
+    return readDataOrThrow<IMvpPageResult>(res);
   },
 
   /**
@@ -345,7 +329,7 @@ export const apiClient = {
    */
   async generateMvp(
     auditId: string,
-    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string; layout?: BentoLayoutVariant } = {},
+    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string } = {},
   ): Promise<{ success: boolean; status: LeadStatus }> {
     // Validated before the request, so an invalid provider/model never reaches the API
     const payload = GenerateMvpSchema.parse({
@@ -353,7 +337,6 @@ export const apiClient = {
       forceRegenerate: options.forceRegenerate ?? false,
       provider: options.provider,
       model: options.model,
-      layout: options.layout,
     });
     const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
       method: 'POST',
@@ -492,10 +475,8 @@ export type IMvpProjectDetail = Pick<Serialized<IMvpProject>, 'leadId' | 'fullPr
     id?: string;
   };
 
-/** What `POST /mvp/:id/edit` returns (REV-85): the change the model made and the MVP as saved after it */
-export interface IMvpEditResult extends IMvpEditJobResult {
-  mvp: IMvpProjectDetail;
-}
+/** What a change, colors and fonts, or a restore returns (REV-139): the worker's answer and the MVP as saved after it */
+export type IMvpPageResult = IMvpPageJobResult & { mvp: IMvpProjectDetail };
 
 /**
  * An audit as the inspector shows it. Values the audit did not measure stay undefined, so the UI
