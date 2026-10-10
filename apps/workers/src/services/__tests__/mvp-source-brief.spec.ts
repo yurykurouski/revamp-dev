@@ -109,6 +109,21 @@ describe('buildMvpSourceBrief (REV-136)', () => {
     expect(brief.copy.paragraphs).toEqual(['Krótki.']);
   });
 
+  it('drops a too-long service, font or author and accepts empty brand colors, instead of failing', () => {
+    const content = { ...audit().extractedContent!, testimonials: [{ text: 'Polecam', author: 'A'.repeat(201) }] };
+    const brief = buildMvpSourceBrief(
+      audit({
+        extractedServices: ['S'.repeat(201), 'Implanty'],
+        extractedContent: content,
+        extractedBrandTokens: { primaryColor: '', secondaryColor: '', accentColor: '', fontFamilies: ['F'.repeat(101), 'Lato'] },
+      }),
+      lead(),
+    );
+    expect(brief.services).toEqual(['Implanty']);
+    expect(brief.brand.fonts).toEqual(['Lato']);
+    expect(brief.copy.testimonials).toEqual([{ text: 'Polecam' }]);
+  });
+
   it('builds an empty copy and no language when the content was not extracted', () => {
     const brief = buildMvpSourceBrief(audit({ extractedContent: undefined }), lead());
     expect(brief.language).toBeUndefined();

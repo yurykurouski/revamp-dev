@@ -1942,9 +1942,10 @@ export const MvpSourceBriefSchema = z
       .strict(),
     brand: z
       .object({
-        primary: z.string().min(1).max(50),
-        secondary: z.string().min(1).max(50),
-        accent: z.string().min(1).max(50),
+        // Empty when the audit read no color; a color is never made up
+        primary: z.string().max(50),
+        secondary: z.string().max(50),
+        accent: z.string().max(50),
         fonts: z.array(z.string().min(1).max(100)).max(10),
         logoUrl: z.string().url().optional(),
       })

@@ -18,6 +18,11 @@ type BriefLead = Pick<ILead, 'businessName' | 'niche' | 'city' | 'originalUrl' |
 const filled = (value?: string) => (value?.trim() ? value.trim() : undefined);
 /** The longest single text the brief takes (`MvpSourceBriefSchema`); a longer one is left out, never cut */
 const MAX_TEXT = 4000;
+/** The longest service name or testimonial author, and font name, the brief takes */
+const MAX_NAME = 200;
+const MAX_FONT = 100;
+/** A brand color as read, or empty when it is too long to be one */
+const color = (value: string) => (value.trim().length <= 50 ? value.trim() : '');
 const short = (value?: string) => {
   const v = filled(value);
   return v && v.length <= MAX_TEXT ? v : undefined;
@@ -77,7 +82,7 @@ export function buildMvpSourceBrief(audit: BriefAudit, lead: BriefLead): IMvpSou
     .map((s) => ({ title: s.title.trim(), ...(short(s.description) ? { description: short(s.description) } : {}) }))
     .filter((s) => fits(s.title.length + (s.description?.length ?? 0)));
   const testimonials = unique(content?.testimonials, (t) => t.text, MVP_BRIEF_LIMITS.testimonials)
-    .map((t) => ({ text: t.text.trim(), ...(filled(t.author) ? { author: filled(t.author) } : {}) }))
+    .map((t) => ({ text: t.text.trim(), ...(filled(t.author) && (t.author ?? '').trim().length <= MAX_NAME ? { author: filled(t.author) } : {}) }))
     .filter((t) => fits(t.text.length));
 
   const logoUrl = filled(brand.logoUrl);
@@ -90,7 +95,7 @@ export function buildMvpSourceBrief(audit: BriefAudit, lead: BriefLead): IMvpSou
       originalUrl: lead.originalUrl,
     },
     ...(content?.language ? { language: content.language } : {}),
-    services: unique(audit.extractedServices, (s) => s, MVP_BRIEF_LIMITS.services).map(text),
+    services: unique((audit.extractedServices ?? []).filter((s) => s.trim().length <= MAX_NAME), (s) => s, MVP_BRIEF_LIMITS.services).map(text),
     copy: {
       ...(short(content?.title) ? { title: short(content?.title) } : {}),
       ...(short(content?.metaDescription) ? { metaDescription: short(content?.metaDescription) } : {}),
@@ -103,10 +108,10 @@ export function buildMvpSourceBrief(audit: BriefAudit, lead: BriefLead): IMvpSou
       ...(content?.foundingYear ? { foundingYear: content.foundingYear } : {}),
     },
     brand: {
-      primary: brand.primaryColor,
-      secondary: brand.secondaryColor,
-      accent: brand.accentColor,
-      fonts: brand.fontFamilies.slice(0, 10),
+      primary: color(brand.primaryColor),
+      secondary: color(brand.secondaryColor),
+      accent: color(brand.accentColor),
+      fonts: brand.fontFamilies.map(text).filter((f) => f && f.length <= MAX_FONT).slice(0, 10),
       ...(logo ? { logoUrl: logo } : {}),
     },
     images: unique((content?.images ?? []).filter((src) => isHttp(src) && src !== logoUrl), (s) => s, MVP_BRIEF_LIMITS.images),
