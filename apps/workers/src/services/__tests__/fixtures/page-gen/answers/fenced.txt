@@ -1,0 +1,52 @@
+```html
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Falco-Dent – stomatologia w Krakowie</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&family=DM+Serif+Display&display=swap">
+  <style>
+    :root {
+      --rv-color-primary: #0a5c8a;
+      --rv-color-accent: #f2a900;
+      --rv-color-bg: #ffffff;
+      --rv-color-surface: #f5f7fa;
+      --rv-color-text: #111111;
+      --rv-font-heading: "DM Serif Display", serif;
+      --rv-font-body: Inter, sans-serif;
+    }
+    body { margin: 0; background: var(--rv-color-bg); color: var(--rv-color-text); font-family: var(--rv-font-body); }
+    h1, h2 { font-family: var(--rv-font-heading); }
+    .hero { background: linear-gradient(rgba(0,0,0,.4), rgba(0,0,0,.4)), url("https://falco-dent.pl/a.jpg") center / cover; color: #fff; }
+    .btn { background: var(--rv-color-accent); color: var(--rv-color-text); padding: 12px 24px; }
+  </style>
+</head>
+<body>
+  <header>
+    <img src="https://falco-dent.pl/logo.png" alt="Falco-Dent">
+    <nav><a href="#uslugi">Usługi</a> <a href="{{booking}}" class="btn">Umów wizytę</a></nav>
+  </header>
+  <main>
+    <section class="hero">
+      <h1>Twój uśmiech, nasza pasja</h1>
+      <p>Leczymy z troską, w spokojnej atmosferze.</p>
+      <a href="{{booking}}" class="btn">Umów wizytę</a>
+    </section>
+    <section id="uslugi" style="background: var(--rv-color-surface)">
+      <h2>Usługi</h2>
+      <ul>
+        <li><svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6" fill="currentColor"/></svg> Implanty</li>
+        <li>Ortodoncja</li>
+      </ul>
+      <img src="https://falco-dent.pl/b.jpg" srcset="https://falco-dent.pl/b.jpg 1x, https://falco-dent.pl/b@2x.jpg 2x" alt="Gabinet">
+    </section>
+  </main>
+  <footer>
+    <p>Zadzwoń: <a href="{{phone}}">{{phone}}</a></p>
+    <p>{{address}}</p>
+  </footer>
+</body>
+</html>
+```
