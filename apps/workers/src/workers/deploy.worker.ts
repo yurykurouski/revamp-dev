@@ -5,7 +5,6 @@ import {
   IAudit,
   IMvpDesign,
   IMvpLayoutSelection,
-  IMvpStandards,
   IMvpRebuildSummary,
   IRebuildEdit,
   IMvpRenderFailure,
@@ -20,7 +19,6 @@ import {
 import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout, rebuildEligibility } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
-import { env } from '../config/env.js';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
@@ -34,15 +32,11 @@ import { RebuildModernizeChoice, rebuildModernizeService } from '../services/reb
 import { buildLayoutSignals, deriveMvpLayout } from '../services/layout-selection.service.js';
 import { mergeDesigns } from '../templates/design.js';
 import { storageService } from '../services/storage.service.js';
-import { browserService } from '../services/browser.service.js';
-import { ImageService } from '../services/image.service.js';
 import { mvpCompletenessService } from '../services/mvp-completeness.service.js';
-import { checkMvpStandards, comparableStandardsScore } from '../services/mvp-standards.js';
 import { measureMvpPerformance } from '../services/mvp-performance.js';
 import { handleGenerationFailure } from './generation-failure.js';
-import { buildMvpSourceBrief, verifiedContacts } from '../services/mvp-source-brief.js';
 import { finishMvpPage } from '../services/mvp-page-finish.js';
-import { buildMvpSeo } from '../services/mvp-seo.js';
+import { dropUnlistedVersions, pageContext, publishFinishedPage, publishMvp, publishedStandards } from '../services/mvp-page-publish.js';
 
 function transliterate(str: string): string {
   const ruToEn: Record<string, string> = {
@@ -57,59 +51,6 @@ function transliterate(str: string): string {
     .split('')
     .map((char) => ruToEn[char] ?? char)
     .join('');
-}
-
-type AuditDoc = NonNullable<Awaited<ReturnType<typeof findGenerationAudit>>>;
-
-/**
- * Uploads the MVP bundle to the S3/MinIO demo sandbox under the lead's slug, then captures its mobile
- * view and uploads the 1200x630 "Before / After" comparison banner next to it. The banner carries measured
- * values only (REV-126): the original's from its audit, the MVP's standards score read from this HTML, each left
- * out when it was not measured. The MVP's web vitals are not on it: they are measured on the demo host, not
- * the business's own hosting.
- */
-async function publishMvp(
-  slug: string,
-  html: string,
-  lead: Pick<ILead, 'businessName'>,
-  audit: AuditDoc,
-  standards: IMvpStandards | undefined,
-): Promise<{ fullPreviewUrl: string; storageHtmlPath: string; comparisonBannerUrl: string }> {
-  const { url: fullPreviewUrl, key: storageHtmlPath } = await storageService.uploadHtml(slug, html, env.S3_BUCKET_DEMOS);
-  console.log(`[DeployWorker] HTML deployed to ${fullPreviewUrl}`);
-
-  const newMvpMobileBuffer = await browserService.captureHtmlScreenshot(html, {
-    width: 375,
-    height: 812,
-    deviceScaleFactor: 2,
-  });
-
-  // The original site's mobile screenshot; without it the banner says so and the MVP never stands in for it
-  let originalMobileBuffer: Buffer | undefined;
-  if (audit.screenshotUrls?.mobileOriginal) {
-    try {
-      const res = await fetch(audit.screenshotUrls.mobileOriginal);
-      if (res.ok) originalMobileBuffer = Buffer.from(await res.arrayBuffer());
-      else console.warn(`[DeployWorker] The original's mobile screenshot was not loaded (HTTP ${res.status})`);
-    } catch (error) {
-      console.warn('[DeployWorker] The original\'s mobile screenshot was not loaded:', error);
-    }
-  }
-
-  const bannerBuffer = await ImageService.createComparisonBanner({
-    originalMobileBuffer,
-    newMvpMobileBuffer,
-    businessName: lead.businessName,
-    oldLcpSeconds: typeof audit.webVitals?.lcp === 'number' ? audit.webVitals.lcp / 1000 : undefined,
-    oldA11yViolationsCount: audit.a11ySummary?.violationsCount,
-    oldStandardsScore: comparableStandardsScore(audit.standardsChecks),
-    newStandardsScore: standards?.score,
-  });
-
-  const comparisonBannerUrl = await storageService.uploadComparisonBanner(slug, bannerBuffer);
-  console.log(`[DeployWorker] Comparison banner uploaded to ${comparisonBannerUrl}`);
-
-  return { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl };
 }
 
 /** Why the layout and design tools leave a model-designed MVP alone until REV-139 replaces them */
@@ -151,36 +92,17 @@ async function deployPage(job: Job<IDeployJobData>) {
   const storagePath = await storageService.uploadPageVersion(slug, n, page.html);
 
   // 2. The published page: verified contacts, search tags from the audit, booking form and tracker
-  const brief = buildMvpSourceBrief(auditData, leadData);
-  const contacts = verifiedContacts(auditData, leadData);
-  const { seo } = buildMvpSeo({
-    businessName: lead.businessName,
-    language: brief.language,
-    ...(auditData.extractedContent ? { site: auditData.extractedContent } : {}),
-    contacts,
-    socialLinks: auditData.extractedContacts?.socialLinks ?? [],
-    ...(brief.images[0] ? { photo: brief.images[0] } : {}),
-    ...(brief.brand.logoUrl ? { logoUrl: brief.brand.logoUrl } : {}),
-    ...(/^https?:\/\//i.test(lead.originalUrl ?? '') ? { originalUrl: lead.originalUrl } : {}),
-    ...(auditData.standardsChecks ? { original: auditData.standardsChecks } : {}),
-  });
-  const html = finishMvpPage(page.html, {
-    businessName: lead.businessName,
-    language: brief.language,
-    services: brief.services,
-    contacts,
-    seo,
-    logoUrl: brief.brand.logoUrl,
-    theme: page.theme,
-    // The tracker as the other renderers load it: from the API, with no per-page token
-    ...(/^https?:\/\//i.test(env.PUBLIC_API_URL) ? { publicApiUrl: env.PUBLIC_API_URL } : {}),
-  });
+  const { finish } = pageContext(leadData, auditData);
+  const html = finishMvpPage(page.html, { ...finish, theme: page.theme });
 
   // 3. Checks, upload, banner and the page's web vitals, as for every publish
-  const completenessReport = await mvpCompletenessService.assess(html, leadData, auditData);
-  const standards = publishedStandards(html);
-  const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit, standards);
-  const performance = await measureMvpPerformance(fullPreviewUrl);
+  const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl, completenessReport, standards, performance } = await publishFinishedPage({
+    slug,
+    html,
+    lead: leadData,
+    audit: auditData,
+    completeness: 'assess',
+  });
 
   // 4. One update: the page, its checks and the version; every field of the old renderers goes
   const generatedAt = new Date();
@@ -231,18 +153,11 @@ async function deployPage(job: Job<IDeployJobData>) {
     { upsert: true, new: true },
   ).exec();
 
-  // 5. The files of versions that fell off the list, as Mongo kept it (another deploy may have pushed meanwhile);
-  // a file a kept version still names is never deleted. A failed delete leaves a stray file, never a failed publish
+  // 5. The files of versions that fell off the list, as Mongo kept it
   const keptVersions = (mvpProject?.versions as IMvpPageVersion[] | undefined) ?? (retried ? versions : [...versions, entry].slice(-MVP_MAX_VERSIONS));
-  const keptPaths = new Set(keptVersions.map((v) => v.storagePath));
-  for (const dropped of versions.filter((v) => !keptPaths.has(v.storagePath))) {
-    await storageService.deleteObject(dropped.storagePath).catch((error: unknown) => {
-      console.warn(`[DeployWorker] Old version ${dropped.storagePath} was not deleted:`, error);
-    });
-  }
+  await dropUnlistedVersions(versions, keptVersions);
 
-  // 6. Banner on the audit; the lead goes to review only if it is still waiting for this page (REV-62)
-  await Audit.findByIdAndUpdate(audit._id, { 'screenshotUrls.comparisonBanner': comparisonBannerUrl }).exec();
+  // 6. The lead goes to review only if it is still waiting for this page (REV-62)
   const reviewLead = await Lead.findOneAndUpdate(
     { _id: lead._id, status: { $in: leadStatusesInto('NEEDS_APPROVAL') } },
     {
@@ -376,19 +291,6 @@ const sameDesign = (a: ReturnType<typeof savedDesign>, b: ReturnType<typeof save
   JSON.stringify(a.rebuildEdit ?? null) === JSON.stringify(b.rebuildEdit ?? null) &&
   a.rebuildLevel === b.rebuildLevel &&
   JSON.stringify(a.modernize ?? null) === JSON.stringify(b.modernize ?? null);
-
-/**
- * The published page's standards checks (REV-118), by code with the audit's reader; advisory, so a page that cannot
- * be checked has none rather than failing the publish
- */
-export function publishedStandards(html: string): IMvpStandards | undefined {
-  try {
-    return checkMvpStandards(html);
-  } catch (error) {
-    console.warn(`[DeployWorker] Standards of the published MVP not checked: ${error instanceof Error ? error.message : String(error)}`);
-    return undefined;
-  }
-}
 
 /**
  * A re-render that could not be made (REV-132): nothing is uploaded, so the page published before stays, and the

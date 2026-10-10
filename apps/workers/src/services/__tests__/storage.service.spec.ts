@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
 import { env } from '../../config/env.js';
 import { StorageService } from '../storage.service.js';
 
@@ -89,5 +89,21 @@ describe('StorageService', () => {
     const command = mockS3Send.mock.calls[0][0];
     expect(command).toBeInstanceOf(DeleteObjectCommand);
     expect(command.input).toEqual({ Bucket: env.S3_BUCKET_DEMOS, Key: 'v/s/versions/1.html' });
+  });
+
+  it('reads a stored page version as text from the demos bucket (REV-139)', async () => {
+    mockS3Send.mockResolvedValueOnce({ Body: { transformToString: async (encoding: string) => (encoding === 'utf-8' ? '<html>wersja 2</html>' : '') } });
+    const html = await service.readPageVersion('v/x/versions/2.html');
+    const command = mockS3Send.mock.calls[0][0];
+    expect(command).toBeInstanceOf(GetObjectCommand);
+    expect(command.input).toEqual({ Bucket: env.S3_BUCKET_DEMOS, Key: 'v/x/versions/2.html' });
+    expect(html).toBe('<html>wersja 2</html>');
+  });
+
+  it('rejects when the version is missing', async () => {
+    mockS3Send.mockRejectedValueOnce(Object.assign(new Error('The specified key does not exist.'), { name: 'NoSuchKey' }));
+    await expect(service.readPageVersion('v/x/versions/9.html')).rejects.toThrow('does not exist');
+    mockS3Send.mockResolvedValueOnce({});
+    await expect(service.readPageVersion('v/x/versions/9.html')).rejects.toThrow('v/x/versions/9.html');
   });
 });

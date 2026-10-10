@@ -2,6 +2,7 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadBucketCommand,
   CreateBucketCommand,
 } from '@aws-sdk/client-s3';
@@ -133,6 +134,13 @@ export class StorageService {
       }),
     );
     return key;
+  }
+
+  /** A stored version of a model-designed page (REV-139), as text; a missing object rejects */
+  async readPageVersion(key: string): Promise<string> {
+    const res = await this.client.send(new GetObjectCommand({ Bucket: env.S3_BUCKET_DEMOS, Key: key }));
+    if (!res.Body) throw new Error(`The stored page ${key} has no content`);
+    return res.Body.transformToString('utf-8');
   }
 
   /** Removes an object, by default from the demos bucket (a version that fell off the list, REV-138) */
