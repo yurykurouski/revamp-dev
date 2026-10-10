@@ -75,7 +75,7 @@ describe('model-designed page helpers (REV-140)', () => {
 
   it('measures nothing while a color is half typed', () => {
     expect(colorContrast({ ...white, text: '#12' })).toEqual({ valid: false, ok: false });
-    expect(colorContrast({ ...white, bg: '' })).toEqual({ valid: false, ok: false });
+    expect(colorContrast({ ...white, text: '#111111', bg: '' })).toEqual({ valid: false, ok: false });
   });
 
   it('finds the saved font pairing, or the page fonts', () => {
