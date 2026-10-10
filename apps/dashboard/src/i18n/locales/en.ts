@@ -305,6 +305,50 @@ export const en = {
     },
   },
   mvpPage: {
+    colors: {
+      title: 'Colors',
+      roles: {
+        primary: 'Primary',
+        accent: 'Accent',
+        bg: 'Background',
+        surface: 'Surface',
+        text: 'Text',
+      },
+      brand: 'Brand colors',
+      hex: 'Hex',
+      apply: 'Apply colors',
+      reset: 'Use the page\'s colors',
+      contrast: 'Text contrast {{bg}}:1 on background, {{surface}}:1 on surface',
+      contrastLow: 'Text needs at least {{min}}:1 on the background and the surface',
+    },
+    fonts: {
+      title: 'Fonts',
+      pageOwn: 'The page\'s own fonts',
+      pair: '{{heading}} / {{body}}',
+    },
+    versions: {
+      title: 'Versions',
+      number: 'Version {{n}}',
+      kinds: {
+        generate: 'Generated',
+        change: 'Changed',
+        restore: 'Restored',
+      },
+      restoredFrom: 'Restored from version {{n}}',
+      current: 'Published',
+      restore: 'Restore',
+      empty: 'No versions yet',
+    },
+    flags: {
+      title: 'Check these facts ({{count}})',
+      intro: 'The original site does not say these. Keep them only if they are true.',
+      kinds: {
+        number: 'Number',
+        name: 'Name',
+      },
+      show: 'Show in preview',
+      chip: '{{count}} to check',
+    },
     outcome: {
       changed: 'Published as version {{n}}.',
       controls: 'Colors and fonts published.',

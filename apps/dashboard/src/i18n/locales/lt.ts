@@ -304,6 +304,50 @@ export const lt: Translation = {
     },
   },
   mvpPage: {
+    colors: {
+      title: 'Spalvos',
+      roles: {
+        primary: 'Pagrindinė',
+        accent: 'Akcentas',
+        bg: 'Fonas',
+        surface: 'Paviršius',
+        text: 'Tekstas',
+      },
+      brand: 'Prekės ženklo spalvos',
+      hex: 'Hex',
+      apply: 'Taikyti spalvas',
+      reset: 'Grąžinti puslapio spalvas',
+      contrast: 'Teksto kontrastas {{bg}}:1 ant fono, {{surface}}:1 ant paviršiaus',
+      contrastLow: 'Tekstui reikia bent {{min}}:1 kontrasto ant fono ir paviršiaus',
+    },
+    fonts: {
+      title: 'Šriftai',
+      pageOwn: 'Paties puslapio šriftai',
+      pair: '{{heading}} / {{body}}',
+    },
+    versions: {
+      title: 'Versijos',
+      number: '{{n}} versija',
+      kinds: {
+        generate: 'Sugeneruota',
+        change: 'Pakeista',
+        restore: 'Atkurta',
+      },
+      restoredFrom: 'Atkurta iš {{n}} versijos',
+      current: 'Paskelbta',
+      restore: 'Atkurti',
+      empty: 'Versijų dar nėra',
+    },
+    flags: {
+      title: 'Patikrinkite šiuos faktus ({{count}})',
+      intro: 'Originalioje svetainėje to nėra. Palikite tik jei tai tiesa.',
+      kinds: {
+        number: 'Skaičius',
+        name: 'Vardas',
+      },
+      show: 'Rodyti peržiūroje',
+      chip: '{{count}} patikrinti',
+    },
     outcome: {
       changed: 'Paskelbta kaip {{n}} versija.',
       controls: 'Spalvos ir šriftai paskelbti.',

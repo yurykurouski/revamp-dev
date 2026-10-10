@@ -304,6 +304,50 @@ export const pl: Translation = {
     },
   },
   mvpPage: {
+    colors: {
+      title: 'Kolory',
+      roles: {
+        primary: 'Główny',
+        accent: 'Akcent',
+        bg: 'Tło',
+        surface: 'Powierzchnia',
+        text: 'Tekst',
+      },
+      brand: 'Kolory marki',
+      hex: 'Hex',
+      apply: 'Zastosuj kolory',
+      reset: 'Przywróć kolory strony',
+      contrast: 'Kontrast tekstu {{bg}}:1 na tle, {{surface}}:1 na powierzchni',
+      contrastLow: 'Tekst potrzebuje kontrastu co najmniej {{min}}:1 na tle i na powierzchni',
+    },
+    fonts: {
+      title: 'Czcionki',
+      pageOwn: 'Własne czcionki strony',
+      pair: '{{heading}} / {{body}}',
+    },
+    versions: {
+      title: 'Wersje',
+      number: 'Wersja {{n}}',
+      kinds: {
+        generate: 'Wygenerowana',
+        change: 'Zmieniona',
+        restore: 'Przywrócona',
+      },
+      restoredFrom: 'Przywrócona z wersji {{n}}',
+      current: 'Opublikowana',
+      restore: 'Przywróć',
+      empty: 'Brak wersji',
+    },
+    flags: {
+      title: 'Sprawdź te fakty ({{count}})',
+      intro: 'Oryginalna strona tego nie podaje. Zostaw tylko, jeśli to prawda.',
+      kinds: {
+        number: 'Liczba',
+        name: 'Nazwa',
+      },
+      show: 'Pokaż w podglądzie',
+      chip: '{{count}} do sprawdzenia',
+    },
     outcome: {
       changed: 'Opublikowano jako wersję {{n}}.',
       controls: 'Kolory i czcionki opublikowane.',

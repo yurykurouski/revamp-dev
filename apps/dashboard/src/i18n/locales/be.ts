@@ -304,6 +304,50 @@ export const be: Translation = {
     },
   },
   mvpPage: {
+    colors: {
+      title: 'Колеры',
+      roles: {
+        primary: 'Асноўны',
+        accent: 'Акцэнт',
+        bg: 'Фон',
+        surface: 'Паверхня',
+        text: 'Тэкст',
+      },
+      brand: 'Колеры брэнда',
+      hex: 'Hex',
+      apply: 'Ужыць колеры',
+      reset: 'Вярнуць колеры старонкі',
+      contrast: 'Кантраст тэксту {{bg}}:1 на фоне, {{surface}}:1 на паверхні',
+      contrastLow: 'Тэксту патрэбны кантраст не ніжэй за {{min}}:1 на фоне і на паверхні',
+    },
+    fonts: {
+      title: 'Шрыфты',
+      pageOwn: 'Уласныя шрыфты старонкі',
+      pair: '{{heading}} / {{body}}',
+    },
+    versions: {
+      title: 'Версіі',
+      number: 'Версія {{n}}',
+      kinds: {
+        generate: 'Згенеравана',
+        change: 'Зменена',
+        restore: 'Адноўлена',
+      },
+      restoredFrom: 'Адноўлена з версіі {{n}}',
+      current: 'Апублікавана',
+      restore: 'Аднавіць',
+      empty: 'Версій пакуль няма',
+    },
+    flags: {
+      title: 'Праверце гэтыя факты ({{count}})',
+      intro: 'На арыгінальным сайце гэтага няма. Пакіньце, толькі калі гэта праўда.',
+      kinds: {
+        number: 'Лік',
+        name: 'Імя',
+      },
+      show: 'Паказаць у прэв\'ю',
+      chip: '{{count}} на праверку',
+    },
     outcome: {
       changed: 'Апублікавана як версія {{n}}.',
       controls: 'Колеры і шрыфты апублікаваны.',
