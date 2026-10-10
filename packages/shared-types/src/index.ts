@@ -1908,6 +1908,8 @@ export const API_ERROR_CODES = [
   'MVP_EDIT_TIMEOUT',
   'MVP_REBUILD_UNAVAILABLE',
   'MVP_MODERNIZE_UNAVAILABLE',
+  // REV-138: the layout and design tools do not apply to a page the model designed (REV-139 adds its own)
+  'MVP_MODEL_DESIGNED',
   'PREVIEW_NOT_FOUND',
   // Outreach
   'LEAD_NOT_AWAITING_APPROVAL',

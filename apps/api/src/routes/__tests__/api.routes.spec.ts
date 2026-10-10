@@ -1253,6 +1253,30 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
   });
 
+  describe('the old layout and design routes refuse a model-designed MVP (REV-138)', () => {
+    const projectId = new mongoose.Types.ObjectId().toString();
+    const leadId = new mongoose.Types.ObjectId().toString();
+
+    it.each([
+      ['patch', 'tokens', { primaryColor: '#4F46E5' }],
+      ['patch', 'layout', { variant: 'bento' }],
+      ['post', 'edit', { instruction: 'Make the hero darker' }],
+      ['delete', 'design', undefined],
+    ] as const)('%s /mvp/:id/%s answers 409 MVP_MODEL_DESIGNED and writes nothing', async (method, path, body) => {
+      vi.spyOn(MvpProject, 'findById').mockReturnValue({
+        exec: vi.fn().mockResolvedValue({ _id: projectId, leadId, auditId: leadId, page: '<!DOCTYPE html><html></html>' }),
+      } as any);
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'NEEDS_APPROVAL' }) } as any);
+      const update = vi.spyOn(MvpProject, 'findByIdAndUpdate');
+      const call = request(app)[method](`/api/v1/mvp/${projectId}/${path}`);
+      const res = body ? await call.send(body) : await call;
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('MVP_MODEL_DESIGNED');
+      expect(update).not.toHaveBeenCalled();
+      expect(addMvpRelayoutJob).not.toHaveBeenCalled();
+    });
+  });
+
   describe('PATCH /api/v1/mvp/:id/tokens', () => {
     const projectId = new mongoose.Types.ObjectId().toString();
     const leadId = new mongoose.Types.ObjectId().toString();
