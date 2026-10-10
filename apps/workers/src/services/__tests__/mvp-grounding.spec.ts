@@ -73,4 +73,33 @@ describe('checkMvpGrounding (REV-136)', () => {
     const [flag] = flags(`<p>Ponad 15 lat ${'doświadczenia '.repeat(10)}</p>`);
     expect(flag?.context.length).toBeLessThanOrEqual(80);
   });
+
+  describe('review regressions', () => {
+    it('does not flag the fixture page', async () => {
+      const { VALID } = await import('./fixtures/page-gen/page.js');
+      expect(checkMvpGrounding(VALID, brief({ headings: ['Usługi'], paragraphs: ['Leczymy z troską, w spokojnej atmosferze.'] }))).toEqual(
+        [],
+      );
+    });
+
+    it('reads each menu link on its own', () => {
+      expect(flags('<nav><a href="#a">About Us</a> <a href="#b">Contact</a> <a href="#c">Usługi</a></nav>')).toEqual([]);
+    });
+
+    it('does not flag a Title Case heading', () => {
+      expect(flags('<h2>Our Dental Services Here</h2>')).toEqual([]);
+    });
+
+    it('skips all-caps words inside a mixed sentence', () => {
+      expect(flags('<p>Visit OUR NEW CLINIC today.</p>')).toEqual([]);
+    });
+
+    it('checks every number in a run, not only the first', () => {
+      expect(flags('<p>Top 3 2024</p>')).toEqual([{ kind: 'number', text: '2024', context: 'Top 3 2024' }]);
+    });
+
+    it('compares decimals with trailing zeros and comma thousands', () => {
+      expect(flags('<p>Cena 12.5 zł, 1,200 osób</p>', brief({ paragraphs: ['Cena 12,50 zł dla 1 200 osób'] }))).toEqual([]);
+    });
+  });
 });

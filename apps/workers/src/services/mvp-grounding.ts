@@ -8,36 +8,59 @@ import { PLACEHOLDER_PATTERN } from './mvp-page-check.js';
 // operator to check. Flags never reject the page.
 
 const SKIP = new Set(['SVG', 'STYLE', 'SCRIPT', 'TEMPLATE', 'NOSCRIPT']);
-const INLINE = new Set(['A', 'ABBR', 'B', 'BDI', 'BDO', 'BR', 'CITE', 'CODE', 'DATA', 'EM', 'I', 'KBD', 'MARK', 'Q', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRONG', 'SUB', 'SUP', 'TIME', 'U', 'VAR', 'WBR']);
+const INLINE = new Set(['ABBR', 'B', 'BDI', 'BDO', 'BR', 'CITE', 'CODE', 'DATA', 'EM', 'I', 'KBD', 'MARK', 'Q', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRONG', 'SUB', 'SUP', 'TIME', 'U', 'VAR', 'WBR']);
 const CONTEXT_MAX = 80;
 /** Digits with thousands or decimal separators inside: "1 200", "1.200", "4,9" */
 const NUMBER = /\d+(?:[   .,]\d+)*/g;
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’&-]*/gu;
 const NAME = /^\p{Lu}[\p{L}\p{N}&'’-]*$/u;
 const SENTENCE_END = /[.!?…:]$/;
+/** Units a page writes in Title Case: headings, menu links, buttons, list labels */
+const LABEL_TAGS = new Set(['H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'A', 'BUTTON', 'LI', 'SUMMARY', 'DT', 'TH', 'FIGCAPTION']);
+const TITLE_CASE_MAX_WORDS = 12;
 
 const squash = (text: string) => text.replace(/[\s  ]+/g, ' ').trim();
 
-/** A number in one canonical form: thousands groups joined, decimal comma as a dot; undefined for a lone digit */
-function normalizeNumber(raw: string): string | undefined {
-  const parts = raw.split(/([   .,])/);
+const canonical = (digits: string) => {
+  const [int = '', frac] = digits.split('.');
+  const whole = int.replace(/^0+(?=\d)/, '');
+  const decimals = frac?.replace(/0+$/, '');
+  return decimals ? `${whole}.${decimals}` : whole;
+};
+
+/**
+ * The numbers a written run stands for, each in a canonical form (thousands joined, decimal point, no trailing
+ * zeros). A separator that could be either ("1,200", "1.200") gives both readings; a run that is not one number
+ * ("Top 3 2024") gives each of its numbers. Lone digits are left out.
+ */
+function numberReadings(raw: string): Array<{ raw: string; offset: number; values: string[] }> {
+  const parts = raw.split(/([ \u00a0\u202f.,])/);
   const groups = parts.filter((_, i) => i % 2 === 0);
   const seps = parts.filter((_, i) => i % 2 === 1);
-  let value: string;
-  if (groups.length > 1 && groups.slice(1).every((g) => g.length === 3) && !(seps.length === 1 && seps[0] === ',')) {
-    value = groups.join('');
-  } else if (groups.length === 2 && (seps[0] === ',' || seps[0] === '.')) {
-    value = `${groups[0]}.${groups[1]}`;
-  } else {
-    // Unrelated numbers that happen to sit side by side ("9 18"): the first one stands for the run
-    value = groups[0] ?? raw;
+  const sameSep = seps.every((sep) => sep === seps[0] || (/\s/.test(sep) && /\s/.test(seps[0] ?? '')));
+  const thousands = groups.length > 1 && groups.slice(1).every((g) => g.length === 3) && sameSep;
+  const values = new Set<string>();
+  if (thousands) values.add(canonical(groups.join('')));
+  if (groups.length === 2 && (seps[0] === ',' || seps[0] === '.')) values.add(canonical(`${groups[0]}.${groups[1]}`));
+  if (values.size) {
+    const kept = [...values].filter((v) => !/^\d$/.test(v));
+    return kept.length ? [{ raw, offset: 0, values: kept }] : [];
   }
-  value = value.replace(/^0+(?=\d)/, '');
-  return /^\d$/.test(value) ? undefined : value;
+  // Not one number: each group on its own
+  let offset = 0;
+  const out: Array<{ raw: string; offset: number; values: string[] }> = [];
+  parts.forEach((part, i) => {
+    if (i % 2 === 0) {
+      const value = canonical(part);
+      if (!/^\d$/.test(value)) out.push({ raw: part, offset, values: [value] });
+    }
+    offset += part.length;
+  });
+  return out;
 }
 
 const numbersIn = (text: string) =>
-  Array.from(text.matchAll(NUMBER), (m) => ({ raw: m[0].trim(), index: m.index ?? 0, value: normalizeNumber(m[0].trim()) }));
+  Array.from(text.matchAll(NUMBER)).flatMap((m) => numberReadings(m[0].trim()).map((n) => ({ ...n, index: (m.index ?? 0) + n.offset })));
 
 /** Lowercase without diacritics, so inflected and accented forms of a name compare */
 const fold = (word: string) => word.normalize('NFD').replace(/\p{M}/gu, '').replace(/ł/g, 'l').toLowerCase();
@@ -51,12 +74,12 @@ function grounded(word: string, source: string[]): boolean {
 }
 
 /** The page's text in reading units: each block's own text with its inline children, then alt and title attributes */
-function pageUnits(doc: Document): string[] {
-  const units: string[] = [];
+function pageUnits(doc: Document): Array<{ text: string; tag: string }> {
+  const units: Array<{ text: string; tag: string }> = [];
   const visit = (el: Element) => {
     let buffer = '';
     const flush = () => {
-      if (squash(buffer)) units.push(squash(buffer));
+      if (squash(buffer)) units.push({ text: squash(buffer), tag: el.tagName.toUpperCase() });
       buffer = '';
     };
     for (const child of Array.from(el.childNodes)) {
@@ -77,10 +100,10 @@ function pageUnits(doc: Document): string[] {
   for (const el of Array.from(doc.querySelectorAll('[alt], [title]'))) {
     for (const name of ['alt', 'title']) {
       const value = squash(el.getAttribute(name) ?? '');
-      if (value) units.push(value);
+      if (value) units.push({ text: value, tag: name.toUpperCase() });
     }
   }
-  return units.map((u) => squash(u.replace(PLACEHOLDER_PATTERN, ' '))).filter(Boolean);
+  return units.map((u) => ({ ...u, text: squash(u.text.replace(PLACEHOLDER_PATTERN, ' ')) })).filter((u) => u.text);
 }
 
 function sourceText(brief: IMvpSourceBrief): string {
@@ -107,7 +130,7 @@ function sourceText(brief: IMvpSourceBrief): string {
 
 export function checkMvpGrounding(html: string, brief: IMvpSourceBrief): IMvpGroundingFlag[] {
   const source = sourceText(brief);
-  const sourceNumbers = new Set(numbersIn(source).flatMap((n) => (n.value ? [n.value] : [])));
+  const sourceNumbers = new Set(numbersIn(source).flatMap((n) => n.values));
   const sourceWords = Array.from(source.matchAll(WORD), (m) => fold(m[0]));
 
   const flags: IMvpGroundingFlag[] = [];
@@ -120,16 +143,18 @@ export function checkMvpGrounding(html: string, brief: IMvpSourceBrief): IMvpGro
   };
 
   return withHtmlDocument(html, (doc) => {
-    for (const unit of pageUnits(doc)) {
+    for (const { text: unit, tag } of pageUnits(doc)) {
       const found: Array<{ index: number; kind: MvpGroundingKind; text: string }> = [];
 
       for (const n of numbersIn(unit)) {
-        if (n.value && !sourceNumbers.has(n.value)) found.push({ index: n.index, kind: 'number', text: n.raw });
+        if (!n.values.some((v) => sourceNumbers.has(v))) found.push({ index: n.index, kind: 'number', text: n.raw });
       }
 
-      // An all-caps unit (a styled heading) has no way to tell names apart
-      if (/\p{Ll}/u.test(unit)) {
-        const words = Array.from(unit.matchAll(WORD), (m) => ({ text: m[0], index: m.index ?? 0 }));
+      const words = Array.from(unit.matchAll(WORD), (m) => ({ text: m[0], index: m.index ?? 0 }));
+      // A label in Title Case ("Our Dental Services") or all caps has no way to tell names apart
+      const titleCase =
+        LABEL_TAGS.has(tag) && words.length <= TITLE_CASE_MAX_WORDS && !words.some((w) => w.text.length >= 4 && /^\p{Ll}/u.test(w.text));
+      if (/\p{Ll}/u.test(unit) && !titleCase) {
         let run: Array<{ text: string; index: number; ok: boolean }> = [];
         const close = () => {
           if (run.length && run.some((w) => !w.ok)) found.push({ index: run[0]!.index, kind: 'name', text: run.map((w) => w.text).join(' ') });
@@ -138,7 +163,8 @@ export function checkMvpGrounding(html: string, brief: IMvpSourceBrief): IMvpGro
         words.forEach((word, i) => {
           const before = unit.slice(0, word.index).trimEnd();
           const startsSentence = i === 0 || SENTENCE_END.test(before);
-          const isName = NAME.test(word.text) && !/^\d/.test(word.text) && !startsSentence;
+          // An all-caps word in a sentence ("OUR NEW CLINIC") is emphasis, not a name
+          const isName = NAME.test(word.text) && /\p{Ll}/u.test(word.text) && !startsSentence;
           if (!isName) return close();
           // Only words written next to each other form one name
           const previous = words[i - 1];
