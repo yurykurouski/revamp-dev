@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { DeleteObjectCommand, PutObjectCommand } from '@aws-sdk/client-s3';
+import { env } from '../../config/env.js';
 import { StorageService } from '../storage.service.js';
 
 describe('StorageService', () => {
@@ -69,5 +71,23 @@ describe('StorageService', () => {
 
     await service.ensureBucket('custom-bucket');
     expect(mockS3Send).toHaveBeenCalledTimes(2);
+  });
+  it('stores a raw page version in the demos bucket and returns its key (REV-138)', async () => {
+    const key = await service.uploadPageVersion('falco-dent-abc123', 3, '<!DOCTYPE html><html></html>');
+    expect(key).toBe('v/falco-dent-abc123/versions/3.html');
+    const put = mockS3Send.mock.calls.map((c) => c[0]).find((c) => c instanceof PutObjectCommand);
+    expect(put.input).toMatchObject({
+      Bucket: env.S3_BUCKET_DEMOS,
+      Key: 'v/falco-dent-abc123/versions/3.html',
+      ContentType: 'text/html; charset=utf-8',
+    });
+    expect(Buffer.from(put.input.Body).toString('utf8')).toBe('<!DOCTYPE html><html></html>');
+  });
+
+  it('deletes an object from the demos bucket by default (REV-138)', async () => {
+    await service.deleteObject('v/s/versions/1.html');
+    const command = mockS3Send.mock.calls[0][0];
+    expect(command).toBeInstanceOf(DeleteObjectCommand);
+    expect(command.input).toEqual({ Bucket: env.S3_BUCKET_DEMOS, Key: 'v/s/versions/1.html' });
   });
 });

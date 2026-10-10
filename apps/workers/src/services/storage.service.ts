@@ -1,6 +1,7 @@
 import {
   S3Client,
   PutObjectCommand,
+  DeleteObjectCommand,
   HeadBucketCommand,
   CreateBucketCommand,
 } from '@aws-sdk/client-s3';
@@ -114,6 +115,29 @@ export class StorageService {
 
     const url = this.getPublicUrl(bucketName, key);
     return { url, key };
+  }
+
+  /**
+   * Stores a published version of a model-designed page as the model wrote it (REV-138), next to the page:
+   * `v/{slug}/versions/{n}.html` in the demos bucket. Returns the key, which the MVP's version list keeps.
+   */
+  async uploadPageVersion(slug: string, n: number, html: string): Promise<string> {
+    const key = `v/${slug}/versions/${n}.html`;
+    await this.ensureBucket(env.S3_BUCKET_DEMOS);
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: env.S3_BUCKET_DEMOS,
+        Key: key,
+        Body: Buffer.from(html, 'utf8'),
+        ContentType: 'text/html; charset=utf-8',
+      }),
+    );
+    return key;
+  }
+
+  /** Removes an object, by default from the demos bucket (a version that fell off the list, REV-138) */
+  async deleteObject(key: string, bucket: string = env.S3_BUCKET_DEMOS): Promise<void> {
+    await this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key }));
   }
 
   /**
