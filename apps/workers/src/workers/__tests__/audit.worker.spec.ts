@@ -9,9 +9,6 @@ import { storageService } from '../../services/storage.service.js';
 import { designCritiqueService } from '../../services/design-critique.service.js';
 import { UnrecoverableError } from 'bullmq';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
-import { readPageSections } from '../../services/site-grouping.service.js';
-import { readSiteSections } from '../../services/site-sections.service.js';
-import type { ISiteSections } from '@revamp/shared-types';
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
@@ -20,7 +17,6 @@ vi.mock('../../services/browser.service.js');
 vi.mock('../../services/image.service.js');
 vi.mock('../../services/storage.service.js');
 vi.mock('../../services/design-critique.service.js');
-vi.mock('../../services/site-grouping.service.js', () => ({ readPageSections: vi.fn() }));
 vi.mock('../../queues/ai.queue.js', () => ({
   addAiGenerationJob: vi.fn().mockResolvedValue({ id: 'mock-ai-job' }),
 }));
@@ -56,11 +52,6 @@ describe('AuditWorker (@revamp/workers)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedProcessor = null;
-    vi.mocked(ImageService.tilesForVision).mockResolvedValue([{ data: Buffer.from('t'), top: 0, bottom: 1800 }]);
-    // The rules reading, as when no vision model groups the page (REV-113)
-    vi.mocked(readPageSections).mockImplementation(async ({ raw, rawError, layoutBlocks }) => ({
-      reading: raw ? readSiteSections(raw, layoutBlocks) : { error: rawError ?? 'No section facts' },
-    }));
   });
 
   it('should initialize worker for AUDIT queue', () => {
@@ -96,37 +87,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('raw-desktop-png'),
-      siteLayout: {
-        raw: {
-          viewportWidth: 1440,
-          viewportHeight: 900,
-          pageHeight: 4000,
-          blocks: [
-            { top: 80, height: 700, hint: 'hero', heading: 'Test Dental', imageCount: 1, formCount: 0, mapEmbed: false, quoteCount: 0, priceCount: 0, textLength: 200, paddingY: 100 },
-            { top: 780, height: 600, hint: '', heading: 'Our services', imageCount: 0, formCount: 0, mapEmbed: false, quoteCount: 0, priceCount: 0, textLength: 600, paddingY: 100 },
-            { top: 1380, height: 500, hint: '', heading: 'Contact', imageCount: 0, formCount: 1, mapEmbed: true, quoteCount: 0, priceCount: 0, textLength: 200, paddingY: 100 },
-          ],
-          hero: { headingAlign: 'center', headingCenterX: 720, headingWidth: 500, headingColor: 'rgb(0, 0, 0)', background: 'rgb(255, 255, 255)', slider: false, backgroundMedia: false },
-          header: { navLinkCount: 4, logoCenterX: 100, sticky: false, hasCta: false },
-        },
-      },
-      siteSections: {
-        raw: {
-          viewportWidth: 1440,
-          viewportHeight: 900,
-          blocks: [
-            {
-              role: 'content', block: 0, box: { top: 80, left: 0, width: 1440, height: 700 },
-              intro: { heading: 'Test Dental', headingLevel: 1, text: ['Smiles for everyone.'], links: [] },
-              extra: [], images: [], embeds: [],
-              style: { background: 'rgb(255, 255, 255)', color: 'rgb(0, 0, 0)', textAlign: 'center', paddingTop: 100, paddingBottom: 100 },
-            },
-          ],
-          typography: {},
-          pageChars: 31,
-          uncaptured: [],
-        },
-      },
+      eraFacts: { raw: { contentWidth: 1440, fullBleedShare: 1, bodyFont: 'Inter, sans-serif' } },
       mobileBuffer: Buffer.from('raw-mobile-png'),
       desktopFullBuffer: Buffer.from('raw-desktop-full-png'),
       mobileFullBuffer: Buffer.from('raw-mobile-full-png'),
@@ -307,24 +268,9 @@ describe('AuditWorker (@revamp/workers)', () => {
         ],
         // Everything was measured, so no measurement errors (REV-100)
         measurementErrors: [],
-        // The original layout, read from the page and validated (REV-104); no stale error kept
-        siteLayout: {
-          sections: [
-            { kind: 'services', heading: 'Our services' },
-            { kind: 'contact', heading: 'Contact' },
-          ],
-          hero: { media: 'none', align: 'center', tone: 'light' },
-          nav: { itemCount: 4, centeredLogo: false, sticky: false, hasCta: false },
-          density: 'comfortable',
-        },
-        // The original sections, read from the page and validated (REV-109); no stale error kept
-        siteSections: expect.objectContaining({
-          sections: [expect.objectContaining({ index: 0, role: 'hero', arrangement: 'text', intro: expect.objectContaining({ heading: 'Test Dental' }) })],
-          coverage: { pageChars: 31, capturedChars: 31, ratio: 1, uncaptured: [] },
-        }),
         // The home page HTML was read: the dated-site verdict is stored and no stale error kept (REV-114)
         siteEra: expect.objectContaining({ dated: true, signs: expect.arrayContaining(['table_layout', 'no_viewport']) }),
-        $unset: { siteLayoutError: '', siteSectionsError: '', siteSectionsErrorReason: '', siteEraError: '' },
+        $unset: { siteEraError: '' },
         designCritique: expect.objectContaining({
           visualHierarchyRating: 70,
           mobileFriendlinessRating: 80,
@@ -405,8 +351,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
-      siteLayout: { error: 'Layout not collected in this test' },
-      siteSections: { error: 'Sections not collected in this test' },
+      eraFacts: { error: 'Era facts not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -461,20 +406,11 @@ describe('AuditWorker (@revamp/workers)', () => {
       a11ySummary: '',
       axeViolations: '',
       standardsChecks: '',
-      // The original layout was not read either: its reason is stored instead (REV-104)
-      siteLayout: '',
-      siteSections: '',
-      // The page was not read, so there is no model failure to name (REV-132)
-      siteSectionsErrorReason: '',
       // No home page HTML was captured, so the verdict is unset (REV-114)
       siteEra: '',
     });
     expect(completed.siteEraError).toBe('home page HTML not read');
     expect(completed).not.toHaveProperty('siteEra');
-    expect(completed.siteLayoutError).toBe('Layout not collected in this test');
-    // The sections were not read either: the reason is stored and an earlier audit's sections are cleared (REV-109, Review Focus 5)
-    expect(completed.siteSectionsError).toBe('Sections not collected in this test');
-    expect(completed).not.toHaveProperty('siteSections');
     expect(completed).not.toHaveProperty('axeViolations');
     expect(completed).not.toHaveProperty('standardsChecks');
     expect(completed).not.toHaveProperty('a11yScore');
@@ -509,8 +445,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
-        siteLayout: { error: 'Layout not collected in this test' },
-        siteSections: { error: 'Sections not collected in this test' },
+        eraFacts: { error: 'Era facts not collected in this test' },
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
@@ -611,8 +546,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
-      siteLayout: { error: 'Layout not collected in this test' },
-      siteSections: { error: 'Sections not collected in this test' },
+      eraFacts: { error: 'Era facts not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -683,8 +617,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
-      siteLayout: { error: 'Layout not collected in this test' },
-      siteSections: { error: 'Sections not collected in this test' },
+      eraFacts: { error: 'Era facts not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -753,8 +686,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
     vi.mocked(browserService.captureFullAudit).mockResolvedValue({
       desktopBuffer: Buffer.from('d'),
-      siteLayout: { error: 'Layout not collected in this test' },
-      siteSections: { error: 'Sections not collected in this test' },
+      eraFacts: { error: 'Era facts not collected in this test' },
       mobileBuffer: Buffer.from('m'),
       desktopFullBuffer: Buffer.from('df'),
       mobileFullBuffer: Buffer.from('mf'),
@@ -977,8 +909,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
-        siteLayout: { error: 'Layout not collected in this test' },
-        siteSections: { error: 'Sections not collected in this test' },
+        eraFacts: { error: 'Era facts not collected in this test' },
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
@@ -1037,28 +968,8 @@ describe('AuditWorker (@revamp/workers)', () => {
     });
   });
 
-  describe('section grouping by the vision model (REV-113)', () => {
-    const llmReading: ISiteSections = {
-      sections: [
-        {
-          index: 0,
-          role: 'hero',
-          kind: 'other',
-          arrangement: 'text',
-          intro: { heading: 'Gabinet', headingLevel: 1, text: ['Witamy.'], links: [] },
-          items: [],
-          extra: [],
-          images: [],
-          embeds: [],
-          style: {},
-        },
-      ],
-      skipped: [],
-      coverage: { pageChars: 14, capturedChars: 14, ratio: 1, uncaptured: [] },
-      source: 'llm',
-    } as unknown as ISiteSections;
-
-    const runJob = async () => {
+  describe('the dated-site facts, and no section grouping (REV-141)', () => {
+    const runJob = async (eraFacts: unknown, homeHtml = '<html><body><p>Gabinet</p></body></html>') => {
       createAuditWorker();
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'audit-1' }) } as any);
@@ -1066,9 +977,8 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(storageService.ensureBucket).mockResolvedValue(undefined);
       vi.mocked(browserService.captureFullAudit).mockResolvedValue({
         desktopBuffer: Buffer.from('d'),
-        siteLayout: { error: 'Layout not collected in this test' },
-        siteSections: { raw: { viewportWidth: 1440, viewportHeight: 900, blocks: [], typography: {}, pageChars: 14, uncaptured: [] } },
-        homeHtml: '<html><head><meta name="viewport" content="width=device-width"></head><body><p>Gabinet</p></body></html>',
+        eraFacts,
+        homeHtml,
         mobileBuffer: Buffer.from('m'),
         desktopFullBuffer: Buffer.from('df'),
         mobileFullBuffer: Buffer.from('mf'),
@@ -1085,76 +995,35 @@ describe('AuditWorker (@revamp/workers)', () => {
         modelUsed: 'test-model',
         attempts: 1,
       } as any);
-      await capturedProcessor!({ id: 'job-sections', data: { leadId: 'lead-sections', url: 'https://example.com', niche: 'dental' } });
+      await capturedProcessor!({ id: 'job-era', data: { leadId: 'lead-era', url: 'https://example.com', niche: 'dental' } });
       return vi
         .mocked(Audit.findOneAndUpdate)
         .mock.calls.map((call) => call[1] as Record<string, any>)
         .find((update) => update.status === 'COMPLETED')!;
     };
 
-    it('stores the model-grouped sections and logs the grouping tokens', async () => {
-      vi.mocked(readPageSections).mockResolvedValue({
-        reading: { sections: llmReading },
-        modelUsed: 'stub',
-        usage: { promptTokens: 20000, completionTokens: 900, totalTokens: 20900 },
-      });
-      const completed = await runJob();
-      expect(ImageService.tilesForVision).toHaveBeenCalledWith(Buffer.from('df'));
-      expect(readPageSections).toHaveBeenCalledWith(
-        expect.objectContaining({ url: 'https://example.com', niche: 'dental', tiles: [expect.objectContaining({ top: 0 })], layoutBlocks: [] }),
-      );
-      expect((completed.siteSections as ISiteSections).source).toBe('llm');
-      expect(completed.measurementErrors).toEqual([]);
-      expect(AnalyticsEvent.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          leadId: 'lead-sections',
-          eventType: 'token_usage',
-          metadata: expect.objectContaining({ model: 'stub', stage: 'audit_section_grouping', totalTokens: 20900 }),
-        }),
-      );
-    });
-
-    it('stores the model failure with its reason and no sections, never the rules reading (REV-132)', async () => {
-      for (const reason of ['not_configured', 'call_failed', 'invalid_answer', 'ineligible'] as const) {
-        vi.mocked(Audit.findOneAndUpdate).mockClear();
-        vi.mocked(readPageSections).mockResolvedValue({
-          reading: { error: `Grouping failed: ${reason}` },
-          reason,
-          measurementError: { measurement: 'sections', message: `Grouping failed: ${reason}` },
-        });
-        const completed = await runJob();
-        expect(completed).not.toHaveProperty('siteSections');
-        expect(completed.$unset).toEqual(expect.objectContaining({ siteSections: '' }));
-        expect(completed.siteSectionsError).toBe(`Grouping failed: ${reason}`);
-        expect(completed.siteSectionsErrorReason).toBe(reason);
-        expect(completed.measurementErrors).toContainEqual({ measurement: 'sections', message: `Grouping failed: ${reason}` });
-        // The grouping is not scored
-        expect(completed.scores).toEqual(expect.objectContaining({ total: expect.any(Number), design: 65 }));
+    it('makes no section grouping call and stores no sections or layout', async () => {
+      const completed = await runJob({ raw: { contentWidth: 1440, fullBleedShare: 1, bodyFont: 'Inter' } });
+      for (const key of ['siteSections', 'siteSectionsError', 'siteSectionsErrorReason', 'siteLayout', 'siteLayoutError']) {
+        expect(completed, key).not.toHaveProperty(key);
+        expect(completed.$unset ?? {}, key).not.toHaveProperty(key);
       }
+      expect(ImageService.tilesForVision).not.toHaveBeenCalled();
+      expect(completed.measurementErrors.map((e: { measurement: string }) => e.measurement)).not.toContain('sections');
+      const stages = vi.mocked(AnalyticsEvent.create).mock.calls.map((call) => (call[0] as any).metadata?.stage);
+      expect(stages).not.toContain('audit_section_grouping');
     });
 
-    it("reads the dated site's body font from the page, not from the model's sections (REV-132)", async () => {
-      vi.mocked(readPageSections).mockResolvedValue({
-        reading: { error: 'No vision model' },
-        reason: 'not_configured',
-        measurementError: { measurement: 'sections', message: 'No vision model' },
-        typography: { heading: { family: 'Times New Roman', size: 24, weight: 700, uppercase: false }, body: { family: 'Times New Roman', size: 16, weight: 400 } },
-      });
-      const completed = await runJob();
-      expect(completed.siteEra.signs).toContain('default_font');
+    it('stores siteEra from the era facts', async () => {
+      const completed = await runJob({ raw: { contentWidth: 900, fullBleedShare: 0, bodyFont: '"Times New Roman", serif' } });
+      expect(completed.siteEra.signs).toEqual(expect.arrayContaining(['narrow_fixed', 'default_font', 'no_viewport']));
+      expect(completed.siteEra.contentWidth).toBe(900);
     });
 
-    it("clears an earlier audit's grouping failure when the model groups the page (REV-132)", async () => {
-      vi.mocked(readPageSections).mockResolvedValue({ reading: { sections: llmReading } });
-      const completed = await runJob();
-      expect(completed).not.toHaveProperty('siteSectionsErrorReason');
-      expect(completed.$unset).toEqual(expect.objectContaining({ siteSectionsError: '', siteSectionsErrorReason: '' }));
-    });
-
-    it('still groups the page from the outline when the screenshot cannot be cut into tiles', async () => {
-      vi.mocked(ImageService.tilesForVision).mockRejectedValue(new Error('bad png'));
-      await runJob();
-      expect(readPageSections).toHaveBeenCalledWith(expect.objectContaining({ tiles: [] }));
+    it('completes without era facts, from the HTML signs alone', async () => {
+      const completed = await runJob({ error: 'boom' });
+      expect(completed.siteEra.signs).toEqual(['no_viewport']);
+      expect(completed).not.toHaveProperty('siteEraError');
     });
   });
 });

@@ -1,4 +1,4 @@
-import { SITE_DATED_SIGNS, type ISiteEra, type ISiteSections, type SiteDatedSign } from '@revamp/shared-types';
+import { SITE_DATED_SIGNS, type ISiteEra, type SiteDatedSign } from '@revamp/shared-types';
 import { SITE_DATED_THRESHOLD, SiteEraSchema } from '@revamp/validation';
 import { parseHomePage, STALE_COPYRIGHT_YEARS } from './site-assessment.service.js';
 
@@ -28,7 +28,8 @@ export interface SiteEraInput {
   html: string;
   contentWidth?: number;
   fullBleedShare?: number;
-  typography?: ISiteSections['typography'];
+  /** The computed font-family of the page's body text (`collectEraFactsInPage`) */
+  bodyFont?: string;
   now: Date;
 }
 
@@ -49,7 +50,7 @@ export function readSiteEra(input: SiteEraInput): ISiteEra {
   }
   if (signals.hasLegacyTags) found.add('legacy_tags');
   // The body font only: a site that styles its headings but leaves the text in the browser default still looks dated
-  const body = input.typography?.body?.family;
+  const body = input.bodyFont;
   if (body !== undefined && DEFAULT_FONTS.has(firstFamily(body))) found.add('default_font');
   if (signals.hasOldJquery) found.add('old_jquery');
   if (signals.copyrightYear !== undefined && input.now.getUTCFullYear() - signals.copyrightYear >= STALE_COPYRIGHT_YEARS) {

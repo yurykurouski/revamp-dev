@@ -5,8 +5,7 @@ import { RawBrandExtractionData } from './brand-extractor.service.js';
 import { extractSiteContentInPage, RawSiteContent } from './site-content.extractor.js';
 import { cookieConsentService, CookieConsentOutcome } from './cookie-consent.service.js';
 import { collectComplexitySignalsInPage, RawComplexitySignals } from './site-complexity.service.js';
-import { collectSiteLayoutInPage, RawSiteLayout } from './site-layout.service.js';
-import { collectSiteSectionsInPage, RawSiteSections } from './site-sections.page.js';
+import { collectEraFactsInPage, RawEraFacts } from './site-era.page.js';
 import { MAX_HTML_BYTES } from './site-assessment.service.js';
 
 /** The phone the audit measures on; the published MVP is measured on the same one (REV-119) */
@@ -33,8 +32,6 @@ export interface ScreenshotResult {
  * Playwright memory thresholds and below the WebP 16383px dimension limit
  * (mobile is rendered at deviceScaleFactor 2).
  */
-/** How long the section reader may run in the page before the audit goes on without it (REV-109) */
-export const SITE_SECTIONS_TIMEOUT_MS = 15000;
 
 export const FULL_PAGE_MAX_HEIGHT = {
   desktop: 12000,
@@ -49,10 +46,8 @@ export interface FullAuditCrawlingResult extends ScreenshotResult {
   cookieConsent: { desktop: CookieConsentOutcome; mobile: CookieConsentOutcome };
   /** Raw DOM facts for the site complexity estimate; absent when collection failed (REV-38) */
   complexitySignals?: RawComplexitySignals;
-  /** Raw DOM facts of the home page's layout (REV-104); absent with the reason when collection failed */
-  siteLayout: { raw?: RawSiteLayout; error?: string };
-  /** Raw DOM facts of the home page's sections (REV-109); absent with the reason when collection failed */
-  siteSections: { raw?: RawSiteSections; error?: string };
+  /** The dated-site check's page facts (REV-114, REV-141); absent with the reason when collection failed */
+  eraFacts: { raw?: RawEraFacts; error?: string };
   /** The desktop page's HTML for the dated-site check (REV-114); absent when it could not be read */
   homeHtml?: string;
 }
@@ -272,39 +267,18 @@ export class BrowserService {
   }
 
   /**
-   * Collects the DOM facts the original layout is read from (REV-104). Never throws: a failed
-   * collection returns its reason, and the MVP layout falls back to the rule-based choice.
+   * Collects the dated-site check's facts from the page (REV-114, REV-141): content width and body font. Never
+   * throws: a failed collection returns its reason, and the check goes on with the HTML signs alone.
    */
-  async extractSiteLayout(page: Page): Promise<{ raw?: RawSiteLayout; error?: string }> {
+  async extractEraFacts(page: Page): Promise<{ raw?: RawEraFacts; error?: string }> {
     try {
       // Measured from the top of the page, as a visitor first sees it
       await page.evaluate(() => window.scrollTo(0, 0));
-      const raw = await page.evaluate(collectSiteLayoutInPage);
-      return raw && typeof raw === 'object' && Array.isArray(raw.blocks) ? { raw } : { error: 'The page returned no layout facts' };
+      const raw = await page.evaluate(collectEraFactsInPage);
+      return raw && typeof raw === 'object' ? { raw } : { error: 'The page returned no era facts' };
     } catch (err) {
-      console.warn('[BrowserService] Site layout collection failed:', err);
-      return { error: `Layout collection failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) };
-    }
-  }
-
-  /**
-   * Collects the DOM facts the page's sections are read from (REV-109), from the blocks the layout
-   * walk tagged, so it must run after `extractSiteLayout` on the same page. Never throws, and gives
-   * up after SITE_SECTIONS_TIMEOUT_MS: the audit goes on with the reason instead.
-   */
-  async extractSiteSections(page: Page): Promise<{ raw?: RawSiteSections; error?: string }> {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      const timeout = new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`timed out after ${SITE_SECTIONS_TIMEOUT_MS / 1000} s`)), SITE_SECTIONS_TIMEOUT_MS);
-      });
-      const raw = await Promise.race([page.evaluate(collectSiteSectionsInPage), timeout]);
-      return raw && typeof raw === 'object' && Array.isArray(raw.blocks) ? { raw } : { error: 'The page returned no section facts' };
-    } catch (err) {
-      console.warn('[BrowserService] Site section collection failed:', err);
-      return { error: `Section collection failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) };
-    } finally {
-      clearTimeout(timer);
+      console.warn('[BrowserService] Era facts collection failed:', err);
+      return { error: `Era facts collection failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 300) };
     }
   }
 
@@ -515,8 +489,7 @@ export class BrowserService {
     let desktopConsent: CookieConsentOutcome;
     let mobileConsent: CookieConsentOutcome;
     let complexitySignals: RawComplexitySignals | undefined;
-    let siteLayout: { raw?: RawSiteLayout; error?: string };
-    let siteSections: { raw?: RawSiteSections; error?: string };
+    let eraFacts: { raw?: RawEraFacts; error?: string };
     let homeHtml: string | undefined;
 
     // 1. Desktop Screenshot (1440x900)
@@ -545,11 +518,7 @@ export class BrowserService {
       const content = await this.extractSiteContent(page);
       if (content) rawBrandData.content = content;
       complexitySignals = await this.extractComplexitySignals(page);
-      siteLayout = await this.extractSiteLayout(page);
-      // Reads the blocks the layout walk just tagged; without that walk there is nothing to read (REV-109)
-      siteSections = siteLayout.raw
-        ? await this.extractSiteSections(page)
-        : { error: `layout walk failed: ${siteLayout.error ?? 'no layout facts'}`.slice(0, 300) };
+      eraFacts = await this.extractEraFacts(page);
       try {
         homeHtml = (await page.content()).slice(0, MAX_HTML_BYTES);
       } catch (htmlErr) {
@@ -597,8 +566,7 @@ export class BrowserService {
       rawBrandData,
       cookieConsent: { desktop: desktopConsent, mobile: mobileConsent },
       complexitySignals,
-      siteLayout,
-      siteSections,
+      eraFacts,
       homeHtml,
     };
   }

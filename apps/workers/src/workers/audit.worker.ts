@@ -13,8 +13,6 @@ import { designCritiqueService } from '../services/design-critique.service.js';
 import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
 import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
-import { readSiteLayout } from '../services/site-layout.service.js';
-import { readPageSections } from '../services/site-grouping.service.js';
 import { readSiteEra } from '../services/site-era.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
@@ -66,16 +64,12 @@ export const createAuditWorker = (): Worker => {
           rawBrandData,
           cookieConsent,
           complexitySignals,
-          siteLayout: rawSiteLayout,
-          siteSections: rawSiteSections,
+          eraFacts,
           homeHtml,
         } = await browserService.captureFullAudit(url);
 
         // Deterministic complexity estimate: one-page brochure sites are the easiest to replace (REV-38)
         const siteComplexity = classifySiteComplexity(complexitySignals);
-        // The original layout the MVP layout is derived from (REV-104), or why it could not be read
-        const siteLayout = rawSiteLayout.raw ? readSiteLayout(rawSiteLayout.raw) : { error: rawSiteLayout.error ?? 'No layout facts' };
-        if (siteLayout.error) console.warn(`[AuditWorker] Original layout not read for lead ${leadId}: ${siteLayout.error}`);
 
         // 4. Compress screenshots to modern WebP format (max 1024px longest dimension for Vision LLM input)
         console.log(`[AuditWorker] Compressing screenshots to WebP for lead ${leadId}...`);
@@ -102,37 +96,18 @@ export const createAuditWorker = (): Worker => {
         const businessName = existingLead?.businessName || 'Business';
         const brandResult = BrandExtractorService.processBrandData(rawBrandData, businessName);
 
-        // 7. Vision LLM critique (DesignCritiqueAgent, REV-9) and the page's sections grouped by the vision
-        // model (SectionGroupingAgent, REV-113), side by side. The grouping falls back to the rules reading
-        // (REV-109) and never fails the audit; a tile failure leaves the model the outline alone
-        console.log(`[AuditWorker] Running Vision UX/UI analysis and section grouping for lead ${leadId}...`);
-        let tiles: Awaited<ReturnType<typeof ImageService.tilesForVision>> = [];
-        try {
-          tiles = await ImageService.tilesForVision(desktopFullBuffer);
-        } catch (tileErr) {
-          console.warn(`[AuditWorker] Could not cut the page into tiles for lead ${leadId}:`, tileErr);
-        }
-        const [critiqueResult, sectionsResult] = await Promise.all([
-          designCritiqueService.analyzeDesign({
-            mobileScreenshotWebp: mobileWebp,
-            desktopScreenshotWebp: desktopWebp,
-            niche,
-            a11yScore: a11yResult.a11yScore,
-            lcpSeconds: vitalsResult.lcpSeconds,
-            originalUrl: url,
-          }),
-          readPageSections({
-            raw: rawSiteSections.raw,
-            rawError: rawSiteSections.error,
-            layoutBlocks: rawSiteLayout.raw?.blocks ?? [],
-            tiles,
-            url,
-            niche,
-          }),
-        ]);
-        const siteSections = sectionsResult.reading;
-        if (siteSections.error) console.warn(`[AuditWorker] Original sections not read for lead ${leadId}: ${siteSections.error}`);
+        // 7. Vision LLM critique (DesignCritiqueAgent, REV-9)
+        console.log(`[AuditWorker] Running Vision UX/UI analysis for lead ${leadId}...`);
+        const critiqueResult = await designCritiqueService.analyzeDesign({
+          mobileScreenshotWebp: mobileWebp,
+          desktopScreenshotWebp: desktopWebp,
+          niche,
+          a11yScore: a11yResult.a11yScore,
+          lcpSeconds: vitalsResult.lcpSeconds,
+          originalUrl: url,
+        });
 
+        if (eraFacts.error) console.warn(`[AuditWorker] Era facts not read for lead ${leadId}: ${eraFacts.error}`);
         // Whether the original site looks dated (REV-114); deterministic, and never fails the audit
         let siteEra: ReturnType<typeof readSiteEra> | undefined;
         let siteEraError: string | undefined;
@@ -140,10 +115,10 @@ export const createAuditWorker = (): Worker => {
           try {
             siteEra = readSiteEra({
               html: homeHtml,
-              contentWidth: rawSiteSections.raw?.contentWidth,
-              fullBleedShare: rawSiteSections.raw?.fullBleedShare,
-              // Measured on the page, so the verdict does not depend on the vision model (REV-132)
-              typography: sectionsResult.typography,
+              // Measured on the page; without them the verdict rests on the HTML signs (REV-141)
+              contentWidth: eraFacts.raw?.contentWidth,
+              fullBleedShare: eraFacts.raw?.fullBleedShare,
+              bodyFont: eraFacts.raw?.bodyFont,
               now: new Date(),
             });
           } catch (eraErr) {
@@ -174,7 +149,6 @@ export const createAuditWorker = (): Worker => {
           }
         };
         await recordTokens('audit_vision_critique', critiqueResult.modelUsed, critiqueResult.tokenUsage);
-        await recordTokens('audit_section_grouping', sectionsResult.modelUsed, sectionsResult.usage);
 
         // 8. Calculate Composite Scores (Formula: 0.35 Design + 0.25 Perf + 0.20 A11y + 0.20 Standards)
         // A templated fallback critique is not a measurement, so its ratings are not scored (REV-101)
@@ -196,8 +170,6 @@ export const createAuditWorker = (): Worker => {
             message: critiqueResult.fallbackReason ?? 'The Vision model gave no critique; the critique shown is a template',
           });
         }
-        // The vision model gave no sections; not scored, and the rules reading never stands in (REV-113, REV-132)
-        if (sectionsResult.measurementError) measurementErrors.push(sectionsResult.measurementError);
         for (const failure of measurementErrors) {
           console.warn(`[AuditWorker] ${failure.measurement} not measured for lead ${leadId}: ${failure.message}`);
         }
@@ -207,13 +179,6 @@ export const createAuditWorker = (): Worker => {
           a11ySummary: a11yResult.summary,
           axeViolations: a11yResult.violations,
           standardsChecks: vitalsResult.standards,
-          // Exactly one of the two is set, so a re-audit never keeps the previous run's layout (REV-104)
-          siteLayout: siteLayout.layout,
-          siteLayoutError: siteLayout.error,
-          // Exactly one of the two is set, so a re-audit never keeps the previous run's sections (REV-109)
-          siteSections: siteSections.sections,
-          siteSectionsError: siteSections.error,
-          siteSectionsErrorReason: sectionsResult.reason,
           // Exactly one of the two is set, so a re-audit never keeps the previous run's verdict (REV-114)
           siteEra,
           siteEraError,

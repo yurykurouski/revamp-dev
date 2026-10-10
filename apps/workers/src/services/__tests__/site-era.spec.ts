@@ -5,10 +5,6 @@ import { readSiteEra } from '../site-era.service.js';
 
 const now = new Date('2026-06-01T00:00:00Z');
 const MODERN = '<html><head><title>x</title><meta name="viewport" content="width=device-width"></head><body><p>Hello</p></body></html>';
-const typo = (family: string) => ({
-  heading: { family, size: 32, weight: 700, uppercase: false },
-  body: { family, size: 16, weight: 400 },
-});
 
 describe('readSiteEra (REV-114)', () => {
   it('scores a table layout page with legacy tags and no viewport as dated', () => {
@@ -22,7 +18,7 @@ describe('readSiteEra (REV-114)', () => {
   });
 
   it('gives a modern page score 0', () => {
-    const era = readSiteEra({ html: MODERN, contentWidth: 1200, fullBleedShare: 0, typography: typo('Inter, sans-serif'), now });
+    const era = readSiteEra({ html: MODERN, contentWidth: 1200, fullBleedShare: 0, bodyFont: 'Inter, sans-serif', now });
     expect(era).toMatchObject({ score: 0, dated: false, signs: [], contentWidth: 1200 });
   });
 
@@ -46,7 +42,7 @@ describe('readSiteEra (REV-114)', () => {
   });
 
   it('flags the browser default font only as the first family', () => {
-    const flagged = (family: string) => readSiteEra({ html: MODERN, typography: typo(family), now }).signs.includes('default_font');
+    const flagged = (family: string) => readSiteEra({ html: MODERN, bodyFont: family, now }).signs.includes('default_font');
     expect(flagged('Times')).toBe(true);
     expect(flagged('"Times New Roman", serif')).toBe(true);
     expect(flagged('serif')).toBe(true);
@@ -54,15 +50,10 @@ describe('readSiteEra (REV-114)', () => {
     expect(flagged('Montserrat')).toBe(false);
   });
 
-  it('reads the body font only, not the heading font', () => {
-    const flagged = (heading: string, body: string) =>
-      readSiteEra({
-        html: MODERN,
-        typography: { heading: { family: heading, size: 32, weight: 700, uppercase: false }, body: { family: body, size: 16, weight: 400 } },
-        now,
-      }).signs.includes('default_font');
-    expect(flagged('Times New Roman', 'Montserrat')).toBe(false);
-    expect(flagged('Montserrat', 'Times New Roman')).toBe(true);
+  it('flags the body font when it is the browser default', () => {
+    const flagged = (body: string) => readSiteEra({ html: MODERN, bodyFont: body, now }).signs.includes('default_font');
+    expect(flagged('Montserrat, sans-serif')).toBe(false);
+    expect(flagged('"Times New Roman", serif')).toBe(true);
   });
 
   it('flags a stale copyright year', () => {
@@ -76,7 +67,7 @@ describe('readSiteEra (REV-114)', () => {
       html: '<html><body><frameset></frameset><table><tr><td><table></table></td></tr></table><center>© 2010</center></body></html>',
       contentWidth: 800,
       fullBleedShare: 0,
-      typography: typo('Times'),
+      bodyFont: 'Times',
       now,
     });
     expect(SiteEraSchema.safeParse(era).success).toBe(true);
