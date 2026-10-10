@@ -11,6 +11,7 @@ import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
+import { MODEL_DESIGNED_REFUSAL } from './deploy.worker.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { MvpColorCandidate, MvpEditService, mvpEditService } from '../services/mvp-edit.service.js';
 import { RebuildEditService, rebuildEditService } from '../services/rebuild-edit.service.js';
@@ -68,6 +69,8 @@ export async function processMvpEditJob(
 
   const project = await MvpProject.findById(data.mvpProjectId).exec();
   if (!project) throw new Error(`MVP ${data.mvpProjectId} not found.`);
+  // REV-138: this change edits the rebuild or Bento copy; a page the model designed has neither
+  if (project.page) throw new Error(MODEL_DESIGNED_REFUSAL);
   const leadId = project.leadId.toString();
   const lead = await Lead.findById(leadId).exec();
   if (!lead) throw new Error(`Lead ${leadId} not found.`);

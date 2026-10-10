@@ -14,6 +14,8 @@ import {
   MVP_LAYOUT_MODERNIZE_REASONS,
   MvpLayoutVariant,
   RebuildLevel,
+  IMvpPageVersion,
+  MVP_MAX_VERSIONS,
 } from '@revamp/shared-types';
 import { canChangeMvpLayout, leadStatusesInto, manualMvpLayout, rebuildEligibility } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
@@ -38,6 +40,9 @@ import { mvpCompletenessService } from '../services/mvp-completeness.service.js'
 import { checkMvpStandards, comparableStandardsScore } from '../services/mvp-standards.js';
 import { measureMvpPerformance } from '../services/mvp-performance.js';
 import { handleGenerationFailure } from './generation-failure.js';
+import { buildMvpSourceBrief, verifiedContacts } from '../services/mvp-source-brief.js';
+import { finishMvpPage } from '../services/mvp-page-finish.js';
+import { buildMvpSeo } from '../services/mvp-seo.js';
 
 function transliterate(str: string): string {
   const ruToEn: Record<string, string> = {
@@ -105,6 +110,153 @@ async function publishMvp(
   console.log(`[DeployWorker] Comparison banner uploaded to ${comparisonBannerUrl}`);
 
   return { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl };
+}
+
+/** Why the layout and design tools leave a model-designed MVP alone until REV-139 replaces them */
+export const MODEL_DESIGNED_REFUSAL = 'This MVP was designed by the model: the layout and design tools do not apply to it';
+
+/** Fields of the rebuild and Bento MVPs, unset when a model-designed page replaces one (REV-138) */
+const OLD_MVP_FIELDS = ['generatedContent', 'colorPalette', 'layout', 'design', 'rebuild', 'rebuildEdit', 'modernize', 'renderFailure'] as const;
+
+/**
+ * Publishes the page the model designed (REV-138): stores it as the next version, finishes it with the verified
+ * contacts, search tags and booking form, uploads and measures it, and writes the project in one update, so the
+ * dashboard never shows one version's page with another's checks. Then the lead goes to review (HITL).
+ */
+async function deployPage(job: Job<IDeployJobData>) {
+  const { leadId, auditId, generationSource } = job.data;
+  const page = job.data.page!;
+  const lead = await Lead.findById(leadId).exec();
+  if (!lead) throw new Error(`Lead ${leadId} not found`);
+  // A lead rejected or moved on while the model worked keeps its status and its MVP (REV-62)
+  if (!leadStatusesInto('NEEDS_APPROVAL').includes(lead.status)) {
+    const reason = `Lead ${leadId} is ${lead.status}; the new page is not published.`;
+    console.warn(`[DeployWorker] ${reason}`);
+    return { success: false, skipped: true, leadId, reason };
+  }
+  const audit = await findGenerationAudit(leadId, auditId);
+  if (!audit) throw new Error(`No completed audit found for lead ${leadId}`);
+
+  const existing = await MvpProject.findOne({ leadId: lead._id }).select('previewSlug versions').exec();
+  const slug = existing?.previewSlug || newSlug(lead.businessName || lead.domain || 'demo', leadId);
+  const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as ILead;
+  const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as IAudit;
+
+  // 1. The raw page as a version. A retried job finds the version it stored and publishes the same one again
+  const versions: IMvpPageVersion[] = (existing?.versions as IMvpPageVersion[] | undefined) ?? [];
+  const jobId = job.id ? String(job.id) : undefined;
+  const retried = jobId ? versions.find((v) => v.jobId === jobId) : undefined;
+  const n = retried?.n ?? Math.max(0, ...versions.map((v) => v.n)) + 1;
+  const storagePath = await storageService.uploadPageVersion(slug, n, page.html);
+
+  // 2. The published page: verified contacts, search tags from the audit, booking form and tracker
+  const brief = buildMvpSourceBrief(auditData, leadData);
+  const contacts = verifiedContacts(auditData, leadData);
+  const { seo } = buildMvpSeo({
+    businessName: lead.businessName,
+    language: brief.language,
+    ...(auditData.extractedContent ? { site: auditData.extractedContent } : {}),
+    contacts,
+    socialLinks: auditData.extractedContacts?.socialLinks ?? [],
+    ...(brief.images[0] ? { photo: brief.images[0] } : {}),
+    ...(brief.brand.logoUrl ? { logoUrl: brief.brand.logoUrl } : {}),
+    ...(/^https?:\/\//i.test(lead.originalUrl ?? '') ? { originalUrl: lead.originalUrl } : {}),
+    ...(auditData.standardsChecks ? { original: auditData.standardsChecks } : {}),
+  });
+  const html = finishMvpPage(page.html, {
+    businessName: lead.businessName,
+    language: brief.language,
+    services: brief.services,
+    contacts,
+    seo,
+    logoUrl: brief.brand.logoUrl,
+    theme: page.theme,
+    // The tracker as the other renderers load it: from the API, with no per-page token
+    ...(/^https?:\/\//i.test(env.PUBLIC_API_URL) ? { publicApiUrl: env.PUBLIC_API_URL } : {}),
+  });
+
+  // 3. Checks, upload, banner and the page's web vitals, as for every publish
+  const completenessReport = await mvpCompletenessService.assess(html, leadData, auditData);
+  const standards = publishedStandards(html);
+  const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit, standards);
+  const performance = await measureMvpPerformance(fullPreviewUrl);
+
+  // 4. One update: the page, its checks and the version; every field of the old renderers goes
+  const generatedAt = new Date();
+  const entry: IMvpPageVersion = {
+    n,
+    kind: page.kind,
+    ...(page.instruction ? { instruction: page.instruction } : {}),
+    ...(jobId ? { jobId } : {}),
+    ...(generationSource ? { provider: generationSource.provider, model: generationSource.modelUsed } : {}),
+    storagePath,
+    createdAt: generatedAt,
+  };
+  const unset: Record<string, ''> = Object.fromEntries([...OLD_MVP_FIELDS, 'controls', 'editedAt'].map((field) => [field, '']));
+  if (!standards) unset['standards'] = '';
+  if (!generationSource?.requestedProvider) Object.assign(unset, { requestedProvider: '', requestedModel: '' });
+  const mvpProject = await MvpProject.findOneAndUpdate(
+    { leadId: lead._id },
+    {
+      $set: {
+        auditId: audit._id,
+        leadId: lead._id,
+        previewSlug: slug,
+        fullPreviewUrl,
+        storageHtmlPath,
+        comparisonBannerUrl,
+        isPublished: true,
+        generatedAt,
+        page: page.html,
+        theme: page.theme,
+        grounding: page.grounding,
+        completenessReport,
+        performance,
+        ...(standards ? { standards } : {}),
+        ...(generationSource
+          ? {
+              provider: generationSource.provider,
+              modelUsed: generationSource.modelUsed,
+              ...(generationSource.requestedProvider
+                ? { requestedProvider: generationSource.requestedProvider, requestedModel: generationSource.requestedModel }
+                : {}),
+            }
+          : {}),
+      },
+      ...(retried ? {} : { $push: { versions: { $each: [entry], $slice: -MVP_MAX_VERSIONS } } }),
+      $inc: { generationCount: 1 },
+      $unset: unset,
+    },
+    { upsert: true, new: true },
+  ).exec();
+
+  // 5. The files of versions that fell off the list; a failed delete leaves a stray file, never a failed publish
+  const kept = retried ? versions : [...versions, entry].slice(-MVP_MAX_VERSIONS);
+  for (const dropped of versions.filter((v) => !kept.includes(v))) {
+    await storageService.deleteObject(dropped.storagePath).catch((error: unknown) => {
+      console.warn(`[DeployWorker] Old version ${dropped.storagePath} was not deleted:`, error);
+    });
+  }
+
+  // 6. Banner on the audit; the lead goes to review only if it is still waiting for this page (REV-62)
+  await Audit.findByIdAndUpdate(audit._id, { 'screenshotUrls.comparisonBanner': comparisonBannerUrl }).exec();
+  const reviewLead = await Lead.findOneAndUpdate(
+    { _id: lead._id, status: { $in: leadStatusesInto('NEEDS_APPROVAL') } },
+    {
+      $set: { status: 'NEEDS_APPROVAL', previewUrl: fullPreviewUrl, comparisonBannerUrl, mvpGeneratedAt: generatedAt },
+      $unset: { generationError: '', generationFailure: '' },
+    },
+  ).exec();
+  if (!reviewLead) console.warn(`[DeployWorker] Lead ${leadId} left GENERATING during the deploy; its status is unchanged.`);
+
+  console.log(`[DeployWorker] Published version ${n} of ${slug}${standards ? `, standards ${standards.score}/100` : ''}. Ready for operator review.`);
+  return { success: true, mvpProjectId: String(mvpProject?._id), previewSlug: slug, fullPreviewUrl, comparisonBannerUrl, version: n };
+}
+
+/** A new MVP's slug: the business name in Latin letters and the lead id's end */
+function newSlug(name: string, leadId: string): string {
+  const raw = transliterate(name).replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'preview';
+  return `${raw}-${leadId.toString().slice(-6)}`;
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -275,6 +427,8 @@ export async function republishSavedMvp(leadId: string) {
   if (!project) {
     throw new Error(`No MVP found for lead ${leadId}`);
   }
+  // REV-138: the layout tools re-render the rebuild or Bento copy; a page the model designed has neither
+  if (project.page) throw new Error(MODEL_DESIGNED_REFUSAL);
   const audit = await findGenerationAudit(leadId, project.auditId?.toString());
   if (!audit) {
     throw new Error(`No completed audit found for lead ${leadId}`);
@@ -399,6 +553,7 @@ export const createDeployWorker = (): Worker => {
     async (job: Job<IDeployJobData>) => {
       try {
         if (job.data.mode === 'relayout') return await republishSavedMvp(job.data.leadId);
+        if (job.data.page) return await deployPage(job);
         return await deployMvp(job);
       } catch (error) {
         if (error instanceof MvpRenderError) throw finalFailure(error);
