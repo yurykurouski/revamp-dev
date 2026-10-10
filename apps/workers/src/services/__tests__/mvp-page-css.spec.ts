@@ -49,6 +49,10 @@ describe('readMvpTheme (REV-136)', () => {
     expect(theme).toEqual({ primary: '#654321', fontBody: '"Inter",sans-serif' });
   });
 
+  it('ignores a :root inside an at-rule, such as a dark-mode variant (review, REV-137)', () => {
+    expect(readMvpTheme([':root{--rv-color-bg:#ffffff}@media (prefers-color-scheme: dark){:root{--rv-color-bg:#000000}}'])).toEqual({ bg: '#ffffff' });
+  });
+
   it('ignores blocks that do not parse', () => {
     expect(readMvpTheme(['.a{', ':root{--rv-color-text:#111111}'])).toEqual({ text: '#111111' });
   });

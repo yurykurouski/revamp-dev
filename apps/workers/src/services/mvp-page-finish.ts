@@ -111,8 +111,11 @@ export function finishMvpPage(page: string, ctx: MvpFinishContext): string {
       if (match) el.setAttribute('href', placeholderHref(match[1] ?? '', ctx.contacts));
     }
 
-    // 2. Search tags and icon: the verified ones only
+    // 2. Search tags and icon: the verified ones only; the charset and viewport the page needs, when it lacks them
     const head = doc.head;
+    if (!head.querySelector('meta[charset]')) head.insertAdjacentHTML('afterbegin', '<meta charset="UTF-8">');
+    const viewport = Array.from(head.querySelectorAll('meta')).some((el) => (el.getAttribute('name') ?? '').toLowerCase() === 'viewport');
+    if (!viewport) head.insertAdjacentHTML('beforeend', '\n  <meta name="viewport" content="width=device-width, initial-scale=1">');
     for (const el of Array.from(head.querySelectorAll('meta, link'))) {
       const name = (el.getAttribute('name') ?? '').toLowerCase();
       const property = (el.getAttribute('property') ?? '').toLowerCase();

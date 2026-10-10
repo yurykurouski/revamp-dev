@@ -124,6 +124,15 @@ describe('finishMvpPage (REV-136)', () => {
     expect(finishMvpPage(VALID, ctx({ controls: { primary: '#f2e600' } }))).toContain('--rv-on-primary:#111111');
   });
 
+  it('adds the charset and viewport tags when the page has none, once (review, REV-137)', () => {
+    const bare = VALID.replace('<meta charset="UTF-8">', '').replace('<meta name="viewport" content="width=device-width, initial-scale=1">', '');
+    read(finishMvpPage(bare, ctx()), (doc) => {
+      expect(doc.querySelectorAll('meta[charset]')).toHaveLength(1);
+      expect(doc.querySelectorAll('meta[name="viewport"]')).toHaveLength(1);
+    });
+    read(finishMvpPage(VALID, ctx()), (doc) => expect(doc.querySelectorAll('meta[name="viewport"]')).toHaveLength(1));
+  });
+
   it('is deterministic and yields a page that passes the standards checks', () => {
     const html = finishMvpPage(VALID, ctx());
     expect(finishMvpPage(VALID, ctx())).toBe(html);

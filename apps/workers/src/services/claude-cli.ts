@@ -6,6 +6,8 @@ export interface ClaudeCliRequest {
   userPrompt: string;
   /** Overrides the runner's model for this call (REV-32) */
   model?: string;
+  /** A longer timeout for this call (REV-137); never shortens the runner's own */
+  timeoutMs?: number;
 }
 
 export interface ClaudeCliOptions {
@@ -72,6 +74,8 @@ export interface ClaudeCliVisionRequest {
   userPrompt: string;
   images: ClaudeCliImage[];
   model?: string;
+  /** A longer timeout for this call (REV-137); never shortens the runner's own */
+  timeoutMs?: number;
 }
 
 export interface ClaudeCliUsage {
@@ -153,7 +157,8 @@ export function parseClaudeCliStreamOutput(stdout: string): ClaudeCliVisionResul
 /**
  * Runs the CLI once with the given arguments and stdin, and resolves with its stdout.
  */
-function runClaudeCli(options: ClaudeCliOptions, args: string[], stdin: string): Promise<string> {
+function runClaudeCli(options: ClaudeCliOptions, args: string[], stdin: string, callTimeoutMs?: number): Promise<string> {
+  const timeoutMs = Math.max(options.timeoutMs, callTimeoutMs ?? 0);
   return new Promise((resolve, reject) => {
     // A temp cwd keeps the CLI from picking up this repository's CLAUDE.md / AGENTS.md
     const child = spawn(options.cliPath, args, {
@@ -174,8 +179,8 @@ function runClaudeCli(options: ClaudeCliOptions, args: string[], stdin: string):
 
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      finish(new Error(`Claude CLI timed out after ${options.timeoutMs}ms`));
-    }, options.timeoutMs);
+      finish(new Error(`Claude CLI timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
 
     child.stdout.on('data', (chunk: Buffer) => {
       stdout += chunk.toString();
@@ -204,20 +209,21 @@ function runClaudeCli(options: ClaudeCliOptions, args: string[], stdin: string):
  * Creates a runner that calls the local Claude Code CLI with the account it is logged into.
  */
 export function createClaudeCliRunner(options: ClaudeCliOptions): ClaudeCliRunner {
-  return async ({ systemPrompt, userPrompt, model }) =>
-    parseClaudeCliOutput(await runClaudeCli(options, buildClaudeCliArgs(systemPrompt, model ?? options.model), userPrompt));
+  return async ({ systemPrompt, userPrompt, model, timeoutMs }) =>
+    parseClaudeCliOutput(await runClaudeCli(options, buildClaudeCliArgs(systemPrompt, model ?? options.model), userPrompt, timeoutMs));
 }
 
 /**
  * Creates a runner that sends a prompt with images to the local Claude Code CLI (REV-51).
  */
 export function createClaudeCliVisionRunner(options: ClaudeCliOptions): ClaudeCliVisionRunner {
-  return async ({ systemPrompt, userPrompt, images, model }) =>
+  return async ({ systemPrompt, userPrompt, images, model, timeoutMs }) =>
     parseClaudeCliStreamOutput(
       await runClaudeCli(
         options,
         buildClaudeCliVisionArgs(systemPrompt, model ?? options.model),
         buildClaudeCliVisionInput(userPrompt, images),
+        timeoutMs,
       ),
     );
 }

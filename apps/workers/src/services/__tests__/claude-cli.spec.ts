@@ -36,6 +36,8 @@ process.stdin.on('end', () => {
     process.exit(1);
   } else if (mode === 'garbage') {
     process.stdout.write('not json at all');
+  } else if (mode === 'slow') {
+    setTimeout(() => process.stdout.write(JSON.stringify({ type: 'result', is_error: false, result: 'slow answer' })), 600);
   } else if (mode === 'hang') {
     setTimeout(() => {}, 60000);
   }
@@ -107,6 +109,15 @@ describe('Claude CLI runner (REV-30)', () => {
 
   it('kills the CLI and rejects after the timeout', async () => {
     await expect(runWith('hang', 300)).rejects.toThrow(/timed out after 300ms/);
+  });
+
+  it("waits for a call's own longer timeout, never a shorter one (REV-137)", async () => {
+    process.env.FAKE_CLAUDE_MODE = 'slow';
+    const runner = createClaudeCliRunner({ cliPath: fakeCli, model: 'sonnet', timeoutMs: 200 });
+    await expect(runner({ systemPrompt: 'S', userPrompt: 'U', timeoutMs: 5000 })).resolves.toBe('slow answer');
+    process.env.FAKE_CLAUDE_MODE = 'hang';
+    const strict = createClaudeCliRunner({ cliPath: fakeCli, model: 'sonnet', timeoutMs: 300 });
+    await expect(strict({ systemPrompt: 'S', userPrompt: 'U', timeoutMs: 50 })).rejects.toThrow(/timed out after 300ms/);
   });
 
   it('rejects when the executable does not exist', async () => {

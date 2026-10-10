@@ -53,6 +53,8 @@ export interface LlmCompletionRequest {
   timeoutMs?: number;
   /** Sent after the text, in order; calls without images behave as before (REV-113) */
   images?: LlmImage[];
+  /** `json` (the default) asks OpenAI and Gemini for a JSON object; `text` for free text, such as a whole page (REV-137) */
+  format?: 'json' | 'text';
 }
 
 /** Token counts as LlmUsage; undefined when the provider reported none */
@@ -184,6 +186,7 @@ export class LlmClient {
             userPrompt: request.userPrompt,
             images: request.images,
             model: this.model,
+            timeoutMs: request.timeoutMs,
           });
         }
         return {
@@ -191,6 +194,7 @@ export class LlmClient {
             systemPrompt: request.systemPrompt,
             userPrompt: request.userPrompt,
             model: this.model,
+            timeoutMs: request.timeoutMs,
           }),
         };
       case 'anthropic':
@@ -264,7 +268,7 @@ export class LlmClient {
         model: this.model,
         max_tokens: request.maxTokens ?? 2000,
         temperature: request.temperature,
-        response_format: { type: 'json_object' },
+        ...(request.format === 'text' ? {} : { response_format: { type: 'json_object' } }),
         messages: [
           { role: 'system', content: request.systemPrompt },
           {
@@ -316,7 +320,7 @@ export class LlmClient {
         generationConfig: {
           temperature: request.temperature,
           maxOutputTokens: request.maxTokens ?? 2000,
-          responseMimeType: 'application/json',
+          ...(request.format === 'text' ? {} : { responseMimeType: 'application/json' }),
         },
       }),
       signal: this.signal(request),

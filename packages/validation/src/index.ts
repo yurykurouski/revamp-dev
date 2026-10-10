@@ -66,6 +66,7 @@ import {
   findLlmProvider,
   MVP_BRIEF_LIMITS,
   MVP_GROUNDING_KINDS,
+  MVP_PAGE_FAILURES,
   MVP_PLACEHOLDERS,
 } from '@revamp/shared-types';
 
@@ -1990,3 +1991,5 @@ export const MvpGroundingFlagSchema = z
     context: z.string().max(80),
   })
   .strict();
+
+export const MvpPageFailureSchema = z.enum(MVP_PAGE_FAILURES);

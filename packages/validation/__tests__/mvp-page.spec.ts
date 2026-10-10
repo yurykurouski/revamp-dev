@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MvpGroundingFlagSchema,
+  MvpPageFailureSchema,
   MvpSourceBriefSchema,
   MvpThemeControlsSchema,
   MvpThemeSchema,
@@ -100,5 +101,12 @@ describe('MvpGroundingFlagSchema (REV-136)', () => {
   it('accepts a number flag and rejects an unknown kind', () => {
     expect(MvpGroundingFlagSchema.safeParse({ kind: 'number', text: '15', context: 'Ponad 15 lat' }).success).toBe(true);
     expect(MvpGroundingFlagSchema.safeParse({ kind: 'date', text: '15', context: 'x' }).success).toBe(false);
+  });
+});
+
+describe('MvpPageFailureSchema (REV-137)', () => {
+  it('accepts the three failure codes and rejects others', () => {
+    for (const code of ['not_configured', 'call_failed', 'invalid_page']) expect(MvpPageFailureSchema.safeParse(code).success).toBe(true);
+    expect(MvpPageFailureSchema.safeParse('timeout').success).toBe(false);
   });
 });

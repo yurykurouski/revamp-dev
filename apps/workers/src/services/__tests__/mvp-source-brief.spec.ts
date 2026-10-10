@@ -124,6 +124,21 @@ describe('buildMvpSourceBrief (REV-136)', () => {
     expect(brief.copy.testimonials).toEqual([{ text: 'Polecam' }]);
   });
 
+  it('leaves out copy that carries a contact, so no contact reaches the model (review, REV-137)', () => {
+    const content = {
+      ...audit().extractedContent!,
+      headings: ['Usługi', 'Napisz: biuro@falco-dent.pl'],
+      paragraphs: ['Leczymy z troską.', 'Zadzwoń 600 100 200 i umów wizytę.', `Zapraszamy: ${ADDRESS}.`, 'NIP 677-123-45-67'],
+      testimonials: [{ text: 'Polecam, tel. +48 600 100 200' }, { text: 'Super!' }],
+      metaDescription: 'Dentysta Kraków, tel. 600 100 200',
+    };
+    const brief = buildMvpSourceBrief(audit({ extractedContent: content }), lead());
+    expect(brief.copy.headings).toEqual(['Usługi']);
+    expect(brief.copy.paragraphs).toEqual(['Leczymy z troską.', 'NIP 677-123-45-67']);
+    expect(brief.copy.testimonials).toEqual([{ text: 'Super!' }]);
+    expect(brief.copy.metaDescription).toBeUndefined();
+  });
+
   it('builds an empty copy and no language when the content was not extracted', () => {
     const brief = buildMvpSourceBrief(audit({ extractedContent: undefined }), lead());
     expect(brief.language).toBeUndefined();

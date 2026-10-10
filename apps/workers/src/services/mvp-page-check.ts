@@ -39,6 +39,15 @@ const EMAIL = /[\w.+-]+@[\w-]+\.[\w.-]+/;
 const PHONE = /(?:\+|\b)\d[\d\s().-]{6,}\d/g;
 /** Registry and bank numbers a business prints in its footer; a long digit run right after one of these is not a phone */
 const REGISTRY_NUMBER = /(?:\b(?:NIP|REGON|KRS|PESEL|IBAN|BIC|SWIFT|VAT|EIN|konto|rachunek|account|bank|PVM|УНП|ИНН|ОГРН|КПП|БИК|ОКПО)\b[^\d]{0,15}|\b[A-Z]{2}\d{2}\s?)$/iu;
+/** Whether a text holds an email address or a phone number (a registry or bank number is not one) */
+export function contactsIn(value: string): { email: boolean; phone: boolean } {
+  const text = value.replace(PLACEHOLDER_PATTERN, ' ');
+  const phone = Array.from(text.matchAll(PHONE)).some(
+    (m) => (m[0].match(/\d/g) ?? []).length >= 9 && !REGISTRY_NUMBER.test(text.slice(Math.max(0, (m.index ?? 0) - 30), m.index)),
+  );
+  return { email: EMAIL.test(text), phone };
+}
+
 /** CSS string literals: text that `content` can put on the page */
 const CSS_STRING = /"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'/g;
 const MAX_MESSAGES_PER_CODE = 5;
@@ -210,12 +219,9 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
 
     // page:contact: the text, the attributes a visitor reads, CSS strings and links
     const checkContact = (value: string, where: string) => {
-      const text = value.replace(PLACEHOLDER_PATTERN, ' ');
-      if (EMAIL.test(text)) report('page:contact', `${where} has an email address; use {{email}}`);
-      const phone = Array.from(text.matchAll(PHONE)).some(
-        (m) => (m[0].match(/\d/g) ?? []).length >= 9 && !REGISTRY_NUMBER.test(text.slice(Math.max(0, (m.index ?? 0) - 30), m.index)),
-      );
-      if (phone) report('page:contact', `${where} has a phone number; use {{phone}}`);
+      const found = contactsIn(value);
+      if (found.email) report('page:contact', `${where} has an email address; use {{email}}`);
+      if (found.phone) report('page:contact', `${where} has a phone number; use {{phone}}`);
     };
     for (const node of textNodes(doc)) checkContact(node.textContent ?? '', 'the text');
     for (const el of all) {
