@@ -25,7 +25,8 @@ vi.mock('bullmq', () => {
   class UnrecoverableError extends Error {
     constructor(message?: string) {
       super(message);
-      this.name = 'UnrecoverableError';
+      // As bullmq does: a subclass is named after itself
+      this.name = this.constructor.name;
     }
   }
   return {
@@ -103,7 +104,7 @@ describe('AiWorker on the model-designed page (REV-138)', () => {
   it('asks the model for the page with the brief and the full desktop capture, then dispatches the deploy job with it', async () => {
     const result = await capturedProcessor!(job({ forceRegenerate: true, previousStatus: 'NEEDS_APPROVAL' }));
 
-    expect(fetch).toHaveBeenCalledWith('http://s3/desktop-full.webp');
+    expect(fetch).toHaveBeenCalledWith('http://s3/desktop-full.webp', { signal: expect.any(AbortSignal) });
     const input = generate.mock.calls[0]![0];
     expect(input.screenshot).toEqual(Buffer.from([1, 2, 3]));
     expect(input.brief.business).toMatchObject({ name: 'Smile Dental', niche: 'dental', city: 'Warszawa' });
@@ -116,7 +117,7 @@ describe('AiWorker on the model-designed page (REV-138)', () => {
       auditId: 'audit-456',
       forceRegenerate: true,
       previousStatus: 'NEEDS_APPROVAL',
-      page: { html: PAGE, theme: THEME, grounding: okResult.grounding, kind: 'generate' },
+      page: { id: expect.stringMatching(/^[0-9a-f-]{36}$/), html: PAGE, theme: THEME, grounding: okResult.grounding, kind: 'generate' },
       generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' },
     });
     expect(result).toMatchObject({ success: true, attempts: 1 });
@@ -150,7 +151,7 @@ describe('AiWorker on the model-designed page (REV-138)', () => {
     generate.mockResolvedValue({ ok: false, reason, message: `the model said no (${reason})`, answers: [], modelUsed: 'm' });
     const error = await capturedProcessor!(job()).catch((e: unknown) => e);
     expect(error).toMatchObject({
-      name: 'UnrecoverableError',
+      name: 'MvpPageUnavailableError',
       failure: { code: 'MVP_PAGE_UNAVAILABLE', reason, message: `the model said no (${reason})` },
     });
     expect((error as { failure: { at: unknown } }).failure.at).toBeInstanceOf(Date);

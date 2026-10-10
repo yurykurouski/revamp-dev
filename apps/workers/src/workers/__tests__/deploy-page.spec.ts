@@ -32,7 +32,8 @@ vi.mock('bullmq', () => ({
   UnrecoverableError: class UnrecoverableError extends Error {
     constructor(message?: string) {
       super(message);
-      this.name = 'UnrecoverableError';
+      // As bullmq does: a subclass is named after itself
+      this.name = this.constructor.name;
     }
   },
 }));
@@ -61,7 +62,7 @@ const job = (data: Record<string, unknown> = {}) => ({
   data: {
     leadId: LEAD_ID,
     auditId: AUDIT_ID,
-    page: { html: VALID, theme: THEME, grounding: GROUNDING, kind: 'generate' },
+    page: { id: 'page-a', html: VALID, theme: THEME, grounding: GROUNDING, kind: 'generate' },
     generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' },
     ...data,
   },
@@ -128,7 +129,7 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     expect(update.$set.standards.score).toBeGreaterThan(0);
     expect(update.$push).toEqual({
       versions: {
-        $each: [expect.objectContaining({ n: 1, kind: 'generate', jobId: 'job-1', provider: 'claude-cli', model: 'claude-cli:sonnet', storagePath: `v/${SLUG}/versions/1.html` })],
+        $each: [expect.objectContaining({ n: 1, kind: 'generate', jobId: 'page-a', provider: 'claude-cli', model: 'claude-cli:sonnet', storagePath: `v/${SLUG}/versions/1.html` })],
         $slice: -20,
       },
     });
@@ -161,12 +162,31 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
   });
 
   it('reuses the version a retried job already stored, instead of adding another', async () => {
-    existing = { previewSlug: SLUG, versions: [version(1), version(2, { jobId: 'job-1' })] };
+    existing = { previewSlug: SLUG, versions: [version(1), version(2, { jobId: 'page-a' })] };
     arrange();
     await capturedProcessor!(job());
     expect(storageService.uploadPageVersion).toHaveBeenCalledWith(SLUG, 2, VALID);
     expect(projectUpdate().$push).toBeUndefined();
+    expect(projectUpdate().$inc).toBeUndefined();
     expect(storageService.deleteObject).not.toHaveBeenCalled();
+  });
+
+  it('takes a version stored by another page with the same BullMQ id (Redis reset) as a new version (review)', async () => {
+    existing = { previewSlug: SLUG, versions: [version(1, { jobId: 'job-1' })] };
+    arrange();
+    await capturedProcessor!(job());
+    expect(storageService.uploadPageVersion).toHaveBeenCalledWith(SLUG, 2, VALID);
+    expect(projectUpdate().$push.versions.$each[0]).toMatchObject({ n: 2, jobId: 'page-a' });
+  });
+
+  it('deletes only files no kept version references, as Mongo kept them (review)', async () => {
+    existing = { previewSlug: SLUG, versions: Array.from({ length: 20 }, (_, i) => version(i + 1)) };
+    arrange();
+    // Another deploy pushed meanwhile: Mongo kept 3..20, the other's 21 and this 22; version 2's file is still referenced
+    const kept = [...Array.from({ length: 18 }, (_, i) => version(i + 3)), version(21), version(22, { jobId: 'page-a' })];
+    vi.mocked(MvpProject.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1', versions: kept }) } as any);
+    await capturedProcessor!(job());
+    expect(vi.mocked(storageService.deleteObject).mock.calls.map((c) => c[0]).sort()).toEqual([`v/${SLUG}/versions/1.html`, `v/${SLUG}/versions/2.html`]);
   });
 
   it("leaves a lead that was rejected meanwhile, and its MVP, untouched", async () => {

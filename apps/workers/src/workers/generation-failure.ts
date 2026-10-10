@@ -1,4 +1,4 @@
-import type { Job } from 'bullmq';
+import { UnrecoverableError, type Job } from 'bullmq';
 import type { IMvpRenderFailure, LeadStatus } from '@revamp/shared-types';
 import { Lead } from '../models/Lead.model.js';
 
@@ -27,7 +27,9 @@ export async function handleGenerationFailure(
 
   const attempts = job.opts?.attempts ?? 1;
   // BullMQ retries it, unless the error is final (a render a model could not make, REV-132)
-  if (job.attemptsMade < attempts && err?.name !== 'UnrecoverableError') return;
+  // A subclass of UnrecoverableError is named after itself, so both the class and the name count as final
+  const final = err instanceof UnrecoverableError || err?.name === 'UnrecoverableError';
+  if (job.attemptsMade < attempts && !final) return;
 
   const status = statusAfterFailedGeneration(job.data.previousStatus);
   const generationError = `MVP ${stage} failed: ${err?.message || 'unknown error'}`.slice(0, MAX_ERROR_LENGTH);

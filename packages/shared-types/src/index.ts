@@ -2044,7 +2044,7 @@ export interface IMvpPageVersion {
   kind: MvpPageVersionKind;
   /** The operator's words for a change */
   instruction?: string;
-  /** The job that published it, so a retried job reuses its version */
+  /** The page job (`IMvpPageJob.id`) that published it, so a retried job reuses its version */
   jobId?: string;
   provider?: string;
   model?: string;
@@ -2055,6 +2055,8 @@ export interface IMvpPageVersion {
 
 /** A page carried from the generation job to the deploy job (REV-138) */
 export interface IMvpPageJob {
+  /** A key unique to this page, so a retried deploy job finds the version it stored (BullMQ ids restart with Redis) */
+  id: string;
   html: string;
   theme: IMvpTheme;
   grounding: IMvpGroundingFlag[];

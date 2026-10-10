@@ -144,8 +144,9 @@ async function deployPage(job: Job<IDeployJobData>) {
 
   // 1. The raw page as a version. A retried job finds the version it stored and publishes the same one again
   const versions: IMvpPageVersion[] = (existing?.versions as IMvpPageVersion[] | undefined) ?? [];
-  const jobId = job.id ? String(job.id) : undefined;
-  const retried = jobId ? versions.find((v) => v.jobId === jobId) : undefined;
+  // The page's own key, not the BullMQ id, which restarts at 1 whenever Redis is reset
+  const jobId = page.id;
+  const retried = versions.find((v) => v.jobId === jobId);
   const n = retried?.n ?? Math.max(0, ...versions.map((v) => v.n)) + 1;
   const storagePath = await storageService.uploadPageVersion(slug, n, page.html);
 
@@ -187,7 +188,7 @@ async function deployPage(job: Job<IDeployJobData>) {
     n,
     kind: page.kind,
     ...(page.instruction ? { instruction: page.instruction } : {}),
-    ...(jobId ? { jobId } : {}),
+    jobId,
     ...(generationSource ? { provider: generationSource.provider, model: generationSource.modelUsed } : {}),
     storagePath,
     createdAt: generatedAt,
@@ -223,16 +224,18 @@ async function deployPage(job: Job<IDeployJobData>) {
             }
           : {}),
       },
-      ...(retried ? {} : { $push: { versions: { $each: [entry], $slice: -MVP_MAX_VERSIONS } } }),
-      $inc: { generationCount: 1 },
+      // A retried job already counted and listed its version
+      ...(retried ? {} : { $push: { versions: { $each: [entry], $slice: -MVP_MAX_VERSIONS } }, $inc: { generationCount: 1 } }),
       $unset: unset,
     },
     { upsert: true, new: true },
   ).exec();
 
-  // 5. The files of versions that fell off the list; a failed delete leaves a stray file, never a failed publish
-  const kept = retried ? versions : [...versions, entry].slice(-MVP_MAX_VERSIONS);
-  for (const dropped of versions.filter((v) => !kept.includes(v))) {
+  // 5. The files of versions that fell off the list, as Mongo kept it (another deploy may have pushed meanwhile);
+  // a file a kept version still names is never deleted. A failed delete leaves a stray file, never a failed publish
+  const keptVersions = (mvpProject?.versions as IMvpPageVersion[] | undefined) ?? (retried ? versions : [...versions, entry].slice(-MVP_MAX_VERSIONS));
+  const keptPaths = new Set(keptVersions.map((v) => v.storagePath));
+  for (const dropped of versions.filter((v) => !keptPaths.has(v.storagePath))) {
     await storageService.deleteObject(dropped.storagePath).catch((error: unknown) => {
       console.warn(`[DeployWorker] Old version ${dropped.storagePath} was not deleted:`, error);
     });

@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { UnrecoverableError, Worker, Job } from 'bullmq';
 import { IAiGenerationJobData, IAudit, ILead, IMvpRenderFailure } from '@revamp/shared-types';
 import { leadStatusesInto } from '@revamp/validation';
@@ -17,11 +18,14 @@ export class MvpPageUnavailableError extends UnrecoverableError {
   }
 }
 
+/** A capture that takes longer than this is left out rather than holding the generation */
+const CAPTURE_TIMEOUT_MS = 15_000;
+
 /** The audit's full desktop capture for the model; a capture that cannot be loaded leaves a text-only call */
 async function desktopCapture(url: string | undefined): Promise<Buffer | undefined> {
   if (!url) return undefined;
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(CAPTURE_TIMEOUT_MS) });
     if (!res.ok) {
       console.warn(`[AiWorker] The desktop capture was not loaded (HTTP ${res.status}); generating without it`);
       return undefined;
@@ -90,7 +94,7 @@ export const createAiWorker = (): Worker => {
         auditId: String(audit._id),
         forceRegenerate,
         previousStatus,
-        page: { html: result.page, theme: result.theme, grounding: result.grounding, kind: 'generate' },
+        page: { id: randomUUID(), html: result.page, theme: result.theme, grounding: result.grounding, kind: 'generate' },
         generationSource: {
           // A page always comes from a configured provider: without one the generator answers not_configured
           provider: result.provider!,
