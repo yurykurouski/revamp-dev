@@ -338,6 +338,31 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(doc.toObject().modernize).toEqual(modernize);
       expect(doc.toObject().renderFailure).toEqual(renderFailure);
     });
+
+    it('validates a model-designed page without the old copy and palette, and keeps its page fields (REV-138)', () => {
+      const theme = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#f5f7fa', text: '#111111', fontHeading: 'serif', fontBody: 'sans-serif' };
+      const versions = [{ n: 1, kind: 'generate', jobId: '42', provider: 'claude-cli', model: 'sonnet', storagePath: 'v/s/versions/1.html', createdAt: new Date('2026-10-10T10:00:00Z') }];
+      const grounding = [{ kind: 'number', text: '15', context: 'Ponad 15 lat' }];
+      const doc = new MvpProject({
+        auditId: new mongoose.Types.ObjectId(),
+        leadId: new mongoose.Types.ObjectId(),
+        previewSlug: 's',
+        fullPreviewUrl: 'u',
+        storageHtmlPath: 'p',
+        page: '<!DOCTYPE html><html></html>',
+        theme,
+        controls: { primary: '#000000' },
+        grounding,
+        versions,
+      });
+      expect(doc.validateSync()).toBeUndefined();
+      const saved = doc.toObject();
+      expect(saved.page).toBe('<!DOCTYPE html><html></html>');
+      expect(saved.theme).toEqual(theme);
+      expect(saved.controls).toEqual({ primary: '#000000' });
+      expect(saved.grounding).toEqual(grounding);
+      expect(saved.versions).toEqual(versions);
+    });
   });
 });
 

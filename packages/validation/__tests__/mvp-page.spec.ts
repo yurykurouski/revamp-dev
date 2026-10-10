@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   MvpGroundingFlagSchema,
   MvpPageFailureSchema,
+  MvpPageVersionSchema,
+  MvpRenderFailureSchema,
   MvpSourceBriefSchema,
   MvpThemeControlsSchema,
   MvpThemeSchema,
@@ -108,5 +110,21 @@ describe('MvpPageFailureSchema (REV-137)', () => {
   it('accepts the three failure codes and rejects others', () => {
     for (const code of ['not_configured', 'call_failed', 'invalid_page']) expect(MvpPageFailureSchema.safeParse(code).success).toBe(true);
     expect(MvpPageFailureSchema.safeParse('timeout').success).toBe(false);
+  });
+});
+
+describe('page failure and versions (REV-138)', () => {
+  it('records a page the model could not make as a render failure', () => {
+    const at = new Date('2026-10-10T10:00:00Z');
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_PAGE_UNAVAILABLE', reason: 'invalid_page', message: 'rejected twice', at }).success).toBe(true);
+    expect(MvpRenderFailureSchema.safeParse({ code: 'MVP_PAGE_UNAVAILABLE', reason: 'grouping:call_failed', at }).success).toBe(false);
+  });
+
+  it('accepts a page version and rejects an unknown kind or number 0', () => {
+    const version = { n: 1, kind: 'generate', jobId: '42', provider: 'claude-cli', model: 'sonnet', storagePath: 'v/s/versions/1.html', createdAt: '2026-10-10T10:00:00Z' };
+    expect(MvpPageVersionSchema.safeParse(version).success).toBe(true);
+    expect(MvpPageVersionSchema.safeParse({ ...version, instruction: 'Make the hero darker', kind: 'change' }).success).toBe(true);
+    expect(MvpPageVersionSchema.safeParse({ ...version, kind: 'edit' }).success).toBe(false);
+    expect(MvpPageVersionSchema.safeParse({ ...version, n: 0 }).success).toBe(false);
   });
 });
