@@ -64,6 +64,9 @@ import {
   SITE_SECTIONS_SOURCES,
   SITE_VERDICT_REASONS,
   findLlmProvider,
+  MVP_BRIEF_LIMITS,
+  MVP_GROUNDING_KINDS,
+  MVP_PLACEHOLDERS,
 } from '@revamp/shared-types';
 
 export * from './lead-status.js';
@@ -1902,3 +1905,87 @@ export function checkRebuildEdit(edit: IRebuildEditAnswer, read: Pick<ISiteSecti
   }
   return { ok: true };
 }
+
+// Model-designed MVP page (REV-136)
+
+const mvpHex = z.string().regex(/^#[0-9a-f]{6}$/i);
+const briefText = z.string().min(1).max(4000);
+
+export const MvpSourceBriefSchema = z
+  .object({
+    business: z
+      .object({
+        name: z.string().min(1).max(200),
+        niche: z.string().min(1).max(100),
+        city: z.string().min(1).max(200).optional(),
+        originalUrl: z.string().url(),
+      })
+      .strict(),
+    language: z.string().min(2).max(35).optional(),
+    services: z.array(z.string().min(1).max(200)).max(MVP_BRIEF_LIMITS.services),
+    copy: z
+      .object({
+        title: briefText.optional(),
+        metaDescription: briefText.optional(),
+        h1: briefText.optional(),
+        headings: z.array(briefText).max(MVP_BRIEF_LIMITS.headings),
+        paragraphs: z.array(briefText).max(MVP_BRIEF_LIMITS.paragraphs),
+        serviceItems: z
+          .array(z.object({ title: briefText, description: briefText.optional() }).strict())
+          .max(MVP_BRIEF_LIMITS.serviceItems),
+        testimonials: z
+          .array(z.object({ text: briefText, author: z.string().min(1).max(200).optional() }).strict())
+          .max(MVP_BRIEF_LIMITS.testimonials),
+        rating: z.object({ value: z.number().min(0).max(100), count: z.number().int().min(0).optional() }).strict().optional(),
+        foundingYear: z.number().int().min(1000).max(3000).optional(),
+      })
+      .strict(),
+    brand: z
+      .object({
+        primary: z.string().min(1).max(50),
+        secondary: z.string().min(1).max(50),
+        accent: z.string().min(1).max(50),
+        fonts: z.array(z.string().min(1).max(100)).max(10),
+        logoUrl: z.string().url().optional(),
+      })
+      .strict(),
+    images: z.array(z.string().url()).max(MVP_BRIEF_LIMITS.images),
+    placeholders: z.array(z.enum(MVP_PLACEHOLDERS)),
+  })
+  .strict();
+
+/** The theme the model declared in `:root`: colors as written and CSS font stacks */
+const themeValue = z.string().min(1).max(200);
+export const MvpThemeSchema = z
+  .object({
+    primary: themeValue,
+    accent: themeValue,
+    bg: themeValue,
+    surface: themeValue,
+    text: themeValue,
+    fontHeading: themeValue,
+    fontBody: themeValue,
+  })
+  .strict();
+
+/** The operator's palette and font controls: `#rrggbb` colors and plain font family names, so they are safe in CSS */
+const fontFamily = z.string().regex(/^[A-Za-z0-9 ]{1,40}$/);
+export const MvpThemeControlsSchema = z
+  .object({
+    primary: mvpHex.optional(),
+    accent: mvpHex.optional(),
+    bg: mvpHex.optional(),
+    surface: mvpHex.optional(),
+    text: mvpHex.optional(),
+    fontHeading: fontFamily.optional(),
+    fontBody: fontFamily.optional(),
+  })
+  .strict();
+
+export const MvpGroundingFlagSchema = z
+  .object({
+    kind: z.enum(MVP_GROUNDING_KINDS),
+    text: z.string().min(1).max(200),
+    context: z.string().max(80),
+  })
+  .strict();
