@@ -4,7 +4,7 @@ Revamp finds local businesses with dated websites, audits each site, builds a mo
 
 ```
 Maps search ─┐
-             ├─► Audit ─► MVP copy ─► MVP build + completeness check ─► Operator review (HITL) ─► Email ─► Tracking
+             ├─► Audit ─► MVP page (model) ─► checks, publish + completeness ─► Operator review (HITL) ─► Email ─► Tracking
 Manual URL ──┘
 ```
 
@@ -64,7 +64,7 @@ The app starts without one, but audits and MVP generation need an LLM, and nothi
 ```
 apps/
   api/          Express REST API (/api/v1), BullMQ producers
-  workers/      BullMQ workers: discovery, audit, AI generation, deploy, email
+  workers/      BullMQ workers: discovery, audit, AI page generation, deploy, MVP page changes, email
   dashboard/    Operator UI: React, Vite, MUI v6, TanStack Query, Zustand, i18next
 packages/
   shared-types/ Types, enums, DTOs and queue names shared across the monorepo
@@ -141,6 +141,7 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run lint` | ESLint |
 | `npm test` | Vitest, all workspaces |
 | `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure |
+| `npx tsx scripts/generate_mvp_page.ts [--record <dir>] [--provider <id>] [--model <id>] <out-dir> <url...>` | Dev tool (REV-137): audits each URL read-only, asks the model for a page, checks and finishes it, and writes `<host>.raw.html`, `<host>.html` and the grounding flags; no database, storage or queue writes. `--record` saves the brief and answers for the recorded-answer tests |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
 | `npm run migrate:lead-statuses --workspace=@revamp/api` | One-off (REV-62): moves leads stored with a removed status (`PENDING`, `MVP_READY`, `AWAITING_APPROVAL`, `APPROVED`, `DISPATCHED`, `REPLIED`) to the status that replaces it (`-- --dry-run` to preview) |
