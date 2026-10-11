@@ -4,6 +4,7 @@ import { findGenerationAudit } from '../../services/audit-lookup.js';
 import { Lead } from '../../models/Lead.model.js';
 import { MvpPageGenerator, defaultPageGenerator } from '../../services/mvp-page-generator.js';
 import { addDeployJob } from '../../queues/deploy.queue.js';
+import { env } from '../../config/env.js';
 
 vi.mock('../../services/audit-lookup.js');
 vi.mock('../../models/Lead.model.js');
@@ -183,5 +184,29 @@ describe('AiWorker on the model-designed page (REV-138)', () => {
   it('fails the job when the deploy job cannot be dispatched, so BullMQ retries it', async () => {
     vi.mocked(addDeployJob).mockRejectedValueOnce(new Error('Redis down'));
     await expect(capturedProcessor!(job())).rejects.toThrow('Redis down');
+  });
+
+  describe('visual self-review (REV-143)', () => {
+    afterEach(() => {
+      env.MVP_PAGE_SELF_REVIEW = false;
+    });
+
+    it('passes a review renderer only when MVP_PAGE_SELF_REVIEW is on (REV-143)', async () => {
+      env.MVP_PAGE_SELF_REVIEW = false;
+      await capturedProcessor!(job());
+      expect(generate.mock.calls[0]![0]).not.toHaveProperty('review');
+
+      env.MVP_PAGE_SELF_REVIEW = true;
+      await capturedProcessor!(job());
+      expect(typeof generate.mock.calls[1]![0].review).toBe('function');
+    });
+
+    it('returns the review outcome and deploys the page the generator kept', async () => {
+      env.MVP_PAGE_SELF_REVIEW = true;
+      generate.mockResolvedValue({ ...okResult, review: { outcome: 'rejected', problems: [] } });
+      const result = await capturedProcessor!(job());
+      expect(result).toMatchObject({ success: true, review: 'rejected' });
+      expect(vi.mocked(addDeployJob).mock.calls[0]![0].page).toMatchObject({ html: PAGE, theme: THEME });
+    });
   });
 });

@@ -6,7 +6,9 @@ import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
-import { buildMvpSourceBrief } from '../services/mvp-source-brief.js';
+import { pageContext } from '../services/mvp-page-publish.js';
+import { pageReviewRenderer } from '../services/mvp-page-review.js';
+import { env } from '../config/env.js';
 import { MvpPageGenerator, defaultPageGenerator } from '../services/mvp-page-generator.js';
 import { addDeployJob } from '../queues/deploy.queue.js';
 import { desktopCapture } from '../services/desktop-capture.js';
@@ -54,13 +56,18 @@ export const createAiWorker = (): Worker => {
       }
 
       // 2. The model designs the page from the brief code built (no contact values) and the current site's look.
-      // The operator's provider/model applies to this job only (REV-32)
+      // The operator's provider/model applies to this job only (REV-32). With MVP_PAGE_SELF_REVIEW the accepted page is
+      // rendered, finished, and the model may revise it once (REV-143)
       const auditData = (audit.toObject ? audit.toObject() : audit) as unknown as IAudit;
       const leadData = (lead.toObject ? lead.toObject() : lead) as unknown as ILead;
-      const brief = buildMvpSourceBrief(auditData, leadData);
+      const { brief, finish } = pageContext(leadData, auditData);
       const screenshot = await desktopCapture(auditData.screenshotUrls?.desktopFull);
       const generator = provider ? new MvpPageGenerator({ provider, model }) : defaultPageGenerator();
-      const result = await generator.generate({ brief, ...(screenshot ? { screenshot } : {}) });
+      const result = await generator.generate({
+        brief,
+        ...(screenshot ? { screenshot } : {}),
+        ...(env.MVP_PAGE_SELF_REVIEW ? { review: pageReviewRenderer(finish) } : {}),
+      });
 
       if (!result.ok) {
         console.warn(`[AiWorker] No page for lead ${leadId}: ${result.reason}: ${result.message}`);
@@ -84,9 +91,18 @@ export const createAiWorker = (): Worker => {
           ...(provider ? { requestedProvider: provider, requestedModel: model } : {}),
         },
       });
-      console.log(`[AiWorker] Page designed for ${lead.businessName} in ${result.attempts} attempt(s); deploy job dispatched.`);
+      const reviewed = result.review ? `, self-review ${result.review.outcome}` : '';
+      console.log(`[AiWorker] Page designed for ${lead.businessName} in ${result.attempts} attempt(s)${reviewed}; deploy job dispatched.`);
 
-      return { success: true, leadId, auditId: String(audit._id), attempts: result.attempts, modelUsed: result.modelUsed, grounding: result.grounding.length };
+      return {
+        success: true,
+        leadId,
+        auditId: String(audit._id),
+        attempts: result.attempts,
+        modelUsed: result.modelUsed,
+        grounding: result.grounding.length,
+        ...(result.review ? { review: result.review.outcome } : {}),
+      };
     },
     {
       connection: redisConnection,

@@ -141,6 +141,17 @@ describe('BrowserService', () => {
     expect(result.mobileBuffer).toBeInstanceOf(Buffer);
   });
 
+  it('captureHtmlScreenshot takes a full-page capture when asked (REV-143)', async () => {
+    mockPage.setContent = vi.fn().mockResolvedValue(undefined);
+    const service = new BrowserService(20);
+    await service.captureHtmlScreenshot('<html></html>', { width: 1440, height: 900, deviceScaleFactor: 1, fullPage: true });
+    expect(mockBrowser.newContext.mock.calls[0][0]).toMatchObject({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1, isMobile: false });
+    expect(mockPage.screenshot).toHaveBeenLastCalledWith({ fullPage: true });
+    await service.captureHtmlScreenshot('<html></html>');
+    expect(mockPage.screenshot).toHaveBeenLastCalledWith({ fullPage: false });
+    expect(mockContext.close).toHaveBeenCalledTimes(2);
+  });
+
   it('should close context even if navigation throws an error', async () => {
     const service = new BrowserService(20);
     mockPage.goto.mockRejectedValue(new Error('DNS resolution error'));

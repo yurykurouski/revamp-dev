@@ -588,11 +588,11 @@ export class BrowserService {
   }
 
   /**
-   * Renders static HTML and captures a screenshot (defaults to mobile 375x812 Retina)
+   * Renders static HTML and captures a screenshot (defaults to mobile 375x812 Retina, the viewport only)
    */
   async captureHtmlScreenshot(
     html: string,
-    options: { width?: number; height?: number; deviceScaleFactor?: number } = {},
+    options: { width?: number; height?: number; deviceScaleFactor?: number; fullPage?: boolean } = {},
   ): Promise<Buffer> {
     const width = options.width ?? 375;
     const height = options.height ?? 812;
@@ -611,7 +611,7 @@ export class BrowserService {
       const page = await context.newPage();
       await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
       await page.waitForTimeout(300);
-      const buffer = await page.screenshot({ fullPage: false });
+      const buffer = await page.screenshot({ fullPage: options.fullPage ?? false });
       return Buffer.from(buffer);
     } finally {
       await context.close();

@@ -102,6 +102,7 @@ All LLM settings live in `.env`. Nothing is faked when a provider is missing: wi
 | `CLAUDE_CLI_PATH`, `CLAUDE_CLI_MODEL`, `CLAUDE_CLI_TIMEOUT_MS` | `claude-cli` runs the local Claude Code CLI with the account it is logged into, so it needs no API key |
 | `VISION_LLM_PROVIDER` | Vision provider for the design critique and for the model that designs the MVP page (REV-137): `anthropic`, `openai` or `claude-cli`. When empty, the critique uses the Anthropic key, then the OpenAI key, then the CLI if `CLAUDE_CLI_PATH` is found; the page uses `MVP_LLM_PROVIDER`, then the first provider with a key, then the CLI. The CLI receives the screenshots as images and uses `CLAUDE_CLI_MODEL` |
 | `MVP_COMPLETENESS_LLM` | `true` lets the LLM judge the MVP completeness check (every verdict is verified in code); `false` uses the code-only check |
+| `MVP_PAGE_SELF_REVIEW` | `true` renders each newly generated MVP page at 1440 and 390 px and lets the model revise it once from the captures; a revision that fails the page checks is dropped (REV-143). Off by default |
 
 The operator can override the provider and model for each generation from the dashboard.
 
@@ -141,7 +142,7 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run lint` | ESLint |
 | `npm test` | Vitest, all workspaces |
 | `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure |
-| `npx tsx scripts/generate_mvp_page.ts [--record <dir>] [--provider <id>] [--model <id>] <out-dir> <url...>` | Dev tool (REV-137): audits each URL read-only, asks the model for a page, checks and finishes it, and writes `<host>.raw.html`, `<host>.html` and the grounding flags; no database, storage or queue writes. `--record` saves the brief and answers for the recorded-answer tests |
+| `npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] <out-dir> <url...>` | Dev tool (REV-137): audits each URL read-only, asks the model for a page, checks and finishes it, and writes `<host>.raw.html`, `<host>.html` and the grounding flags; no database, storage or queue writes. `--record` saves the brief and answers for the recorded-answer tests; `--self-review` adds the REV-143 revision pass and prints standards, axe violations and horizontal scroll at 360 px for the first and the kept page |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
 | `npm run migrate:lead-statuses --workspace=@revamp/api` | One-off (REV-62): moves leads stored with a removed status (`PENDING`, `MVP_READY`, `AWAITING_APPROVAL`, `APPROVED`, `DISPATCHED`, `REPLIED`) to the status that replaces it (`-- --dry-run` to preview) |

@@ -43,3 +43,16 @@ describe('worker env schema: MVP LLM provider (REV-30)', () => {
     expect(() => EnvSchema.parse({ VISION_LLM_PROVIDER: 'gemini' })).toThrow();
   });
 });
+
+describe('worker env schema: MVP page self-review (REV-143)', () => {
+  it('MVP_PAGE_SELF_REVIEW is off by default and reads "false" as off (REV-143)', () => {
+    expect(EnvSchema.parse({}).MVP_PAGE_SELF_REVIEW).toBe(false);
+    expect(EnvSchema.parse({ MVP_PAGE_SELF_REVIEW: 'true' }).MVP_PAGE_SELF_REVIEW).toBe(true);
+    for (const off of ['false', '0', 'off', '']) expect(EnvSchema.parse({ MVP_PAGE_SELF_REVIEW: off }).MVP_PAGE_SELF_REVIEW).toBe(false);
+  });
+
+  it('keeps reading MVP_COMPLETENESS_LLM as on by default', () => {
+    expect(EnvSchema.parse({}).MVP_COMPLETENESS_LLM).toBe(true);
+    expect(EnvSchema.parse({ MVP_COMPLETENESS_LLM: 'false' }).MVP_COMPLETENESS_LLM).toBe(false);
+  });
+});
