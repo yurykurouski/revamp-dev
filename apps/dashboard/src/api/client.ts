@@ -33,6 +33,7 @@ import {
   SiteComplexityClass,
 } from '@revamp/shared-types';
 import { ComplexityFilter } from '../utils/siteComplexity.js';
+import { useLanguageStore } from '../store/useLanguageStore.js';
 
 export interface ILeadItem {
   id: string;
@@ -78,6 +79,9 @@ const getApiBaseUrl = (): string => {
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+/** The dashboard's language when the request is made: the model writes its design changes in it (REV-162) */
+const operatorLocale = () => useLanguageStore.getState().language;
 
 /**
  * A lead as `GET /leads` returns it: the serialized document plus the MVP completeness summary the
@@ -204,6 +208,7 @@ export const apiClient = {
         // Without an email the audit takes the one published on the site; none is invented (REV-45)
         ...(validated.contactEmail ? { contactEmail: validated.contactEmail } : {}),
         niche: validated.niche || 'other',
+        operatorLocale: operatorLocale(),
       }),
     });
     const data = await readDataOrThrow<{ id?: string; auditId?: string }>(res);
@@ -301,7 +306,7 @@ export const apiClient = {
     const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/edit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ instruction }),
+      body: JSON.stringify({ instruction, operatorLocale: operatorLocale() }),
     });
     return readDataOrThrow<IMvpPageResult>(res);
   },
@@ -337,6 +342,7 @@ export const apiClient = {
       forceRegenerate: options.forceRegenerate ?? false,
       provider: options.provider,
       model: options.model,
+      operatorLocale: operatorLocale(),
     });
     const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
       method: 'POST',
@@ -401,7 +407,7 @@ export const apiClient = {
     const res = await fetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(ImportDiscoverySchema.parse({ externalIds })),
+      body: JSON.stringify(ImportDiscoverySchema.parse({ externalIds, operatorLocale: operatorLocale() })),
     });
     return readDataOrThrow<IDiscoveryImportResult>(res);
   },
