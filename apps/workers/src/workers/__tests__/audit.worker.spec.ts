@@ -54,6 +54,21 @@ describe('AuditWorker (@revamp/workers)', () => {
     capturedProcessor = null;
   });
 
+  it('should hand a stalled-out job to the failure handler (REV-145)', async () => {
+    createAuditWorker();
+    const failedHandler = mockWorkerInstance.on.mock.calls.find((c) => c[0] === 'failed')?.[1];
+    expect(failedHandler).toBeTypeOf('function');
+    vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+    vi.mocked(Audit.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+    failedHandler({ id: 'j1', data: { leadId: 'lead-9', url: 'https://a.example', niche: 'other' } }, new Error('job stalled more than allowable limit'));
+    await vi.waitFor(() =>
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        { _id: 'lead-9', status: { $in: ['AUDITING'] } },
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'AUDIT_FAILED' }) }),
+      ),
+    );
+  });
+
   it('should initialize worker for AUDIT queue', () => {
     const worker = createAuditWorker();
     expect(worker).toBeDefined();
