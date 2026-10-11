@@ -22,7 +22,10 @@ const stripFenceEnds = (text: string) =>
     .replace(/\n?```$/, '')
     .trim();
 
-/** The page and, after the last marker line that follows `</html>`, the changes block */
+/** A marker the model wrote loosely: spaced, emphasised, or with the JSON on its line */
+const MARKER_LIKE = /^[\s*_#`]*=+\s*CHANGES\s*=+[\s*_`]*/i;
+
+/** The page and, after the last marker line that follows `</html>` (else after `</html>` itself), the changes block */
 export function splitChangesBlock(answer: string): { page: string; block?: string } {
   const lines = answer.split('\n');
   let at = -1;
@@ -33,10 +36,26 @@ export function splitChangesBlock(answer: string): { page: string; block?: strin
     }
   }
   const after = at >= 0 ? lines.slice(at + 1).join('\n') : '';
-  // A marker inside the document is page text; the checks see it as the model wrote it
-  if (at < 0 || /<\/html>/i.test(after)) return { page: stripCodeFence(answer).trim() };
-  return { page: stripFenceEnds(lines.slice(0, at).join('\n')), block: stripFenceEnds(after) };
+  if (at >= 0 && !/<\/html>/i.test(after)) {
+    return { page: stripFenceEnds(lines.slice(0, at).join('\n')), block: stripFenceEnds(after) };
+  }
+  // No exact marker line after the document (JSON on its line, a spaced or bold marker, none at all): whatever follows
+  // the last </html> is the block, so a slip in it never leaves text after the page for the checks to reject. A marker
+  // inside the document is page text, and the checks see it as the model wrote it
+  const text = stripCodeFence(answer).trim();
+  const end = text.toLowerCase().lastIndexOf('</html>');
+  if (end < 0) return { page: text };
+  const rest = text
+    .slice(end + '</html>'.length)
+    .split('\n')
+    .filter((line) => !/^\s*```[a-z]*\s*$/i.test(line))
+    .join('\n')
+    .replace(MARKER_LIKE, '')
+    .trim();
+  const page = stripFenceEnds(text.slice(0, end + '</html>'.length));
+  return rest ? { page, block: rest } : { page };
 }
+
 
 /** The entries that pass `MvpDesignChangeSchema`, at most `maxEntries`; none when the block is missing, broken or all invalid */
 export function readDesignChanges(block: string | undefined): { changes?: IMvpDesignChange[]; dropped: number } {

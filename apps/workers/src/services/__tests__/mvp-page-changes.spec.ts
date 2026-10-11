@@ -30,6 +30,25 @@ describe('splitChangesBlock (REV-162)', () => {
     expect(splitChangesBlock(answer).block).toBe(block);
   });
 
+  // A slip in the marker must not leave text after </html>, which fails the page checks (final review, REV-162)
+  it.each([
+    ['JSON on the marker line', `${page}\n${MVP_CHANGES_MARKER} ${block}`],
+    ['marker on the </html> line', `${page}${MVP_CHANGES_MARKER}\n${block}`],
+    ['spaced marker', `${page}\n=== CHANGES ===\n${block}`],
+    ['bold marker', `${page}\n**${MVP_CHANGES_MARKER}**\n${block}`],
+    ['fenced block without a marker', `${page}\n\`\`\`json\n${block}\n\`\`\``],
+    ['bare block without a marker', `${page}\n${block}`],
+  ])('cuts the page at </html> with %s', (_name, answer) => {
+    expect(splitChangesBlock(answer).page).toBe(page);
+    expect(readDesignChanges(splitChangesBlock(answer).block).changes).toEqual([entry]);
+  });
+
+  it('cuts the page at </html> when prose follows it, and that prose gives no changes', () => {
+    const { page: cut, block: rest } = splitChangesBlock(`${page}\nHope this helps!`);
+    expect(cut).toBe(page);
+    expect(readDesignChanges(rest).changes).toBeUndefined();
+  });
+
   it('ignores a marker before </html>, leaving the page to the checks', () => {
     const answer = page.replace('</body>', `${MVP_CHANGES_MARKER}\n${block}\n</body>`);
     expect(splitChangesBlock(answer)).toEqual({ page: answer });

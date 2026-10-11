@@ -420,6 +420,14 @@ describe('design changes (REV-162)', () => {
     expect(result.changes).toBeUndefined();
   });
 
+  it('accepts a page on the first call when the marker is slightly off (final review)', async () => {
+    const { gen, requests } = generator([`${VALID.trim()}\n=== CHANGES === ${JSON.stringify(A)}`]);
+    const result = await gen.generate({ brief: BRIEF, operatorLocale: 'en' });
+    expect(requests).toHaveLength(1);
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.changes).toEqual(A);
+  });
+
   it("uses the accepted retry's block", async () => {
     const { gen, requests } = generator([withBlock(WITH_SCRIPT, A), withBlock(VALID, B)]);
     const result = await gen.generate({ brief: BRIEF, operatorLocale: 'en' });
