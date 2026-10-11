@@ -5,6 +5,13 @@ import { z } from 'zod';
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
+/** An on/off variable: "false", "0", "no", "off" and empty are off (z.coerce.boolean would read "false" as true) */
+const envFlag = (defaultValue: boolean) =>
+  z.preprocess(
+    (v) => (typeof v === 'string' ? !['false', '0', 'no', 'off', ''].includes(v.trim().toLowerCase()) : v),
+    z.boolean().default(defaultValue),
+  );
+
 export const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   MONGODB_URI: z.string().default('mongodb://localhost:27017/revamp'),
@@ -37,12 +44,11 @@ export const EnvSchema = z.object({
   CLAUDE_CLI_MODEL: z.string().default('sonnet'),
   CLAUDE_CLI_TIMEOUT_MS: z.coerce.number().int().positive().default(120000),
   // MVP completeness check (REV-37): let the configured LLM judge the fields, verified in code.
-  // "false" / "0" keeps the code-only comparison. (z.coerce.boolean would read "false" as true.)
-  MVP_COMPLETENESS_LLM: z.preprocess(
-    (v) => (typeof v === 'string' ? !['false', '0', 'no', 'off', ''].includes(v.trim().toLowerCase()) : v),
-    z.boolean().default(true),
-  ),
+  // "false" / "0" keeps the code-only comparison.
+  MVP_COMPLETENESS_LLM: envFlag(true),
   MVP_COMPLETENESS_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
+  // Visual self-review of the MVP page (REV-143): one revision call from the accepted page's captures. Off by default
+  MVP_PAGE_SELF_REVIEW: envFlag(false),
   // Outreach email provider; without one, approved emails fail at dispatch instead of being faked
   EMAIL_PROVIDER: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['resend', 'sendgrid', 'smtp']).optional()),
   RESEND_API_KEY: z.string().optional(),
