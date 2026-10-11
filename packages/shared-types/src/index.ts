@@ -502,9 +502,9 @@ export interface IMvpProject {
   generationCount?: number;
   /** How much of the original site's key data the MVP kept; recomputed on every deploy (REV-36) */
   completenessReport?: IMvpCompletenessReport;
-  /** Provider that actually wrote the copy, or 'deterministic' when the fallback did (REV-32) */
+  /** Provider that wrote the page (REV-32, REV-137); 'deterministic' only on MVPs of the previous generator */
   provider?: MvpCopyProvider;
-  /** Model that actually wrote the copy, or 'deterministic-fallback' (REV-32) */
+  /** Model that wrote the page (REV-32, REV-137); 'deterministic-fallback' only on MVPs of the previous generator */
   modelUsed?: string;
   /** Provider and model the operator picked for this run, when they picked one (REV-32) */
   requestedProvider?: LlmProviderId;
@@ -707,8 +707,7 @@ export const QUEUE_NAMES = {
   /** Test sends of a draft to the operator's own address (REV-60) */
   EMAIL_TEST: 'email-test-queue',
   DISCOVERY: 'discovery-queue',
-  /** An operator's free-text change to a generated MVP, interpreted by the LLM (REV-85) */
-  /** The previous generator's free-text change; replaced by MVP_PAGE (REV-139), removed with its worker */
+  /** Changes to a model-designed MVP (REV-139): the operator's free-text change, palette and fonts, and restores */
   MVP_PAGE: 'mvp-page-queue',
 } as const;
 
