@@ -48,6 +48,14 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(lead.toObject().generationFailure).toEqual(generationFailure);
     });
 
+    it('keeps the operator locale and refuses one the dashboard has not (REV-162)', () => {
+      const base = { businessName: 'Falco', originalUrl: 'https://falco-dent.pl', domain: 'falco-dent.pl' };
+      const lead = new Lead({ ...base, operatorLocale: 'pl' });
+      expect(lead.validateSync()).toBeUndefined();
+      expect(lead.toObject().operatorLocale).toBe('pl');
+      expect(new Lead({ ...base, operatorLocale: 'de' }).validateSync()?.errors['operatorLocale']).toBeDefined();
+    });
+
     it('should transform _id to id and remove __v in toJSON', () => {
       const lead = new Lead({
         businessName: 'Apex Auto',
@@ -237,6 +245,17 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
   });
 
   describe('MvpProject Model', () => {
+
+    it('keeps the design changes on a version (REV-162)', () => {
+      const changes = [{ change: 'Moved the services up', reason: 'Visitors see the offer first.' }];
+      const doc = new MvpProject({
+        auditId: new mongoose.Types.ObjectId(),
+        leadId: new mongoose.Types.ObjectId(),
+        previewSlug: 's',
+        versions: [{ n: 1, kind: 'generate', storagePath: 'v/s/versions/1.html', createdAt: new Date(), changes }],
+      });
+      expect(doc.toObject().versions?.[0]?.changes).toEqual(changes);
+    });
 
     it('validates a model-designed page without the old copy and palette, and keeps its page fields (REV-138)', () => {
       const theme = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#f5f7fa', text: '#111111', fontHeading: 'serif', fontBody: 'sans-serif' };
