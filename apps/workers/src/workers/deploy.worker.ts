@@ -83,6 +83,7 @@ async function deployPage(job: Job<IDeployJobData>) {
     jobId,
     ...(generationSource ? { provider: generationSource.provider, model: generationSource.modelUsed } : {}),
     storagePath,
+    ...(page.changes ? { changes: page.changes } : {}),
     createdAt: generatedAt,
   };
   const unset: Record<string, ''> = Object.fromEntries([...OLD_MVP_FIELDS, 'controls', 'editedAt'].map((field) => [field, '']));

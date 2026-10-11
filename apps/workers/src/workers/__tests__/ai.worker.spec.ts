@@ -209,4 +209,35 @@ describe('AiWorker on the model-designed page (REV-138)', () => {
       expect(vi.mocked(addDeployJob).mock.calls[0]![0].page).toMatchObject({ html: PAGE, theme: THEME });
     });
   });
+
+  describe('design changes (REV-162)', () => {
+    const changes = [{ change: 'Moved the services up', reason: 'Visitors see the offer first.' }];
+    const withLead = (extra: Record<string, unknown>) =>
+      vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...lead, ...extra }) } as any);
+
+    it("uses the job's locale over the lead's", async () => {
+      withLead({ operatorLocale: 'pl' });
+      await capturedProcessor!(job({ operatorLocale: 'ru' }));
+      expect(generate.mock.calls[0]![0].operatorLocale).toBe('ru');
+    });
+
+    it("falls back to the lead's locale", async () => {
+      withLead({ operatorLocale: 'pl' });
+      await capturedProcessor!(job());
+      expect(generate.mock.calls[0]![0].operatorLocale).toBe('pl');
+    });
+
+    it('asks for no changes without a locale', async () => {
+      await capturedProcessor!(job());
+      expect(generate.mock.calls[0]![0]).not.toHaveProperty('operatorLocale');
+    });
+
+    it('carries the changes to the deploy job, and none when the model gave none', async () => {
+      generate.mockResolvedValueOnce({ ...okResult, changes });
+      await capturedProcessor!(job());
+      expect(vi.mocked(addDeployJob).mock.calls[0]![0].page.changes).toEqual(changes);
+      await capturedProcessor!(job());
+      expect(vi.mocked(addDeployJob).mock.calls[1]![0].page).not.toHaveProperty('changes');
+    });
+  });
 });

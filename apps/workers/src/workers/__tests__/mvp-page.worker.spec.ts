@@ -272,3 +272,43 @@ describe('an MVP of the previous generator (REV-139)', () => {
     nothingPublished();
   });
 });
+
+describe('design changes per version (REV-162)', () => {
+  const L1 = [{ change: 'Moved the services up', reason: 'Visitors see the offer first.' }];
+  const L2 = [{ change: 'Darkened the header', reason: 'The menu stands out.' }];
+
+  it("change passes the current version's list and the job's locale, and stores the result's list", async () => {
+    project.versions = [version(1), version(2, { kind: 'change', instruction: 'ciemniej', changes: L1 })];
+    change.mockResolvedValueOnce({ ok: true, page: NEW_PAGE, theme: THEME, grounding: [], attempts: 1, answers: [], modelUsed: 'm', changes: L2 });
+    await run({ action: 'change', instruction: 'Ciemniejszy nagłówek', operatorLocale: 'lt' });
+    expect(change.mock.calls[0]![0]).toMatchObject({ currentChanges: L1, operatorLocale: 'lt' });
+    expect(update().$push.versions.$each[0].changes).toEqual(L2);
+  });
+
+  it("change falls back to the lead's locale, and stores no changes key when the model gave none", async () => {
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue({ ...lead, operatorLocale: 'pl', toObject: () => ({ ...lead, operatorLocale: 'pl' }) }) } as any);
+    await run({ action: 'change', instruction: 'Ciemniejszy nagłówek' });
+    expect(change.mock.calls[0]![0].operatorLocale).toBe('pl');
+    expect(change.mock.calls[0]![0]).not.toHaveProperty('currentChanges');
+    expect(update().$push.versions.$each[0]).not.toHaveProperty('changes');
+  });
+
+  it('controls leave the versions and their lists alone', async () => {
+    project.versions = [version(1, { changes: L1 })];
+    await run({ action: 'controls', controls: { fonts: { heading: 'Lora', body: 'Lato' } } });
+    expect(update().$push).toBeUndefined();
+  });
+
+  it("restore copies the restored version's list without a model call", async () => {
+    project.versions = [version(1, { changes: L1 }), version(2, { kind: 'change', instruction: 'ciemniej', changes: L2 })];
+    await run({ action: 'restore', version: 1 });
+    expect(change).not.toHaveBeenCalled();
+    expect(update().$push.versions.$each[0]).toMatchObject({ kind: 'restore', from: 1, changes: L1 });
+  });
+
+  it('restoring a version made before REV-162 stores no changes key', async () => {
+    await run({ action: 'restore', version: 1 });
+    expect(update().$push.versions.$each[0]).not.toHaveProperty('changes');
+  });
+});
+

@@ -233,4 +233,15 @@ describe('only model-designed pages are deployed (REV-141)', () => {
     vi.mocked(findGenerationAudit).mockResolvedValue(null as any);
     await expect(capturedProcessor!(job())).rejects.toThrow('No completed audit');
   });
+
+  it("writes the page's design changes on the new version (REV-162)", async () => {
+    const changes = [{ change: 'Moved the services up', reason: 'Visitors see the offer first.' }];
+    await capturedProcessor!(job({ page: { id: 'page-a', html: VALID, theme: THEME, grounding: GROUNDING, kind: 'generate', changes } }));
+    expect(projectUpdate().$push.versions.$each[0].changes).toEqual(changes);
+  });
+
+  it('makes a version without the changes key when the page has none (REV-162)', async () => {
+    await capturedProcessor!(job());
+    expect(projectUpdate().$push.versions.$each[0]).not.toHaveProperty('changes');
+  });
 });
