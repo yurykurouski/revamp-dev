@@ -75,5 +75,8 @@ describe('changesInstruction (REV-162)', () => {
     const text = changesInstruction('pl');
     for (const phrase of ['Polish', MVP_CHANGES_MARKER, '</html>', '8']) expect(text).toContain(phrase);
     expect(text).not.toContain('Russian');
+    // A count in words gets around the digit rule as easily as one in digits (live probe, REV-162)
+    expect(text).toContain('in digits or in words');
+    expect(text).not.toContain('numbers in words if');
   });
 });

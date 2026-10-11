@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MVP_THEME_VARS } from '@revamp/shared-types';
+import { MvpDesignChangeSchema } from '@revamp/validation';
 import type { LlmCompletion, LlmCompletionRequest } from '../llm-client.js';
 import { MVP_PAGE_REVIEW_PROMPT, MVP_PAGE_SYSTEM_PROMPT, MvpPageGenerator, stripCodeFence, type PageLlm, type RenderPage } from '../mvp-page-generator.js';
 import { changesInstruction, MVP_CHANGES_MARKER } from '../mvp-page-changes.js';
@@ -474,3 +475,29 @@ describe('design changes (REV-162)', () => {
     expect(without.requests[1]?.userPrompt).not.toContain('changes block');
   });
 });
+
+describe('a recorded answer with design changes from a real site (REV-162)', () => {
+  // adwokatpiatkowska.pl through `scripts/generate_mvp_page.ts --operator-locale lt --record`, claude-cli:sonnet, 2026-10-11
+  const recorded = JSON.parse(answer('adwokatpiatkowska.changes.recorded.json')) as {
+    brief: typeof BRIEF;
+    answers: string[];
+    result: { changes: Array<{ change: string; reason: string }> };
+  };
+
+  it("keeps the page in the site's language and the list the model wrote in the operator's", async () => {
+    const result = await generator([...recorded.answers]).gen.generate({ brief: recorded.brief, operatorLocale: 'lt' });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.attempts).toBe(1);
+    expect(result.page).toMatch(new RegExp(`<html[^>]*lang="${recorded.brief.language}"`));
+    expect(result.changes).toEqual(recorded.result.changes);
+    expect(result.changes?.length).toBeGreaterThan(0);
+    for (const entry of result.changes ?? []) expect(MvpDesignChangeSchema.safeParse(entry).success).toBe(true);
+  });
+
+  it('is accepted without a list when no operator language is known', async () => {
+    const result = await generator([...recorded.answers]).gen.generate({ brief: recorded.brief });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.changes).toBeUndefined();
+  });
+});
+
