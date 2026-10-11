@@ -79,29 +79,37 @@ export const REVEAL_ANIMATIONS_CSS = `
  */
 export const EVALUATE_NAME_SHIM = 'globalThis.__name = globalThis.__name || ((fn) => fn);';
 
+/** One job's hold on the shared browser (REV-163): the browser is not closed while a lease on it is open */
+interface BrowserLease {
+  browser: Browser;
+  release(): Promise<void>;
+}
+
 export class BrowserService {
   private browser: Browser | null = null;
   private jobCount: number = 0;
   private readonly maxJobsPerBrowser: number;
   private isLaunching: Promise<Browser> | null = null;
+  /** Open leases per browser, the current one and any retired one still in use */
+  private readonly leases = new Map<Browser, number>();
+  /** Browsers past their job limit, closed when their last lease ends */
+  private readonly retired = new Set<Browser>();
 
   constructor(maxJobsPerBrowser: number = 20) {
     this.maxJobsPerBrowser = maxJobsPerBrowser;
   }
 
   /**
-   * Retrieves or initializes the shared Chromium instance
+   * Retrieves or initializes the shared Chromium instance. A browser past its job limit is retired, not closed:
+   * the jobs still running in it finish there, and it closes when the last of them ends (REV-163).
    */
   async getBrowser(): Promise<Browser> {
     if (this.browser && this.browser.isConnected()) {
-      if (this.jobCount >= this.maxJobsPerBrowser) {
-        console.log(
-          `[BrowserService] Reached ${this.jobCount} jobs. Restarting browser to prevent memory leaks...`,
-        );
-        await this.close();
-      } else {
-        return this.browser;
-      }
+      if (this.jobCount < this.maxJobsPerBrowser) return this.browser;
+      this.retireCurrent();
+    } else if (this.browser) {
+      // Crashed or disconnected: its jobs fail on their own, and their releases only drop the count
+      this.browser = null;
     }
 
     if (this.isLaunching) {
@@ -110,22 +118,81 @@ export class BrowserService {
 
     this.isLaunching = (async () => {
       console.log('[BrowserService] Launching fresh Headless Chromium instance...');
-      const launched = await chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu',
-        ],
-      });
-      this.browser = launched;
-      this.jobCount = 0;
-      this.isLaunching = null;
-      return launched;
+      try {
+        const launched = await chromium.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+          ],
+        });
+        this.browser = launched;
+        this.jobCount = 0;
+        return launched;
+      } finally {
+        this.isLaunching = null;
+      }
     })();
 
     return this.isLaunching;
+  }
+
+  /**
+   * Takes a lease on a browser under its job limit. The pick and the lease happen in one synchronous step, so no
+   * other caller can retire and close the browser in between.
+   */
+  private async acquire(): Promise<BrowserLease> {
+    for (;;) {
+      const current = this.browser;
+      if (current && current.isConnected() && this.jobCount < this.maxJobsPerBrowser) {
+        this.jobCount++;
+        this.leases.set(current, (this.leases.get(current) ?? 0) + 1);
+        let released = false;
+        return {
+          browser: current,
+          release: async () => {
+            if (released) return;
+            released = true;
+            await this.release(current);
+          },
+        };
+      }
+      await this.getBrowser();
+    }
+  }
+
+  private async release(browser: Browser): Promise<void> {
+    const open = (this.leases.get(browser) ?? 0) - 1;
+    if (open > 0) {
+      this.leases.set(browser, open);
+      return;
+    }
+    this.leases.delete(browser);
+    if (this.retired.delete(browser)) await this.closeQuietly(browser);
+  }
+
+  /** Stops leasing the current browser; it closes now when idle, else when its last lease ends */
+  private retireCurrent(): void {
+    const browser = this.browser;
+    if (!browser) return;
+    const open = this.leases.get(browser) ?? 0;
+    console.log(
+      `[BrowserService] Reached ${this.jobCount} jobs. Retiring browser (${open} jobs still running) and launching a fresh one...`,
+    );
+    this.browser = null;
+    this.jobCount = 0;
+    if (open > 0) this.retired.add(browser);
+    else void this.closeQuietly(browser);
+  }
+
+  private async closeQuietly(browser: Browser): Promise<void> {
+    try {
+      await browser.close();
+    } catch (err) {
+      console.warn('[BrowserService] Error closing browser:', err);
+    }
   }
 
   /**
@@ -476,8 +543,15 @@ export class BrowserService {
    * Executes complete crawler pass: Desktop & Mobile screenshots, Axe-core WCAG audit, Core Web Vitals, and Brand DNA
    */
   async captureFullAudit(url: string): Promise<FullAuditCrawlingResult> {
-    const browser = await this.getBrowser();
-    this.jobCount++;
+    const lease = await this.acquire();
+    try {
+      return await this.runFullAudit(lease.browser, url);
+    } finally {
+      await lease.release();
+    }
+  }
+
+  private async runFullAudit(browser: Browser, url: string): Promise<FullAuditCrawlingResult> {
 
     let desktopBuffer: Buffer;
     let mobileBuffer: Buffer;
@@ -575,15 +649,18 @@ export class BrowserService {
    * A published page's LCP and layout shifts (REV-119), loaded on the audit's phone and read by the audit's own reader
    */
   async measurePageVitals(url: string): Promise<RawVitals> {
-    const browser = await this.getBrowser();
-    this.jobCount++;
-    const context = await this.createContext(browser, MOBILE_CONTEXT);
+    const lease = await this.acquire();
     try {
-      const page = await context.newPage();
-      await this.navigateWithFallback(page, url, 25000);
-      return await VitalsService.readVitalsInPage(page);
+      const context = await this.createContext(lease.browser, MOBILE_CONTEXT);
+      try {
+        const page = await context.newPage();
+        await this.navigateWithFallback(page, url, 25000);
+        return await VitalsService.readVitalsInPage(page);
+      } finally {
+        await context.close();
+      }
     } finally {
-      await context.close();
+      await lease.release();
     }
   }
 
@@ -598,40 +675,39 @@ export class BrowserService {
     const height = options.height ?? 812;
     const deviceScaleFactor = options.deviceScaleFactor ?? 2;
 
-    const browser = await this.getBrowser();
-    this.jobCount++;
-
-    const context = await browser.newContext({
-      viewport: { width, height },
-      deviceScaleFactor,
-      isMobile: width < 768,
-    });
-
+    const lease = await this.acquire();
     try {
-      const page = await context.newPage();
-      await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
-      await page.waitForTimeout(300);
-      const buffer = await page.screenshot({ fullPage: options.fullPage ?? false });
-      return Buffer.from(buffer);
+      const context = await lease.browser.newContext({
+        viewport: { width, height },
+        deviceScaleFactor,
+        isMobile: width < 768,
+      });
+
+      try {
+        const page = await context.newPage();
+        await page.setContent(html, { waitUntil: 'load', timeout: 15000 });
+        await page.waitForTimeout(300);
+        const buffer = await page.screenshot({ fullPage: options.fullPage ?? false });
+        return Buffer.from(buffer);
+      } finally {
+        await context.close();
+      }
     } finally {
-      await context.close();
+      await lease.release();
     }
   }
 
   /**
-   * Graceful cleanup of the browser instance
+   * Graceful cleanup at shutdown: closes the current browser and every retired one still open
    */
   async close(): Promise<void> {
-    if (this.browser) {
-      console.log('[BrowserService] Closing Chromium browser...');
-      try {
-        await this.browser.close();
-      } catch (err) {
-        console.warn('[BrowserService] Error closing browser:', err);
-      }
-      this.browser = null;
-      this.jobCount = 0;
-    }
+    const browsers = [...(this.browser ? [this.browser] : []), ...this.retired];
+    this.browser = null;
+    this.jobCount = 0;
+    this.retired.clear();
+    this.leases.clear();
+    if (browsers.length > 0) console.log('[BrowserService] Closing Chromium browser...');
+    await Promise.all(browsers.map((browser) => this.closeQuietly(browser)));
   }
 }
 
