@@ -48,6 +48,7 @@ describe('BrowserService', () => {
   let mockPage: any;
   let mockContext: any;
   let mockBrowser: any;
+  let launchedBrowsers: any[];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -79,13 +80,19 @@ describe('BrowserService', () => {
       addInitScript: vi.fn().mockResolvedValue(undefined),
     };
 
-    mockBrowser = {
+    // Every launch returns its own browser (the first is mockBrowser), so recycling can tell old from new
+    const makeBrowser = () => ({
       isConnected: vi.fn().mockReturnValue(true),
       newContext: vi.fn().mockResolvedValue(mockContext),
       close: vi.fn().mockResolvedValue(undefined),
-    };
-
-    vi.mocked(chromium.launch).mockResolvedValue(mockBrowser);
+    });
+    mockBrowser = makeBrowser();
+    launchedBrowsers = [];
+    vi.mocked(chromium.launch).mockImplementation(async () => {
+      const browser = launchedBrowsers.length === 0 ? mockBrowser : makeBrowser();
+      launchedBrowsers.push(browser);
+      return browser;
+    });
   });
 
   it('should launch chromium with proper security and sandbox flags', async () => {
@@ -345,6 +352,128 @@ describe('BrowserService', () => {
     await service.close();
 
     expect(mockBrowser.close).toHaveBeenCalledTimes(1);
+  });
+
+  describe('browser recycling (REV-163)', () => {
+    const deferred = () => {
+      let resolve!: () => void;
+      let reject!: (err: Error) => void;
+      const promise = new Promise<void>((res, rej) => {
+        resolve = res;
+        reject = rej;
+      });
+      return { promise, resolve, reject };
+    };
+
+    /** Starts a capture that stays inside its context until the returned handle settles it */
+    const startHeldCapture = async (service: BrowserService) => {
+      const held = deferred();
+      mockPage.setContent = vi.fn().mockImplementationOnce(() => held.promise).mockResolvedValue(undefined);
+      const job = service.captureHtmlScreenshot('<p>held</p>');
+      await vi.waitFor(() => expect(mockPage.setContent).toHaveBeenCalledTimes(1));
+      return { held, job };
+    };
+
+    it('a job holding a context while the 21st job starts is not interrupted', async () => {
+      const service = new BrowserService(20);
+      const { held, job } = await startHeldCapture(service);
+      for (let i = 2; i <= 20; i++) await service.captureHtmlScreenshot(`<p>${i}</p>`);
+      expect(launchedBrowsers).toHaveLength(1);
+
+      await service.captureHtmlScreenshot('<p>21</p>');
+      const [browserA, browserB] = launchedBrowsers;
+      expect(browserB.newContext).toHaveBeenCalledTimes(1);
+      expect(browserA.close).not.toHaveBeenCalled();
+
+      held.resolve();
+      await expect(job).resolves.toBeInstanceOf(Buffer);
+      expect(browserA.close).toHaveBeenCalledTimes(1);
+      expect(browserB.close).not.toHaveBeenCalled();
+    });
+
+    it('two jobs that start together at the limit share one launch and neither gets a closed browser', async () => {
+      mockPage.setContent = vi.fn().mockResolvedValue(undefined);
+      const service = new BrowserService(1);
+      await service.captureHtmlScreenshot('<p>1</p>');
+      await Promise.all([service.captureHtmlScreenshot('<p>2</p>'), service.captureHtmlScreenshot('<p>3</p>')]);
+
+      expect(launchedBrowsers).toHaveLength(3);
+      for (const browser of launchedBrowsers) {
+        const closedAt = browser.close.mock.invocationCallOrder[0];
+        if (closedAt === undefined) continue;
+        for (const openedAt of browser.newContext.mock.invocationCallOrder) expect(openedAt).toBeLessThan(closedAt);
+      }
+    });
+
+    it('a failing job on a retired browser still closes it', async () => {
+      const service = new BrowserService(1);
+      const { held, job } = await startHeldCapture(service);
+      await service.captureHtmlScreenshot('<p>2</p>');
+      const [browserA] = launchedBrowsers;
+      expect(browserA.close).not.toHaveBeenCalled();
+
+      held.reject(new Error('page crashed'));
+      await expect(job).rejects.toThrow('page crashed');
+      expect(browserA.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('close() also closes retired browsers', async () => {
+      const service = new BrowserService(1);
+      const { held, job } = await startHeldCapture(service);
+      await service.captureHtmlScreenshot('<p>2</p>');
+      const [browserA, browserB] = launchedBrowsers;
+
+      await service.close();
+      expect(browserA.close).toHaveBeenCalledTimes(1);
+      expect(browserB.close).toHaveBeenCalledTimes(1);
+
+      // The held job's late release after shutdown neither throws nor closes anything again
+      held.resolve();
+      await expect(job).resolves.toBeInstanceOf(Buffer);
+      expect(browserA.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('a disconnected browser is replaced and its late release leaves the new one open', async () => {
+      const service = new BrowserService(20);
+      const { held, job } = await startHeldCapture(service);
+      const [browserA] = launchedBrowsers;
+      browserA.isConnected.mockReturnValue(false);
+
+      await service.captureHtmlScreenshot('<p>2</p>');
+      const [, browserB] = launchedBrowsers;
+      expect(browserB.newContext).toHaveBeenCalledTimes(1);
+
+      held.resolve();
+      await expect(job).resolves.toBeInstanceOf(Buffer);
+      expect(browserB.close).not.toHaveBeenCalled();
+      expect(await service.getBrowser()).toBe(browserB);
+    });
+
+    it('a browser that is dead right after every launch fails the job after three launches and is closed', async () => {
+      mockPage.setContent = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(chromium.launch).mockImplementation(async () => {
+        // Guards the test against an endless relaunch loop
+        if (launchedBrowsers.length >= 6) throw new Error('relaunched without limit');
+        const browser = { isConnected: vi.fn().mockReturnValue(false), newContext: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
+        launchedBrowsers.push(browser);
+        return browser as any;
+      });
+      const service = new BrowserService(20);
+
+      await expect(service.captureHtmlScreenshot('<p>1</p>')).rejects.toThrow('Chromium disconnected right after launch');
+      expect(launchedBrowsers).toHaveLength(3);
+      for (const browser of launchedBrowsers) expect(browser.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed launch rejects that job and the next job launches again', async () => {
+      mockPage.setContent = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(chromium.launch).mockRejectedValueOnce(new Error('launch failed'));
+      const service = new BrowserService(20);
+
+      await expect(service.captureHtmlScreenshot('<p>1</p>')).rejects.toThrow('launch failed');
+      await expect(service.captureHtmlScreenshot('<p>2</p>')).resolves.toBeInstanceOf(Buffer);
+      expect(chromium.launch).toHaveBeenCalledTimes(2);
+    });
   });
 });
 
