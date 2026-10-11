@@ -5,6 +5,7 @@ import {
   IMvpControlsUpdate,
   IMvpGroundingFlag,
   IMvpPageJobData,
+  IMvpDesignChange,
   IMvpPageJobResult,
   IMvpPageVersion,
   IMvpProject,
@@ -67,7 +68,7 @@ interface NextPage {
   grounding: IMvpGroundingFlag[];
   controls: Partial<IMvpTheme>;
   /** The version to record; none for palette and fonts, which are not part of the raw page */
-  version?: { kind: MvpPageVersionKind; instruction?: string; from?: number; provider?: string; model?: string };
+  version?: { kind: MvpPageVersionKind; instruction?: string; from?: number; provider?: string; model?: string; changes?: IMvpDesignChange[] };
 }
 
 export async function processMvpPageJob(
@@ -100,7 +101,12 @@ export async function processMvpPageJob(
       const instruction = (data.instruction ?? '').trim();
       const screenshot = await desktopCapture(auditData.screenshotUrls?.desktopFull);
       const generator = deps.generator ?? defaultPageGenerator();
+      // The current page is the last version; its list is what the edit updates (REV-162)
+      const currentChanges = versions.at(-1)?.changes;
+      const locale = data.operatorLocale ?? leadData.operatorLocale;
       const result = await generator.change({
+        ...(locale ? { operatorLocale: locale } : {}),
+        ...(currentChanges ? { currentChanges } : {}),
         brief,
         ...(screenshot ? { screenshot } : {}),
         currentPage: project.page,
@@ -117,7 +123,13 @@ export async function processMvpPageJob(
         theme: result.theme,
         grounding: result.grounding,
         controls,
-        version: { kind: 'change', instruction, ...(result.provider ? { provider: result.provider } : {}), model: result.modelUsed },
+        version: {
+          kind: 'change',
+          instruction,
+          ...(result.provider ? { provider: result.provider } : {}),
+          model: result.modelUsed,
+          ...(result.changes ? { changes: result.changes } : {}),
+        },
       };
       break;
     }
@@ -139,7 +151,9 @@ export async function processMvpPageJob(
         const reasons = check.problems.map((p) => `${p.code}: ${p.message}`).join('; ');
         return { applied: false, reason: 'unusable_version', message: `Version ${n} no longer fits the audit: ${reasons}`.slice(0, 600), problems: check.problems };
       }
-      next = { page: raw, theme: check.theme, grounding: checkMvpGrounding(raw, brief), controls, version: { kind: 'restore', from: n } };
+      // A restore shows the list of the version it brings back, written when that page was made
+      const version = { kind: 'restore' as const, from: n, ...(entry.changes ? { changes: entry.changes } : {}) };
+      next = { page: raw, theme: check.theme, grounding: checkMvpGrounding(raw, brief), controls, version };
       break;
     }
     default:

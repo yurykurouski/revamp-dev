@@ -675,6 +675,11 @@ export const lt: Translation = {
     cls: 'Išdėstymo poslinkis: originalas → MVP',
     measuredOn: 'MVP išmatuotas {{host}}',
     perfNotMeasured: 'MVP greitis neišmatuotas: {{error}}',
+    design: {
+      title: 'Dizaino pakeitimai',
+      caption: 'Parašė puslapį sukūręs modelis',
+      controlsApplied: 'Jūsų spalvos ir šriftai pakeičia modelio pasirinkimą.',
+    },
     tags: {
       improved: 'Patobulinta',
       check: 'Patikrinkite',

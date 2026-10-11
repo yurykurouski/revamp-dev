@@ -76,6 +76,8 @@ export class LeadService {
       source: options.source ?? 'manual',
       ...(options.externalId ? { externalId: options.externalId } : {}),
       ...(options.tags ? { tags: options.tags } : {}),
+      // REV-162: the first MVP's design changes are written in the dashboard language the lead was added in
+      ...(dto.operatorLocale ? { operatorLocale: dto.operatorLocale } : {}),
     });
 
     // 2. Create corresponding Audit record in MongoDB

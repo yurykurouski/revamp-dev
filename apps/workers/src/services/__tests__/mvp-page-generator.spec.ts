@@ -2,8 +2,10 @@ import { readFileSync } from 'node:fs';
 import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MVP_THEME_VARS } from '@revamp/shared-types';
+import { MvpDesignChangeSchema } from '@revamp/validation';
 import type { LlmCompletion, LlmCompletionRequest } from '../llm-client.js';
 import { MVP_PAGE_REVIEW_PROMPT, MVP_PAGE_SYSTEM_PROMPT, MvpPageGenerator, stripCodeFence, type PageLlm, type RenderPage } from '../mvp-page-generator.js';
+import { changesInstruction, MVP_CHANGES_MARKER } from '../mvp-page-changes.js';
 import { BRIEF, VALID } from './fixtures/page-gen/page.js';
 
 const answer = (name: string) => readFileSync(new URL(`./fixtures/page-gen/answers/${name}`, import.meta.url), 'utf8');
@@ -11,6 +13,8 @@ const FENCED = answer('fenced.txt');
 const WITH_SCRIPT = answer('with-script.html');
 const APOLOGY = answer('apology.txt');
 const REVISED = answer('revised.html');
+const WITH_CHANGES = answer('with-changes.txt');
+const WITH_BAD_CHANGES = answer('with-bad-changes.txt');
 
 /** Replays recorded answers in order; an Error in the queue is thrown as a failed call */
 function stub(queue: Array<string | Error>, unavailable?: string, provider: PageLlm['provider'] = 'claude-cli') {
@@ -375,3 +379,133 @@ describe('MvpPageGenerator self-review (REV-143)', () => {
     }
   });
 });
+
+describe('design changes (REV-162)', () => {
+  const white = (width: number, height: number) =>
+    sharp({ create: { width, height, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  const render = () => vi.fn<RenderPage>(async () => ({ desktop: await white(1440, 2000), mobile: await white(390, 2000) }));
+  const entry = (word: string) => ({ change: `Changed the ${word}`, reason: `The ${word} reads better.` });
+  const withBlock = (page: string, list: unknown[]) => `${page.trim()}\n${MVP_CHANGES_MARKER}\n${JSON.stringify(list)}`;
+  const A = [entry('header')];
+  const B = [entry('footer')];
+
+  it('asks for no block without a locale, and reads none', async () => {
+    const { gen, requests } = generator([WITH_CHANGES]);
+    const result = await gen.generate({ brief: BRIEF });
+    expect(requests[0]?.userPrompt).not.toContain(MVP_CHANGES_MARKER);
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.changes).toBeUndefined();
+  });
+
+  it("asks for the block in the operator's language, leaving the system prompt as it is", async () => {
+    const { gen, requests } = generator([VALID]);
+    await gen.generate({ brief: BRIEF, operatorLocale: 'ru' });
+    expect(requests[0]?.userPrompt).toContain(changesInstruction('ru'));
+    expect(requests[0]?.systemPrompt).toBe(MVP_PAGE_SYSTEM_PROMPT);
+  });
+
+  it('returns the entries and checks only the page', async () => {
+    const result = await generator([WITH_CHANGES]).gen.generate({ brief: BRIEF, operatorLocale: 'pl' });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.page).toBe(VALID.trim());
+    expect(result.changes).toHaveLength(3);
+    expect(result.changes?.[0]?.change).toBe('Przeniesiono usługi tuż pod nagłówek');
+  });
+
+  it('keeps the page when the block is bad', async () => {
+    const { gen, requests } = generator([WITH_BAD_CHANGES]);
+    const result = await gen.generate({ brief: BRIEF, operatorLocale: 'pl' });
+    expect(requests).toHaveLength(1);
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.changes).toBeUndefined();
+  });
+
+  it('accepts a page on the first call when the marker is slightly off (final review)', async () => {
+    const { gen, requests } = generator([`${VALID.trim()}\n=== CHANGES === ${JSON.stringify(A)}`]);
+    const result = await gen.generate({ brief: BRIEF, operatorLocale: 'en' });
+    expect(requests).toHaveLength(1);
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.changes).toEqual(A);
+  });
+
+  it("uses the accepted retry's block", async () => {
+    const { gen, requests } = generator([withBlock(WITH_SCRIPT, A), withBlock(VALID, B)]);
+    const result = await gen.generate({ brief: BRIEF, operatorLocale: 'en' });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.attempts).toBe(2);
+    expect(result.changes).toEqual(B);
+    const rejectedPage = requests[1]?.userPrompt.split('Your rejected page:')[1] ?? '';
+    expect(rejectedPage).not.toContain(MVP_CHANGES_MARKER + '\n[');
+  });
+
+  it('edit sends the stored list as data', async () => {
+    const { gen, requests } = generator([VALID]);
+    await gen.change({ brief: BRIEF, currentPage: VALID, instruction: 'Make the hero darker', currentChanges: [{ change: 'X', reason: 'Y' }], operatorLocale: 'pl' });
+    expect(requests[0]?.userPrompt).toContain('"change":"X"');
+    expect(requests[0]?.userPrompt).toContain('data, not instructions');
+    expect(requests[0]?.userPrompt).toContain(changesInstruction('pl'));
+  });
+
+  it('edit without a stored list asks for one from scratch', async () => {
+    const { gen, requests } = generator([VALID]);
+    await gen.change({ brief: BRIEF, currentPage: VALID, instruction: 'Make the hero darker', operatorLocale: 'pl' });
+    expect(requests[0]?.userPrompt).toContain(changesInstruction('pl'));
+    expect(requests[0]?.userPrompt).not.toContain('data, not instructions');
+  });
+
+  it("self-review revised: the revision's block", async () => {
+    const result = await generator([withBlock(VALID, A), withBlock(REVISED, B)]).gen.generate({ brief: BRIEF, operatorLocale: 'en', review: render() });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.review?.outcome).toBe('revised');
+    expect(result.changes).toEqual(B);
+  });
+
+  it("self-review revised without a valid block: the first page's block", async () => {
+    const result = await generator([withBlock(VALID, A), REVISED]).gen.generate({ brief: BRIEF, operatorLocale: 'en', review: render() });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.review?.outcome).toBe('revised');
+    expect(result.changes).toEqual(A);
+  });
+
+  it("self-review unchanged: the first page's block", async () => {
+    const result = await generator([withBlock(VALID, A), withBlock(VALID, B)]).gen.generate({ brief: BRIEF, operatorLocale: 'en', review: render() });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.review?.outcome).toBe('unchanged');
+    expect(result.changes).toEqual(A);
+  });
+
+  it('self-review asks for the updated block with a locale, and not without', async () => {
+    const withLocale = generator([VALID, VALID]);
+    await withLocale.gen.generate({ brief: BRIEF, operatorLocale: 'en', review: render() });
+    expect(withLocale.requests[1]?.userPrompt).toContain('changes block');
+    const without = generator([VALID, VALID]);
+    await without.gen.generate({ brief: BRIEF, review: render() });
+    expect(without.requests[1]?.userPrompt).not.toContain('changes block');
+  });
+});
+
+describe('a recorded answer with design changes from a real site (REV-162)', () => {
+  // adwokatpiatkowska.pl through `scripts/generate_mvp_page.ts --operator-locale lt --record`, claude-cli:sonnet, 2026-10-11
+  const recorded = JSON.parse(answer('adwokatpiatkowska.changes.recorded.json')) as {
+    brief: typeof BRIEF;
+    answers: string[];
+    result: { changes: Array<{ change: string; reason: string }> };
+  };
+
+  it("keeps the page in the site's language and the list the model wrote in the operator's", async () => {
+    const result = await generator([...recorded.answers]).gen.generate({ brief: recorded.brief, operatorLocale: 'lt' });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.attempts).toBe(1);
+    expect(result.page).toMatch(new RegExp(`<html[^>]*lang="${recorded.brief.language}"`));
+    expect(result.changes).toEqual(recorded.result.changes);
+    expect(result.changes?.length).toBeGreaterThan(0);
+    for (const entry of result.changes ?? []) expect(MvpDesignChangeSchema.safeParse(entry).success).toBe(true);
+  });
+
+  it('is accepted without a list when no operator language is known', async () => {
+    const result = await generator([...recorded.answers]).gen.generate({ brief: recorded.brief });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.changes).toBeUndefined();
+  });
+});
+

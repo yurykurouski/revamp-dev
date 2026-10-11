@@ -141,3 +141,40 @@ describe('summarizeMvpChanges SEO and web standards (REV-118)', () => {
     expect(summarizeMvpChanges(mvp(), audit({ standardsChecks: original }))!.standards).toBeUndefined();
   });
 });
+
+describe("the page model's design changes (REV-162)", () => {
+  const A = [{ change: 'Moved the services up', reason: 'Visitors see the offer first.' }];
+  const B = [{ change: 'Darkened the header', reason: 'The menu stands out.' }];
+  const version = (n: number, changes?: typeof A) => ({
+    n,
+    kind: 'generate' as const,
+    storagePath: `v/demo/versions/${n}.html`,
+    createdAt: '2026-10-11T00:00:00Z',
+    ...(changes ? { changes } : {}),
+  });
+
+  it("reads the last version's list", () => {
+    expect(summarizeMvpChanges(mvp({ versions: [version(1, A), version(2, B)] }), null)!.design).toEqual({ changes: B, controlsApplied: false });
+  });
+
+  it('shows no list when the last version has none, never an older one', () => {
+    expect(summarizeMvpChanges(mvp({ versions: [version(1, A), version(2)] }), null)!.design).toBeUndefined();
+  });
+
+  it('shows no list for an MVP without versions', () => {
+    expect(summarizeMvpChanges(mvp(), null)!.design).toBeUndefined();
+  });
+
+  it("says whether the operator's colors or fonts are applied", () => {
+    const withControls = (controls?: Record<string, string>) =>
+      summarizeMvpChanges(mvp({ versions: [version(1, A)], ...(controls ? { controls } : {}) }), null)!.design?.controlsApplied;
+    expect(withControls({ primary: '#000000' })).toBe(true);
+    expect(withControls({})).toBe(false);
+    expect(withControls()).toBe(false);
+  });
+
+  it('is not empty when only the list is present', () => {
+    expect(isMvpChangeSummaryEmpty(summarizeMvpChanges(mvp({ versions: [version(1, A)] }), null)!)).toBe(false);
+  });
+});
+

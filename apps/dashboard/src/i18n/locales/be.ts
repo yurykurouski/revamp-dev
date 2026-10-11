@@ -675,6 +675,11 @@ export const be: Translation = {
     cls: 'Зрух макета: зыходны → MVP',
     measuredOn: 'MVP вымераны на {{host}}',
     perfNotMeasured: 'Хуткасць MVP не вымерана: {{error}}',
+    design: {
+      title: 'Змены дызайну',
+      caption: 'Напісана мадэллю, якая стварыла старонку',
+      controlsApplied: 'Вашы колеры і шрыфты замяняюць выбар мадэлі.',
+    },
     tags: {
       improved: 'Палепшана',
       check: 'Праверце',

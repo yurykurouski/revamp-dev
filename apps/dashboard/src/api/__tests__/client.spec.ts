@@ -1,4 +1,4 @@
-import { describe, it, expect, expectTypeOf, vi, afterEach } from 'vitest';
+import { describe, it, expect, expectTypeOf, vi, afterEach, beforeEach } from 'vitest';
 import type { Serialized } from '@revamp/shared-types';
 import {
   ApiError,
@@ -11,6 +11,7 @@ import {
   mapServerAudit,
   mapServerLead,
 } from '../client.js';
+import { useLanguageStore } from '../../store/useLanguageStore.js';
 
 /** The approve call always carries the draft the operator reviewed (REV-61) */
 const draft = { subject: 'Subject', body: 'Body' };
@@ -19,6 +20,11 @@ describe('Dashboard apiClient', () => {
   const jsonRes = (body: unknown, status = 200) =>
     ({ ok: status >= 200 && status < 300, status, json: async () => body }) as Response;
   const unreachable = () => vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+
+  beforeEach(() => {
+    // Request bodies carry the dashboard's language (REV-162); English unless a test picks another
+    useLanguageStore.setState({ language: 'en' });
+  });
 
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -183,6 +189,7 @@ describe('Dashboard apiClient', () => {
         originalUrl: 'https://premier-dental.org',
         contactEmail: 'contact@premier-dental.org',
         niche: 'dental',
+        operatorLocale: 'en',
       });
     });
 
@@ -582,7 +589,7 @@ describe('Dashboard apiClient', () => {
 
       await expect(apiClient.editMvp('mvp-1', 'Shorter heading')).resolves.toEqual({ applied: true, version: 4, mvp });
       expect(fetchMock.mock.calls[0][0]).toContain('/mvp/mvp-1/edit');
-      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ instruction: 'Shorter heading' });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ instruction: 'Shorter heading', operatorLocale: 'en' });
     });
 
     it('sends colors and fonts as the new tokens body (REV-140)', async () => {
@@ -725,7 +732,7 @@ describe('Dashboard apiClient', () => {
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toMatch(/\/discovery\/disc%201\/import$/);
       expect(init.method).toBe('POST');
-      expect(JSON.parse(init.body)).toEqual({ externalIds: ['node/1'] });
+      expect(JSON.parse(init.body)).toEqual({ externalIds: ['node/1'], operatorLocale: 'en' });
     });
 
     it('importDiscoveryCandidates should reject an empty selection locally and surface 409s', async () => {
@@ -762,7 +769,7 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.generateMvp('audit-1')).resolves.toEqual({ success: true, status: 'GENERATING' });
       const [url, init] = fetchMock.mock.calls[0];
       expect(url).toContain('/mvp/generate');
-      expect(JSON.parse(init.body)).toEqual({ auditId: 'audit-1', forceRegenerate: false });
+      expect(JSON.parse(init.body)).toEqual({ auditId: 'audit-1', forceRegenerate: false, operatorLocale: 'en' });
     });
 
     it('sends forceRegenerate: true for a regeneration', async () => {
@@ -770,7 +777,7 @@ describe('Dashboard apiClient', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       await apiClient.generateMvp('audit-1', { forceRegenerate: true });
-      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true, operatorLocale: 'en' });
     });
 
     it('sends the chosen provider and model (REV-32)', async () => {
@@ -783,6 +790,7 @@ describe('Dashboard apiClient', () => {
         forceRegenerate: false,
         provider: 'claude-cli',
         model: 'opus',
+        operatorLocale: 'en',
       });
     });
 
@@ -791,7 +799,7 @@ describe('Dashboard apiClient', () => {
       vi.stubGlobal('fetch', fetchMock);
 
       await apiClient.generateMvp('audit-1', { forceRegenerate: true, layout: 'bento' } as never);
-      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true });
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ auditId: 'audit-1', forceRegenerate: true, operatorLocale: 'en' });
     });
 
     it('refuses a model the provider does not offer before calling the API (REV-32)', async () => {
@@ -992,4 +1000,34 @@ describe('Dashboard apiClient', () => {
       expect(result).toEqual(stats);
     });
   });
+
+  describe("the operator's language on lead and MVP requests (REV-162)", () => {
+    const ok = (status = 200) => vi.fn().mockResolvedValue(jsonRes({ success: true, data: { id: 'lead-1', status: 'GENERATING', applied: true, mvp: { leadId: 'l', fullPreviewUrl: 'x' }, imported: 0, results: [] } }, status));
+    const sentLocale = (fetchMock: ReturnType<typeof vi.fn>) => JSON.parse(fetchMock.mock.calls[0][1].body).operatorLocale;
+    const calls: Record<string, () => Promise<unknown>> = {
+      createLead: () => apiClient.createLead({ url: 'https://a-clinic.pl', niche: 'dental' }),
+      editMvp: () => apiClient.editMvp('mvp-1', 'Shorter heading'),
+      generateMvp: () => apiClient.generateMvp('audit-1', { forceRegenerate: true }),
+      importDiscoveryCandidates: () => apiClient.importDiscoveryCandidates('disc-1', ['node/1']),
+    };
+
+    afterEach(() => useLanguageStore.setState({ language: 'en' }));
+
+    for (const [name, call] of Object.entries(calls)) {
+      it(`${name} sends the language chosen at the time of the call`, async () => {
+        useLanguageStore.setState({ language: 'pl' });
+        let fetchMock = ok(201);
+        vi.stubGlobal('fetch', fetchMock);
+        await call();
+        expect(sentLocale(fetchMock)).toBe('pl');
+
+        useLanguageStore.setState({ language: 'lt' });
+        fetchMock = ok(201);
+        vi.stubGlobal('fetch', fetchMock);
+        await call();
+        expect(sentLocale(fetchMock)).toBe('lt');
+      });
+    }
+  });
 });
+

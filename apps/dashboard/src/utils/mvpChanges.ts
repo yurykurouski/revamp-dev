@@ -1,4 +1,4 @@
-import type { CompletenessField, CompletenessStatus } from '@revamp/shared-types';
+import type { CompletenessField, CompletenessStatus, IMvpDesignChange } from '@revamp/shared-types';
 import type { IAuditDetail, IMvpProjectDetail } from '../api/client.js';
 import { SeoStandardsView, seoStandardsView } from './seoStandards.js';
 
@@ -12,7 +12,8 @@ export interface MvpDataIssue {
  * What the published MVP changed compared with the original site, from measured facts only (REV-81, REV-140): the
  * standards checks of both pages, the original's accessibility violations, the loading speed of both pages, and the
  * business data the MVP kept. A value that was not measured is left out, never zero, so the review never guesses
- * (AGENTS.md §3.2.2). Nothing here was written by a model.
+ * (AGENTS.md §3.2.2). Nothing here was written by a model, except `design`: the page model's own account of its design
+ * changes (REV-162), shown as it stored them, never assembled or filled in by code.
  */
 export interface MvpChangeSummary {
   /** Once the published page was checked; the original's score only when every check of it was read */
@@ -29,6 +30,8 @@ export interface MvpChangeSummary {
   };
   /** Only when key business data from the original site was lost, changed or made up */
   businessData?: { kept: number; checked: number; issues: MvpDataIssue[] };
+  /** The current version's design changes, as the model wrote them; whether the operator's colors or fonts override its own */
+  design?: { changes: IMvpDesignChange[]; controlsApplied: boolean };
 }
 
 const ISSUE_STATUSES: ReadonlyArray<MvpDataIssue['status']> = ['unsourced', 'missing', 'altered'];
@@ -84,10 +87,14 @@ export function summarizeMvpChanges(
     }
   }
 
+  // The current page is the last version; an older version's list describes another page
+  const changes = mvp.versions?.at(-1)?.changes;
+  if (changes?.length) summary.design = { changes, controlsApplied: Object.keys(mvp.controls ?? {}).length > 0 };
+
   return summary;
 }
 
 /** True when the summary has nothing to show */
 export function isMvpChangeSummaryEmpty(summary: MvpChangeSummary): boolean {
-  return !summary.standards && !summary.accessibility && !summary.performance && !summary.businessData;
+  return !summary.standards && !summary.accessibility && !summary.performance && !summary.businessData && !summary.design;
 }

@@ -1,0 +1,108 @@
+{
+  "url": "https://adwokatpiatkowska.pl/",
+  "brief": {
+    "business": {
+      "name": "adwokatpiatkowska.pl",
+      "niche": "other",
+      "originalUrl": "https://adwokatpiatkowska.pl/"
+    },
+    "language": "en",
+    "services": [],
+    "copy": {
+      "title": "Kancelaria adwokacka Warszawa - Oxana Piątkowska",
+      "h1": "Kancelaria adwokacka",
+      "headings": [
+        "Adwokat Oxana Piątkowska",
+        "Kancelaria",
+        "Usługi prawne",
+        "Biznes na Wschodzie",
+        "Cennik usług"
+      ],
+      "paragraphs": [
+        "Kancelaria Adwokacka adwokat Oxany Piątkowskiej świadczy kompleksowe usługi prawne dla przedsiębiorców i Klientów indywidualnych w języku polskim, rosyjskim i ukraińskim. Adwokat Oxana Piątkowska posiada dwa obywatelstwa i jest uczestnikiem „Stowarzyszenia Prawników Ukrainy\" (\"Асоціація правників України\") oraz członkiem „Stowarzyszenia Prawników Rosji\" („Ассоциация юристов России\") i „Międzynarodowego Zrzeszenia Adwokatów\" („Международный Союз Адвокатов\").",
+        "Zespół Kancelarii nie tylko biegle włada ww. językami, ale również zna mentalność mieszkańców Rosji i Ukrainy oraz rozumie specyfikę prowadzenia biznesu i system prawny obowiązujący w tych krajach. Kancelaria świadczy również pomoc prawną dla cudzoziemców mieszkających w Polsce i Polaków inwestujących na Wschodzie. Kancelaria Adwokacka zaprasza do swojej warszawskiej siedziby przy ul. Krakowskie Przedmieście 41 lub do kontaktu telefonicznego bądź mailowego.",
+        "Kancelaria Prawna adwokat Oxany Piątkowskiej jako jedyna w Polsce świadczy bezpośrednio kompleksowe usługi prawne dla firm w języku polskim, rosyjskim i ukraińskim.",
+        "Adwokat Oxana Piątkowska posiada dwa obywatelstwa i jest członkiem Izby Adwokackiej w Warszawie oraz Stowarzyszenia Prawników w Rosji (\"Ассоциация юристов России\"), Stowarzyszenia Prawników Ukrainy (\"Асоціація правників України\") i Międzynarodowego Zrzeszenia Adwokatów (Международный Союз Адвокатов\").",
+        "System godzinowy: wynagrodzenie zależy od ilości poświęconego czasu na dane zlecenie. System ten stosowany jest przy stałej obsłudze prawnej.",
+        "Koszt porady prawnej wynosi od 200 do 400 zł (do ceny należy doliczyć podatek VAT w wysokości 23 %), zależnie od czasu trwania porady i stopnia jej skomplikowania."
+      ],
+      "serviceItems": [],
+      "testimonials": []
+    },
+    "brand": {
+      "primary": "#a89163",
+      "secondary": "#bca16e",
+      "accent": "#a89163",
+      "fonts": [
+        "Arial",
+        "Helvetica",
+        "sans-serif"
+      ],
+      "logoUrl": "https://www.adwokatpiatkowska.pl/gfx/kontakt_logo.png"
+    },
+    "images": [
+      "https://www.adwokatpiatkowska.pl/gfx/glowna_bg.jpg"
+    ],
+    "placeholders": [
+      "email",
+      "address",
+      "hours",
+      "booking"
+    ]
+  },
+  "answers": [
+    "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Kancelaria adwokacka Warszawa - Oxana Piątkowska</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\">\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap\">\n<style>\n:root{--rv-color-primary:#7a6640;--rv-color-accent:#a89163;--rv-color-bg:#faf8f4;--rv-color-surface:#ffffff;--rv-color-text:#242424;--rv-font-heading:\"Cormorant Garamond\",Georgia,serif;--rv-font-body:\"Inter\",Arial,Helvetica,sans-serif}\n*{box-sizing:border-box}\nbody{margin:0;background:var(--rv-color-bg);color:var(--rv-color-text);font-family:var(--rv-font-body);line-height:1.65;font-size:16px}\nh1,h2,h3{font-family:var(--rv-font-heading);font-weight:600;line-height:1.15;margin:0 0 .5em}\nimg{max-width:100%;display:block}\na{color:inherit}\n.wrap{max-width:1080px;margin:0 auto;padding:0 20px}\nheader{background:var(--rv-color-surface);border-bottom:1px solid #e8e1d3}\n.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;max-width:1080px;margin:0 auto}\n.bar img{height:56px;width:auto}\nnav{display:flex;flex-wrap:wrap;gap:6px 18px}\nnav a{text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:6px 0}\nnav a:hover{color:var(--rv-color-primary)}\n.btn{display:inline-block;background:var(--rv-color-primary);color:#fff;text-decoration:none;padding:13px 26px;font-weight:600;font-size:14px;letter-spacing:.05em;text-transform:uppercase}\n.btn.alt{background:transparent;border:1px solid #fff}\n.hero{background:linear-gradient(rgba(20,20,20,.62),rgba(20,20,20,.62)),url(\"https://www.adwokatpiatkowska.pl/gfx/glowna_bg.jpg\") center/cover;color:#fff;padding:90px 0}\n.hero h1{font-size:clamp(2.4rem,8vw,4.4rem);margin-bottom:.2em}\n.hero p.sub{font-family:var(--rv-font-heading);font-size:clamp(1.4rem,4vw,2rem);color:#e6d5ab;margin:0 0 1em}\n.hero p{max-width:620px}\n.hero .acts{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}\nsection{padding:64px 0}\n.lbl{color:var(--rv-color-primary);font-weight:600;letter-spacing:.12em;font-size:13px;text-transform:uppercase}\nh2{font-size:clamp(2rem,5vw,2.8rem)}\n.two{display:grid;gap:32px}\n.dark{background:#242424;color:#f1ede4}\n.dark .lbl{color:#d3bd8a}\n.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:28px}\n.card{border-top:2px solid var(--rv-color-accent);padding:16px 0;font-family:var(--rv-font-heading);font-size:1.35rem}\n.panel{background:var(--rv-color-surface);border:1px solid #e8e1d3;padding:28px}\n.cols{display:grid;gap:24px}\nfooter{background:#242424;color:#f1ede4;padding:44px 0;font-size:15px}\nfooter a{color:#d3bd8a}\nfooter img{height:64px;width:auto;margin-bottom:12px}\n@media(min-width:800px){.two{grid-template-columns:1.2fr 1fr;align-items:start}.cols{grid-template-columns:1fr 1fr}}\n</style>\n</head>\n<body>\n<header>\n<div class=\"bar\">\n<img src=\"https://www.adwokatpiatkowska.pl/gfx/kontakt_logo.png\" alt=\"Oxana Piątkowska\">\n<nav>\n<a href=\"#kancelaria\">Kancelaria</a>\n<a href=\"#uslugi\">Usługi prawne</a>\n<a href=\"#wschod\">Biznes na Wschodzie</a>\n<a href=\"#cennik\">Cennik</a>\n<a href=\"#kontakt\">Kontakt</a>\n</nav>\n</div>\n</header>\n<main>\n<section class=\"hero\">\n<div class=\"wrap\">\n<h1>Kancelaria adwokacka</h1>\n<p class=\"sub\">Adwokat Oxana Piątkowska</p>\n<p>Kompleksowe usługi prawne dla przedsiębiorców i Klientów indywidualnych w języku polskim, rosyjskim i ukraińskim.</p>\n<div class=\"acts\"><a class=\"btn\" href=\"{{booking}}\">Umów poradę</a><a class=\"btn alt\" href=\"#uslugi\">Usługi prawne</a></div>\n</div>\n</section>\n\n<section id=\"kancelaria\">\n<div class=\"wrap two\">\n<div>\n<div class=\"lbl\">Kancelaria</div>\n<h2>Adwokat Oxana Piątkowska</h2>\n<p>Kancelaria Adwokacka adwokat Oxany Piątkowskiej świadczy kompleksowe usługi prawne dla przedsiębiorców i Klientów indywidualnych w języku polskim, rosyjskim i ukraińskim. Adwokat posiada dwa obywatelstwa i jest członkiem Izby Adwokackiej w Warszawie.</p>\n<p>Zespół Kancelarii nie tylko biegle włada ww. językami, ale również zna mentalność mieszkańców Rosji i Ukrainy oraz rozumie specyfikę prowadzenia biznesu i system prawny obowiązujący w tych krajach. Kancelaria świadczy również pomoc prawną dla cudzoziemców mieszkających w Polsce i Polaków inwestujących na Wschodzie.</p>\n</div>\n<div class=\"panel\">\n<h3>Członkostwo</h3>\n<p>Stowarzyszenie Prawników Ukrainy (Асоціація правників України)</p>\n<p>Stowarzyszenie Prawników Rosji (Ассоциация юристов России)</p>\n<p>Międzynarodowe Zrzeszenie Adwokatów (Международный Союз Адвокатов)</p>\n</div>\n</div>\n</section>\n\n<section id=\"uslugi\" class=\"dark\">\n<div class=\"wrap\">\n<div class=\"lbl\">Usługi prawne</div>\n<h2>Usługi prawne</h2>\n<p>Obsługa prawna dla przedsiębiorców, spółek prawa handlowego, podmiotów prowadzących działalność gospodarczą oraz Klientów indywidualnych.</p>\n<div class=\"grid\">\n<div class=\"card\">Prawo gospodarcze</div>\n<div class=\"card\">Prawo karne i karne skarbowe</div>\n<div class=\"card\">Własność intelektualna oraz prawo konkurencji</div>\n<div class=\"card\">Prawo cywilne</div>\n<div class=\"card\">Postępowanie administracyjne i sądowo administracyjne</div>\n<div class=\"card\">Prawo podatkowe</div>\n<div class=\"card\">Transakcje handlowe oraz doradztwo korporacyjne</div>\n<div class=\"card\">Obsługa prawna cudzoziemców</div>\n</div>\n</div>\n</section>\n\n<section>\n<div class=\"wrap cols\">\n<div id=\"wschod\" class=\"panel\">\n<div class=\"lbl\">Biznes na Wschodzie</div>\n<h2>Biznes na Wschodzie</h2>\n<p>Kompleksowe usługi prawne dla firm w języku polskim, rosyjskim i ukraińskim.</p>\n<p>Kancelaria Prawna adwokat Oxany Piątkowskiej jako jedyna w Polsce świadczy bezpośrednio kompleksowe usługi prawne dla firm w języku polskim, rosyjskim i ukraińskim.</p>\n</div>\n<div id=\"cennik\" class=\"panel\">\n<div class=\"lbl\">Cennik usług</div>\n<h2>Cennik usług</h2>\n<p><strong>System godzinowy:</strong> wynagrodzenie zależy od ilości poświęconego czasu na dane zlecenie. System ten stosowany jest przy stałej obsłudze prawnej.</p>\n<p><strong>Koszt porady prawnej</strong> wynosi od 200 do 400 zł (do ceny należy doliczyć podatek VAT w wysokości 23 %), zależnie od czasu trwania porady i stopnia jej skomplikowania.</p>\n<a class=\"btn\" href=\"{{booking}}\">Umów poradę</a>\n</div>\n</div>\n</section>\n</main>\n<footer id=\"kontakt\">\n<div class=\"wrap cols\">\n<div>\n<img src=\"https://www.adwokatpiatkowska.pl/gfx/kontakt_logo.png\" alt=\"Oxana Piątkowska\">\n<h3>Kancelaria adwokacka</h3>\n<p>Adwokat Oxana Piątkowska</p>\n</div>\n<div>\n<p>Adres: <a href=\"{{address}}\">{{address}}</a></p>\n<p>Email: <a href=\"{{email}}\">{{email}}</a></p>\n<p>Godziny urzędowania: {{hours}}</p>\n<p>Po wcześniejszym uzgodnieniu istnieje możliwość dokonania czynności poza godzinami urzędowania.</p>\n<p><a href=\"{{booking}}\">Umów wizytę</a></p>\n</div>\n</div>\n</footer>\n</body>\n</html>\n===CHANGES===\n[{\"change\":\"Pirmame ekrane atsirado aiškus antraštės blokas su tamsintu fonu ir dviem veiksmo mygtukais.\",\"reason\":\"Lankytojas iškart supranta, kas tai per kontora, ir gali užsakyti konsultaciją be paieškos.\"},{\"change\":\"Visos paslaugos surinktos į aiškų kortelių tinklelį ant tamsaus fono.\",\"reason\":\"Teisinių sričių sąrašą lengva peržvelgti, o tekstas daug geriau įskaitomas nei smulkus senasis šriftas.\"},{\"change\":\"Kontoros pristatymas suskaidytas į trumpesnes pastraipas ir atskirą narystės bloką.\",\"reason\":\"Ilgi tankūs tekstai tapo lengviau skaitomi, o svarbiausi įgaliojimai matomi iš karto.\"},{\"change\":\"Kainų ir rytų rinkos skyriai pateikti šalia vienas kito baltose kortelėse.\",\"reason\":\"Kainodaros informaciją galima rasti greitai, o ryšys su kvietimu užsisakyti konsultaciją išlieka aiškus.\"},{\"change\":\"Sukurta supaprastinta navigacija, kuri lankstosi mažuose ekranuose.\",\"reason\":\"Telefonu naudotis patogiau, nėra horizontalaus slinkimo.\"},{\"change\":\"Poraštėje sutelkti kontaktai ir darbo laikas su aiškia nuoroda į registraciją.\",\"reason\":\"Lankytojui nereikia ieškoti, kaip susisiekti ar atvykti.\"},{\"change\":\"Išlaikyta auksinė prekės ženklo spalva, logotipas ir šviesesnis, modernesnis tipografijos stilius.\",\"reason\":\"Svetainė atrodo šiuolaikiškiau, bet išlieka atpažįstama.\"}]"
+  ],
+  "result": {
+    "ok": true,
+    "page": "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n<title>Kancelaria adwokacka Warszawa - Oxana Piątkowska</title>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\">\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap\">\n<style>\n:root{--rv-color-primary:#7a6640;--rv-color-accent:#a89163;--rv-color-bg:#faf8f4;--rv-color-surface:#ffffff;--rv-color-text:#242424;--rv-font-heading:\"Cormorant Garamond\",Georgia,serif;--rv-font-body:\"Inter\",Arial,Helvetica,sans-serif}\n*{box-sizing:border-box}\nbody{margin:0;background:var(--rv-color-bg);color:var(--rv-color-text);font-family:var(--rv-font-body);line-height:1.65;font-size:16px}\nh1,h2,h3{font-family:var(--rv-font-heading);font-weight:600;line-height:1.15;margin:0 0 .5em}\nimg{max-width:100%;display:block}\na{color:inherit}\n.wrap{max-width:1080px;margin:0 auto;padding:0 20px}\nheader{background:var(--rv-color-surface);border-bottom:1px solid #e8e1d3}\n.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;max-width:1080px;margin:0 auto}\n.bar img{height:56px;width:auto}\nnav{display:flex;flex-wrap:wrap;gap:6px 18px}\nnav a{text-decoration:none;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:6px 0}\nnav a:hover{color:var(--rv-color-primary)}\n.btn{display:inline-block;background:var(--rv-color-primary);color:#fff;text-decoration:none;padding:13px 26px;font-weight:600;font-size:14px;letter-spacing:.05em;text-transform:uppercase}\n.btn.alt{background:transparent;border:1px solid #fff}\n.hero{background:linear-gradient(rgba(20,20,20,.62),rgba(20,20,20,.62)),url(\"https://www.adwokatpiatkowska.pl/gfx/glowna_bg.jpg\") center/cover;color:#fff;padding:90px 0}\n.hero h1{font-size:clamp(2.4rem,8vw,4.4rem);margin-bottom:.2em}\n.hero p.sub{font-family:var(--rv-font-heading);font-size:clamp(1.4rem,4vw,2rem);color:#e6d5ab;margin:0 0 1em}\n.hero p{max-width:620px}\n.hero .acts{display:flex;flex-wrap:wrap;gap:12px;margin-top:24px}\nsection{padding:64px 0}\n.lbl{color:var(--rv-color-primary);font-weight:600;letter-spacing:.12em;font-size:13px;text-transform:uppercase}\nh2{font-size:clamp(2rem,5vw,2.8rem)}\n.two{display:grid;gap:32px}\n.dark{background:#242424;color:#f1ede4}\n.dark .lbl{color:#d3bd8a}\n.grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));margin-top:28px}\n.card{border-top:2px solid var(--rv-color-accent);padding:16px 0;font-family:var(--rv-font-heading);font-size:1.35rem}\n.panel{background:var(--rv-color-surface);border:1px solid #e8e1d3;padding:28px}\n.cols{display:grid;gap:24px}\nfooter{background:#242424;color:#f1ede4;padding:44px 0;font-size:15px}\nfooter a{color:#d3bd8a}\nfooter img{height:64px;width:auto;margin-bottom:12px}\n@media(min-width:800px){.two{grid-template-columns:1.2fr 1fr;align-items:start}.cols{grid-template-columns:1fr 1fr}}\n</style>\n</head>\n<body>\n<header>\n<div class=\"bar\">\n<img src=\"https://www.adwokatpiatkowska.pl/gfx/kontakt_logo.png\" alt=\"Oxana Piątkowska\">\n<nav>\n<a href=\"#kancelaria\">Kancelaria</a>\n<a href=\"#uslugi\">Usługi prawne</a>\n<a href=\"#wschod\">Biznes na Wschodzie</a>\n<a href=\"#cennik\">Cennik</a>\n<a href=\"#kontakt\">Kontakt</a>\n</nav>\n</div>\n</header>\n<main>\n<section class=\"hero\">\n<div class=\"wrap\">\n<h1>Kancelaria adwokacka</h1>\n<p class=\"sub\">Adwokat Oxana Piątkowska</p>\n<p>Kompleksowe usługi prawne dla przedsiębiorców i Klientów indywidualnych w języku polskim, rosyjskim i ukraińskim.</p>\n<div class=\"acts\"><a class=\"btn\" href=\"{{booking}}\">Umów poradę</a><a class=\"btn alt\" href=\"#uslugi\">Usługi prawne</a></div>\n</div>\n</section>\n\n<section id=\"kancelaria\">\n<div class=\"wrap two\">\n<div>\n<div class=\"lbl\">Kancelaria</div>\n<h2>Adwokat Oxana Piątkowska</h2>\n<p>Kancelaria Adwokacka adwokat Oxany Piątkowskiej świadczy kompleksowe usługi prawne dla przedsiębiorców i Klientów indywidualnych w języku polskim, rosyjskim i ukraińskim. Adwokat posiada dwa obywatelstwa i jest członkiem Izby Adwokackiej w Warszawie.</p>\n<p>Zespół Kancelarii nie tylko biegle włada ww. językami, ale również zna mentalność mieszkańców Rosji i Ukrainy oraz rozumie specyfikę prowadzenia biznesu i system prawny obowiązujący w tych krajach. Kancelaria świadczy również pomoc prawną dla cudzoziemców mieszkających w Polsce i Polaków inwestujących na Wschodzie.</p>\n</div>\n<div class=\"panel\">\n<h3>Członkostwo</h3>\n<p>Stowarzyszenie Prawników Ukrainy (Асоціація правників України)</p>\n<p>Stowarzyszenie Prawników Rosji (Ассоциация юристов России)</p>\n<p>Międzynarodowe Zrzeszenie Adwokatów (Международный Союз Адвокатов)</p>\n</div>\n</div>\n</section>\n\n<section id=\"uslugi\" class=\"dark\">\n<div class=\"wrap\">\n<div class=\"lbl\">Usługi prawne</div>\n<h2>Usługi prawne</h2>\n<p>Obsługa prawna dla przedsiębiorców, spółek prawa handlowego, podmiotów prowadzących działalność gospodarczą oraz Klientów indywidualnych.</p>\n<div class=\"grid\">\n<div class=\"card\">Prawo gospodarcze</div>\n<div class=\"card\">Prawo karne i karne skarbowe</div>\n<div class=\"card\">Własność intelektualna oraz prawo konkurencji</div>\n<div class=\"card\">Prawo cywilne</div>\n<div class=\"card\">Postępowanie administracyjne i sądowo administracyjne</div>\n<div class=\"card\">Prawo podatkowe</div>\n<div class=\"card\">Transakcje handlowe oraz doradztwo korporacyjne</div>\n<div class=\"card\">Obsługa prawna cudzoziemców</div>\n</div>\n</div>\n</section>\n\n<section>\n<div class=\"wrap cols\">\n<div id=\"wschod\" class=\"panel\">\n<div class=\"lbl\">Biznes na Wschodzie</div>\n<h2>Biznes na Wschodzie</h2>\n<p>Kompleksowe usługi prawne dla firm w języku polskim, rosyjskim i ukraińskim.</p>\n<p>Kancelaria Prawna adwokat Oxany Piątkowskiej jako jedyna w Polsce świadczy bezpośrednio kompleksowe usługi prawne dla firm w języku polskim, rosyjskim i ukraińskim.</p>\n</div>\n<div id=\"cennik\" class=\"panel\">\n<div class=\"lbl\">Cennik usług</div>\n<h2>Cennik usług</h2>\n<p><strong>System godzinowy:</strong> wynagrodzenie zależy od ilości poświęconego czasu na dane zlecenie. System ten stosowany jest przy stałej obsłudze prawnej.</p>\n<p><strong>Koszt porady prawnej</strong> wynosi od 200 do 400 zł (do ceny należy doliczyć podatek VAT w wysokości 23 %), zależnie od czasu trwania porady i stopnia jej skomplikowania.</p>\n<a class=\"btn\" href=\"{{booking}}\">Umów poradę</a>\n</div>\n</div>\n</section>\n</main>\n<footer id=\"kontakt\">\n<div class=\"wrap cols\">\n<div>\n<img src=\"https://www.adwokatpiatkowska.pl/gfx/kontakt_logo.png\" alt=\"Oxana Piątkowska\">\n<h3>Kancelaria adwokacka</h3>\n<p>Adwokat Oxana Piątkowska</p>\n</div>\n<div>\n<p>Adres: <a href=\"{{address}}\">{{address}}</a></p>\n<p>Email: <a href=\"{{email}}\">{{email}}</a></p>\n<p>Godziny urzędowania: {{hours}}</p>\n<p>Po wcześniejszym uzgodnieniu istnieje możliwość dokonania czynności poza godzinami urzędowania.</p>\n<p><a href=\"{{booking}}\">Umów wizytę</a></p>\n</div>\n</div>\n</footer>\n</body>\n</html>",
+    "theme": {
+      "primary": "#7a6640",
+      "accent": "#a89163",
+      "bg": "#faf8f4",
+      "surface": "#ffffff",
+      "text": "#242424",
+      "fontHeading": "\"Cormorant Garamond\",Georgia,serif",
+      "fontBody": "\"Inter\",Arial,Helvetica,sans-serif"
+    },
+    "grounding": [],
+    "attempts": 1,
+    "modelUsed": "claude-cli:sonnet",
+    "provider": "claude-cli",
+    "usage": {
+      "promptTokens": 5842,
+      "completionTokens": 4252,
+      "totalTokens": 10094
+    },
+    "changes": [
+      {
+        "change": "Pirmame ekrane atsirado aiškus antraštės blokas su tamsintu fonu ir dviem veiksmo mygtukais.",
+        "reason": "Lankytojas iškart supranta, kas tai per kontora, ir gali užsakyti konsultaciją be paieškos."
+      },
+      {
+        "change": "Visos paslaugos surinktos į aiškų kortelių tinklelį ant tamsaus fono.",
+        "reason": "Teisinių sričių sąrašą lengva peržvelgti, o tekstas daug geriau įskaitomas nei smulkus senasis šriftas."
+      },
+      {
+        "change": "Kontoros pristatymas suskaidytas į trumpesnes pastraipas ir atskirą narystės bloką.",
+        "reason": "Ilgi tankūs tekstai tapo lengviau skaitomi, o svarbiausi įgaliojimai matomi iš karto."
+      },
+      {
+        "change": "Kainų ir rytų rinkos skyriai pateikti šalia vienas kito baltose kortelėse.",
+        "reason": "Kainodaros informaciją galima rasti greitai, o ryšys su kvietimu užsisakyti konsultaciją išlieka aiškus."
+      },
+      {
+        "change": "Sukurta supaprastinta navigacija, kuri lankstosi mažuose ekranuose.",
+        "reason": "Telefonu naudotis patogiau, nėra horizontalaus slinkimo."
+      },
+      {
+        "change": "Poraštėje sutelkti kontaktai ir darbo laikas su aiškia nuoroda į registraciją.",
+        "reason": "Lankytojui nereikia ieškoti, kaip susisiekti ar atvykti."
+      },
+      {
+        "change": "Išlaikyta auksinė prekės ženklo spalva, logotipas ir šviesesnis, modernesnis tipografijos stilius.",
+        "reason": "Svetainė atrodo šiuolaikiškiau, bet išlieka atpažįstama."
+      }
+    ]
+  }
+}

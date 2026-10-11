@@ -25,7 +25,7 @@ export const createAiWorker = (): Worker => {
   const worker = new Worker<IAiGenerationJobData>(
     QUEUE_NAMES.AI_GENERATION,
     async (job: Job<IAiGenerationJobData>) => {
-      const { leadId, auditId, forceRegenerate = false, previousStatus, provider, model } = job.data;
+      const { leadId, auditId, forceRegenerate = false, previousStatus, provider, model, operatorLocale } = job.data;
       console.log(
         `[AiWorker] Designing the MVP page for leadId: ${leadId}, auditId: ${auditId}` +
           (forceRegenerate ? ' (regenerating)' : '') +
@@ -63,9 +63,12 @@ export const createAiWorker = (): Worker => {
       const { brief, finish } = pageContext(leadData, auditData);
       const screenshot = await desktopCapture(auditData.screenshotUrls?.desktopFull);
       const generator = provider ? new MvpPageGenerator({ provider, model }) : defaultPageGenerator();
+      // A Regenerate sends the operator's language; the automatic first generation uses the one the lead was added in (REV-162)
+      const locale = operatorLocale ?? leadData.operatorLocale;
       const result = await generator.generate({
         brief,
         ...(screenshot ? { screenshot } : {}),
+        ...(locale ? { operatorLocale: locale } : {}),
         ...(env.MVP_PAGE_SELF_REVIEW ? { review: pageReviewRenderer(finish) } : {}),
       });
 
@@ -83,7 +86,14 @@ export const createAiWorker = (): Worker => {
         auditId: String(audit._id),
         forceRegenerate,
         previousStatus,
-        page: { id: randomUUID(), html: result.page, theme: result.theme, grounding: result.grounding, kind: 'generate' },
+        page: {
+          id: randomUUID(),
+          html: result.page,
+          theme: result.theme,
+          grounding: result.grounding,
+          kind: 'generate',
+          ...(result.changes ? { changes: result.changes } : {}),
+        },
         generationSource: {
           // A page always comes from a configured provider: without one the generator answers not_configured
           provider: result.provider!,

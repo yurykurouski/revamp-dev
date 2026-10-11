@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model } from 'mongoose';
-import { ILead, NicheType, LEAD_STATUSES, LeadSource, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
+import { ILead, NicheType, LEAD_STATUSES, LeadSource, OPERATOR_LOCALES, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 
 export interface ILeadDocument extends Omit<ILead, '_id' | 'createdAt' | 'updatedAt'>, Document {
   createdAt: Date;
@@ -72,6 +72,11 @@ const LeadSchema = new Schema<ILeadDocument>(
     externalId: {
       type: String,
       index: true,
+    },
+    // REV-162: the dashboard language of the operator who added the lead, for the first MVP's design changes
+    operatorLocale: {
+      type: String,
+      enum: OPERATOR_LOCALES,
     },
     ownerName: {
       type: String,

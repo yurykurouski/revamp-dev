@@ -37,7 +37,7 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { auditId, forceRegenerate, provider, model } = req.body;
+      const { auditId, forceRegenerate, provider, model, operatorLocale } = req.body;
 
       if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
         throw new AppError(400, 'LLM_PROVIDER_NOT_ALLOWED', `Provider "${provider}" is not available in production`);
@@ -85,6 +85,7 @@ router.post(
         forceRegenerate: mode === 'regenerate',
         previousStatus,
         ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
+        ...(operatorLocale ? { operatorLocale } : {}),
       });
 
       res.status(202).json({
@@ -216,7 +217,8 @@ router.post(
     try {
       const id = req.params['id'] || '';
       await loadChangeableMvp(id);
-      await runPageChange(res, id, { action: 'change', instruction: req.body.instruction }, MVP_PAGE_CHANGE_WAIT_MS);
+      const { instruction, operatorLocale } = req.body;
+      await runPageChange(res, id, { action: 'change', instruction, ...(operatorLocale ? { operatorLocale } : {}) }, MVP_PAGE_CHANGE_WAIT_MS);
     } catch (error) {
       next(error);
     }
