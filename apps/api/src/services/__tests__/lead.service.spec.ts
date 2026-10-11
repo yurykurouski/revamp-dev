@@ -93,6 +93,13 @@ describe('LeadService', () => {
 
     const dto = { businessName: 'A Clinic', originalUrl: 'https://a.lt', contactEmail: 'info@a.lt', niche: 'dental' as const };
 
+    it("should store the operator's locale, and none when the request had none (REV-162)", async () => {
+      await LeadService.createLead({ ...dto, operatorLocale: 'pl' });
+      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ operatorLocale: 'pl' }));
+      await LeadService.createLead(dto);
+      expect(vi.mocked(Lead.create).mock.calls[1]?.[0]).not.toHaveProperty('operatorLocale');
+    });
+
     it('should store the given tags', async () => {
       await LeadService.createLead(dto, { tags: ['discovered', 'source:osm'] });
       expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ tags: ['discovered', 'source:osm'] }));

@@ -156,6 +156,7 @@ export class DiscoveryService {
             niche: job.data.niche,
             city: candidate.city ?? job.data.location.slice(0, 100),
             contactPhone: candidate.phone,
+            ...(dto.operatorLocale ? { operatorLocale: dto.operatorLocale } : {}),
           },
           { tags, source: candidate.provider, externalId: leadExternalId(candidate.provider, candidate.externalId) },
         );

@@ -296,6 +296,13 @@ describe('DiscoveryService (API)', () => {
       });
     });
 
+    it("should give every imported lead the operator's locale (REV-162)", async () => {
+      vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2')]) as any);
+      await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2'], operatorLocale: 'ru' });
+      for (const call of vi.mocked(LeadService.createLead).mock.calls) expect(call[0]).toMatchObject({ operatorLocale: 'ru' });
+      expect(LeadService.createLead).toHaveBeenCalledTimes(2);
+    });
+
     it('should create leads from the stored candidates with discovery tags', async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(
         completedJob([

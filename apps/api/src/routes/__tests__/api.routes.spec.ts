@@ -120,6 +120,16 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.error.details.issues.length).toBeGreaterThan(0);
     });
 
+    it("should pass the operator's locale to the service, and refuse an unknown one (REV-162)", async () => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j' } as any);
+      const body = { businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' };
+      expect((await request(app).post('/api/v1/leads').send({ ...body, operatorLocale: 'be' })).status).toBe(201);
+      expect(spy.mock.calls[0]?.[0]).toMatchObject({ operatorLocale: 'be' });
+      const bad = await request(app).post('/api/v1/leads').send({ ...body, operatorLocale: 'de' });
+      expect(bad.status).toBe(400);
+      spy.mockRestore();
+    });
+
     it('should return 201 and created lead when payload is valid', async () => {
       const mockResult = {
         lead: {
@@ -1048,6 +1058,17 @@ describe('API Routes Integration Tests (Supertest)', () => {
       });
     });
 
+    it("should pass the operator's locale to the ai-gen job, and refuse an unknown one (REV-162)", async () => {
+      mockLeadWithStatus('NEEDS_APPROVAL');
+      const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: true, operatorLocale: 'ru' });
+      expect(res.status).toBe(202);
+      expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ operatorLocale: 'ru' }));
+
+      const bad = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: true, operatorLocale: 'de' });
+      expect(bad.status).toBe(400);
+      expect(bad.body.error.code).toBe('VALIDATION_ERROR');
+    });
+
     it('should pass a provider without a model, leaving the model to the worker (REV-32)', async () => {
       mockLeadWithStatus('NEEDS_APPROVAL');
 
@@ -1287,6 +1308,20 @@ describe('API Routes Integration Tests (Supertest)', () => {
     });
 
     describe('POST /mvp/:id/edit', () => {
+      it("passes the operator's locale to the page job, and refuses an unknown one (REV-162)", async () => {
+        mockProject(project, saved);
+        mockLead('NEEDS_APPROVAL');
+        vi.mocked(runMvpPageJob).mockResolvedValue({ status: 'done', result: { applied: true, version: 3 } });
+
+        const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Krótszy nagłówek', operatorLocale: 'pl' });
+        expect(res.status).toBe(200);
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'change', instruction: 'Krótszy nagłówek', operatorLocale: 'pl' }, 420_000);
+
+        const bad = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Krótszy nagłówek', operatorLocale: 'de' });
+        expect(bad.status).toBe(400);
+        expect(bad.body.error.code).toBe('VALIDATION_ERROR');
+      });
+
       it('runs the change on the workers, waits up to 7 min and returns the result with the saved MVP', async () => {
         mockProject(project, saved);
         mockLead('NEEDS_APPROVAL');
