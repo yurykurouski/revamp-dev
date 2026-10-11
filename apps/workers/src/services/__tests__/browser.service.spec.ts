@@ -448,6 +448,32 @@ describe('BrowserService', () => {
       expect(browserB.close).not.toHaveBeenCalled();
       expect(await service.getBrowser()).toBe(browserB);
     });
+
+    it('a browser that is dead right after every launch fails the job after three launches and is closed', async () => {
+      mockPage.setContent = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(chromium.launch).mockImplementation(async () => {
+        // Guards the test against an endless relaunch loop
+        if (launchedBrowsers.length >= 6) throw new Error('relaunched without limit');
+        const browser = { isConnected: vi.fn().mockReturnValue(false), newContext: vi.fn(), close: vi.fn().mockResolvedValue(undefined) };
+        launchedBrowsers.push(browser);
+        return browser as any;
+      });
+      const service = new BrowserService(20);
+
+      await expect(service.captureHtmlScreenshot('<p>1</p>')).rejects.toThrow('Chromium disconnected right after launch');
+      expect(launchedBrowsers).toHaveLength(3);
+      for (const browser of launchedBrowsers) expect(browser.close).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed launch rejects that job and the next job launches again', async () => {
+      mockPage.setContent = vi.fn().mockResolvedValue(undefined);
+      vi.mocked(chromium.launch).mockRejectedValueOnce(new Error('launch failed'));
+      const service = new BrowserService(20);
+
+      await expect(service.captureHtmlScreenshot('<p>1</p>')).rejects.toThrow('launch failed');
+      await expect(service.captureHtmlScreenshot('<p>2</p>')).resolves.toBeInstanceOf(Buffer);
+      expect(chromium.launch).toHaveBeenCalledTimes(2);
+    });
   });
 });
 

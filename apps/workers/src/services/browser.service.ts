@@ -79,6 +79,9 @@ export const REVEAL_ANIMATIONS_CSS = `
  */
 export const EVALUATE_NAME_SHIM = 'globalThis.__name = globalThis.__name || ((fn) => fn);';
 
+/** How many freshly launched browsers a job may find disconnected before it fails instead of launching again */
+const MAX_DEAD_LAUNCHES = 3;
+
 /** One job's hold on the shared browser (REV-163): the browser is not closed while a lease on it is open */
 interface BrowserLease {
   browser: Browser;
@@ -109,7 +112,9 @@ export class BrowserService {
       this.retireCurrent();
     } else if (this.browser) {
       // Crashed or disconnected: its jobs fail on their own, and their releases only drop the count
+      const dead = this.browser;
       this.browser = null;
+      if (!this.leases.has(dead)) void this.closeQuietly(dead);
     }
 
     if (this.isLaunching) {
@@ -144,8 +149,14 @@ export class BrowserService {
    * other caller can retire and close the browser in between.
    */
   private async acquire(): Promise<BrowserLease> {
+    let deadOnPick = 0;
     for (;;) {
       const current = this.browser;
+      if (current && !current.isConnected() && ++deadOnPick >= MAX_DEAD_LAUNCHES) {
+        this.browser = null;
+        if (!this.leases.has(current)) void this.closeQuietly(current);
+        throw new Error(`Chromium disconnected right after launch (${MAX_DEAD_LAUNCHES} attempts)`);
+      }
       if (current && current.isConnected() && this.jobCount < this.maxJobsPerBrowser) {
         this.jobCount++;
         this.leases.set(current, (this.leases.get(current) ?? 0) + 1);
