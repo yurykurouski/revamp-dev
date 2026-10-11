@@ -19,6 +19,7 @@ import {
 } from '@revamp/shared-types';
 import { SiteAssessmentSchema } from '@revamp/validation';
 import { collectInternalPages, SMALL_SITE_MAX_PAGES } from './site-complexity.service.js';
+import { withoutPreloadLinks } from './html-document.js';
 
 export type FetchFn = typeof fetch;
 
@@ -268,7 +269,7 @@ export function parseHomePage(html: string, now: Date): HomePageSignals {
     },
   });
   try {
-    const doc = new window.DOMParser().parseFromString(html, 'text/html');
+    const doc = new window.DOMParser().parseFromString(withoutPreloadLinks(html), 'text/html');
     const all = (selector: string) => Array.from(doc.querySelectorAll(selector));
     const has = (selector: string) => doc.querySelector(selector) !== null;
     const attr = (el: { getAttribute(name: string): string | null }, name: string) =>
