@@ -1,6 +1,7 @@
 import type { IMvpGroundingFlag, IMvpPageProblem, IMvpSourceBrief, IMvpTheme, MvpPageFailure } from '@revamp/shared-types';
 import { MVP_THEME_VARS } from '@revamp/shared-types';
 import { MvpSourceBriefSchema } from '@revamp/validation';
+import sharp from 'sharp';
 import { env } from '../config/env.js';
 import { ImageService } from './image.service.js';
 import { LlmClient, resolveDefaultProvider, type LlmImage, type LlmProvider, type LlmUsage } from './llm-client.js';
@@ -89,6 +90,8 @@ const MESSAGE_CHARS = 500;
 const REVIEW_TEMPERATURE = 0.3;
 /** Tiles of the page's own captures sent with the revision; the original site's screenshot is not resent */
 const REVIEW_TILES = { desktop: 2, mobile: 3 };
+/** A review tile is never shorter than the usual vision slice, and stays within WebP's 16 383 px limit */
+const REVIEW_TILE_HEIGHT = { min: 1800, max: 16_000 };
 
 /** The vision model for the page: VISION_LLM_PROVIDER, else the copywriting default, else the local CLI when found */
 export function pageProvider(): LlmProvider | undefined {
@@ -166,15 +169,21 @@ export type MvpPageResult =
 const addUsage = (a: LlmUsage | undefined, b: LlmUsage | undefined): LlmUsage | undefined =>
   !a ? b : !b ? a : { promptTokens: a.promptTokens + b.promptTokens, completionTokens: a.completionTokens + b.completionTokens, totalTokens: a.totalTokens + b.totalTokens };
 
-const webpTiles = async (png: Buffer, maxTiles: number): Promise<LlmImage[]> =>
-  (await ImageService.tilesForVision(png, { maxTiles })).map((tile) => ({ mediaType: 'image/webp' as const, data: tile.data }));
+/** The whole capture in at most `maxTiles` slices: a tall page gets taller slices instead of losing its bottom */
+async function wholePageTiles(png: Buffer, maxTiles: number): Promise<LlmImage[]> {
+  const { height = 0 } = await sharp(png, { limitInputPixels: false }).metadata();
+  const tileHeight = Math.min(REVIEW_TILE_HEIGHT.max, Math.max(REVIEW_TILE_HEIGHT.min, Math.ceil(height / maxTiles)));
+  const tiles = await ImageService.tilesForVision(png, { maxTiles, tileHeight });
+  return tiles.map((tile) => ({ mediaType: 'image/webp' as const, data: tile.data }));
+}
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 async function screenshotImages(png: Buffer | undefined): Promise<LlmImage[]> {
   if (!png) return [];
   try {
-    return await webpTiles(png, MAX_TILES);
+    const tiles = await ImageService.tilesForVision(png, { maxTiles: MAX_TILES });
+    return tiles.map((tile) => ({ mediaType: 'image/webp' as const, data: tile.data }));
   } catch (error) {
     // A capture that cannot be read leaves the model the brief alone; it never fails the generation
     console.warn(`[MvpPageGenerator] Screenshot left out: ${errorMessage(error)}`);
@@ -284,7 +293,7 @@ export class MvpPageGenerator {
       const left = this.timeLeft(ctx.deadline);
       if (left <= 0) throw new Error('out of time: the operator stopped waiting');
       const shots = await ctx.review(accepted.page, accepted.theme);
-      const images = [...(await webpTiles(shots.desktop, REVIEW_TILES.desktop)), ...(await webpTiles(shots.mobile, REVIEW_TILES.mobile))];
+      const images = [...(await wholePageTiles(shots.desktop, REVIEW_TILES.desktop)), ...(await wholePageTiles(shots.mobile, REVIEW_TILES.mobile))];
       const res = await this.client.completeWithUsage({
         systemPrompt: MVP_PAGE_SYSTEM_PROMPT,
         userPrompt: `${ctx.briefPrompt}\n${MVP_PAGE_REVIEW_PROMPT}\n\nYour page:\n${accepted.page}`,

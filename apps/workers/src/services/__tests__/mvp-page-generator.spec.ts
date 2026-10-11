@@ -299,6 +299,18 @@ describe('MvpPageGenerator self-review (REV-143)', () => {
     expect(revision?.userPrompt).not.toContain('screenshots of the current home page follow');
   });
 
+  it('sends the whole of a tall page, top to bottom, within the tile budget (review)', async () => {
+    const render = vi.fn<RenderPage>(async () => ({ desktop: await white(1440, 9000), mobile: await white(390, 12000) }));
+    const { gen, requests } = generator([VALID, REVISED]);
+    await gen.generate({ brief: BRIEF, review: render });
+    const images = requests[1]?.images ?? [];
+    expect(images).toHaveLength(5);
+    const heights = await Promise.all(images.map(async (i) => (await sharp(i.data).metadata()).height ?? 0));
+    // Desktop tiles are scaled to 1024 px wide (9000 × 1024 / 1440 = 6400); mobile ones keep their 390 px width
+    expect(heights[0]! + heights[1]!).toBe(6400);
+    expect(heights[2]! + heights[3]! + heights[4]!).toBe(12000);
+  });
+
   it('revision rejected: the first page is kept with the problems', async () => {
     const { gen } = generator([VALID, WITH_SCRIPT]);
     const result = await gen.generate({ brief: BRIEF, review: renderer() });
