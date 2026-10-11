@@ -676,6 +676,11 @@ export const en = {
     cls: 'Layout shift: original → MVP',
     measuredOn: 'MVP measured on {{host}}',
     perfNotMeasured: 'The MVP\'s speed was not measured: {{error}}',
+    design: {
+      title: 'Design changes',
+      caption: 'Written by the page model',
+      controlsApplied: 'Your colors and fonts replace the model\'s choices.',
+    },
     tags: {
       improved: 'Improved',
       check: 'Check',

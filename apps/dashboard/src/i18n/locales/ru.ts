@@ -675,6 +675,11 @@ export const ru: Translation = {
     cls: 'Сдвиг макета: исходный → MVP',
     measuredOn: 'MVP измерен на {{host}}',
     perfNotMeasured: 'Скорость MVP не измерена: {{error}}',
+    design: {
+      title: 'Изменения дизайна',
+      caption: 'Написано моделью, создавшей страницу',
+      controlsApplied: 'Ваши цвета и шрифты заменяют выбор модели.',
+    },
     tags: {
       improved: 'Улучшено',
       check: 'Проверьте',

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Box, Button, Chip, Collapse, LinearProgress, Typography } from '@mui/material';
 import AccessibilityNewIcon from '@mui/icons-material/AccessibilityNew';
+import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -103,7 +104,7 @@ const Stat: React.FC<{ value: React.ReactNode; label: string; before?: React.Rea
 
 const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
   const { t } = useTranslation();
-  const { standards, accessibility, performance, businessData } = summary;
+  const { standards, accessibility, performance, businessData, design } = summary;
   const fieldLabel = (field: string) => t(`completeness.fields.${field}` as 'completeness.fields.phone');
   const checkLabel = (check: string) => t(`seo.checks.${check}` as 'seo.checks.https');
   const standardsTag: Tag | undefined = standards
@@ -191,13 +192,32 @@ const SummaryCards: React.FC<{ summary: Summary }> = ({ summary }) => {
           </Box>
         </ChangeCard>
       )}
+
+      {/* The page model's own words (REV-162), under the measured facts and shown exactly as stored */}
+      {design && (
+        <ChangeCard icon={<AutoAwesomeIcon />} title={t('mvpChanges.design.title')} wide>
+          <Text muted>{t('mvpChanges.design.caption')}</Text>
+          {design.controlsApplied && <Text>{t('mvpChanges.design.controlsApplied')}</Text>}
+          <Box component="ul" sx={{ m: 0, pl: 2.5, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            {design.changes.map(({ change, reason }, idx) => (
+              <Box component="li" key={idx} sx={{ display: 'flex', flexDirection: 'column' }}>
+                <Typography variant="caption" color="text.primary" sx={{ fontWeight: 600, overflowWrap: 'anywhere' }}>
+                  {change}
+                </Typography>
+                <Text muted>{reason}</Text>
+              </Box>
+            ))}
+          </Box>
+        </ChangeCard>
+      )}
     </Box>
   );
 };
 
 /**
  * "What changed": the published MVP compared with the original site (REV-81), from measured facts only
- * (REV-140, AGENTS.md §3.2.2). Renders nothing until an MVP exists.
+ * (REV-140, AGENTS.md §3.2.2), then the page model's account of its design changes when it gave one (REV-162). Renders
+ * nothing until an MVP exists.
  */
 export const MvpChangeSummary: React.FC<MvpChangeSummaryProps> = ({ mvp, audit }) => {
   const { t } = useTranslation();

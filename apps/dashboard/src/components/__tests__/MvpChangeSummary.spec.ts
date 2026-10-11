@@ -122,3 +122,57 @@ describe('MvpChangeSummary SEO card (REV-118)', () => {
     expect(text).toContain(`The MVP fixes: ${en.seo.checks.metaDescription}, ${en.seo.checks.openGraph}`);
   });
 });
+
+describe("MvpChangeSummary: the page model's design changes (REV-162)", () => {
+  const changes = [
+    { change: 'Moved the services up', reason: 'Visitors see the offer first.' },
+    { change: 'Darkened the header', reason: 'The menu stands out.' },
+  ];
+  const withChanges = (extra: Partial<IMvpProjectDetail> = {}): IMvpProjectDetail => ({
+    ...fullMvp,
+    versions: [{ n: 1, kind: 'generate', storagePath: 'v/demo/versions/1.html', createdAt: '2026-10-11T00:00:00Z', changes }],
+    ...extra,
+  });
+
+  afterEach(() => {
+    useLanguageStore.getState().setLanguage('en');
+  });
+
+  it('lists each change with its reason, under the measured blocks', () => {
+    const text = textOf(render(withChanges()));
+    expect(text).toContain(`|${en.mvpChanges.design.title}|`);
+    expect(text).toContain(`|${en.mvpChanges.design.caption}|`);
+    for (const { change, reason } of changes) {
+      expect(text).toContain(`|${change}|`);
+      expect(text).toContain(`|${reason}|`);
+    }
+    expect(text.indexOf(en.mvpChanges.design.title)).toBeGreaterThan(text.indexOf(en.mvpChanges.businessData));
+  });
+
+  it("shows the palette label only when the operator's colors or fonts are applied", () => {
+    // React escapes the apostrophe in static markup
+    const label = en.mvpChanges.design.controlsApplied.replace("'", '&#x27;');
+    expect(textOf(render(withChanges({ controls: { primary: '#000000' } })))).toContain(label);
+    expect(textOf(render(withChanges()))).not.toContain(label);
+  });
+
+  it('renders no design block and no placeholder without a list', () => {
+    const text = textOf(render(fullMvp));
+    expect(text).not.toContain(en.mvpChanges.design.title);
+    expect(text).not.toContain(en.mvpChanges.design.caption);
+  });
+
+  it('shows the list as stored, whatever the dashboard language', () => {
+    useLanguageStore.getState().setLanguage('pl');
+    const text = textOf(render(withChanges()));
+    expect(text).toContain(`|${pl.mvpChanges.design.title}|`);
+    expect(text).toContain(`|${changes[0]!.change}|`);
+  });
+
+  it('labels the block in every language', () => {
+    for (const dict of [en, ru, pl, lt, be]) {
+      for (const key of ['title', 'caption', 'controlsApplied'] as const) expect(dict.mvpChanges.design[key].length).toBeGreaterThan(0);
+    }
+  });
+});
+

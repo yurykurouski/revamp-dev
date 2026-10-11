@@ -675,6 +675,11 @@ export const pl: Translation = {
     cls: 'Przesunięcie układu: oryginał → MVP',
     measuredOn: 'MVP zmierzono na {{host}}',
     perfNotMeasured: 'Nie zmierzono szybkości MVP: {{error}}',
+    design: {
+      title: 'Zmiany w projekcie',
+      caption: 'Opisane przez model, który zaprojektował stronę',
+      controlsApplied: 'Twoje kolory i czcionki zastępują wybór modelu.',
+    },
     tags: {
       improved: 'Ulepszono',
       check: 'Sprawdź',
