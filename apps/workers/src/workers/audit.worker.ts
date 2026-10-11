@@ -17,7 +17,7 @@ import { readSiteEra } from '../services/site-era.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
-import { isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
+import { handleAuditJobFailed, isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
 const LATEST_AUDIT = { sort: { createdAt: -1 } } as const;
@@ -329,6 +329,8 @@ export const createAuditWorker = (): Worker => {
 
   worker.on('failed', (job, err) => {
     console.error(`[AuditWorker] Job ${job?.id} failed:`, err);
+    // A job that stalled out never reached the processor's catch (REV-145)
+    void handleAuditJobFailed(job, err);
   });
 
   return worker;
