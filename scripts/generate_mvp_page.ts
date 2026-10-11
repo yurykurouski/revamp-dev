@@ -1,7 +1,7 @@
 /**
  * Generates a model-designed MVP page for real sites (REV-137), read-only: no database, storage or queue.
  *
- *   npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] <out-dir> <url> [url...]
+ *   npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] [--operator-locale <en|ru|be|pl|lt>] <out-dir> <url> [url...]
  *
  * Per URL it captures the page as the audit does (`captureFullAudit`), reads the brand, contacts, services and copy
  * (`processBrandData`), builds the brief, asks the model for the page with the desktop screenshot, and on success
@@ -12,10 +12,12 @@
  * `--self-review` (REV-143) lets the model revise its accepted page once from its own captures, as MVP_PAGE_SELF_REVIEW
  * does, and writes `<host>.first.html` when it did. Each finished page is measured: standards score, axe violations and
  * horizontal scroll at 360 px, for the first page and the kept one, so one run compares the page with and without the pass.
+ * `--operator-locale` (REV-162) asks for the model's design changes in that dashboard language and prints them.
  */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import type { IMvpTheme } from '@revamp/shared-types';
 import { LLM_PROVIDER_IDS, type LlmProviderId } from '@revamp/shared-types';
+import { OperatorLocaleSchema } from '@revamp/validation';
 import { axeService } from '../apps/workers/src/services/axe.service.js';
 import { browserService } from '../apps/workers/src/services/browser.service.js';
 import { BrandExtractorService } from '../apps/workers/src/services/brand-extractor.service.js';
@@ -44,9 +46,16 @@ const selfReview = flag('--self-review');
 const recordDir = option('--record');
 const provider = option('--provider');
 const model = option('--model');
+const operatorLocale = option('--operator-locale');
 const [outDir, ...urls] = args;
-const usage = 'Usage: npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] <out-dir> <url> [url...]';
+const usage =
+  'Usage: npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] [--operator-locale <en|ru|be|pl|lt>] <out-dir> <url> [url...]';
 if (!outDir || outDir.startsWith('--') || urls.length === 0 || urls.some((u) => !/^https?:\/\//i.test(u))) {
+  console.error(usage);
+  process.exit(1);
+}
+const locale = operatorLocale === undefined ? undefined : OperatorLocaleSchema.safeParse(operatorLocale);
+if (locale && !locale.success) {
   console.error(usage);
   process.exit(1);
 }
@@ -133,6 +142,7 @@ try {
       const result = await generator.generate({
         brief,
         screenshot: capture.desktopFullBuffer,
+        ...(locale?.success ? { operatorLocale: locale.data } : {}),
         ...(selfReview
           ? {
               review: (page: string, theme: IMvpTheme) => {
@@ -177,6 +187,10 @@ try {
       }
       console.log(`  kept: ${await measure(kept)}`);
       for (const flag of result.grounding) console.log(`  flag ${flag.kind} "${flag.text}" in "${flag.context}"`);
+      if (locale?.success) {
+        console.log(`  page lang ${/<html[^>]*\blang="([^"]*)"/i.exec(result.page)?.[1] ?? '?'}, ${result.changes?.length ?? 0} design change(s)`);
+        for (const c of result.changes ?? []) console.log(`  change "${c.change}" because "${c.reason}"`);
+      }
     } catch (error) {
       console.log(`${host}: ERROR ${error instanceof Error ? error.message : String(error)}`);
     }
