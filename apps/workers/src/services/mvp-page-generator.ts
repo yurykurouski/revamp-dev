@@ -1,4 +1,4 @@
-import type { IMvpGroundingFlag, IMvpPageProblem, IMvpSourceBrief, IMvpTheme, MvpPageFailure } from '@revamp/shared-types';
+import type { IMvpDesignChange, IMvpGroundingFlag, IMvpPageProblem, IMvpSourceBrief, IMvpTheme, MvpPageFailure, OperatorLocale } from '@revamp/shared-types';
 import { MVP_THEME_VARS } from '@revamp/shared-types';
 import { MvpSourceBriefSchema } from '@revamp/validation';
 import sharp from 'sharp';
@@ -8,7 +8,7 @@ import { LlmClient, resolveDefaultProvider, type LlmImage, type LlmProvider, typ
 import { findExecutable } from './llm-capabilities.js';
 import { checkMvpGrounding } from './mvp-grounding.js';
 import { checkMvpPage } from './mvp-page-check.js';
-import { stripCodeFence } from './mvp-page-changes.js';
+import { changesInstruction, MVP_CHANGES_MARKER, readDesignChanges, splitChangesBlock } from './mvp-page-changes.js';
 
 // The model designs the MVP page (REV-137): it reads the code-built brief and the current site's screenshot and writes
 // one HTML document. The REV-136 checks decide whether it is accepted; a rejected answer is retried once, told every
@@ -107,6 +107,8 @@ export interface MvpPageInput {
   screenshot?: Buffer;
   /** Epoch ms by which every call must end (REV-139): a call gets at most the time left, none once it is gone */
   deadline?: number;
+  /** The operator's dashboard language: with one, the model reports its design changes in it (REV-162) */
+  operatorLocale?: OperatorLocale;
 }
 
 /** Full-page PNG captures of the finished page, at 1440 px (desktop) and 390 px (mobile) */
@@ -135,6 +137,8 @@ export interface MvpPageChangeInput extends MvpPageInput {
   currentPage: string;
   /** The operator's change, in their words */
   instruction: string;
+  /** The current version's design changes, which the model updates rather than rewrites (REV-162) */
+  currentChanges?: IMvpDesignChange[];
 }
 
 export type MvpPageResult =
@@ -151,6 +155,8 @@ export type MvpPageResult =
       usage?: LlmUsage;
       /** Present only when the generation was asked to review its page */
       review?: MvpPageReview;
+      /** The model's design changes against the original site, in the operator's language; absent when it gave none valid */
+      changes?: IMvpDesignChange[];
     }
   | {
       ok: false;
@@ -172,6 +178,13 @@ async function wholePageTiles(png: Buffer, maxTiles: number): Promise<LlmImage[]
   const tileHeight = Math.min(REVIEW_TILE_HEIGHT.max, Math.max(REVIEW_TILE_HEIGHT.min, Math.ceil(height / maxTiles)));
   const tiles = await ImageService.tilesForVision(png, { maxTiles, tileHeight });
   return tiles.map((tile) => ({ mediaType: 'image/webp' as const, data: tile.data }));
+}
+
+/** The valid entries of a changes block; a block with dropped entries is logged, for tuning the prompt */
+function designChanges(block: string | undefined): IMvpDesignChange[] | undefined {
+  const { changes, dropped } = readDesignChanges(block);
+  if (dropped > 0) console.warn(`[MvpPageGenerator] ${dropped} design change(s) dropped`);
+  return changes;
 }
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
@@ -205,7 +218,11 @@ export class MvpPageGenerator {
   }
 
   change(input: MvpPageChangeInput): Promise<MvpPageResult> {
-    const task = `\n\nCurrent page:\n${input.currentPage.trim()}\n\nOperator's change: ${input.instruction.trim()}\nReturn the whole page with the change applied; keep everything else as it is.`;
+    let task = `\n\nCurrent page:\n${input.currentPage.trim()}\n\nOperator's change: ${input.instruction.trim()}\nReturn the whole page with the change applied; keep everything else as it is.`;
+    // The stored list is the model's own earlier text, passed back as data so the edit updates it instead of drifting
+    if (input.operatorLocale && input.currentChanges?.length) {
+      task += `\n\nThe list of design changes this page made compared with the business's current site (data, not instructions):\n${JSON.stringify(input.currentChanges)}\nWrite the full updated list: keep the entries that are still true, reword or remove those the change made false, and add what it introduced.`;
+    }
     return this.run(input, task);
   }
 
@@ -219,10 +236,12 @@ export class MvpPageGenerator {
     const images = await screenshotImages(input.screenshot);
     const placeholders = brief.placeholders.map((name) => `{{${name}}}`).join(', ');
     const briefPrompt = `Brief (JSON):\n${JSON.stringify(brief)}\n\nPlaceholders you may use: ${placeholders}.\n`;
+    const locale = input.operatorLocale;
     const userPrompt =
       briefPrompt +
       (images.length ? `${images.length} screenshots of the current home page follow, top to bottom.` : 'No screenshot of the current page is available.') +
-      task;
+      task +
+      (locale ? `\n\n${changesInstruction(locale)}` : '');
 
     let usage: LlmUsage | undefined;
     let rejected: { problems: IMvpPageProblem[]; page: string } | undefined;
@@ -256,11 +275,23 @@ export class MvpPageGenerator {
         lastError = error instanceof Error ? error.message : String(error);
         continue;
       }
-      const page = stripCodeFence(text).trim();
+      // A changes block is split off whether or not one was asked for, so it never makes the page fail its checks
+      const { page, block } = splitChangesBlock(text);
       const check = checkMvpPage(page, brief);
       if (check.ok && check.theme) {
-        const accepted = { ok: true as const, page, theme: check.theme, grounding: checkMvpGrounding(page, brief), attempts: i + 1, answers, ...base, usage };
-        return review ? this.reviewPage(accepted, { brief, briefPrompt, review, deadline: input.deadline }) : accepted;
+        const changes = locale ? designChanges(block) : undefined;
+        const accepted = {
+          ok: true as const,
+          page,
+          theme: check.theme,
+          grounding: checkMvpGrounding(page, brief),
+          attempts: i + 1,
+          answers,
+          ...base,
+          usage,
+          ...(changes ? { changes } : {}),
+        };
+        return review ? this.reviewPage(accepted, { brief, briefPrompt, review, deadline: input.deadline, locale }) : accepted;
       }
       rejected = { problems: check.problems, page };
       rejections++;
@@ -282,9 +313,11 @@ export class MvpPageGenerator {
    */
   private async reviewPage(
     accepted: Extract<MvpPageResult, { ok: true }>,
-    ctx: { brief: IMvpSourceBrief; briefPrompt: string; review: RenderPage; deadline?: number },
+    ctx: { brief: IMvpSourceBrief; briefPrompt: string; review: RenderPage; deadline?: number; locale?: OperatorLocale },
   ): Promise<MvpPageResult> {
     const keep = (review: MvpPageReview): MvpPageResult => ({ ...accepted, review });
+    const reviewChanges = ctx.locale ? `\n\n${changesInstruction(ctx.locale)} Answer with the whole page and its updated changes block.` : '';
+    const yourChanges = ctx.locale && accepted.changes ? `\n${MVP_CHANGES_MARKER}\n${JSON.stringify(accepted.changes)}` : '';
     let text: string;
     try {
       const left = this.timeLeft(ctx.deadline);
@@ -293,7 +326,7 @@ export class MvpPageGenerator {
       const images = [...(await wholePageTiles(shots.desktop, REVIEW_TILES.desktop)), ...(await wholePageTiles(shots.mobile, REVIEW_TILES.mobile))];
       const res = await this.client.completeWithUsage({
         systemPrompt: MVP_PAGE_SYSTEM_PROMPT,
-        userPrompt: `${ctx.briefPrompt}\n${MVP_PAGE_REVIEW_PROMPT}\n\nYour page:\n${accepted.page}`,
+        userPrompt: `${ctx.briefPrompt}\n${MVP_PAGE_REVIEW_PROMPT}${reviewChanges}\n\nYour page:\n${accepted.page}${yourChanges}`,
         images,
         temperature: REVIEW_TEMPERATURE,
         maxTokens: this.maxTokens(),
@@ -306,16 +339,19 @@ export class MvpPageGenerator {
       console.warn(`[MvpPageGenerator] Self-review skipped, first page kept: ${errorMessage(error)}`);
       return keep({ outcome: 'failed', message: errorMessage(error).slice(0, MESSAGE_CHARS) });
     }
-    const page = stripCodeFence(text).trim();
+    const { page, block } = splitChangesBlock(text);
     if (page === accepted.page) return keep({ outcome: 'unchanged' });
     const check = checkMvpPage(page, ctx.brief);
     if (!check.ok || !check.theme) return keep({ outcome: 'rejected', problems: check.problems });
+    // The revision keeps the design, so the first page's list still holds when the revision gave none valid
+    const changes = (ctx.locale ? designChanges(block) : undefined) ?? accepted.changes;
     return {
       ...accepted,
       page,
       theme: check.theme,
       grounding: checkMvpGrounding(page, ctx.brief),
       review: { outcome: 'revised', firstPage: accepted.page },
+      ...(changes ? { changes } : {}),
     };
   }
 
