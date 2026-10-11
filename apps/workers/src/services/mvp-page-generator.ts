@@ -8,6 +8,7 @@ import { LlmClient, resolveDefaultProvider, type LlmImage, type LlmProvider, typ
 import { findExecutable } from './llm-capabilities.js';
 import { checkMvpGrounding } from './mvp-grounding.js';
 import { checkMvpPage } from './mvp-page-check.js';
+import { stripCodeFence } from './mvp-page-changes.js';
 
 // The model designs the MVP page (REV-137): it reads the code-built brief and the current site's screenshot and writes
 // one HTML document. The REV-136 checks decide whether it is accepted; a rejected answer is retried once, told every
@@ -98,11 +99,7 @@ export function pageProvider(): LlmProvider | undefined {
   return env.VISION_LLM_PROVIDER ?? resolveDefaultProvider() ?? (findExecutable(env.CLAUDE_CLI_PATH) ? 'claude-cli' : undefined);
 }
 
-/** The answer without one markdown fence around all of it; anything else around the page is left for the checks */
-export function stripCodeFence(text: string): string {
-  const match = /^\s*```[a-z]*[ \t]*\n([\s\S]*?)\n?```\s*$/i.exec(text);
-  return match ? (match[1] ?? '').trim() : text;
-}
+export { stripCodeFence } from './mvp-page-changes.js';
 
 export interface MvpPageInput {
   brief: IMvpSourceBrief;
