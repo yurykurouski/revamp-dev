@@ -134,6 +134,13 @@ describe('MvpCompletenessService (REV-36)', () => {
     });
   });
 
+  describe('parseHtml', () => {
+    it('should parse a page with relative preload links (REV-144)', () => {
+      const html = '<html><head><link rel="preload" as="fetch" href="/_payload.json?x"></head><body><a href="tel:+48123456789">Call</a></body></html>';
+      expect(() => service.parseHtml(html)).not.toThrow();
+    });
+  });
+
   describe('critical fields', () => {
     it('finds the phone as text and as a tel: link after normalization', () => {
       const html = page('<footer><a href="tel:+48225551234">+48 (22) 555-12-34</a></footer>');

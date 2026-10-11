@@ -157,6 +157,15 @@ describe('parseHomePage', () => {
     expect(signals.copyrightYear).toBeUndefined();
   });
 
+  it('should survive relative preload links (Nuxt payload) that happy-dom cannot resolve without a base URL', () => {
+    const html =
+      '<html><head><title>T</title><link rel="preload" as="fetch" crossorigin="anonymous" href="/_payload.json?eb0b6d00">' +
+      '<link rel="modulepreload" href="/_nuxt/a.js"><meta name="viewport" content="width=device-width"></head>' +
+      '<body><a href="/cart/">Cart</a></body></html>';
+    expect(() => parseHomePage(html, NOW)).not.toThrow();
+    expect(parseHomePage(html, NOW)).toMatchObject({ hasTitle: true, hasViewport: true, hasEcommerce: true });
+  });
+
   it('should cope with empty or broken markup', () => {
     expect(parseHomePage('', NOW)).toMatchObject({ hasTitle: false, hasViewport: false, links: [] });
     expect(parseHomePage('<html><body><table><tr><td>unclosed', NOW).hasTitle).toBe(false);

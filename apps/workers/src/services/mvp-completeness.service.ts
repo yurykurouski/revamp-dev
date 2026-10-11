@@ -8,6 +8,7 @@
  * computed in code. The report is advisory; it never approves, blocks or dispatches anything.
  */
 import { Window } from 'happy-dom';
+import { withoutPreloadLinks } from './html-document.js';
 import {
   CompletenessField,
   CompletenessStatus,
@@ -298,7 +299,7 @@ export class MvpCompletenessService {
       },
     });
     try {
-      const doc = new window.DOMParser().parseFromString(html, 'text/html');
+      const doc = new window.DOMParser().parseFromString(withoutPreloadLinks(html), 'text/html');
       doc.querySelectorAll('script, style, noscript, template').forEach((el) => el.remove());
 
       const hrefs = Array.from(doc.querySelectorAll('a[href]')).map((a) => a.getAttribute('href') || '');
