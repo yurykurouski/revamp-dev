@@ -14,6 +14,8 @@ import {
   SiteAssessmentSchema,
   ReverseGeocodeQuerySchema,
   ImportDiscoverySchema,
+  EditMvpSchema,
+  OperatorLocaleSchema,
   MvpCompletenessReportSchema,
   CompletenessCheckSchema,
   criticalCompletenessIssues,
@@ -752,4 +754,27 @@ describe('Validation Schemas (@revamp/validation)', () => {
       expect(ImportDiscoverySchema.safeParse({}).success).toBe(false);
     });
   });
+});
+
+describe('operatorLocale (REV-162)', () => {
+  it('accepts the five dashboard languages only', () => {
+    for (const locale of ['en', 'ru', 'be', 'pl', 'lt']) expect(OperatorLocaleSchema.safeParse(locale).success).toBe(true);
+    for (const locale of ['de', 'PL', '']) expect(OperatorLocaleSchema.safeParse(locale).success).toBe(false);
+  });
+
+  const payloads = {
+    CreateLeadSchema: [CreateLeadSchema, { businessName: 'Falco', originalUrl: 'https://falco-dent.pl' }],
+    ImportDiscoverySchema: [ImportDiscoverySchema, { externalIds: ['node/1'] }],
+    GenerateMvpSchema: [GenerateMvpSchema, { auditId: 'a1' }],
+    EditMvpSchema: [EditMvpSchema, { instruction: 'Make the header darker' }],
+  } as const;
+
+  for (const [name, [schema, payload]] of Object.entries(payloads)) {
+    it(`${name} takes an optional, valid operatorLocale`, () => {
+      expect(schema.safeParse(payload).success).toBe(true);
+      const parsed = schema.safeParse({ ...payload, operatorLocale: 'pl' });
+      expect(parsed.success && (parsed.data as { operatorLocale?: string }).operatorLocale).toBe('pl');
+      expect(schema.safeParse({ ...payload, operatorLocale: 'de' }).success).toBe(false);
+    });
+  }
 });

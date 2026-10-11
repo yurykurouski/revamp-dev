@@ -2,8 +2,11 @@
  * Dashboard interface languages (REV-24). Pure helpers, free of i18next and DOM access,
  * so language detection and date formatting stay unit-testable.
  */
-export const SUPPORTED_LANGUAGES = ['en', 'ru', 'be', 'pl', 'lt'] as const;
-export type AppLanguage = (typeof SUPPORTED_LANGUAGES)[number];
+import { OPERATOR_LOCALES, type OperatorLocale } from '@revamp/shared-types';
+
+/** One list with the API's, which validates the language the dashboard sends with its requests (REV-162) */
+export const SUPPORTED_LANGUAGES = OPERATOR_LOCALES;
+export type AppLanguage = OperatorLocale;
 
 /** Each language named in itself, for the switcher */
 export const LANGUAGE_NAMES: Record<AppLanguage, string> = {

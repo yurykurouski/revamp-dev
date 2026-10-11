@@ -20,6 +20,7 @@ import {
   MVP_FONT_CHOICES,
   MVP_MIN_CONTRAST,
   MVP_PLACEHOLDERS,
+  OPERATOR_LOCALES,
 } from '@revamp/shared-types';
 
 export * from './lead-status.js';
@@ -66,6 +67,9 @@ export type EmailDraftOutput = z.infer<typeof EmailDraftOutputSchema>;
 // API Request DTO Schemas
 // ==============================================================================
 
+/** The operator's dashboard language, sent with lead and MVP requests (REV-162) */
+export const OperatorLocaleSchema = z.enum(OPERATOR_LOCALES);
+
 export const NicheEnumSchema = z.enum([
   'dental',
   'auto',
@@ -100,6 +104,7 @@ export const CreateLeadSchema = z.object({
   city: z.string().max(100).optional(),
   contactPhone: z.string().max(30).optional(),
   ownerName: z.string().max(100).optional(),
+  operatorLocale: OperatorLocaleSchema.optional(),
 });
 
 // ==============================================================================
@@ -214,6 +219,7 @@ export const ImportDiscoverySchema = z.object({
     .min(1)
     .max(100)
     .refine((ids) => new Set(ids).size === ids.length, { message: 'externalIds must be unique' }),
+  operatorLocale: OperatorLocaleSchema.optional(),
 });
 
 export type ImportDiscoveryDto = z.infer<typeof ImportDiscoverySchema>;
@@ -318,6 +324,7 @@ export const GenerateMvpSchema = z
     forceRegenerate: z.boolean().optional().default(false),
     provider: LlmProviderSchema.optional(),
     model: z.string().trim().min(1).max(100).optional(),
+    operatorLocale: OperatorLocaleSchema.optional(),
   })
   .superRefine((value, ctx) => {
     if (value.model === undefined) return;
@@ -506,6 +513,7 @@ export const MVP_EDIT_INSTRUCTION_MAX = 500;
  */
 export const EditMvpSchema = z.object({
   instruction: z.string().trim().min(3).max(MVP_EDIT_INSTRUCTION_MAX),
+  operatorLocale: OperatorLocaleSchema.optional(),
 });
 
 export type EditMvpDto = z.infer<typeof EditMvpSchema>;
@@ -893,6 +901,36 @@ export const MvpGroundingFlagSchema = z
 
 export const MvpPageFailureSchema = z.enum(MVP_PAGE_FAILURES);
 
+/** How long a design change and its reason may be, and how many a page keeps (REV-162) */
+export const MVP_DESIGN_CHANGE_LIMITS = { change: 140, reason: 240, maxEntries: 8 } as const;
+
+/** What a design change may not hold: digits (no made-up metrics), placeholders, markup, email addresses or links */
+const DESIGN_CHANGE_REFUSALS: Array<[RegExp, string]> = [
+  [/\p{Nd}/u, 'no digits'],
+  [/\{\{|\}\}/, 'no placeholders'],
+  [/[<>]/, 'no markup'],
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/, 'no email addresses'],
+  [/https?:\/\/|www\./i, 'no links'],
+];
+
+const designChangeText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .min(1)
+    .max(max)
+    .superRefine((text, ctx) => {
+      for (const [pattern, message] of DESIGN_CHANGE_REFUSALS) {
+        if (pattern.test(text)) ctx.addIssue({ code: z.ZodIssueCode.custom, message });
+      }
+    });
+
+/** One design change the page model reports, in the operator's language (REV-162); an entry that fails is dropped */
+export const MvpDesignChangeSchema = z.object({
+  change: designChangeText(MVP_DESIGN_CHANGE_LIMITS.change),
+  reason: designChangeText(MVP_DESIGN_CHANGE_LIMITS.reason),
+});
+
 export const MvpPageVersionSchema = z
   .object({
     n: z.number().int().min(1),
@@ -903,6 +941,7 @@ export const MvpPageVersionSchema = z
     provider: z.string().max(50).optional(),
     model: z.string().max(100).optional(),
     storagePath: z.string().min(1).max(500),
+    changes: z.array(MvpDesignChangeSchema).max(MVP_DESIGN_CHANGE_LIMITS.maxEntries).optional(),
     createdAt: z.coerce.date(),
   })
   .strict();

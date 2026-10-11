@@ -97,6 +97,19 @@ export interface ILeadContacts {
   workingHours?: string;
 }
 
+/** The dashboard's interface languages (REV-24); the operator's language for model-written review text (REV-162) */
+export const OPERATOR_LOCALES = ['en', 'ru', 'be', 'pl', 'lt'] as const;
+export type OperatorLocale = (typeof OPERATOR_LOCALES)[number];
+
+/** Each operator locale's English name, as the page model is told which language to write in */
+export const OPERATOR_LOCALE_NAMES: Record<OperatorLocale, string> = {
+  en: 'English',
+  ru: 'Russian',
+  be: 'Belarusian',
+  pl: 'Polish',
+  lt: 'Lithuanian',
+};
+
 export interface ILead {
   _id: string;
   businessName: string;
@@ -113,6 +126,8 @@ export interface ILead {
   source?: LeadSource;
   /** Maps listing the lead was imported from, e.g. `google:<place_id>` or `osm:node/123` (REV-35) */
   externalId?: string;
+  /** The dashboard language of the operator who added the lead; the first MVP's design changes are written in it (REV-162) */
+  operatorLocale?: OperatorLocale;
   ownerName?: string;
   status: LeadStatus;
   totalScore?: number;
@@ -954,6 +969,8 @@ export interface IAiGenerationJobData {
   /** Operator's provider/model for this run only; the worker's env default applies otherwise (REV-32) */
   provider?: LlmProviderId;
   model?: string;
+  /** The dashboard language of a Regenerate; the lead's own applies otherwise (REV-162) */
+  operatorLocale?: OperatorLocale;
 }
 
 /** Which provider and model produced a run's copy, carried to the MvpProject (REV-32) */
@@ -995,6 +1012,8 @@ export interface IMvpPageJobData {
   controls?: IMvpControlsUpdate;
   /** The version to restore (`restore`) */
   version?: number;
+  /** The dashboard language of a change; the lead's own applies otherwise (REV-162) */
+  operatorLocale?: OperatorLocale;
   /**
    * Epoch ms after which the job is no longer applied: the API has stopped waiting and told the operator it
    * timed out, so a late answer must not change the page behind their back.
@@ -1253,6 +1272,8 @@ export interface IMvpPageVersion {
   model?: string;
   /** The raw page in the demos bucket: `v/<slug>/versions/<n>.html` */
   storagePath: string;
+  /** The page model's account of this page's design changes against the original site (REV-162); absent when it gave none */
+  changes?: IMvpDesignChange[];
   createdAt: string | Date;
 }
 
@@ -1265,4 +1286,11 @@ export interface IMvpPageJob {
   grounding: IMvpGroundingFlag[];
   kind: MvpPageVersionKind;
   instruction?: string;
+  changes?: IMvpDesignChange[];
+}
+
+/** One design change the page model made against the original site, and why, in the operator's language (REV-162) */
+export interface IMvpDesignChange {
+  change: string;
+  reason: string;
 }

@@ -10,6 +10,8 @@ import {
   MvpVersionParamsSchema,
   UpdateMvpTokensSchema,
   contrastRatio,
+  MVP_DESIGN_CHANGE_LIMITS,
+  MvpDesignChangeSchema,
 } from '../src/index.js';
 import { AUDIT_MEASUREMENTS, MVP_FONT_CHOICES } from '@revamp/shared-types';
 
@@ -200,5 +202,56 @@ describe('changes, controls and restore (REV-139)', () => {
 describe('the old pipeline is gone (REV-141)', () => {
   it('AUDIT_MEASUREMENTS has no sections', () => {
     expect(AUDIT_MEASUREMENTS).not.toContain('sections');
+  });
+});
+
+describe('MvpDesignChangeSchema (REV-162)', () => {
+  const entry = { change: 'Moved the services up', reason: 'Visitors see the offer first.' };
+  const ok = (value: unknown) => MvpDesignChangeSchema.safeParse(value).success;
+
+  it('accepts a plain entry and trims it', () => {
+    expect(MvpDesignChangeSchema.parse({ change: '  Moved services up ', reason: ' Visitors see the offer first. ' })).toEqual({
+      change: 'Moved services up',
+      reason: 'Visitors see the offer first.',
+    });
+  });
+
+  it('accepts each field at its limit and refuses one character more', () => {
+    expect(ok({ change: 'a'.repeat(140), reason: 'a'.repeat(240) })).toBe(true);
+    expect(ok({ ...entry, change: 'a'.repeat(141) })).toBe(false);
+    expect(ok({ ...entry, reason: 'a'.repeat(241) })).toBe(false);
+  });
+
+  it('refuses empty or whitespace-only fields', () => {
+    expect(ok({ ...entry, change: '' })).toBe(false);
+    expect(ok({ ...entry, reason: '   ' })).toBe(false);
+    expect(ok({ change: entry.change })).toBe(false);
+  });
+
+  it('refuses digits, including non-ASCII ones', () => {
+    for (const text of ['3 columns', '\u0663 columns', '\uff13 columns']) {
+      expect(ok({ ...entry, change: text })).toBe(false);
+      expect(ok({ ...entry, reason: text })).toBe(false);
+    }
+  });
+
+  it('refuses contacts, placeholders, links and markup', () => {
+    for (const text of ['mail us at a@b.pl', 'call {{phone}}', 'see https://x.pl', 'see http://x.pl', 'www.x.pl', '<b>bold</b>', 'a > b']) {
+      expect(ok({ ...entry, reason: text })).toBe(false);
+    }
+  });
+
+  it('strips unknown keys', () => {
+    expect(MvpDesignChangeSchema.parse({ ...entry, why: 'x' })).toEqual(entry);
+  });
+
+  it('has the limits the spec sets', () => {
+    expect(MVP_DESIGN_CHANGE_LIMITS).toEqual({ change: 140, reason: 240, maxEntries: 8 });
+  });
+
+  it('a stored version may carry its design changes', () => {
+    const version = { n: 1, kind: 'generate', storagePath: 'v/x/versions/1.html', createdAt: new Date().toISOString() };
+    expect(MvpPageVersionSchema.safeParse({ ...version, changes: [entry] }).success).toBe(true);
+    expect(MvpPageVersionSchema.safeParse({ ...version, changes: Array.from({ length: 9 }, () => entry) }).success).toBe(false);
   });
 });
