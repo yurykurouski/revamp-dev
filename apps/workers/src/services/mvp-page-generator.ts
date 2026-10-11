@@ -65,6 +65,13 @@ Structure:
 
 Answer with exactly one complete HTML document, from <!DOCTYPE html> to </html>: no prose, no markdown fence.`;
 
+/** The self-review task (REV-143): the model sees its accepted page rendered and may revise it once */
+export const MVP_PAGE_REVIEW_PROMPT = `The images are your page as rendered: first at 1440 px wide (desktop), then at 390 px wide (mobile), each top
+to bottom, with the contacts and the booking form filled in. Review it as a designer and fix only what is visibly wrong:
+horizontal scroll or content cut off on mobile, overlapping or clipped text, text with too little contrast, stretched or
+broken images, empty or collapsed sections. Keep the design, the copy, the images and the placeholders; every rule above
+still applies. If nothing needs fixing, answer with the page unchanged. Answer with the whole page.`;
+
 /** The model call the generator needs; tests pass a stub replaying recorded answers */
 export type PageLlm = Pick<LlmClient, 'completeWithUsage' | 'unavailableReason' | 'modelName' | 'provider'>;
 
@@ -78,6 +85,10 @@ const REJECTED_PAGE_CHARS = 60_000;
 const TIMEOUT_MS = 300_000;
 const MAX_TILES = 3;
 const MESSAGE_CHARS = 500;
+/** The revision fixes the page it is shown, so it runs cool like the retry */
+const REVIEW_TEMPERATURE = 0.3;
+/** Tiles of the page's own captures sent with the revision; the original site's screenshot is not resent */
+const REVIEW_TILES = { desktop: 2, mobile: 3 };
 
 /** The vision model for the page: VISION_LLM_PROVIDER, else the copywriting default, else the local CLI when found */
 export function pageProvider(): LlmProvider | undefined {
@@ -98,6 +109,27 @@ export interface MvpPageInput {
   deadline?: number;
 }
 
+/** Full-page PNG captures of the finished page, at 1440 px (desktop) and 390 px (mobile) */
+export interface PageShots {
+  desktop: Buffer;
+  mobile: Buffer;
+}
+
+/** Renders an accepted raw page, finished, for the self-review (REV-143); `pageReviewRenderer` in production */
+export type RenderPage = (page: string, theme: IMvpTheme) => Promise<PageShots>;
+
+export interface MvpPageGenerateInput extends MvpPageInput {
+  /** With a renderer, the accepted page gets one visual self-review call (MVP_PAGE_SELF_REVIEW) */
+  review?: RenderPage;
+}
+
+/** What the self-review did; in every outcome but `revised` the first page is the one returned */
+export type MvpPageReview =
+  | { outcome: 'revised'; firstPage: string }
+  | { outcome: 'unchanged' }
+  | { outcome: 'rejected'; problems: IMvpPageProblem[] }
+  | { outcome: 'failed'; message: string };
+
 export interface MvpPageChangeInput extends MvpPageInput {
   /** The raw page as stored (placeholders unfilled) */
   currentPage: string;
@@ -117,6 +149,8 @@ export type MvpPageResult =
       modelUsed: string;
       provider?: LlmProvider;
       usage?: LlmUsage;
+      /** Present only when the generation was asked to review its page */
+      review?: MvpPageReview;
     }
   | {
       ok: false;
@@ -132,14 +166,18 @@ export type MvpPageResult =
 const addUsage = (a: LlmUsage | undefined, b: LlmUsage | undefined): LlmUsage | undefined =>
   !a ? b : !b ? a : { promptTokens: a.promptTokens + b.promptTokens, completionTokens: a.completionTokens + b.completionTokens, totalTokens: a.totalTokens + b.totalTokens };
 
+const webpTiles = async (png: Buffer, maxTiles: number): Promise<LlmImage[]> =>
+  (await ImageService.tilesForVision(png, { maxTiles })).map((tile) => ({ mediaType: 'image/webp' as const, data: tile.data }));
+
+const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
 async function screenshotImages(png: Buffer | undefined): Promise<LlmImage[]> {
   if (!png) return [];
   try {
-    const tiles = await ImageService.tilesForVision(png, { maxTiles: MAX_TILES });
-    return tiles.map((tile) => ({ mediaType: 'image/webp' as const, data: tile.data }));
+    return await webpTiles(png, MAX_TILES);
   } catch (error) {
     // A capture that cannot be read leaves the model the brief alone; it never fails the generation
-    console.warn(`[MvpPageGenerator] Screenshot left out: ${error instanceof Error ? error.message : String(error)}`);
+    console.warn(`[MvpPageGenerator] Screenshot left out: ${errorMessage(error)}`);
     return [];
   }
 }
@@ -156,8 +194,8 @@ export class MvpPageGenerator {
     return reason ? `No model to design the page: ${reason}` : undefined;
   }
 
-  generate(input: MvpPageInput): Promise<MvpPageResult> {
-    return this.run(input, '');
+  generate(input: MvpPageGenerateInput): Promise<MvpPageResult> {
+    return this.run(input, '', input.review);
   }
 
   change(input: MvpPageChangeInput): Promise<MvpPageResult> {
@@ -165,7 +203,7 @@ export class MvpPageGenerator {
     return this.run(input, task);
   }
 
-  private async run(input: MvpPageInput, task: string): Promise<MvpPageResult> {
+  private async run(input: MvpPageInput, task: string, review?: RenderPage): Promise<MvpPageResult> {
     // The brief is validated here, so a caller can never put more (contact values) into the prompt
     const brief = MvpSourceBriefSchema.parse(input.brief) as IMvpSourceBrief;
     const base = { modelUsed: this.client.modelName, provider: this.client.provider };
@@ -174,8 +212,9 @@ export class MvpPageGenerator {
 
     const images = await screenshotImages(input.screenshot);
     const placeholders = brief.placeholders.map((name) => `{{${name}}}`).join(', ');
+    const briefPrompt = `Brief (JSON):\n${JSON.stringify(brief)}\n\nPlaceholders you may use: ${placeholders}.\n`;
     const userPrompt =
-      `Brief (JSON):\n${JSON.stringify(brief)}\n\nPlaceholders you may use: ${placeholders}.\n` +
+      briefPrompt +
       (images.length ? `${images.length} screenshots of the current home page follow, top to bottom.` : 'No screenshot of the current page is available.') +
       task;
 
@@ -188,7 +227,7 @@ export class MvpPageGenerator {
       const retry = rejected
         ? `\n\nYour previous answer was rejected:\n${rejected.problems.map((p) => `- ${p.code}: ${p.message}`).join('\n')}\n\nYour rejected page:\n${rejected.page.slice(0, REJECTED_PAGE_CHARS)}\n\nAnswer again with the whole page, keeping its design and fixing all of these.`
         : '';
-      const left = input.deadline === undefined ? TIMEOUT_MS : input.deadline - Date.now();
+      const left = this.timeLeft(input.deadline);
       if (left <= 0) {
         lastError = 'out of time: the operator stopped waiting';
         break;
@@ -200,8 +239,8 @@ export class MvpPageGenerator {
           userPrompt: userPrompt + retry,
           images,
           temperature,
-          maxTokens: (this.client.provider && MAX_TOKENS[this.client.provider]) ?? DEFAULT_MAX_TOKENS,
-          timeoutMs: Math.min(TIMEOUT_MS, left),
+          maxTokens: this.maxTokens(),
+          timeoutMs: left,
           format: 'text',
         });
         usage = addUsage(usage, res.usage);
@@ -214,7 +253,8 @@ export class MvpPageGenerator {
       const page = stripCodeFence(text).trim();
       const check = checkMvpPage(page, brief);
       if (check.ok && check.theme) {
-        return { ok: true, page, theme: check.theme, grounding: checkMvpGrounding(page, brief), attempts: i + 1, answers, ...base, usage };
+        const accepted = { ok: true as const, page, theme: check.theme, grounding: checkMvpGrounding(page, brief), attempts: i + 1, answers, ...base, usage };
+        return review ? this.reviewPage(accepted, { brief, briefPrompt, review, deadline: input.deadline }) : accepted;
       }
       rejected = { problems: check.problems, page };
       rejections++;
@@ -228,6 +268,58 @@ export class MvpPageGenerator {
       return { ok: false, reason: 'invalid_page', message: message.slice(0, MESSAGE_CHARS), problems: rejected.problems, answers, ...base, usage };
     }
     return { ok: false, reason: 'call_failed', message: `The model could not be reached: ${lastError ?? 'unknown error'}`.slice(0, MESSAGE_CHARS), answers, ...base, usage };
+  }
+
+  /**
+   * One visual self-review (REV-143): the accepted page is rendered, finished, at desktop and mobile width and the model
+   * may revise it once. The revision passes the same checks or the first page stays; a review never fails a generation.
+   */
+  private async reviewPage(
+    accepted: Extract<MvpPageResult, { ok: true }>,
+    ctx: { brief: IMvpSourceBrief; briefPrompt: string; review: RenderPage; deadline?: number },
+  ): Promise<MvpPageResult> {
+    const keep = (review: MvpPageReview): MvpPageResult => ({ ...accepted, review });
+    let text: string;
+    try {
+      const left = this.timeLeft(ctx.deadline);
+      if (left <= 0) throw new Error('out of time: the operator stopped waiting');
+      const shots = await ctx.review(accepted.page, accepted.theme);
+      const images = [...(await webpTiles(shots.desktop, REVIEW_TILES.desktop)), ...(await webpTiles(shots.mobile, REVIEW_TILES.mobile))];
+      const res = await this.client.completeWithUsage({
+        systemPrompt: MVP_PAGE_SYSTEM_PROMPT,
+        userPrompt: `${ctx.briefPrompt}\n${MVP_PAGE_REVIEW_PROMPT}\n\nYour page:\n${accepted.page}`,
+        images,
+        temperature: REVIEW_TEMPERATURE,
+        maxTokens: this.maxTokens(),
+        timeoutMs: left,
+        format: 'text',
+      });
+      accepted = { ...accepted, usage: addUsage(accepted.usage, res.usage), answers: [...accepted.answers, res.text] };
+      text = res.text;
+    } catch (error) {
+      console.warn(`[MvpPageGenerator] Self-review skipped, first page kept: ${errorMessage(error)}`);
+      return keep({ outcome: 'failed', message: errorMessage(error).slice(0, MESSAGE_CHARS) });
+    }
+    const page = stripCodeFence(text).trim();
+    if (page === accepted.page) return keep({ outcome: 'unchanged' });
+    const check = checkMvpPage(page, ctx.brief);
+    if (!check.ok || !check.theme) return keep({ outcome: 'rejected', problems: check.problems });
+    return {
+      ...accepted,
+      page,
+      theme: check.theme,
+      grounding: checkMvpGrounding(page, ctx.brief),
+      review: { outcome: 'revised', firstPage: accepted.page },
+    };
+  }
+
+  private maxTokens(): number {
+    return (this.client.provider && MAX_TOKENS[this.client.provider]) ?? DEFAULT_MAX_TOKENS;
+  }
+
+  /** The time a call may take: TIMEOUT_MS, or less when the deadline is nearer; zero or less once it has passed */
+  private timeLeft(deadline: number | undefined): number {
+    return deadline === undefined ? TIMEOUT_MS : Math.min(TIMEOUT_MS, deadline - Date.now());
   }
 }
 

@@ -3,13 +3,14 @@ import sharp from 'sharp';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MVP_THEME_VARS } from '@revamp/shared-types';
 import type { LlmCompletion, LlmCompletionRequest } from '../llm-client.js';
-import { MVP_PAGE_SYSTEM_PROMPT, MvpPageGenerator, stripCodeFence, type PageLlm } from '../mvp-page-generator.js';
+import { MVP_PAGE_REVIEW_PROMPT, MVP_PAGE_SYSTEM_PROMPT, MvpPageGenerator, stripCodeFence, type PageLlm, type RenderPage } from '../mvp-page-generator.js';
 import { BRIEF, VALID } from './fixtures/page-gen/page.js';
 
 const answer = (name: string) => readFileSync(new URL(`./fixtures/page-gen/answers/${name}`, import.meta.url), 'utf8');
 const FENCED = answer('fenced.txt');
 const WITH_SCRIPT = answer('with-script.html');
 const APOLOGY = answer('apology.txt');
+const REVISED = answer('revised.html');
 
 /** Replays recorded answers in order; an Error in the queue is thrown as a failed call */
 function stub(queue: Array<string | Error>, unavailable?: string, provider: PageLlm['provider'] = 'claude-cli') {
@@ -256,5 +257,109 @@ describe('a recorded answer from a real site (REV-137)', () => {
     expect(result).toMatchObject({ ok: true, attempts: 1 });
     if (!result.ok) throw new Error('expected a page');
     expect(result.grounding).toEqual(recorded.grounding);
+  });
+});
+
+describe('MvpPageGenerator self-review (REV-143)', () => {
+  const white = (width: number, height: number) =>
+    sharp({ create: { width, height, channels: 3, background: '#ffffff' } }).png().toBuffer();
+  /** Full-page captures at 1440 and 390 px: two and four tiles' worth, cut to 2 + 3 */
+  const shots = async () => ({ desktop: await white(1440, 4000), mobile: await white(390, 6000) });
+  const renderer = () => vi.fn<RenderPage>(shots);
+
+  it('flag off: no review, one call, no render', async () => {
+    const { gen, requests } = generator([VALID]);
+    const result = await gen.generate({ brief: BRIEF });
+    expect(requests).toHaveLength(1);
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.review).toBeUndefined();
+  });
+
+  it('revision accepted: the revised page, its theme and grounding are returned', async () => {
+    const render = renderer();
+    const { gen, requests } = generator([VALID, REVISED]);
+    const result = await gen.generate({ brief: BRIEF, review: render });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.page).toBe(REVISED.trim());
+    expect(result.review).toEqual({ outcome: 'revised', firstPage: VALID.trim() });
+    expect(result).toMatchObject({ attempts: 1, answers: [VALID, REVISED] });
+    expect(result.theme.primary).toBe('#0a5c8a');
+    expect(result.usage?.totalTokens).toBe(60);
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(render.mock.calls[0]?.[0]).toBe(VALID.trim());
+    expect(render.mock.calls[0]?.[1].primary).toBe('#0a5c8a');
+    const revision = requests[1];
+    expect(revision?.systemPrompt).toBe(MVP_PAGE_SYSTEM_PROMPT);
+    expect(revision?.temperature).toBe(0.3);
+    expect(revision?.images).toHaveLength(5);
+    expect(revision?.userPrompt).toContain(MVP_PAGE_REVIEW_PROMPT);
+    expect(revision?.userPrompt).toContain('Your page:');
+    expect(revision?.userPrompt).toContain(VALID.trim().slice(0, 200));
+    expect(revision?.userPrompt).toContain(JSON.stringify(BRIEF));
+    expect(revision?.userPrompt).not.toContain('screenshots of the current home page follow');
+  });
+
+  it('revision rejected: the first page is kept with the problems', async () => {
+    const { gen } = generator([VALID, WITH_SCRIPT]);
+    const result = await gen.generate({ brief: BRIEF, review: renderer() });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.page).toBe(VALID.trim());
+    expect(result.review?.outcome).toBe('rejected');
+    expect(result.review?.outcome === 'rejected' && result.review.problems[0]?.code).toBe('page:script');
+  });
+
+  it('revision unchanged: the first page is kept', async () => {
+    const result = await generator([VALID, VALID]).gen.generate({ brief: BRIEF, review: renderer() });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.page).toBe(VALID.trim());
+    expect(result.review).toEqual({ outcome: 'unchanged' });
+  });
+
+  it('revision in a code fence is accepted', async () => {
+    const result = await generator([VALID, '```html\n' + REVISED + '\n```']).gen.generate({ brief: BRIEF, review: renderer() });
+    if (!result.ok) throw new Error('expected a page');
+    expect(result.review?.outcome).toBe('revised');
+    expect(result.page).toBe(REVISED.trim());
+  });
+
+  it('render fails: the first page is kept and no revision call is made', async () => {
+    const render = vi.fn<RenderPage>(async () => {
+      throw new Error('Chromium crashed');
+    });
+    const { gen, requests } = generator([VALID]);
+    const result = await gen.generate({ brief: BRIEF, review: render });
+    expect(requests).toHaveLength(1);
+    expect(result).toMatchObject({ ok: true, page: VALID.trim(), review: { outcome: 'failed', message: expect.stringContaining('Chromium crashed') } });
+  });
+
+  it('revision call fails: the first page is kept', async () => {
+    const result = await generator([VALID, new Error('timed out')]).gen.generate({ brief: BRIEF, review: renderer() });
+    expect(result).toMatchObject({ ok: true, page: VALID.trim(), review: { outcome: 'failed', message: expect.stringContaining('timed out') } });
+  });
+
+  it('review runs after an accepted retry, never after a failure', async () => {
+    const { gen, requests } = generator([WITH_SCRIPT, VALID, REVISED]);
+    const result = await gen.generate({ brief: BRIEF, review: renderer() });
+    expect(result).toMatchObject({ ok: true, attempts: 2, review: { outcome: 'revised' } });
+    expect(requests).toHaveLength(3);
+
+    const render = renderer();
+    const failed = await generator([WITH_SCRIPT, WITH_SCRIPT]).gen.generate({ brief: BRIEF, review: render });
+    expect(failed.ok).toBe(false);
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it('a change is never reviewed', async () => {
+    const render = renderer();
+    const { gen, requests } = generator([VALID]);
+    await gen.change({ brief: BRIEF, currentPage: VALID, instruction: 'Darker hero', review: render } as never);
+    expect(requests).toHaveLength(1);
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it('MVP_PAGE_REVIEW_PROMPT names the widths and what to fix', () => {
+    for (const phrase of ['1440 px', '390 px', 'horizontal scroll', 'contrast', 'Keep the design', 'answer with the page unchanged']) {
+      expect(MVP_PAGE_REVIEW_PROMPT).toContain(phrase);
+    }
   });
 });
