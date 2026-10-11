@@ -4,7 +4,7 @@ Revamp finds local businesses with dated websites, audits each site, builds a mo
 
 ```
 Maps search ─┐
-             ├─► Audit ─► MVP copy ─► MVP build + completeness check ─► Operator review (HITL) ─► Email ─► Tracking
+             ├─► Audit ─► MVP page (model) ─► checks, publish + completeness ─► Operator review (HITL) ─► Email ─► Tracking
 Manual URL ──┘
 ```
 
