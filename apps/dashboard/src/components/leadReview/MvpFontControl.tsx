@@ -22,6 +22,7 @@ export const MvpFontControl: React.FC<MvpFontControlProps> = ({ value, disabled,
       value={value ?? ''}
       disabled={disabled}
       SelectProps={{ native: true }}
+      InputLabelProps={{ shrink: true }}
       data-testid="mvp-font-control"
       onChange={(event) => {
         const id = event.target.value;

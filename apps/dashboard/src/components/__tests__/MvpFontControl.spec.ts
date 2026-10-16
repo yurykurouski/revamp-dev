@@ -38,6 +38,7 @@ describe('MvpFontControl (REV-140)', () => {
         ),
       ),
     );
+  const label = () => container.querySelector<HTMLLabelElement>('label')!;
   const select = () => container.querySelector<HTMLSelectElement>('select')!;
   const choose = (value: string) =>
     act(() => {
@@ -51,6 +52,13 @@ describe('MvpFontControl (REV-140)', () => {
     expect(options).toHaveLength(MVP_FONT_CHOICES.length + 1);
     expect(options[0]).toBe("The page's own fonts");
     expect(options).toContain('Playfair Display / Source Sans 3');
+  });
+
+  it('keeps the Fonts label shrunk when no pairing is saved ("The page\'s own fonts", REV-161)', () => {
+    render(null);
+    expect(select().value).toBe('');
+    expect(label().getAttribute('data-shrink')).toBe('true');
+    expect(label().classList.contains('MuiInputLabel-shrink')).toBe(true);
   });
 
   it('sends the chosen pairing and null for the page fonts', () => {
