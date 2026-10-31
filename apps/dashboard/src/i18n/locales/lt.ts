@@ -737,6 +737,7 @@ export const lt: Translation = {
     justNow: 'Ką tik',
     attachment: '📎 Priedas: palyginimas prieš / po (1200x630)',
     comparisonAlt: 'Palyginimo koliažas prieš / po',
+    openBanner: 'Atidaryti palyginimo banerį visu dydžiu',
     viewPrototype: 'Peržiūrėti interaktyvų prototipą',
     shortcut: 'Spartusis klavišas: Cmd + Enter',
     reject: 'Atmesti klientą',

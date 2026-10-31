@@ -184,7 +184,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
           >
             {s === 'audit' && <AuditStep audit={audit} mvp={mvp} isLoading={isAuditLoading} error={auditError} />}
             {s === 'prototype' && <PrototypeStep lead={lead} audit={audit} mvp={mvp} />}
-            {s === 'email' && <EmailDraftEditor lead={lead} draft={draft} />}
+            {s === 'email' && <EmailDraftEditor lead={lead} draft={draft} mvp={mvp} />}
           </Box>
         ))}
       </Box>

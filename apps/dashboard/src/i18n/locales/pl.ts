@@ -737,6 +737,7 @@ export const pl: Translation = {
     justNow: 'Przed chwilą',
     attachment: '📎 Załącznik: porównanie przed / po (1200x630)',
     comparisonAlt: 'Kolaż porównawczy przed / po',
+    openBanner: 'Otwórz baner porównawczy w pełnym rozmiarze',
     viewPrototype: 'Zobacz interaktywny prototyp',
     shortcut: 'Skrót: Cmd + Enter',
     reject: 'Odrzuć leada',

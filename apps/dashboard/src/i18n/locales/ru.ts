@@ -737,6 +737,7 @@ export const ru: Translation = {
     justNow: 'Только что',
     attachment: '📎 Вложение: сравнение «до / после» (1200x630)',
     comparisonAlt: 'Коллаж сравнения «до / после»',
+    openBanner: 'Открыть баннер сравнения в полном размере',
     viewPrototype: 'Посмотреть интерактивный прототип',
     shortcut: 'Сочетание: Cmd + Enter',
     reject: 'Отклонить лид',
