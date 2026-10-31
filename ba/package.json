@@ -1,0 +1,12 @@
+{
+  "name": "ba-docx",
+  "private": true,
+  "description": "Builds BA_Kurouski_Yury.docx (diploma BA block). Not part of the monorepo; not committed.",
+  "scripts": {
+    "build": "node build.js",
+    "diagrams": "node diagrams/render.js"
+  },
+  "dependencies": {
+    "docx": "^9.14.0"
+  }
+}

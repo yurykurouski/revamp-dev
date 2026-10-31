@@ -150,11 +150,12 @@ When the `linear` MCP server is available in the agent environment:
 ### 4.3. Mandatory Ticket Pipeline for Bug Fixes and New Features
 Every bug fix and every new feature MUST have its own Linear ticket and MUST go through the full pipeline below: **ticket → code → testing → PR → merge → docs → close ticket**. No step may be skipped, and no code for a bug or feature may reach `main` without a ticket.
 
-1. **Ticket.** Before writing any code, create a ticket in team **REV**, project **Revamp** (`save_issue`), or reuse an existing one if it already covers the work.
+1. **Ticket.** Before writing any code, create a ticket in team **REV**, project **Revamp: Lead Generation SaaS (Diploma)** (`save_issue`), or reuse an existing one if it already covers the work.
    * Title: a short, specific summary in English.
    * Description: `## Problem` (observed vs. expected, root cause when known), `## Expected`, and `## Acceptance criteria` as a checklist.
    * Label `Bug` for bug fixes or `Feature` for new features. Assign to the requesting user. Set priority.
    * One ticket per bug or feature. When the user reports several issues at once, create a separate ticket for each.
+   * **Read the project documents first.** Before formulating any new ticket, read the documents of the Linear project **Revamp: Lead Generation SaaS (Diploma)** (`get_document`): "Revamp — Current Concept and Decision Log" (current model, decisions, what is deferred), "Revamp — Business Analysis" (scope, epics, user stories, NFR, risks) and, for criteria work, "Revamp — Diploma Topic Application". The ticket must fit the current concept: link the epic (E1–E5) and user story it serves, take acceptance criteria from the story, and do not reintroduce anything listed as deferred (auction, self-serve publishing). If the work contradicts or extends these documents, say so in the ticket and update the documents (or ask the user) before coding.
    * Move the ticket to **In Progress** when work starts.
 2. **Code.** Create a branch from an up-to-date `main` following §4.1 (`ymorpheus/rev-<number>-<short-description>`). Commit with the ticket key (`fix(REV-<n>): ...` / `feat(REV-<n>): ...`). Keep each branch scoped to its ticket; changes unrelated to the ticket go in their own ticket.
 3. **Testing.** Add or update Vitest tests per §3.2.5, then run every gate locally. The repository has no CI, so this local run is the gate:

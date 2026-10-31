@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1300" height="860" viewBox="0 0 1300 860" font-family="Arial, Helvetica, sans-serif" fill="#111">
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#222"/></marker>
+<marker id="open" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10" fill="none" stroke="#6b7a90" stroke-width="1.5"/></marker>
+</defs>
+<rect width="100%" height="100%" fill="#fff"/>
+<rect x="90" y="30" width="220" height="48" rx="4" fill="#eef4fb" stroke="#2f5d8a" stroke-width="1.5"/><text x="200" y="60" font-size="15" font-weight="bold" font-style="normal" text-anchor="middle">Studio operator</text><line x1="200" y1="78" x2="200" y2="820" stroke="#555" stroke-width="1.2" stroke-dasharray="7 5"/>
+<rect x="540" y="30" width="220" height="48" rx="4" fill="#eef4fb" stroke="#2f5d8a" stroke-width="1.5"/><text x="650" y="60" font-size="15" font-weight="bold" font-style="normal" text-anchor="middle">Revamp platform</text><line x1="650" y1="78" x2="650" y2="820" stroke="#555" stroke-width="1.2" stroke-dasharray="7 5"/>
+<rect x="990" y="30" width="220" height="48" rx="4" fill="#eef4fb" stroke="#2f5d8a" stroke-width="1.5"/><text x="1100" y="60" font-size="15" font-weight="bold" font-style="normal" text-anchor="middle">Payment provider</text><line x1="1100" y1="78" x2="1100" y2="820" stroke="#555" stroke-width="1.2" stroke-dasharray="7 5"/>
+<path d="M 200 130 L 650 130" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="425" y="122" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">1. getListings(niche, area, band)</text>
+<path d="M 650 176 L 200 176" fill="none" stroke="#222" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="425" y="168" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">masked lots: niche, district, band, price, release time</text>
+<path d="M 200 222 L 650 222" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="425" y="214" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">2. buy(lot)</text>
+<path d="M 650 268 L 700 268 L 700 290 L 654 290" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="712" y="283" font-size="14" font-weight="normal" font-style="normal" text-anchor="start">check limit of rights; reserve lot for the studio</text>
+<path d="M 650 318 L 1100 318" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="875" y="310" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">3. createPayment(price)</text>
+<path d="M 1100 364 L 650 364" fill="none" stroke="#222" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="875" y="356" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">payment page</text>
+<path d="M 650 410 L 200 410" fill="none" stroke="#222" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="425" y="402" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">redirect to payment page; reservation timer</text>
+<path d="M 200 456 L 1100 456" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="425" y="448" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">4. pay</text>
+<path d="M 1100 502 L 650 502" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="875" y="494" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">5. paymentSucceeded(event)</text>
+<path d="M 650 548 L 700 548 L 700 570 L 654 570" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="712" y="563" font-size="14" font-weight="normal" font-style="normal" text-anchor="start">record charge in ledger; create right exactly once</text>
+<path d="M 650 598 L 700 598 L 700 620 L 654 620" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="712" y="613" font-size="14" font-weight="normal" font-style="normal" text-anchor="start">re-check site; reveal business; queue prototype</text>
+<path d="M 650 648 L 200 648" fill="none" stroke="#222" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="425" y="640" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">right granted: business identity, audit, prototype pending</text>
+<rect x="90" y="698" width="1120" height="110" fill="none" stroke="#444" stroke-width="1.3"/>
+<path d="M 90 698 L 170 698 L 170 716 L 160 726 L 90 726 Z" fill="#f2f2f2" stroke="#444" stroke-width="1.3"/>
+<text x="128" y="717" font-size="14" font-weight="bold" font-style="normal" text-anchor="middle">alt</text>
+<text x="190" y="717" font-size="14" font-weight="normal" font-style="italic" text-anchor="start">[payment fails or the reservation expires]</text>
+<path d="M 650 746 L 700 746 L 700 768 L 654 768" fill="none" stroke="#222" stroke-width="1.4" marker-end="url(#arrow)"/>
+<text x="712" y="761" font-size="14" font-weight="normal" font-style="normal" text-anchor="start">release lot; no charge recorded</text>
+<path d="M 650 790 L 200 790" fill="none" stroke="#222" stroke-width="1.4" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="425" y="782" font-size="14" font-weight="normal" font-style="normal" text-anchor="middle">lot no longer reserved</text>
+</svg>
