@@ -69,6 +69,7 @@ Revamp-dev/
 │   ├── shared-types/    # Shared interfaces, enums, DTOs and queue names across the monorepo
 │   ├── validation/      # Shared Zod validation schemas (API and frontend forms)
 │   └── db/              # Mongoose models shared by the API and workers (REV-48)
+├── .github/workflows/   # ci.yml: gates on every PR, deploy from main (REV-177)
 ├── scripts/             # setup.mjs / dev.mjs (REV-95, plain Node, no deps), maintenance and live-crawl scripts
 ├── docker-compose.yml   # Containerized services: MongoDB 7.0, Redis 7.0, MinIO + minio-init
 ├── package.json         # Root npm workspace configuration
@@ -158,7 +159,7 @@ Every bug fix and every new feature MUST have its own Linear ticket and MUST go 
    * **Read the project documents first.** Before formulating any new ticket, read the documents of the Linear project **Revamp: Lead Generation SaaS (Diploma)** (`get_document`): "Revamp — Current Concept and Decision Log" (current model, decisions, what is deferred), "Revamp — Business Analysis" (scope, epics, user stories, NFR, risks) and, for criteria work, "Revamp — Diploma Topic Application". The ticket must fit the current concept: link the epic (E1–E5) and user story it serves, take acceptance criteria from the story, and do not reintroduce anything listed as deferred (auction, self-serve publishing). If the work contradicts or extends these documents, say so in the ticket and update the documents (or ask the user) before coding.
    * Move the ticket to **In Progress** when work starts.
 2. **Code.** Create a branch from an up-to-date `main` following §4.1 (`ymorpheus/rev-<number>-<short-description>`). Commit with the ticket key (`fix(REV-<n>): ...` / `feat(REV-<n>): ...`). Keep each branch scoped to its ticket; changes unrelated to the ticket go in their own ticket.
-3. **Testing.** Add or update Vitest tests per §3.2.5, then run every gate locally. The repository has no CI, so this local run is the gate:
+3. **Testing.** Add or update Vitest tests per §3.2.5, then run every gate locally before pushing. GitHub Actions (`.github/workflows/ci.yml`, REV-177) runs the same gates on every PR as the required `Gates` check, but it is a backstop, not a substitute for the local run:
    * `npm run build:packages` (the apps typecheck against the packages' compiled `dist`)
    * `npm run typecheck`
    * `npm run lint` (0 errors, no new warnings)
@@ -166,7 +167,8 @@ Every bug fix and every new feature MUST have its own Linear ticket and MUST go 
    * `npm run build` (full production build)
    * For behavior changes, also run the app (API, workers, dashboard) and check the change end to end.
    * Before committing, verify the change in Chrome: open the running dashboard, go through the affected flow, and confirm it behaves as expected with no new console errors.
-   If any gate fails, fix it before opening the PR. Never open or merge a PR with failing gates.
+   If any gate fails, fix it before opening the PR. Never open or merge a PR with failing gates, locally or in the PR's `Gates` check.
+   * The workflow's `Deploy` job runs only on `main` after `Gates` passes: it builds the production images and runs `deploy/deploy.sh` on the server over SSH, with credentials from the GitHub `production` environment (README, CI/CD). Never put a secret in the workflow or the repository; `deploy/__tests__/ci-workflow.spec.ts` checks the workflow's gates, scripts and secret references, so a change to the workflow updates that test too.
 4. **PR.** Push the branch and open a PR with `gh pr create`.
    * Title in the same format as the commit (e.g. `fix(REV-<n>): ...`).
    * The body starts with `Fixes [REV-<n>](<ticket url>)` and has `## Problem`, `## Changes`, and `## Verification` sections. Verification lists the exact commands run and their results.

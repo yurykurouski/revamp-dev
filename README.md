@@ -71,6 +71,7 @@ packages/
   validation/   Zod schemas for HTTP payloads and LLM output
   db/           Mongoose models shared by the API and the workers
 deploy/         Production Docker, Nginx and deploy script
+.github/        GitHub Actions CI/CD workflow (gates on every PR, deploy from main)
 scripts/        setup / dev launchers, maintenance and live-crawl scripts
 ```
 
@@ -149,6 +150,26 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run migrate:audit-vitals --workspace=@revamp/api` | One-off (REV-105, REV-102): removes `lighthouseMetrics.speedIndex` and `lighthouseMetrics.fidOrInp` from stored audits (they were never measured), then renames `lighthouseMetrics` to `webVitals` (`-- --dry-run` to preview) |
 
 Production deployment uses `.env.production.example`, `docker-compose.prod.yml` and `deploy/deploy.sh`.
+
+## CI/CD
+
+GitHub Actions (`.github/workflows/ci.yml`, REV-177) runs on every pull request, every push to `main` and on manual dispatch:
+
+- **Gates** (job name `Gates`): `npm ci`, Playwright Chromium, then the local gates in order: `npm run build:packages`, `npm run typecheck`, `npm run lint`, `npm test`, `npm run build`.
+- **Deploy** (push to `main` or manual dispatch on `main`, only after Gates passes, one at a time): builds the production images with `docker compose -f docker-compose.prod.yml build`, then connects to the server over SSH, fast-forwards its checkout to the gated commit and runs `./deploy/deploy.sh --skip-pull` there (the script rebuilds, starts the stack and probes `/api/v1/health`). If the deploy settings are not set, the job builds the images and skips the deploy with a warning.
+
+The deploy reads its credentials from the GitHub environment **production** (Settings → Environments → production); nothing secret is in the repository, and `.env.production` stays on the server:
+
+| Name | Kind | Value |
+|---|---|---|
+| `DEPLOY_HOST` | secret | Server host name or IP |
+| `DEPLOY_USER` | secret | SSH user allowed to run Docker |
+| `DEPLOY_SSH_KEY` | secret | Private key of a deploy-only key pair whose public key is in the user's `authorized_keys` |
+| `DEPLOY_KNOWN_HOSTS` | secret | The server's host key line(s), from `ssh-keyscan -p <port> <host>` checked against the server |
+| `DEPLOY_PATH` | variable | Absolute path of the repository checkout on the server (it must be able to `git fetch origin main`) |
+| `DEPLOY_PORT` | variable | SSH port, optional (default `22`) |
+
+**Failing gates block merge only once branch protection requires the check** (a repository setting, so the owner turns it on): Settings → Branches → add a rule (or ruleset) for `main` → *Require a pull request before merging* and *Require status checks to pass before merging* → *Require branches to be up to date* → add the status check **`Gates`**. The check appears in the list after the workflow has run once.
 
 ## Engineering rules
 
