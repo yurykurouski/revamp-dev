@@ -20,22 +20,22 @@ export interface EmailDraft extends EmailDraftFields {
   rendered: () => IEmailDraft;
 }
 
-/** The default outreach draft; it is copy for the business owner, so it is not tied to the operator's UI language */
+/**
+ * The default outreach draft; it is copy for the business owner, so it is not tied to the operator's UI
+ * language. It describes the prototype neutrally, so it fits a rebuild of the original page and an older
+ * template MVP alike, and makes no claim the prototype or the audit does not back (REV-128): measured
+ * values come from the audit only, and a value not measured is left out.
+ */
 export function defaultEmailDraft(lead: ILeadItem, audit?: IAuditDetail | null): EmailDraftFields {
   return {
-    subject: `A new mobile website for ${lead.businessName} (higher conversion, faster LCP)`,
-    preheader: `We built an interactive prototype of your new website${lead.city ? ` for ${lead.city}` : ''}`,
+    subject: `A prototype of an updated website for ${lead.businessName}`,
+    preheader: `We built an interactive prototype of your updated website${lead.city ? ` for ${lead.city}` : ''}`,
     body: `Hello,
 
 ${auditSummarySentence(lead.domain, audit?.lcpSeconds)}
 
-To show what a modern, high-converting site could look like, our platform automatically generated a responsive prototype for you:
+To show how your site could look, our platform generated a prototype of your updated website:
 👉 {{demoUrl}}
-
-Key improvements in the prototype:
-1. Fast loading on mobile with a lightweight static page
-2. One-tap booking from any mobile device
-3. A responsive services grid that keeps your brand identity
 
 We would love to hear your feedback!
 Best regards, the Revamp SaaS team`,
