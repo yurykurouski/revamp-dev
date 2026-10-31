@@ -93,6 +93,15 @@ describe('IconRail (REV-76)', () => {
     expect(entry(html, 'discovery')).toContain('aria-keyshortcuts="D"');
   });
 
+  it('shows the Revamp logo mark instead of a generic icon (REV-75)', () => {
+    const html = render();
+    const mark = html.match(/<[a-z]+[^>]*data-testid="revamp-logo"[^>]*>/)?.[0] ?? '';
+    expect(mark).toMatch(/^<svg/);
+    expect(mark).toContain('role="img"');
+    expect(mark).toContain('aria-label="Revamp"');
+    expect(html).not.toContain('AutoAwesomeIcon');
+  });
+
   it('shows the operator avatar', () => {
     expect(render()).toContain(`>${en.header.operatorInitials}</div>`);
   });

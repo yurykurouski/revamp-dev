@@ -2,7 +2,6 @@ import React from 'react';
 import { Avatar, Badge, Box, ButtonBase, CircularProgress, Tooltip } from '@mui/material';
 import type { SxProps, Theme } from '@mui/material/styles';
 import { Link as RouterLink } from 'react-router-dom';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
@@ -12,6 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { ROUTES, RailPage } from '../routes/paths.js';
 import { ariaKeyShortcuts, getShortcut, type ShortcutId } from '../utils/shortcuts.js';
 import { ShortcutTitle } from './KeyCaps.js';
+import { RevampLogo } from './RevampLogo.js';
 import type { DiscoveryIndicator } from '../hooks/useDiscovery.js';
 
 export const RAIL_WIDTH = 64;
@@ -108,22 +108,8 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
         borderColor: 'divider',
       }}
     >
-      <Box
-        sx={{
-          width: 32,
-          height: 32,
-          mb: 1.75,
-          borderRadius: 1,
-          backgroundColor: 'primary.main',
-          color: 'primary.contrastText',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}
-        role="img"
-        aria-label="Revamp"
-      >
-        <AutoAwesomeIcon sx={{ fontSize: 16 }} />
+      <Box sx={{ mb: 1.75 }}>
+        <RevampLogo size={32} />
       </Box>
 
       {pageItem('queue')}
