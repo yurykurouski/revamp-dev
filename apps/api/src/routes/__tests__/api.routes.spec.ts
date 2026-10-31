@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from 'vitest';
+import type { Server } from 'node:http';
+import { listenOnLoopback, closeServer } from './loopback-server.js';
 import request from 'supertest';
 import mongoose from 'mongoose';
 import { createApp } from '../../app.js';
@@ -45,7 +47,12 @@ vi.mock('../../queues/mvp-page.queue.js', () => ({
 }));
 
 describe('API Routes Integration Tests (Supertest)', () => {
-  const app = createApp();
+  // Bound to 127.0.0.1, where supertest sends: request(app) could reach another process (REV-74)
+  let app: Server;
+  beforeAll(async () => {
+    app = await listenOnLoopback(createApp());
+  });
+  afterAll(() => closeServer(app));
 
   beforeEach(() => {
     vi.clearAllMocks();

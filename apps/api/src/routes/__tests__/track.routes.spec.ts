@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import type { Server } from 'node:http';
+import { listenOnLoopback, closeServer } from './loopback-server.js';
 import request from 'supertest';
 import { createApp } from '../../app.js';
 import { trackingService } from '../../services/tracking.service.js';
@@ -19,7 +21,12 @@ vi.mock('../../services/tracking.service.js', () => ({
 }));
 
 describe('Track Routes Integration Tests (REV-18 Telemetry)', () => {
-  const app = createApp();
+  // Bound to 127.0.0.1, where supertest sends: request(app) could reach another process (REV-74)
+  let app: Server;
+  beforeAll(async () => {
+    app = await listenOnLoopback(createApp());
+  });
+  afterAll(() => closeServer(app));
 
   beforeEach(() => {
     vi.clearAllMocks();

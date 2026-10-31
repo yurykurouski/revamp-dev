@@ -1,4 +1,6 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
+import type { Server } from 'node:http';
+import { listenOnLoopback, closeServer } from './loopback-server.js';
 import request from 'supertest';
 import { createApp } from '../../app.js';
 import { DiscoveryService } from '../../services/discovery.service.js';
@@ -7,7 +9,12 @@ import { AppError } from '../../middlewares/errorHandler.js';
 vi.mock('../../services/discovery.service.js');
 
 describe('Discovery Routes Integration Tests (REV-26)', () => {
-  const app = createApp();
+  // Bound to 127.0.0.1, where supertest sends: request(app) could reach another process (REV-74)
+  let app: Server;
+  beforeAll(async () => {
+    app = await listenOnLoopback(createApp());
+  });
+  afterAll(() => closeServer(app));
 
   beforeEach(() => {
     vi.clearAllMocks();
