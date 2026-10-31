@@ -4,7 +4,8 @@ import { alpha } from '@mui/material/styles';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
-import { ILeadItem } from '../api/client.js';
+import type { ILeadItem, IMvpProjectDetail } from '../api/client.js';
+import { mvpPreviewVersion, withPreviewVersion } from '../hooks/useLeads.js';
 import { useTranslation } from 'react-i18next';
 import type { Translation } from '../i18n/locales/en.js';
 import type { EmailDraft } from '../hooks/useEmailDraft.js';
@@ -17,6 +18,8 @@ interface EmailDraftEditorProps {
   lead: ILeadItem;
   /** The draft, owned by the lead review so it survives moving between steps (REV-77) */
   draft: EmailDraft;
+  /** The lead's MVP: a later change re-publishes the banner at the same URL (REV-127) */
+  mvp?: IMvpProjectDetail | null;
 }
 
 const TEMPLATE_VARIABLES: Array<keyof Translation['email']['variables']> = [
@@ -29,10 +32,12 @@ const TEMPLATE_VARIABLES: Array<keyof Translation['email']['variables']> = [
 ];
 
 /** The outreach email editor with a live inbox preview; approving and rejecting live in the review's action bar */
-export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({ lead, draft }) => {
+export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({ lead, draft, mvp }) => {
   const { t } = useTranslation();
   const { subject, preheader, body, setSubject, setPreheader, setBody, insertTag, renderText } = draft;
   const demoUrl = lead.previewUrl;
+  // Versioned like the preview, so a re-publish never shows a cached banner (REV-127)
+  const bannerUrl = withPreviewVersion(lead.comparisonBannerUrl, mvpPreviewVersion(lead, mvp));
 
   return (
     // Split layout: editor on the left, recipient preview on the right
@@ -180,23 +185,42 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({ lead, draft 
             </Typography>
 
             {/* Embedded Comparison Banner Collage Preview */}
-            {lead.comparisonBannerUrl && (
+            {bannerUrl && (
               <Box sx={{ my: 1 }}>
                 <Typography variant="caption" sx={{ color: INBOX.text.secondary, fontWeight: 600, mb: 0.5, display: 'block' }}>
                   {t('email.attachment')}
                 </Typography>
+                {/* The whole banner as it is attached, measured values included; opens full size (REV-127) */}
                 <Box
-                  component="img"
-                  src={lead.comparisonBannerUrl}
-                  alt={t('email.comparisonAlt')}
+                  component="a"
+                  href={bannerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label={t('email.openBanner')}
+                  title={t('email.openBanner')}
                   sx={{
-                    width: '100%',
-                    maxHeight: 180,
-                    objectFit: 'cover',
+                    display: 'block',
                     borderRadius: `${RADIUS.md}px`,
-                    border: `1px solid ${INBOX.border.strong}`,
+                    '&:focus-visible': { outline: `2px solid ${INBOX.tones.primary}`, outlineOffset: 2 },
                   }}
-                />
+                >
+                  <Box
+                    component="img"
+                    src={bannerUrl}
+                    alt={t('email.comparisonAlt')}
+                    sx={{
+                      display: 'block',
+                      width: '100%',
+                      height: 'auto',
+                      aspectRatio: '1200 / 630',
+                      objectFit: 'contain',
+                      backgroundColor: INBOX.surface.raised,
+                      borderRadius: `${RADIUS.md}px`,
+                      border: `1px solid ${INBOX.border.strong}`,
+                      cursor: 'zoom-in',
+                    }}
+                  />
+                </Box>
               </Box>
             )}
 

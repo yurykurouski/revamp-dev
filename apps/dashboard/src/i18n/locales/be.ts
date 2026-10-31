@@ -737,6 +737,7 @@ export const be: Translation = {
     justNow: 'Толькі што',
     attachment: '📎 Далучэнне: параўнанне «да / пасля» (1200x630)',
     comparisonAlt: 'Калаж параўнання «да / пасля»',
+    openBanner: 'Адкрыць банер параўнання ў поўным памеры',
     viewPrototype: 'Паглядзець інтэрактыўны прататып',
     shortcut: 'Спалучэнне: Cmd + Enter',
     reject: 'Адхіліць лід',

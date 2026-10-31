@@ -738,6 +738,7 @@ export const en = {
     justNow: 'Just now',
     attachment: '📎 Attachment: Before / After comparison (1200x630)',
     comparisonAlt: 'Before / after comparison collage',
+    openBanner: 'Open the comparison banner full size',
     viewPrototype: 'View the interactive prototype',
     shortcut: 'Shortcut: Cmd + Enter',
     reject: 'Reject lead',
