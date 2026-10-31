@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+  <style>
+    .tile { fill: #0A7563; }
+    .mark { fill: #FFFFFF; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #97FCE4; }
+      .mark { fill: #04110E; }
+    }
+  </style>
+  <rect class="tile" width="24" height="24" rx="6" />
+  <path class="mark" fill-rule="evenodd" d="M7 4h6.5a4.5 4.5 0 0 1 1.6 8.71L18 20h-3.2l-2.6-7H10v7H7V4zm3 3v3h3.5a1.5 1.5 0 0 0 0-3H10z" />
+</svg>
