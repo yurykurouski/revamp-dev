@@ -1,6 +1,7 @@
 import mongoose, { Types } from 'mongoose';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { checkLeadChildIndexes, migrateLeadChildren } from '../lead-children-migration.js';
+import { retryOnDuplicateKey } from '../retry-duplicate-key.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
@@ -36,6 +37,33 @@ describe('real MongoDB (mongodb-memory-server)', () => {
 
   afterAll(async () => {
     await mongo?.stop();
+  });
+
+  // REV-201 review I1: after the migration rebuilt leadId_1, previewSlug_1 comes first in the index list,
+  // so concurrent first deploys (same slug) get E11000 on the slug, which the server does not retry
+  it('concurrent first deploys with one slug all succeed on a migrated layout with retryOnDuplicateKey', async () => {
+    const conn = await mongoose.createConnection(mongo.uri, { dbName: 'revamp-slug-test', autoIndex: false }).asPromise();
+    try {
+      const Mvp = conn.model('MvpProject', MvpProject.schema);
+      await Mvp.createCollection();
+      await Mvp.collection.createIndex({ previewSlug: 1 }, { unique: true });
+      await Mvp.collection.createIndex({ leadId: 1 }, { unique: true });
+      for (let round = 0; round < 5; round++) {
+        const leadId = new Types.ObjectId();
+        const fields = mvpFields(round);
+        const results = await Promise.allSettled(
+          Array.from({ length: 10 }, () =>
+            retryOnDuplicateKey(() =>
+              Mvp.findOneAndUpdate({ leadId }, { $set: fields, $inc: { generationCount: 1 } }, { upsert: true, new: true }).exec(),
+            ),
+          ),
+        );
+        expect(results.filter((r) => r.status === 'rejected')).toEqual([]);
+        expect(await Mvp.countDocuments({ leadId })).toBe(1);
+      }
+    } finally {
+      await conn.close();
+    }
   });
 
   it('startMongoReplSet gives a MongoDB 7.0 replica set Mongoose can connect to', async () => {

@@ -244,4 +244,27 @@ describe('only model-designed pages are deployed (REV-141)', () => {
     await capturedProcessor!(job());
     expect(projectUpdate().$push.versions.$each[0]).not.toHaveProperty('changes');
   });
+
+  // REV-201 review I1: on a migrated database previewSlug_1 precedes leadId_1, so a concurrent first deploy
+  // can get E11000 on the slug, which MongoDB does not retry; the worker retries the upsert once
+  it('retries the project upsert once after a duplicate-key error, then updates', async () => {
+    vi.mocked(MvpProject.findOneAndUpdate)
+      .mockReturnValueOnce({ exec: vi.fn().mockRejectedValue(Object.assign(new Error('E11000'), { code: 11000 })) } as any)
+      .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue({ _id: 'mvp-1' }) } as any);
+    const result = await capturedProcessor!(job());
+    expect(result).toMatchObject({ success: true });
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[1]![0]).toEqual(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![0]);
+  });
+
+  it('does not retry the project upsert after any other error', async () => {
+    vi.mocked(MvpProject.findOneAndUpdate).mockReturnValueOnce({ exec: vi.fn().mockRejectedValue(new Error('network')) } as any);
+    await expect(capturedProcessor!(job())).rejects.toThrow('network');
+    expect(MvpProject.findOneAndUpdate).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves leadId out of the update body: the upsert takes it from the filter (REV-201)', async () => {
+    await capturedProcessor!(job());
+    expect(projectUpdate().$set).not.toHaveProperty('leadId');
+  });
 });
