@@ -233,3 +233,140 @@ describe('isPortInUse', () => {
     expect(await isPortInUse(port)).toBe(false);
   });
 });
+
+describe('MongoDB users in .env (REV-198)', () => {
+  let root: string;
+  const passwords = ['root-pw', 'app-pw', 'read-pw', 'admin-pw'];
+  const sequence = () => {
+    let i = 0;
+    return () => passwords[i++];
+  };
+  const envFile = () => path.join(root, '.env');
+  const readEnv = () => stack.parseEnv(fs.readFileSync(envFile(), 'utf8'));
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'rev198-'));
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('mongoUri builds the revamp_app URI and encodes the password', () => {
+    expect(stack.mongoUri('u', 'a/b@c')).toBe(
+      'mongodb://u:a%2Fb%40c@localhost:27017/revamp?authSource=admin&replicaSet=rs0&directConnection=true',
+    );
+  });
+
+  it('adds missing passwords and the app URI to an existing .env', () => {
+    fs.writeFileSync(envFile(), 'PORT=4000\nMONGODB_URI=mongodb://localhost:27017/revamp\n');
+    const result = stack.ensureMongoSecrets(root, sequence());
+    expect(result.added).toEqual(stack.MONGO_PASSWORD_VARS);
+    expect(result.uriUpdated).toBe(true);
+    const env = readEnv();
+    expect(env.PORT).toBe('4000');
+    expect(env.MONGO_APP_PASSWORD).toBe('app-pw');
+    expect(env.MONGODB_URI).toBe(stack.mongoUri('revamp_app', 'app-pw'));
+  });
+
+  it('fills empty values copied from .env.example', () => {
+    fs.writeFileSync(envFile(), 'MONGODB_URI=\nMONGO_ROOT_PASSWORD=\nMONGO_APP_PASSWORD=\n');
+    stack.ensureMongoSecrets(root, sequence());
+    const env = readEnv();
+    expect(env.MONGO_ROOT_PASSWORD).toBe('root-pw');
+    expect(env.MONGO_ADMIN_PASSWORD).toBe('admin-pw');
+    expect(env.MONGODB_URI).toBe(stack.mongoUri('revamp_app', 'app-pw'));
+    expect(fs.readFileSync(envFile(), 'utf8').match(/^MONGO_APP_PASSWORD=/gm)).toHaveLength(1);
+  });
+
+  it('is idempotent', () => {
+    fs.writeFileSync(envFile(), 'MONGODB_URI=mongodb://localhost:27017/revamp\n');
+    stack.ensureMongoSecrets(root, sequence());
+    const before = fs.readFileSync(envFile(), 'utf8');
+    expect(stack.ensureMongoSecrets(root, () => 'never')).toEqual({ added: [], uriUpdated: false });
+    expect(fs.readFileSync(envFile(), 'utf8')).toBe(before);
+  });
+
+  it('keeps a custom URI and warns', () => {
+    const custom = 'mongodb+srv://x@cluster0.example.net/revamp';
+    fs.writeFileSync(envFile(), `MONGODB_URI=${custom}\n`);
+    const result = stack.ensureMongoSecrets(root, sequence());
+    expect(readEnv().MONGODB_URI).toBe(custom);
+    expect(result.uriUpdated).toBe(false);
+    expect(result.warning).toContain('MONGODB_URI');
+    expect(result.warning).toContain('revamp_app');
+  });
+
+  it('keeps existing passwords', () => {
+    fs.writeFileSync(envFile(), 'MONGODB_URI=mongodb://localhost:27017/revamp\nMONGO_APP_PASSWORD=keep\n');
+    const result = stack.ensureMongoSecrets(root, () => 'generated');
+    expect(result.added).not.toContain('MONGO_APP_PASSWORD');
+    expect(readEnv().MONGO_APP_PASSWORD).toBe('keep');
+    expect(readEnv().MONGODB_URI).toBe(stack.mongoUri('revamp_app', 'keep'));
+  });
+});
+
+describe('ensureMongoReady (REV-198)', () => {
+  const env = {
+    MONGO_ROOT_PASSWORD: 'r',
+    MONGO_APP_PASSWORD: 'a',
+    MONGO_READ_PASSWORD: 'x',
+    MONGO_ADMIN_PASSWORD: 'd',
+  };
+  const recorder = (result: { status: number; stderr?: string }) => {
+    const calls: Array<{ cmd: string; args: string[]; options: any }> = [];
+    const run = (cmd: string, args: string[], options: any) => {
+      calls.push({ cmd, args, options });
+      return result;
+    };
+    return { calls, run };
+  };
+
+  it('runs ensure-ready.js in the mongo container without passwords in argv', () => {
+    const { calls, run } = recorder({ status: 0 });
+    stack.ensureMongoReady('/repo', env, run);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].cmd).toBe('docker');
+    expect(calls[0].args).toEqual([
+      'compose', 'exec', '-T',
+      '-e', 'MONGO_ROOT_PASSWORD', '-e', 'MONGO_APP_PASSWORD', '-e', 'MONGO_READ_PASSWORD', '-e', 'MONGO_ADMIN_PASSWORD',
+      'mongo', 'mongosh', '--quiet', '--norc', '/revamp-scripts/ensure-ready.js',
+    ]);
+    for (const arg of calls[0].args) {
+      expect(arg).not.toContain('=');
+      expect(Object.values(env)).not.toContain(arg);
+    }
+    expect(calls[0].options.env.MONGO_APP_PASSWORD).toBe('a');
+    expect(calls[0].options.cwd).toBe('/repo');
+  });
+
+  it('maps exit 2 to a root-password hint', () => {
+    const { run } = recorder({ status: stack.ENSURE_READY_EXIT.rootPasswordMismatch });
+    try {
+      stack.ensureMongoReady('/repo', env, run);
+      expect.unreachable('did not throw');
+    } catch (error: any) {
+      expect(error).toBeInstanceOf(SetupError);
+      expect(error.message).toContain('MONGO_ROOT_PASSWORD');
+      expect(error.hint).toContain('docker compose down -v');
+      expect(error.hint).toContain('deletes');
+    }
+  });
+
+  it('maps any other failure to a SetupError with mongosh stderr', () => {
+    const { run } = recorder({ status: 1, stderr: 'MongoServerError: boom' });
+    expect(() => stack.ensureMongoReady('/repo', env, run)).toThrow(SetupError);
+    try {
+      stack.ensureMongoReady('/repo', env, run);
+    } catch (error: any) {
+      expect(error.hint).toContain('MongoServerError: boom');
+    }
+  });
+
+  it('refuses to run with a missing password', () => {
+    const { calls, run } = recorder({ status: 0 });
+    const { MONGO_READ_PASSWORD: _omit, ...partial } = env;
+    expect(() => stack.ensureMongoReady('/repo', partial, run)).toThrow(/npm run setup/);
+    expect(calls).toHaveLength(0);
+  });
+});
