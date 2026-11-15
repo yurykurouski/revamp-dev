@@ -4,3 +4,4 @@ export * from './models/MvpProject.model.js';
 export * from './models/EmailCampaign.model.js';
 export * from './models/AnalyticsEvent.model.js';
 
+export * from './redact-uri.js';

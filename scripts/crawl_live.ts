@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../apps/workers/src/config/env.js';
+import { redactMongoUri } from '@revamp/db';
 import { browserService } from '../apps/workers/src/services/browser.service.js';
 import { ImageService } from '../apps/workers/src/services/image.service.js';
 import { storageService } from '../apps/workers/src/services/storage.service.js';
@@ -38,7 +39,7 @@ async function runLiveCrawl(urlToCrawl: string = 'https://stripe.com'): Promise<
   console.log(`======================================================\n`);
 
   // 1. Connect to Mongo
-  console.log(`[1/6] Connecting to MongoDB (${env.MONGODB_URI})...`);
+  console.log(`[1/6] Connecting to MongoDB (${redactMongoUri(env.MONGODB_URI)})...`);
   await mongoose.connect(env.MONGODB_URI);
   console.log(`      ✅ Connected to MongoDB.`);
 

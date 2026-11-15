@@ -1,4 +1,5 @@
 /**
+ * Runs as revamp_app (MONGODB_URI): readWrite on revamp is enough (REV-198).
  * REV-44 backfill: moves leads stuck in AUDITING after a failed audit to AUDIT_FAILED, with the
  * audit's error as a readable one-line reason, and cleans that error on the Audit too.
  *

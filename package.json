@@ -24,9 +24,10 @@
     "dev:api": "npm run dev --workspace=@revamp/api",
     "dev:workers": "npm run dev --workspace=@revamp/workers",
     "dev:dashboard": "npm run dev --workspace=@revamp/dashboard",
-    "docker:up": "docker compose up -d",
+    "docker:up": "node scripts/infra-up.mjs",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
+    "db:check-roles": "tsx scripts/check-mongo-roles.ts",
     "verify:env": "tsx scripts/verify-production-env.ts"
   },
   "devDependencies": {

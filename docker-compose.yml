@@ -5,10 +5,21 @@ services:
     restart: unless-stopped
     ports:
       - "27017:27017"
-    environment:
-      - MONGO_INITDB_DATABASE=revamp
+    # REV-198: access control plus a single-node replica set (rs0), so the app logs in as a
+    # least-privilege user and can use transactions. The keyFile is generated once inside the
+    # mongo_config volume and never leaves it. Users and rs.initiate come from
+    # scripts/mongo/ensure-ready.js, which `npm run setup` / `npm run dev` / `npm run docker:up` run.
+    command:
+      - bash
+      - -c
+      - |
+        if [ ! -s /data/configdb/keyfile ]; then head -c 756 /dev/urandom | base64 > /data/configdb/keyfile; fi
+        chmod 400 /data/configdb/keyfile && chown 999:999 /data/configdb/keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/configdb/keyfile --bind_ip_all
     volumes:
       - mongo_data:/data/db
+      - mongo_config:/data/configdb
+      - ./scripts/mongo:/revamp-scripts:ro
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 5s
@@ -70,6 +81,8 @@ services:
 
 volumes:
   mongo_data:
+    driver: local
+  mongo_config:
     driver: local
   redis_data:
     driver: local

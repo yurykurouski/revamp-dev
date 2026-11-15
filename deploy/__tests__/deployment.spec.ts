@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { parse as parseYaml } from 'yaml';
 import {
   checkApiKeys,
   checkMongoDB,
@@ -118,6 +119,30 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
 
       const content = fs.readFileSync(filePath, 'utf-8');
       expect(content.trim()).toMatch(/\/\*\s+\/index\.html\s+200/);
+    });
+  });
+
+  describe('Local MongoDB service (docker-compose.yml, REV-198)', () => {
+    const compose = parseYaml(fs.readFileSync(path.join(rootDir, 'docker-compose.yml'), 'utf-8'));
+    const mongo = compose.services.mongo;
+    const command = [].concat(mongo.command ?? []).join(' ');
+
+    it('runs mongod as the rs0 replica set with a keyFile, reachable from the host', () => {
+      expect(command).toContain('--replSet rs0');
+      expect(command).toContain('--keyFile /data/configdb/keyfile');
+      expect(command).toContain('--bind_ip_all');
+    });
+
+    it('keeps the keyFile in a named volume and mounts the setup scripts read-only', () => {
+      expect(mongo.volumes).toEqual(
+        expect.arrayContaining(['mongo_config:/data/configdb', './scripts/mongo:/revamp-scripts:ro']),
+      );
+      expect(compose.volumes).toHaveProperty('mongo_config');
+    });
+
+    it('creates no users through MONGO_INITDB_* (setup creates them, REV-198)', () => {
+      const environment = JSON.stringify(mongo.environment ?? {});
+      expect(environment).not.toContain('MONGO_INITDB_ROOT');
     });
   });
 
