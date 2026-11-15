@@ -87,7 +87,14 @@ export async function checkRoles(): Promise<Check[]> {
     for (const action of ['dropDatabase', 'createUser', 'grantRole']) {
       record('revamp_app', `${action} on revamp (privileges)`, 'denied', { outcome: actions.has(action) ? 'allowed' : 'denied' });
     }
-    record('revamp_app', 'listDatabases', 'denied', await attempt(() => conn.db!.admin().listDatabases()));
+    // MongoDB answers listDatabases for any user, filtered to the databases it holds rights on
+    // (authorizedDatabases), so the check is that no other database shows up.
+    const { databases } = await conn.db!.admin().listDatabases({ nameOnly: true });
+    const others = databases.map((d) => d.name).filter((name) => name !== DB);
+    record('revamp_app', 'see databases other than revamp', 'denied', {
+      outcome: others.length ? 'allowed' : 'denied',
+      note: others.length ? `sees ${others.join(', ')}` : undefined,
+    });
   });
 
   await withUser('revamp_read', 'MONGO_READ_PASSWORD', async (conn) => {
