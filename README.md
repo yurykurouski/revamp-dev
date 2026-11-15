@@ -28,7 +28,7 @@ npm run setup   # once: dependencies, Chromium, .env, databases, shared packages
 npm run dev     # every time: starts everything, then open http://localhost:5173
 ```
 
-`npm run setup` checks Node and Docker, runs `npm install`, downloads the Chromium build Playwright uses for site audits, creates `.env` from `.env.example` (an existing `.env` is never overwritten), starts MongoDB, Redis and MinIO in Docker and waits until they are healthy, creates the MinIO buckets and builds the shared packages. It is safe to run again, for example after pulling changes that add dependencies.
+`npm run setup` checks Node and Docker, runs `npm install`, downloads the Chromium build Playwright uses for site audits, creates `.env` from `.env.example` (an existing `.env` is never overwritten), starts MongoDB, Redis and MinIO in Docker and waits until they are healthy, sets up the MongoDB users (see [MongoDB users](#mongodb-users)), creates the MinIO buckets and builds the shared packages. It is safe to run again, for example after pulling changes that add dependencies.
 
 `npm run dev` starts the Docker services if they are not running, rebuilds a shared package only when its sources changed, then runs the API, the workers and the dashboard in one terminal. Every line is tagged with the app it came from (`[api      ]`, `[workers  ]`, `[dashboard]`). If one app crashes the others stop too, so the error stays at the bottom of the output.
 
@@ -57,6 +57,7 @@ The app starts without one, but audits and MVP generation need an LLM, and nothi
 | `Port 5173 (dashboard) is already in use.` (or 4000) | Another copy of the app is running, maybe in another terminal. Stop it, or find it with `lsof -i :5173`. |
 | `docker compose up` fails with a port error | Another MongoDB (27017), Redis (6379) or MinIO (9000/9001) is running on your machine. Stop it, then run `npm run dev` again. |
 | `The project is not set up yet.` | Run `npm run setup` first. |
+| `MongoDB already has users, and MONGO_ROOT_PASSWORD in .env does not log in as revamp_root.` | Your MongoDB volume was set up with another `.env` (for example, `.env` was deleted). Put the old `MONGO_ROOT_PASSWORD` back, or start over with `docker compose down -v`, which deletes all local data. |
 | An audit fails at the design critique | No LLM provider is configured, see above. |
 
 ## Repository layout
@@ -83,14 +84,31 @@ See [Quick start](#quick-start) to get the app running. The pieces behind `npm r
 npm install
 npx playwright install chromium
 cp .env.example .env
-npm run docker:up        # MongoDB :27017, Redis :6379, MinIO :9000 (console :9001)
+npm run docker:up        # MongoDB :27017 (+ users), Redis :6379, MinIO :9000 (console :9001)
 npm run build:packages   # the apps typecheck against the packages' compiled dist
 npm run dev:api          # http://localhost:4000/api/v1
 npm run dev:workers
 npm run dev:dashboard    # http://localhost:5173
 ```
 
-The `minio-init` container creates the `revamp-assets` and `revamp-demos` buckets. The API and workers read the root `.env`.
+The `minio-init` container creates the `revamp-assets` and `revamp-demos` buckets. The API and workers read the root `.env`. Use `npm run docker:up` rather than plain `docker compose up`: only the former creates the MongoDB users and the replica set.
+
+### MongoDB users
+
+MongoDB runs with access control as a single-node replica set (`rs0`), so the app never connects as a superuser and can use transactions (REV-198). `npm run setup`, `npm run dev` and `npm run docker:up` generate the passwords into `.env` (existing values are kept), point the default `MONGODB_URI` at `revamp_app`, initiate the replica set and create or update these users in the `admin` database:
+
+| User | Roles | Used by |
+|---|---|---|
+| `revamp_app` | `readWrite` on `revamp` | API, workers, migration and backfill scripts (`MONGODB_URI`) |
+| `revamp_read` | `read` on `revamp` | Inspection and reporting |
+| `revamp_admin` | `dbAdmin`, `userAdmin` on `revamp` | Index and user maintenance |
+| `revamp_root` | `root` | Only to create the users above |
+
+`readWrite` lets the app create indexes (Mongoose builds them at startup), but not drop the database or manage users. `npm run db:check-roles` logs in as each user and checks these rights against the running MongoDB.
+
+The first `npm run dev` after this change upgrades an existing data volume in place: your data stays. The keyFile the replica set needs is generated inside the `mongo_config` volume and never leaves it. The apps log the MongoDB URI with the password replaced by `***`.
+
+**Production (MongoDB Atlas).** In Atlas, create database users with the same roles: `revamp_app` (`readWrite@revamp`) for the API and workers, `revamp_read` (`read@revamp`) and `revamp_admin` (`dbAdmin@revamp`, `userAdmin@revamp`). Set the `MONGODB_URI` secret in the GitHub `production` environment to the `revamp_app` user. Never use an Atlas admin user for the app.
 
 ### LLM providers
 
@@ -142,7 +160,8 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run typecheck` | Type-checks every workspace |
 | `npm run lint` | ESLint |
 | `npm test` | Vitest, all workspaces |
-| `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure |
+| `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure; `docker:up` also sets up the MongoDB users and replica set |
+| `npm run db:check-roles` | Logs in as each MongoDB user and checks its rights (`ENV_FILE=<path>` to use another `.env`) |
 | `npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] [--operator-locale <en\|ru\|be\|pl\|lt>] <out-dir> <url...>` | Dev tool (REV-137): audits each URL read-only, asks the model for a page, checks and finishes it, and writes `<host>.raw.html`, `<host>.html` and the grounding flags; no database, storage or queue writes. `--record` saves the brief and answers for the recorded-answer tests; `--self-review` adds the REV-143 revision pass and prints standards, axe violations and horizontal scroll at 360 px for the first and the kept page; `--operator-locale` asks for the model's design changes in that language and prints them with the page's `lang` (REV-162) |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
