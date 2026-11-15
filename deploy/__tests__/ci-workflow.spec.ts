@@ -17,6 +17,7 @@ interface Step {
 }
 interface Job {
   name?: string;
+  env?: Record<string, string>;
   needs?: string | string[];
   if?: string;
   steps: Step[];
@@ -91,9 +92,12 @@ describe('CI/CD workflow (.github/workflows/ci.yml, REV-177)', () => {
     const cache = steps.findIndex(
       (s) => s.uses?.startsWith('actions/cache@') && String(s.with?.['path'] ?? '').includes('mongodb-binaries'),
     );
-    const test = steps.findIndex((s) => s.run === 'npm test');
+    // mongodb-memory-server's postinstall downloads the binary during npm ci, so the cache is restored
+    // before it, and MONGOMS_DOWNLOAD_DIR points both the download and the tests at the cached path
+    const install = steps.findIndex((s) => s.run === 'npm ci');
     expect(cache).toBeGreaterThanOrEqual(0);
-    expect(cache).toBeLessThan(test);
+    expect(cache).toBeLessThan(install);
+    expect(wf.jobs.gates.env?.['MONGOMS_DOWNLOAD_DIR']).toBe(steps[cache]!.with?.['path']);
     const pinned = (JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8')) as {
       config?: { mongodbMemoryServer?: { version?: string } };
     }).config?.mongodbMemoryServer?.version;
