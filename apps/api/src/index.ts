@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-import { redactMongoUri } from '@revamp/db';
+import { checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
 import { closeQueues, redisConnection } from './queues/index.js';
 import { createShutdown } from './shutdown.js';
 
@@ -12,6 +12,10 @@ async function startServer(): Promise<void> {
     console.log(`[API] Connecting to MongoDB at ${redactMongoUri(env.MONGODB_URI)}...`);
     await mongoose.connect(env.MONGODB_URI);
     console.log('[API] MongoDB connected successfully.');
+    // REV-201: leadId must be unique on mvpprojects and emailcampaigns; say so until the migration ran
+    void checkLeadChildIndexes(mongoose.connection).then((warnings) =>
+      warnings.forEach((warning) => console.warn(`[API] ${warning}`)),
+    );
 
     const server = app.listen(env.PORT, () => {
       console.log(`[API] Revamp API Gateway running on port ${env.PORT}`);

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { env } from './config/env.js';
-import { redactMongoUri } from '@revamp/db';
+import { checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
 import { createAuditWorker } from './workers/audit.worker.js';
 import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
@@ -55,6 +55,10 @@ async function startWorkers(): Promise<void> {
     console.log(`[Workers] Connecting to MongoDB at ${redactMongoUri(env.MONGODB_URI)}...`);
     await mongoose.connect(env.MONGODB_URI);
     console.log('[Workers] MongoDB connected successfully.');
+    // REV-201: leadId must be unique on mvpprojects and emailcampaigns; say so until the migration ran
+    void checkLeadChildIndexes(mongoose.connection).then((warnings) =>
+      warnings.forEach((warning) => console.warn(`[Workers] ${warning}`)),
+    );
 
     console.log('[Workers] Initializing BullMQ workers...');
     const auditWorker = createAuditWorker();
