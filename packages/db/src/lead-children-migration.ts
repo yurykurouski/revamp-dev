@@ -39,7 +39,14 @@ export interface DedupeGroup {
   remove: string[];
   /** MVPs only: storage folders `v/<slug>/` the removed projects leave behind (not deleted) */
   orphanedSlugs?: string[];
+  /** Every record of the group, kept one first, so a dry run can be checked without a query */
+  docs: { id: string; kept: boolean; status?: string; previewSlug?: string; updatedAt?: Date }[];
+  /** Campaigns only: removed campaigns whose email went out; the tracking links in it stop working */
+  sentRemoved: string[];
 }
+
+/** A removed campaign in one of these states has an email in someone's inbox with its trackingToken */
+export const CAMPAIGN_SENT_STATUSES = ['SENDING', 'DELIVERED', 'BOUNCED', 'UNSUBSCRIBED'] as const;
 
 export interface CollectionReport {
   groups: DedupeGroup[];
@@ -104,7 +111,22 @@ async function migrateCollection(conn: mongoose.Connection, kind: LeadChildKind,
 
   const groups: DedupeGroup[] = duplicates.map((group) => {
     const plan = planLeadChildDedupe(kind, group.docs, previewUrls.get(String(group._id)));
-    const result: DedupeGroup = { leadId: String(group._id), ...plan };
+    const byId = new Map(group.docs.map((doc) => [String(doc._id), doc]));
+    const docs = [plan.keep, ...plan.remove].map((id) => {
+      const doc = byId.get(id)!;
+      return {
+        id,
+        kept: id === plan.keep,
+        ...(doc.status !== undefined ? { status: doc.status } : {}),
+        ...(doc.previewSlug !== undefined ? { previewSlug: doc.previewSlug } : {}),
+        ...(doc.updatedAt !== undefined ? { updatedAt: doc.updatedAt } : {}),
+      };
+    });
+    const sentRemoved =
+      kind === 'campaign'
+        ? docs.filter((doc) => !doc.kept && (CAMPAIGN_SENT_STATUSES as readonly string[]).includes(doc.status ?? '')).map((doc) => doc.id)
+        : [];
+    const result: DedupeGroup = { leadId: String(group._id), ...plan, docs, sentRemoved };
     if (kind === 'mvp') {
       result.orphanedSlugs = group.docs
         .filter((doc) => plan.remove.includes(String(doc._id)) && doc.previewSlug)

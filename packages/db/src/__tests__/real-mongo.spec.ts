@@ -193,13 +193,40 @@ describe('real MongoDB (mongodb-memory-server)', () => {
           keep: expect.any(String),
           remove: [expect.any(String)],
           orphanedSlugs: ['a-new'],
+          // REV-201 review I3: each record's facts, so the dry run can be checked without a query
+          docs: [
+            expect.objectContaining({ previewSlug: 'a-old', updatedAt: at('2026-01-01'), kept: true }),
+            expect.objectContaining({ previewSlug: 'a-new', updatedAt: at('2026-02-01'), kept: false }),
+          ],
+          sentRemoved: [],
         },
       ]);
-      expect(report.emailcampaigns.groups).toHaveLength(1);
+      expect(report.emailcampaigns.groups).toEqual([
+        expect.objectContaining({
+          docs: [
+            expect.objectContaining({ status: 'UNSUBSCRIBED', kept: true }),
+            expect.objectContaining({ status: 'SCHEDULED', kept: false }),
+          ],
+          sentRemoved: [],
+        }),
+      ]);
       expect(report.mvpprojects.index).toBe('would-rebuild');
       expect(await conn.collection('mvpprojects').countDocuments()).toBe(3);
       expect(await conn.collection('emailcampaigns').countDocuments()).toBe(2);
       expect((await leadIdIndex('mvpprojects'))?.unique).toBeFalsy();
+    });
+
+    it('flags a removed campaign whose email went out: its tracking links stop working', async () => {
+      const leadD = new Types.ObjectId();
+      await conn.collection('emailcampaigns').insertMany([
+        { leadId: leadD, status: 'DELIVERED', trackingToken: 'd1', updatedAt: at('2026-01-01') },
+        { leadId: leadD, status: 'DELIVERED', trackingToken: 'd2', updatedAt: at('2026-02-01') },
+      ]);
+      const report = await migrateLeadChildren(conn, { apply: false });
+      const group = report.emailcampaigns.groups.find((g) => g.leadId === leadD.toString())!;
+      const older = (await conn.collection('emailcampaigns').findOne({ trackingToken: 'd1' }))!._id.toString();
+      expect(group.remove).toEqual([older]);
+      expect(group.sentRemoved).toEqual([older]);
     });
 
     it('apply keeps the right records, removes the rest and makes leadId_1 unique', async () => {
