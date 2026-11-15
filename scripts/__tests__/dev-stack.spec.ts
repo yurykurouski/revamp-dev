@@ -365,7 +365,8 @@ describe('ensureMongoReady (REV-198)', () => {
 
   it('refuses to run with a missing password', () => {
     const { calls, run } = recorder({ status: 0 });
-    const { MONGO_READ_PASSWORD: _omit, ...partial } = env;
+    const partial: Record<string, string> = { ...env };
+    delete partial.MONGO_READ_PASSWORD;
     expect(() => stack.ensureMongoReady('/repo', partial, run)).toThrow(/npm run setup/);
     expect(calls).toHaveLength(0);
   });
