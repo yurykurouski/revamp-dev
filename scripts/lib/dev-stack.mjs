@@ -280,12 +280,60 @@ export function runOrFail(cmd, args, { cwd, hint } = {}) {
 
 export const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
-/** Starts MongoDB, Redis and MinIO, waits until they are healthy, then creates the MinIO buckets. */
+/** Exit codes of scripts/mongo/ensure-ready.js. */
+export const ENSURE_READY_EXIT = { ok: 0, failed: 1, rootPasswordMismatch: 2 };
+
+/**
+ * Initiates the rs0 replica set and creates or updates the MongoDB users (REV-198) by running
+ * scripts/mongo/ensure-ready.js inside the mongo container. Passwords travel in the environment,
+ * never in argv. Returns the script's output lines (one per user, no passwords).
+ */
+export function ensureMongoReady(root, env, run = runQuiet) {
+  const missing = MONGO_PASSWORD_VARS.filter((name) => !env[name]);
+  if (missing.length) {
+    throw new SetupError(
+      `.env has no ${missing.join(', ')}; run \`npm run setup\` to generate the MongoDB passwords.`,
+      'Setup keeps every value already in .env and only adds the missing ones.',
+    );
+  }
+  const passEnv = MONGO_PASSWORD_VARS.flatMap((name) => ['-e', name]);
+  const result = run(
+    'docker',
+    ['compose', 'exec', '-T', ...passEnv, 'mongo', 'mongosh', '--quiet', '--norc', '/revamp-scripts/ensure-ready.js'],
+    { cwd: root, env: { ...process.env, ...Object.fromEntries(MONGO_PASSWORD_VARS.map((name) => [name, env[name]])) } },
+  );
+  if (result.status === ENSURE_READY_EXIT.rootPasswordMismatch) {
+    throw new SetupError(
+      'MongoDB already has users, and MONGO_ROOT_PASSWORD in .env does not log in as revamp_root.',
+      'The data volume was set up with another .env. Either put the old MONGO_ROOT_PASSWORD back into .env,\n' +
+        'or start over with `docker compose down -v` (this deletes all local MongoDB, Redis and MinIO data).',
+    );
+  }
+  if (result.error || result.status !== 0) {
+    throw new SetupError(
+      'Could not set up the MongoDB users and replica set.',
+      `${(result.stderr || result.error?.message || '').trim()}\nRun \`docker compose logs mongo\` for the server side.`,
+    );
+  }
+  return (result.stdout || '').split('\n').filter(Boolean);
+}
+
+/**
+ * Starts MongoDB, Redis and MinIO and waits until they are healthy, makes sure the MongoDB users and
+ * replica set exist (REV-198), then creates the MinIO buckets. Used by setup, dev and docker:up.
+ */
 export function startInfrastructure(root) {
+  const secrets = ensureMongoSecrets(root);
+  if (secrets.added.length) log.ok(`Generated ${secrets.added.join(', ')} in .env`);
+  if (secrets.uriUpdated) log.ok('MONGODB_URI in .env now logs in as revamp_app');
+  if (secrets.warning) log.warn(secrets.warning);
+
   const portsHint =
     'Check that Docker is running and that ports 27017, 6379, 9000 and 9001 are free\n' +
     '(another MongoDB/Redis on this machine will clash). See `docker compose logs`.';
   runOrFail('docker', ['compose', 'up', '-d', '--wait', ...INFRA_SERVICES], { cwd: root, hint: portsHint });
+  const env = parseEnv(fs.readFileSync(path.join(root, '.env'), 'utf8'));
+  for (const line of ensureMongoReady(root, env)) log.ok(line);
   const init = runQuiet('docker', ['compose', 'run', '--rm', 'minio-init'], { cwd: root });
   if (init.status !== 0) {
     throw new SetupError('Could not create the MinIO buckets.', `${(init.stderr || '').trim()}\nRun \`docker compose run --rm minio-init\` to see the full output.`);
