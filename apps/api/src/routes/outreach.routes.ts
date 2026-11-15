@@ -99,10 +99,10 @@ router.post(
       const trackingToken = crypto.randomUUID().replace(/-/g, '');
       const { subject, preheader, body } = req.body as { subject: string; preheader?: string; body: string };
 
+      // One campaign per lead (unique leadId, REV-201); the upsert takes leadId from the filter
       const campaign = await EmailCampaign.findOneAndUpdate(
         { leadId: lead._id },
         {
-          leadId: lead._id,
           status: 'SCHEDULED',
           senderEmail: env.EMAIL_FROM,
           recipientEmail: lead.contactEmail,

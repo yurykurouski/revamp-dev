@@ -89,12 +89,13 @@ async function deployPage(job: Job<IDeployJobData>) {
   const unset: Record<string, ''> = Object.fromEntries([...OLD_MVP_FIELDS, 'controls', 'editedAt'].map((field) => [field, '']));
   if (!standards) unset['standards'] = '';
   if (!generationSource?.requestedProvider) Object.assign(unset, { requestedProvider: '', requestedModel: '' });
+  // leadId stays out of the update: the upsert copies it from the filter, and the unique index makes
+  // MongoDB retry a concurrent insert as an update (REV-201)
   const mvpProject = await MvpProject.findOneAndUpdate(
     { leadId: lead._id },
     {
       $set: {
         auditId: audit._id,
-        leadId: lead._id,
         previewSlug: slug,
         fullPreviewUrl,
         storageHtmlPath,
