@@ -201,7 +201,12 @@ describe.skipIf(!browser)('CookieConsentService (real Chromium fixtures)', () =>
         }, 20);
       </script>`);
 
-    await expect(service.dismiss(page, { ...FAST, retryDelayMs: 150 })).resolves.toBe('dismissed:cmp:cookieyes');
+    // Which pass sees the banner depends on timing: injected before the platform check, the CookieYes rule
+    // clicks Accept; injected between that check and the text check (a busy machine), the text rule clicks
+    // the same button. Either way the banner's own Accept is clicked and the banner is gone (REV-201)
+    const outcome = await service.dismiss(page, { ...FAST, retryDelayMs: 150 });
+    expect(['dismissed:cmp:cookieyes', 'dismissed:text']).toContain(outcome);
+    expect(await page.locator('#banner').count()).toBe(0);
   });
 });
 
