@@ -1,4 +1,5 @@
 /**
+ * Runs as revamp_app (MONGODB_URI): readWrite on revamp is enough (REV-198).
  * REV-35 backfill: normalises `domain`, sets `phoneE164` and `source` on existing leads, and
  * recovers `externalId` for discovery imports whose search results are still in Redis.
  *

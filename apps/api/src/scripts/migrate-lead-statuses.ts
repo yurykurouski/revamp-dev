@@ -1,4 +1,5 @@
 /**
+ * Runs as revamp_app (MONGODB_URI): readWrite on revamp is enough (REV-198).
  * REV-62 migration: moves leads stored with a status that was removed from the lead state machine
  * (PENDING, MVP_READY, AWAITING_APPROVAL, APPROVED, DISPATCHED, REPLIED) to the status that replaces it.
  * Safe to run more than once.

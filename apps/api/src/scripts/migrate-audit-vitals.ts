@@ -1,4 +1,5 @@
 /**
+ * Runs as revamp_app (MONGODB_URI): readWrite on revamp is enough (REV-198).
  * Audit vitals migration. Safe to run more than once.
  *   REV-105: removes `lighthouseMetrics.speedIndex` (an estimate, not a measurement) and
  *            `lighthouseMetrics.fidOrInp` (never written) from stored audits.

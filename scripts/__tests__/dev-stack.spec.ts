@@ -370,3 +370,17 @@ describe('ensureMongoReady (REV-198)', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+describe('npm scripts (REV-198)', () => {
+  const pkg = JSON.parse(fs.readFileSync(path.resolve(__dirname, '../../package.json'), 'utf8'));
+
+  it('docker:up goes through startInfrastructure, so it also ensures the MongoDB users', () => {
+    expect(pkg.scripts['docker:up']).toBe('node scripts/infra-up.mjs');
+    const source = fs.readFileSync(path.resolve(__dirname, '../infra-up.mjs'), 'utf8');
+    expect(source).toContain('startInfrastructure(root)');
+  });
+
+  it('db:check-roles runs the role check script', () => {
+    expect(pkg.scripts['db:check-roles']).toBe('tsx scripts/check-mongo-roles.ts');
+  });
+});
