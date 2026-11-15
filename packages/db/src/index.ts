@@ -5,3 +5,4 @@ export * from './models/EmailCampaign.model.js';
 export * from './models/AnalyticsEvent.model.js';
 
 export * from './redact-uri.js';
+export * from './lead-children-migration.js';
