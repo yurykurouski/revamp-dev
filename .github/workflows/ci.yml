@@ -24,6 +24,9 @@ jobs:
     name: Gates
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Where mongodb-memory-server downloads and finds its binary (REV-201), the cached path below
+      MONGOMS_DOWNLOAD_DIR: /home/runner/.cache/mongodb-binaries
     steps:
       - name: Check out
         uses: actions/checkout@v5
@@ -33,6 +36,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+
+      # mongodb-memory-server's postinstall downloads the MongoDB binary the real-Mongo tests use
+      # during npm ci (REV-201); restore it first. Version pinned in package.json (config.mongodbMemoryServer.version)
+      - name: Cache MongoDB test binary
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/mongodb-binaries
+          key: mongodb-7.0.14-${{ runner.os }}
 
       - name: Install dependencies
         run: npm ci

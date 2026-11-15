@@ -1,6 +1,7 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { IDeployJobData, ILead, IAudit, IMvpPageVersion, MVP_MAX_VERSIONS } from '@revamp/shared-types';
 import { leadStatusesInto } from '@revamp/validation';
+import { retryOnDuplicateKey } from '@revamp/db';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
@@ -89,12 +90,14 @@ async function deployPage(job: Job<IDeployJobData>) {
   const unset: Record<string, ''> = Object.fromEntries([...OLD_MVP_FIELDS, 'controls', 'editedAt'].map((field) => [field, '']));
   if (!standards) unset['standards'] = '';
   if (!generationSource?.requestedProvider) Object.assign(unset, { requestedProvider: '', requestedModel: '' });
-  const mvpProject = await MvpProject.findOneAndUpdate(
+  // One project per lead (unique leadId, REV-201). The upsert takes leadId from the filter. A concurrent
+  // first deploy writes the same slug, and previewSlug is unique too, so the loser may get E11000 on
+  // the slug, which MongoDB does not retry by itself: run it once more, as an update
+  const mvpProject = await retryOnDuplicateKey(() => MvpProject.findOneAndUpdate(
     { leadId: lead._id },
     {
       $set: {
         auditId: audit._id,
-        leadId: lead._id,
         previewSlug: slug,
         fullPreviewUrl,
         storageHtmlPath,
@@ -123,7 +126,7 @@ async function deployPage(job: Job<IDeployJobData>) {
     },
     // strict: false keeps the unset of an old record's fields, which the schema no longer declares (REV-141)
     { upsert: true, new: true, strict: false },
-  ).exec();
+  ).exec());
 
   // 5. The files of versions that fell off the list, as Mongo kept it
   const keptVersions = (mvpProject?.versions as IMvpPageVersion[] | undefined) ?? (retried ? versions : [...versions, entry].slice(-MVP_MAX_VERSIONS));

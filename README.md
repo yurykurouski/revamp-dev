@@ -58,6 +58,7 @@ The app starts without one, but audits and MVP generation need an LLM, and nothi
 | `docker compose up` fails with a port error | Another MongoDB (27017), Redis (6379) or MinIO (9000/9001) is running on your machine. Stop it, then run `npm run dev` again. |
 | `The project is not set up yet.` | Run `npm run setup` first. |
 | `MongoDB already has users, and MONGO_ROOT_PASSWORD in .env does not log in as revamp_root.` | Your MongoDB volume was set up with another `.env` (for example, `.env` was deleted). Put the old `MONGO_ROOT_PASSWORD` back, or start over with `docker compose down -v`, which deletes all local data. |
+| `leadId is not unique yet (REV-201)` at API or worker startup | The database predates the unique `leadId` index. Run `npm run migrate:unique-lead-children --workspace=@revamp/api`, read the dry run, then add `-- --apply`. |
 | An audit fails at the design critique | No LLM provider is configured, see above. |
 
 ## Repository layout
@@ -109,6 +110,8 @@ MongoDB runs with access control as a single-node replica set (`rs0`), so the ap
 The first `npm run dev` after this change upgrades an existing data volume in place: your data stays. The keyFile the replica set needs is generated inside the `mongo_config` volume and never leaves it. The apps log the MongoDB URI with the password replaced by `***`.
 
 **Upgrading a shared dev stack.** That first start recreates the `revamp-mongo` container with access control. API and worker processes that were already running keep the old URI without a user and fail until you restart them. Another checkout or worktree that uses the same containers needs the `MONGODB_URI` and `MONGO_*_PASSWORD` lines from the `.env` that ran the upgrade, so copy them over. An `.env` without them would generate new passwords that the existing users don't have, and setup stops with the root-password message.
+
+**One MVP and one campaign per lead (REV-201).** `leadId` is unique on `mvpprojects` and `emailcampaigns`. A database created before this has a plain `leadId_1` index that Mongoose cannot turn unique, so the API and workers print a warning at startup until `npm run migrate:unique-lead-children --workspace=@revamp/api -- --apply` has run once (see [Scripts](#scripts)). On Atlas, run the dry run first with the production `MONGODB_URI`, check the duplicates it lists, then stop the workers and apply.
 
 **Production (MongoDB Atlas).** The production database is the one in the production `MONGODB_URI` (`revamp_prod` in `.env.production.example`), so give the roles on that database. In Atlas (Database Access), create `revamp_app` with `readWrite@revamp_prod` for the API and workers, `revamp_read` with `read@revamp_prod` and, for index maintenance, `revamp_admin` with `dbAdmin@revamp_prod`. Atlas manages users itself, so there is no `userAdmin` role and no root user there. Set the `MONGODB_URI` secret in the GitHub `production` environment to the `revamp_app` user, never an Atlas admin. `ENV_FILE=<file with the production URI and passwords> npm run db:check-roles` checks the same rights against Atlas; it reads the database name from the URI.
 
@@ -169,6 +172,7 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
 | `npm run migrate:lead-statuses --workspace=@revamp/api` | One-off (REV-62): moves leads stored with a removed status (`PENDING`, `MVP_READY`, `AWAITING_APPROVAL`, `APPROVED`, `DISPATCHED`, `REPLIED`) to the status that replaces it (`-- --dry-run` to preview) |
 | `npm run migrate:audit-vitals --workspace=@revamp/api` | One-off (REV-105, REV-102): removes `lighthouseMetrics.speedIndex` and `lighthouseMetrics.fidOrInp` from stored audits (they were never measured), then renames `lighthouseMetrics` to `webVitals` (`-- --dry-run` to preview) |
+| `npm run migrate:unique-lead-children --workspace=@revamp/api` | REV-201: makes `leadId` unique on `mvpprojects` and `emailcampaigns`. It removes duplicates first, keeping the MVP the lead's `previewUrl` points at (else the newest) and the campaign furthest along (`UNSUBSCRIBED` first, else the newest), then rebuilds the `leadId_1` index. Dry run by default (unlike the migrations above), `-- --apply` writes; run it with the workers stopped. The dry run lists every record with its status, slug and date, and warns about removed campaigns whose email already went out (their tracking links stop working). Removed MVPs' storage folders are listed, not deleted |
 
 Production deployment uses `.env.production.example`, `docker-compose.prod.yml` and `deploy/deploy.sh`.
 

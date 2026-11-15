@@ -12,11 +12,12 @@ export interface IMvpProjectDocument
 
 const MvpProjectSchema = new Schema<IMvpProjectDocument>(
   {
+    // REV-201: one MVP per lead, enforced by the database (migrate:unique-lead-children builds it on old data)
     leadId: {
       type: Schema.Types.ObjectId,
       ref: 'Lead',
       required: true,
-      index: true,
+      unique: true,
     },
     auditId: {
       type: Schema.Types.ObjectId,

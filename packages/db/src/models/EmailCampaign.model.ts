@@ -43,11 +43,12 @@ const EmailMetricsSchema = new Schema(
 
 const EmailCampaignSchema = new Schema<IEmailCampaignDocument>(
   {
+    // REV-201: one campaign per lead, enforced by the database (migrate:unique-lead-children builds it on old data)
     leadId: {
       type: Schema.Types.ObjectId,
       ref: 'Lead',
       required: [true, 'Lead ID is required'],
-      index: true,
+      unique: true,
     },
     auditId: {
       type: Schema.Types.ObjectId,
