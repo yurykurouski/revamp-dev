@@ -10,6 +10,7 @@
 const UNAUTHORIZED = 13;
 const ALREADY_INITIALIZED = 23;
 const NOT_YET_INITIALIZED = 94;
+const USER_ALREADY_EXISTS = 51003;
 const ROOT_PASSWORD_MISMATCH = 2;
 
 const REPLICA_SET = { _id: 'rs0', members: [{ _id: 0, host: 'localhost:27017' }] };
@@ -69,12 +70,15 @@ if (!tryAuthAsRoot()) {
   waitForPrimary();
   try {
     admin.createUser({ user: ROOT_USER, pwd: rootPassword, roles: [{ role: 'root', db: 'admin' }] });
+    print(`created ${ROOT_USER} (root@admin)`);
   } catch (error) {
-    if (error.code === UNAUTHORIZED) rootMismatch();
-    throw error;
+    // Another setup running at the same moment (two sessions starting `npm run dev`) may have created
+    // revamp_root first: then this one sees UserAlreadyExists or, once the localhost exception closed,
+    // Unauthorized. Logging in with the same password settles it; only a failed login is a mismatch.
+    if (error.code !== UNAUTHORIZED && error.code !== USER_ALREADY_EXISTS) throw error;
+    if (!tryAuthAsRoot()) rootMismatch();
   }
-  admin.auth(ROOT_USER, rootPassword);
-  print(`created ${ROOT_USER} (root@admin)`);
+  if (!tryAuthAsRoot()) rootMismatch();
 } else {
   try {
     rs.status();
@@ -88,6 +92,14 @@ if (!tryAuthAsRoot()) {
 for (const { user, env, roles } of APP_USERS) {
   const pwd = process.env[env];
   if (admin.getUser(user)) admin.updateUser(user, { pwd, roles });
-  else admin.createUser({ user, pwd, roles });
+  else {
+    try {
+      admin.createUser({ user, pwd, roles });
+    } catch (error) {
+      // A setup running at the same moment created it between getUser and createUser.
+      if (error.code !== USER_ALREADY_EXISTS) throw error;
+      admin.updateUser(user, { pwd, roles });
+    }
+  }
   print(`ensured ${user} (${roles.map((r) => `${r.role}@${r.db}`).join(', ')})`);
 }
