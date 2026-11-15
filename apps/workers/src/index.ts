@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import { env } from './config/env.js';
+import { redactMongoUri } from '@revamp/db';
 import { createAuditWorker } from './workers/audit.worker.js';
 import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
@@ -51,7 +52,7 @@ export async function recoverStalledAuditedLeads(): Promise<number> {
 
 async function startWorkers(): Promise<void> {
   try {
-    console.log(`[Workers] Connecting to MongoDB at ${env.MONGODB_URI}...`);
+    console.log(`[Workers] Connecting to MongoDB at ${redactMongoUri(env.MONGODB_URI)}...`);
     await mongoose.connect(env.MONGODB_URI);
     console.log('[Workers] MongoDB connected successfully.');
 

@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
+import { redactMongoUri } from '@revamp/db';
 import { closeQueues, redisConnection } from './queues/index.js';
 import { createShutdown } from './shutdown.js';
 
@@ -8,7 +9,7 @@ const app = createApp();
 
 async function startServer(): Promise<void> {
   try {
-    console.log(`[API] Connecting to MongoDB at ${env.MONGODB_URI}...`);
+    console.log(`[API] Connecting to MongoDB at ${redactMongoUri(env.MONGODB_URI)}...`);
     await mongoose.connect(env.MONGODB_URI);
     console.log('[API] MongoDB connected successfully.');
 
