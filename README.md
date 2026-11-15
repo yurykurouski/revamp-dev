@@ -108,7 +108,9 @@ MongoDB runs with access control as a single-node replica set (`rs0`), so the ap
 
 The first `npm run dev` after this change upgrades an existing data volume in place: your data stays. The keyFile the replica set needs is generated inside the `mongo_config` volume and never leaves it. The apps log the MongoDB URI with the password replaced by `***`.
 
-**Production (MongoDB Atlas).** In Atlas, create database users with the same roles: `revamp_app` (`readWrite@revamp`) for the API and workers, `revamp_read` (`read@revamp`) and `revamp_admin` (`dbAdmin@revamp`, `userAdmin@revamp`). Set the `MONGODB_URI` secret in the GitHub `production` environment to the `revamp_app` user. Never use an Atlas admin user for the app.
+**Upgrading a shared dev stack.** That first start recreates the `revamp-mongo` container with access control. API and worker processes that were already running keep the old URI without a user and fail until you restart them. Another checkout or worktree that uses the same containers needs the `MONGODB_URI` and `MONGO_*_PASSWORD` lines from the `.env` that ran the upgrade, so copy them over. An `.env` without them would generate new passwords that the existing users don't have, and setup stops with the root-password message.
+
+**Production (MongoDB Atlas).** The production database is the one in the production `MONGODB_URI` (`revamp_prod` in `.env.production.example`), so give the roles on that database. In Atlas (Database Access), create `revamp_app` with `readWrite@revamp_prod` for the API and workers, `revamp_read` with `read@revamp_prod` and, for index maintenance, `revamp_admin` with `dbAdmin@revamp_prod`. Atlas manages users itself, so there is no `userAdmin` role and no root user there. Set the `MONGODB_URI` secret in the GitHub `production` environment to the `revamp_app` user, never an Atlas admin. `ENV_FILE=<file with the production URI and passwords> npm run db:check-roles` checks the same rights against Atlas; it reads the database name from the URI.
 
 ### LLM providers
 
