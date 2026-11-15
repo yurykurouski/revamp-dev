@@ -85,6 +85,22 @@ describe('CI/CD workflow (.github/workflows/ci.yml, REV-177)', () => {
     expect(install).toBeLessThan(all.indexOf('npm test'));
   });
 
+  it('caches the MongoDB test binary (pinned in package.json) before the tests (REV-201)', () => {
+    const { wf } = readWorkflow();
+    const steps = wf.jobs.gates.steps;
+    const cache = steps.findIndex(
+      (s) => s.uses?.startsWith('actions/cache@') && String(s.with?.['path'] ?? '').includes('mongodb-binaries'),
+    );
+    const test = steps.findIndex((s) => s.run === 'npm test');
+    expect(cache).toBeGreaterThanOrEqual(0);
+    expect(cache).toBeLessThan(test);
+    const pinned = (JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8')) as {
+      config?: { mongodbMemoryServer?: { version?: string } };
+    }).config?.mongodbMemoryServer?.version;
+    expect(pinned).toMatch(/^7\.0\.\d+$/);
+    expect(String(steps[cache]!.with?.['key'])).toContain(`mongodb-${pinned}`);
+  });
+
   it('references only npm scripts that exist in the root package.json', () => {
     const { raw } = readWorkflow();
     const scripts = rootScripts();
