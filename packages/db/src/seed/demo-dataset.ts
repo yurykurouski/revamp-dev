@@ -156,8 +156,10 @@ const EVENTS: Partial<Record<LeadStatus, AnalyticsEventType[]>> = {
   UNSUBSCRIBED: ['open', 'unsubscribe'],
 };
 
-const PALETTES: [string, string, string, string, string][] = [
-  ['#1f4e79', '#f2a900', '#ffffff', '#f4f6f8', '#1a1a1a'],
+type Palette = [string, string, string, string, string];
+const DEFAULT_PALETTE: Palette = ['#1f4e79', '#f2a900', '#ffffff', '#f4f6f8', '#1a1a1a'];
+const PALETTES: Palette[] = [
+  DEFAULT_PALETTE,
   ['#7a1f2b', '#d4a373', '#fffaf5', '#f5ece3', '#2b2b2b'],
   ['#14532d', '#84cc16', '#ffffff', '#f0fdf4', '#111827'],
 ];
@@ -333,7 +335,7 @@ export function buildDemoDataset(
     const mvpId = demoId('mvp', n);
     const campaignId = demoId('campaign', n);
     const slug = `demo-${spec.key}`;
-    const [primary, accent, bg, surface, text] = PALETTES[outreachN++ % PALETTES.length];
+    const [primary, accent, bg, surface, text] = PALETTES[outreachN++ % PALETTES.length] ?? DEFAULT_PALETTE;
     const theme: IMvpTheme = { primary, accent, bg, surface, text, fontHeading: "'Poppins', sans-serif", fontBody: "'Inter', sans-serif" };
     const generated = new Date(audited.getTime() + 20 * 60_000);
     const storageHtmlPath = `v/${slug}/index.html`;
