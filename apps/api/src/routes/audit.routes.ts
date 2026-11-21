@@ -4,7 +4,7 @@ import { TriggerAuditSchema, canTransition, leadStatusesInto } from '@revamp/val
 import { validateBody } from '../middlewares/validate.js';
 import { Audit } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
-import { addAuditJob } from '../queues/audit.queue.js';
+import { enqueueAuditOrFail } from '../services/audit-enqueue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
 const router = Router();
@@ -45,8 +45,10 @@ router.post(
         status: 'QUEUED',
       });
 
-      const job = await addAuditJob({
+      // REV-202: a queue that fails or does not answer puts the lead back in AUDIT_FAILED with a 503
+      const { jobId } = await enqueueAuditOrFail({
         leadId: lead._id.toString(),
+        auditId: audit._id.toString(),
         url: lead.originalUrl,
         niche: lead.niche,
       });
@@ -57,7 +59,7 @@ router.post(
         data: {
           leadId: lead._id.toString(),
           auditId: audit._id.toString(),
-          jobId: job.id,
+          jobId,
           status: 'QUEUED',
         },
       });

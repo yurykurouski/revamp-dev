@@ -1,6 +1,5 @@
 import type { Job } from 'bullmq';
 import type { IAuditJobData } from '@revamp/shared-types';
-import { leadStatusesInto } from '@revamp/validation';
 import { Audit } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
 
@@ -21,9 +20,10 @@ export function isFinalAuditAttempt(job: Pick<Job, 'attemptsMade' | 'opts'>, per
 export async function markLeadAuditFailed(job: Job<IAuditJobData>, auditError: string): Promise<void> {
   const { leadId } = job.data;
   try {
-    // Only a lead still marked AUDITING by this run is changed; never overwrite a newer state
+    // Only a lead still marked AUDITING by this run is changed; never overwrite a newer state. Not every
+    // source of AUDIT_FAILED: a QUEUED lead was retried meanwhile, and its new job must not be failed (REV-202)
     await Lead.findOneAndUpdate(
-      { _id: leadId, status: { $in: leadStatusesInto('AUDIT_FAILED') } },
+      { _id: leadId, status: 'AUDITING' },
       { $set: { status: 'AUDIT_FAILED', auditError } },
     ).exec();
     console.warn(`[AuditFailure] Lead ${leadId} marked AUDIT_FAILED: ${auditError}`);

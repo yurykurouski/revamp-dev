@@ -129,6 +129,8 @@ export class DiscoveryService {
     );
 
     const results: IDiscoveryImportResult['results'] = [];
+    // REV-202: once the audit queue is down, the rest are not created; each would wait out the timeout
+    let queueDown = false;
     for (const [i, externalId] of dto.externalIds.entries()) {
       const candidate = selected[i];
       if (!candidate) {
@@ -142,6 +144,11 @@ export class DiscoveryService {
       }
       if (candidate.status !== 'new' || !candidate.website || !candidate.domain) {
         results.push({ externalId, outcome: 'not_importable' });
+        continue;
+      }
+
+      if (queueDown) {
+        results.push({ externalId, outcome: 'failed' });
         continue;
       }
 
@@ -163,6 +170,13 @@ export class DiscoveryService {
         results.push({ externalId, outcome: 'imported', leadId: lead._id.toString() });
       } catch (error) {
         console.error(`[Discovery] Failed to import ${candidate.name} (${candidate.domain}):`, error);
+        if (error instanceof AppError && error.code === 'AUDIT_QUEUE_UNAVAILABLE') {
+          // The lead was saved and is AUDIT_FAILED, so the operator can retry its audit
+          queueDown = true;
+          const leadId = (error.details as { leadId?: string } | undefined)?.leadId;
+          results.push({ externalId, outcome: 'failed', ...(leadId ? { leadId } : {}) });
+          continue;
+        }
         results.push({ externalId, outcome: 'failed' });
       }
     }

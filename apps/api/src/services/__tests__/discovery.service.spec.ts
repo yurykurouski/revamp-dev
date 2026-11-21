@@ -396,6 +396,24 @@ describe('DiscoveryService (API)', () => {
       expect(result.results.map((r) => r.outcome)).toEqual(['failed', 'imported']);
     });
 
+    it('should stop creating leads once the audit queue is down, and name the lead it failed (REV-202)', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2'), candidate('3')]) as any);
+      vi.mocked(LeadService.createLead)
+        .mockResolvedValueOnce({ lead: { _id: { toString: () => 'L1' } }, auditId: 'a', jobId: 'j' } as any)
+        .mockRejectedValueOnce(new AppError(503, 'AUDIT_QUEUE_UNAVAILABLE', 'queue down', { leadId: 'L2' }));
+
+      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2', 'node/3'] });
+
+      expect(result.imported).toBe(1);
+      expect(result.results).toEqual([
+        { externalId: 'node/1', outcome: 'imported', leadId: 'L1' },
+        { externalId: 'node/2', outcome: 'failed', leadId: 'L2' },
+        { externalId: 'node/3', outcome: 'failed' },
+      ]);
+      expect(LeadService.createLead).toHaveBeenCalledTimes(2);
+    });
+
     it('should throw 404 for an unknown job and 409 for an unfinished one', async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(undefined);
       const missing = await DiscoveryService.importCandidates('x', { externalIds: ['node/1'] }).catch((e) => e);

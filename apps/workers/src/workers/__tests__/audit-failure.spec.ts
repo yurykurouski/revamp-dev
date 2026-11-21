@@ -43,7 +43,7 @@ describe('audit failure handling (REV-44)', () => {
     it('moves only a lead still in AUDITING to AUDIT_FAILED', async () => {
       await markLeadAuditFailed(job(2, 3), 'net::ERR_CERT_DATE_INVALID');
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-1', status: { $in: ['AUDITING'] } },
+        { _id: 'lead-1', status: 'AUDITING' },
         { $set: { status: 'AUDIT_FAILED', auditError: 'net::ERR_CERT_DATE_INVALID' } },
       );
     });
@@ -65,7 +65,7 @@ describe('audit failure handling (REV-44)', () => {
         { sort: { createdAt: -1 } },
       );
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-1', status: { $in: ['AUDITING'] } },
+        { _id: 'lead-1', status: 'AUDITING' },
         { $set: { status: 'AUDIT_FAILED', auditError: STALLED_AUDIT_MESSAGE } },
       );
     });
