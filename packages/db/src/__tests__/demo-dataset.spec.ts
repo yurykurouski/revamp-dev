@@ -113,6 +113,13 @@ describe('buildDemoDataset (REV-199)', () => {
     expect(new Set(all).size).toBe(all.length);
   });
 
+  it('never claims a model provider wrote the demo pages', () => {
+    for (const m of ds.mvpProjects) {
+      expect(m['provider']).toBeUndefined();
+      for (const v of m.versions) expect(v.provider).toBeUndefined();
+    }
+  });
+
   it('marks every lead as demo data', () => {
     for (const l of ds.leads) {
       expect(l.tags).toContain('demo-seed');

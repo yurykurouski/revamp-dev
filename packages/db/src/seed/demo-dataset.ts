@@ -353,12 +353,11 @@ export function buildDemoDataset(
       isPublished: true,
       generatedAt: generated,
       generationCount: 1,
-      provider: 'anthropic',
       modelUsed: 'demo-seed',
       standards: standardsOf(MVP_CHECKS),
       page: versionHtml,
       theme,
-      versions: [{ n: 1, kind: 'generate', provider: 'anthropic', model: 'demo-seed', storagePath: `v/${slug}/versions/1.html`, createdAt: generated }],
+      versions: [{ n: 1, kind: 'generate', model: 'demo-seed', storagePath: `v/${slug}/versions/1.html`, createdAt: generated }],
       createdAt: generated,
       updatedAt: generated,
     });
