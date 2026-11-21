@@ -202,6 +202,34 @@ describe('BrandExtractorService', () => {
       expect(result.services).toHaveLength(3);
     });
 
+    it('returns contacts and site content that pass their schemas (REV-200)', async () => {
+      const { ExtractedContactsSchema, SiteContentSchema } = await import('@revamp/validation');
+      const rawData: RawBrandExtractionData = {
+        colors: [],
+        fontFamilies: [],
+        phone: '+1 (555) 123-4567',
+        socialLinks: [{ platform: 'telegram', url: 'https://t.me/example' }],
+        services: [],
+      };
+      const result = BrandExtractorService.processBrandData(rawData, 'Apex Dental');
+      expect(ExtractedContactsSchema.safeParse(result.contacts).error).toBeUndefined();
+      expect(SiteContentSchema.safeParse(result.siteContent).error).toBeUndefined();
+    });
+
+    it('drops a site content field the schema refuses instead of failing the audit (REV-200)', () => {
+      const rawData = {
+        colors: [],
+        fontFamilies: [],
+        socialLinks: [],
+        services: [],
+        content: { structured: { ratingValue: '4.8 stars', foundingYear: 'since 1990' } },
+      } as unknown as RawBrandExtractionData;
+      const result = BrandExtractorService.processBrandData(rawData, 'Apex Dental');
+      expect(result.siteContent.rating).toBeUndefined();
+      expect(result.siteContent.foundingYear).toBeUndefined();
+      expect(result.siteContent.headings).toEqual(expect.any(Array));
+    });
+
     it('should assign SVG monogram as logoUrl when no logo is discovered', () => {
       const rawData: RawBrandExtractionData = {
         colors: [],

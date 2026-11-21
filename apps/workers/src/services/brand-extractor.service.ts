@@ -1,4 +1,6 @@
 import { IExtractedBrandTokens, IExtractedContacts, ISiteContent } from '@revamp/shared-types';
+import { ExtractedContactsSchema, SiteContentSchema } from '@revamp/validation';
+import type { ZodTypeAny } from 'zod';
 import { RawSiteContent } from './site-content.extractor.js';
 
 export interface RgbColor {
@@ -362,9 +364,9 @@ export class BrandExtractorService {
         logoUrl,
         faviconUrl: rawData.faviconUrl,
       },
-      contacts,
+      contacts: this.validated(ExtractedContactsSchema, contacts, 'extractedContacts') as IExtractedContacts,
       services,
-      siteContent: this.toSiteContent(content, rawData),
+      siteContent: this.validated(SiteContentSchema, this.toSiteContent(content, rawData), 'extractedContent') as ISiteContent,
       monogramSvg,
     };
   }
@@ -398,6 +400,20 @@ export class BrandExtractorService {
         : undefined,
       foundingYear: content?.structured?.foundingYear,
     };
+  }
+
+  /**
+   * The value as its schema accepts it (REV-200): it is stored as a Mixed field. A page can carry odd data (a rating
+   * written as text), so an invalid field is dropped with a warning rather than failing the audit; never replaced.
+   * A field the schema requires that is still invalid is a bug here, so that throws.
+   */
+  static validated(schema: ZodTypeAny, value: object, name: string): unknown {
+    const first = schema.safeParse(value);
+    if (first.success) return first.data;
+    const dropped = [...new Set(first.error.issues.map((issue) => String(issue.path[0])))];
+    const rest = Object.fromEntries(Object.entries(value).filter(([key]) => !dropped.includes(key)));
+    console.warn(`[BrandExtractor] ${name}: left out ${dropped.join(', ')}, not valid`);
+    return schema.parse(rest);
   }
 
   static withDigits(value?: string): string | undefined {
