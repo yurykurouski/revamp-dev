@@ -487,6 +487,38 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(campaign?.scheduledAt).toBeUndefined();
     });
 
+    it.each(['SENDING', 'DELIVERED'])('does not revert a lead whose campaign the worker already took (%s, review I1)', async (status) => {
+      const lead = await Lead.create({ ...leadFields, status: 'SCHEDULED' });
+      await EmailCampaign.create({ ...approved(6), status, leadId: lead._id });
+      expect(await revertOutreachApproval(String(lead._id))).toBe(false);
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('SCHEDULED');
+      expect((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.status).toBe(status);
+    });
+
+    it('lets exactly one of two concurrent approvals through, with one campaign (review I2)', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      const results = await Promise.all([
+        approveOutreachWithCampaign(String(lead._id), approved(7)),
+        approveOutreachWithCampaign(String(lead._id), approved(8)),
+      ]);
+      expect(results.filter(Boolean)).toHaveLength(1);
+      expect(await EmailCampaign.countDocuments({ leadId: lead._id })).toBe(1);
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('SCHEDULED');
+    });
+
+    it('approves again after a revert, with the new token (review I2)', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      await approveOutreachWithCampaign(String(lead._id), approved(9));
+      await revertOutreachApproval(String(lead._id));
+      const again = approved(10);
+      const result = await approveOutreachWithCampaign(String(lead._id), again);
+      expect(result?.lead.status).toBe('SCHEDULED');
+      const campaign = await EmailCampaign.findOne({ leadId: lead._id }).lean();
+      expect(campaign?.status).toBe('SCHEDULED');
+      expect(campaign?.trackingToken).toBe(again.trackingToken);
+      expect(await EmailCampaign.countDocuments({ leadId: lead._id })).toBe(1);
+    });
+
     it('leaves a lead the worker already sent alone', async () => {
       const lead = await Lead.create({ ...leadFields, status: 'SENT' });
       await EmailCampaign.create({ ...approved(5), status: 'DELIVERED', leadId: lead._id });

@@ -19,12 +19,14 @@ export function planScheduledLeadRepair(input: {
   leads: ReadonlyArray<{ _id: string; updatedAt: Date }>;
   campaignStatusByLead: ReadonlyMap<string, EmailCampaignStatus>;
   leadIdsWithJob: ReadonlySet<string>;
+  /** Leads whose send failed after its retries: the provider may have accepted the email, so they are left alone */
+  leadIdsWithFailedJob?: ReadonlySet<string>;
   now: Date;
 }): ScheduledLeadRepair[] {
   const plan: ScheduledLeadRepair[] = [];
   for (const lead of input.leads) {
     if (input.now.getTime() - lead.updatedAt.getTime() < SCHEDULED_REPAIR_MIN_AGE_MS) continue;
-    if (input.leadIdsWithJob.has(lead._id)) continue;
+    if (input.leadIdsWithJob.has(lead._id) || input.leadIdsWithFailedJob?.has(lead._id)) continue;
     const status = input.campaignStatusByLead.get(lead._id);
     if (status && TAKEN.has(status)) continue;
     plan.push({ leadId: lead._id, reason: status ? 'no_job' : 'no_campaign' });

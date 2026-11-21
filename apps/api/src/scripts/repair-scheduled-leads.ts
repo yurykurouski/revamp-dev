@@ -27,11 +27,18 @@ async function main() {
   const campaignStatusByLead = new Map(campaigns.map((c) => [String(c.leadId), c.status as EmailCampaignStatus]));
   const jobs = await emailQueue.getJobs(['waiting', 'active', 'delayed', 'prioritized', 'paused', 'waiting-children']);
   const leadIdsWithJob = new Set(jobs.map((job) => job?.data?.leadId).filter((id): id is string => Boolean(id)));
+  // A send that failed after its retries may still have reached the provider: such a lead is listed, never reverted
+  const failed = await emailQueue.getJobs(['failed']);
+  const leadIdsWithFailedJob = new Set(failed.map((job) => job?.data?.leadId).filter((id): id is string => Boolean(id)));
+  for (const id of leadIdsWithFailedJob) {
+    if (leads.some((lead) => String(lead._id) === id)) console.log(`[Repair] ${id}: SCHEDULED with a failed send job; check it by hand, not reverted`);
+  }
 
   const plan = planScheduledLeadRepair({
     leads: leads.map((lead) => ({ _id: String(lead._id), updatedAt: lead.updatedAt as Date })),
     campaignStatusByLead,
     leadIdsWithJob,
+    leadIdsWithFailedJob,
     now: new Date(),
   });
 

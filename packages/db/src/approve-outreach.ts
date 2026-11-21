@@ -27,15 +27,23 @@ export async function approveOutreachWithCampaign(
   return result;
 }
 
+/** Campaign statuses an approval revert may undo: approved, not yet claimed by the email worker */
+const REVERTIBLE_CAMPAIGN_STATUSES: readonly string[] = ['SCHEDULED', 'APPROVED'];
+
 /**
  * Undoes an approval whose send could not be queued (REV-203): the lead SCHEDULED → NEEDS_APPROVAL and its campaign
  * back to NEEDS_APPROVAL without the approval stamps, in one transaction, so the operator can approve again. Only a
- * lead still SCHEDULED and a campaign still SCHEDULED change: one the worker already took (SENDING, DELIVERED, SENT)
- * is left alone. Returns whether the lead was moved.
+ * lead still SCHEDULED changes, and nothing changes when its campaign is already claimed or finished by the email
+ * worker (SENDING, DELIVERED, …) or the lead is already SENT. Returns whether the lead was moved.
  */
 export async function revertOutreachApproval(leadId: string): Promise<boolean> {
   let moved = false;
   await mongoose.connection.transaction(async (session) => {
+    moved = false;
+    // A campaign the email worker already claimed (SENDING) or finished is not an approval to undo: reverting its lead
+    // would let a second approval send the email again
+    const campaign = await EmailCampaign.findOne({ leadId }, { status: 1 }, { session }).lean().exec();
+    if (campaign && !REVERTIBLE_CAMPAIGN_STATUSES.includes(campaign.status)) return;
     const lead = await Lead.findOneAndUpdate({ _id: leadId, status: 'SCHEDULED' }, { $set: { status: 'NEEDS_APPROVAL' } }, { session }).exec();
     moved = Boolean(lead);
     if (!lead) return;

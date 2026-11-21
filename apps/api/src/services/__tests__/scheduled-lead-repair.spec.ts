@@ -36,4 +36,16 @@ describe('planScheduledLeadRepair (REV-203)', () => {
     });
     expect(plan).toEqual([]);
   });
+
+  it('leaves a lead whose send failed after its retries for the operator: the provider may have accepted it (review)', () => {
+    expect(
+      planScheduledLeadRepair({
+        leads: [lead('failed')],
+        campaignStatusByLead: new Map([['failed', 'SCHEDULED' as const]]),
+        leadIdsWithJob: new Set(),
+        leadIdsWithFailedJob: new Set(['failed']),
+        now,
+      }),
+    ).toEqual([]);
+  });
 });
