@@ -908,8 +908,9 @@ describe('AuditWorker (@revamp/workers)', () => {
 
       expect(result).toMatchObject({ success: false, skipped: true, leadId: 'lead-x' });
       expect(browserService.captureFullAudit).not.toHaveBeenCalled();
+      // Only an audit still waiting or running is failed: a stray job never overwrites a COMPLETED one (REV-202)
       expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
-        { leadId: 'lead-x' },
+        { leadId: 'lead-x', status: { $in: ['QUEUED', 'PROCESSING'] } },
         { status: 'FAILED', errorMessage: expect.stringContaining('no longer waiting for an audit') },
         { sort: { createdAt: -1 } },
       );

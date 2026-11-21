@@ -10,6 +10,7 @@ vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../queues/audit.queue.js');
+vi.mock('../../queues/connection.js', () => ({ redisConnection: { status: 'ready' } }));
 
 /** An MvpProject.find query resolving to the given projects */
 const mvpQuery = (result: Promise<unknown[]>) => ({ lean: () => ({ exec: () => result }) }) as any;

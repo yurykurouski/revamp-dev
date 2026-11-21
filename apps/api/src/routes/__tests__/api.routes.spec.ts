@@ -291,6 +291,15 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('POST /api/v1/audits/trigger', () => {
+    // The enqueue refuses to queue while Redis is not ready (REV-202); these tests mock the queue itself
+    const realRedisStatus = redisConnection.status;
+    beforeEach(() => {
+      (redisConnection as any).status = 'ready';
+    });
+    afterEach(() => {
+      (redisConnection as any).status = realRedisStatus;
+    });
+
     it('should return 400 when leadId is missing', async () => {
       const res = await request(app).post('/api/v1/audits/trigger').send({});
       expect(res.status).toBe(400);

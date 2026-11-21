@@ -40,7 +40,12 @@ export const createAuditWorker = (): Worker => {
       if (!existingLead) {
         const reason = `Lead ${leadId} is missing or no longer waiting for an audit; skipping it.`;
         console.warn(`[AuditWorker] ${reason}`);
-        await Audit.findOneAndUpdate({ leadId }, { status: 'FAILED', errorMessage: reason }, LATEST_AUDIT).exec();
+        // Only an audit still waiting or running: a stray job (one queued late, REV-202) never overwrites a finished audit
+        await Audit.findOneAndUpdate(
+          { leadId, status: { $in: ['QUEUED', 'PROCESSING'] } },
+          { status: 'FAILED', errorMessage: reason },
+          LATEST_AUDIT,
+        ).exec();
         return { success: false, skipped: true, leadId, reason };
       }
 

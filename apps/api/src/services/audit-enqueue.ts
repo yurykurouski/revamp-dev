@@ -2,6 +2,7 @@ import type { IAuditJobData } from '@revamp/shared-types';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { addAuditJob } from '../queues/audit.queue.js';
+import { redisConnection } from '../queues/connection.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
 /**
@@ -40,6 +41,9 @@ export async function enqueueAuditOrFail(
 ): Promise<{ jobId?: string }> {
   const { leadId, auditId, url, niche } = params;
   try {
+    // ioredis keeps a command sent while disconnected and runs it on reconnect, so a timed-out add could still
+    // land later next to the operator's retry. Not calling it while Redis is down leaves no such job.
+    if (redisConnection.status !== 'ready') throw new Error(`Redis is ${redisConnection.status}`);
     const job = await withTimeout(addAuditJob({ leadId, url, niche }), timeoutMs);
     return { jobId: job.id };
   } catch (queueError) {

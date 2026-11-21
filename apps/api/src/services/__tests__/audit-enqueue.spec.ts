@@ -8,6 +8,8 @@ import { AppError } from '../../middlewares/errorHandler.js';
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../queues/audit.queue.js');
+const redis = vi.hoisted(() => ({ status: 'ready' }));
+vi.mock('../../queues/connection.js', () => ({ redisConnection: redis }));
 
 const params = { leadId: 'lead-1', auditId: 'audit-1', url: 'https://a.lt', niche: 'dental' as const };
 const exec = (value: unknown) => ({ exec: () => Promise.resolve(value) }) as any;
@@ -20,6 +22,7 @@ const isQueueError = (e: unknown) =>
 describe('enqueueAuditOrFail (REV-202)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    redis.status = 'ready';
     vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(Lead.findOneAndUpdate).mockReturnValue(exec({ _id: 'lead-1' }));
     vi.mocked(Audit.updateOne).mockReturnValue(exec({ modifiedCount: 1 }));
@@ -59,6 +62,13 @@ describe('enqueueAuditOrFail (REV-202)', () => {
     await settled;
     expect(AUDIT_ENQUEUE_TIMEOUT_MS).toBe(5000);
     expect(Lead.findOneAndUpdate).toHaveBeenCalled();
+  });
+
+  it('fails at once without queueing when Redis is not connected, so no job can land later', async () => {
+    redis.status = 'reconnecting';
+    await expect(enqueueAuditOrFail(params)).rejects.toSatisfy(isQueueError);
+    expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
+    expect(Lead.findOneAndUpdate).toHaveBeenCalledWith({ _id: 'lead-1', status: 'QUEUED' }, expect.anything());
   });
 
   it('still answers 503 when the lead already moved on (a late job picked it up)', async () => {
