@@ -41,17 +41,24 @@ function sectionOf(markdown: string, collection: string): string | undefined {
 }
 
 /**
- * The `collection.path` of every model field the dictionary does not name in backticks in its collection's section: by
- * its full path or, for a nested field, by its last name (`total` under `scores`)
+ * The `collection.path` of every model field the dictionary does not name in backticks in its collection's section. A
+ * top-level field counts when its name is there; a nested one when its full path is, or its last name and its parent's
+ * name are on one line (`| \`scores\` | … \`total\` |`), so a value elsewhere in the section that happens to share the
+ * last name (`design` in an enum list) does not count
  */
 export function undocumentedFields(markdown: string, paths: Record<string, string[]> = modelFieldPaths()): string[] {
   const missing: string[] = [];
   for (const [collection, fields] of Object.entries(paths)) {
     const section = sectionOf(markdown, collection);
-    const named = new Set(Array.from((section ?? '').matchAll(/`([^`]+)`/g), (m) => (m[1] ?? '').trim()));
+    const namesOf = (text: string) => new Set(Array.from(text.matchAll(/`([^`]+)`/g), (m) => (m[1] ?? '').trim()));
+    const named = namesOf(section ?? '');
+    const lines = (section ?? '').split('\n').map(namesOf);
     for (const field of fields) {
-      const last = field.split('.').pop() ?? field;
-      if (!named.has(field) && !named.has(last)) missing.push(`${collection}.${field}`);
+      const parts = field.split('.');
+      const last = parts[parts.length - 1] ?? field;
+      const parent = parts[parts.length - 2];
+      const documented = named.has(field) || (parent === undefined ? named.has(last) : lines.some((line) => line.has(parent) && line.has(last)));
+      if (!documented) missing.push(`${collection}.${field}`);
     }
   }
   return missing;

@@ -224,6 +224,18 @@ describe('BrandExtractorService', () => {
       expect(undefinedKeys(result.siteContent)).toEqual([]);
     });
 
+    it('leaves no undefined keys inside array items either (REV-200 review)', () => {
+      const value = BrandExtractorService.withoutUndefined({
+        testimonials: [{ text: 'Great', author: undefined }],
+        serviceItems: [{ title: 'Implants', description: undefined }],
+        images: ['a.jpg'],
+      }) as { testimonials: object[]; serviceItems: object[]; images: string[] };
+      expect(value.testimonials[0]).toEqual({ text: 'Great' });
+      expect('author' in value.testimonials[0]!).toBe(false);
+      expect(value.serviceItems[0]).toEqual({ title: 'Implants' });
+      expect(value.images).toEqual(['a.jpg']);
+    });
+
     it('drops a site content field the schema refuses instead of failing the audit (REV-200)', () => {
       const rawData = {
         colors: [],

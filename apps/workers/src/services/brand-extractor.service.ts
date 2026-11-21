@@ -418,12 +418,14 @@ export class BrandExtractorService {
     return schema.parse(rest);
   }
 
-  /** The object without its undefined entries, nested objects included (arrays are kept as they are) */
+  /** The object without its undefined entries, in nested objects and in the objects inside arrays too */
   static withoutUndefined(value: object): object {
+    const clean = (v: unknown): unknown =>
+      Array.isArray(v) ? v.map(clean) : v && typeof v === 'object' ? this.withoutUndefined(v) : v;
     return Object.fromEntries(
       Object.entries(value)
         .filter(([, v]) => v !== undefined)
-        .map(([k, v]) => [k, v && typeof v === 'object' && !Array.isArray(v) ? this.withoutUndefined(v) : v]),
+        .map(([k, v]) => [k, clean(v)]),
     );
   }
 

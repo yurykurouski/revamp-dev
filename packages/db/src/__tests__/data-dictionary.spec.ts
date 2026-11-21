@@ -32,7 +32,7 @@ describe('undocumentedFields (REV-200)', () => {
   });
 
   it('does not count a field documented only under another collection', () => {
-    const md = '### 4.1. `leads`\n| `businessName` | `status` | `trackingToken` |\n### 4.4. `emailcampaigns`\n| `openCount` |\n';
+    const md = '### 4.1. `leads`\n| `businessName` | `status` | `trackingToken` |\n### 4.4. `emailcampaigns`\n| `metrics` | `openCount` |\n';
     expect(undocumentedFields(md, paths)).toEqual(['emailcampaigns.trackingToken']);
   });
 
@@ -42,7 +42,19 @@ describe('undocumentedFields (REV-200)', () => {
   });
 
   it('ends a section at the next heading of the same or a higher level only', () => {
-    const md = '### 4.1. `leads`\n#### Details\n`businessName` `status`\n## 5. Other\n### `emailcampaigns`\n`trackingToken` `openCount`\n';
+    const md = '### 4.1. `leads`\n#### Details\n`businessName` `status`\n## 5. Other\n### `emailcampaigns`\n`trackingToken` `metrics` `openCount`\n';
     expect(undocumentedFields(md, paths)).toEqual([]);
+  });
+
+  it('does not count a nested field whose last name appears only as another value in the section (review I3)', () => {
+    const nested = { audits: ['scores.total', 'scores.design', 'measurementErrors.measurement'] };
+    const md = '### 4.2. `audits`\n| `scores` | `total` |\n| `measurementErrors` | `measurement`: `performance`, `design` |\n';
+    expect(undocumentedFields(md, nested)).toEqual(['audits.scores.design']);
+  });
+
+  it('counts a nested field named by its full path or next to its parent on the same line', () => {
+    const nested = { audits: ['scores.total', 'scores.design', 'webVitals.lcp'] };
+    const md = '### `audits`\n`scores.total`\n| `scores` | `design` |\n| `webVitals` | `lcp` |\n';
+    expect(undocumentedFields(md, nested)).toEqual([]);
   });
 });
