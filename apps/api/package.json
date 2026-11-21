@@ -13,7 +13,8 @@
     "backfill:stuck-audits": "tsx src/scripts/backfill-stuck-audits.ts",
     "migrate:lead-statuses": "tsx src/scripts/migrate-lead-statuses.ts",
     "migrate:audit-vitals": "tsx src/scripts/migrate-audit-vitals.ts",
-    "migrate:unique-lead-children": "tsx src/scripts/migrate-unique-lead-children.ts"
+    "migrate:unique-lead-children": "tsx src/scripts/migrate-unique-lead-children.ts",
+    "repair:queued-leads": "tsx src/scripts/repair-queued-leads.ts"
   },
   "dependencies": {
     "@revamp/db": "*",
