@@ -13,8 +13,9 @@ import { EMAIL_PROVIDER_NOT_CONFIGURED, LeadStatus, draftToHtml } from '@revamp/
 import { validateBody } from '../middlewares/validate.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { Lead } from '../models/Lead.model.js';
-import { EmailCampaign } from '../models/EmailCampaign.model.js';
-import { addEmailDispatchJob, calculateDispatchDelay } from '../queues/email.queue.js';
+import { EmailCampaign, approveOutreachWithCampaign } from '../models/EmailCampaign.model.js';
+import { calculateDispatchDelay } from '../queues/email.queue.js';
+import { enqueueEmailOrRevert } from '../services/email-enqueue.js';
 import { sendTestEmailJob } from '../queues/email-test.queue.js';
 import { env } from '../config/env.js';
 
@@ -83,54 +84,36 @@ router.post(
         throw new AppError(409, 'NO_CONTACT_EMAIL', 'This lead has no contact email. Add one before approving outreach.');
       }
 
-      // 1. Move the lead to SCHEDULED only if it is still awaiting approval, so two approvals at
-      // once can't both queue an email (REV-59)
-      const lead = await Lead.findOneAndUpdate(
-        { _id: id, status: { $in: OUTREACH_APPROVABLE_STATUSES } },
-        { $set: { status: 'SCHEDULED' } },
-        { new: true },
-      ).exec();
-
-      if (!lead) throw notAwaitingApproval();
-
-      // 2. Store the draft exactly as the operator approved it; there is no default copy (REV-61).
-      // It is sent as escaped HTML with its line breaks, plus the same text as the plain-text part,
-      // exactly like the test send (REV-72)
+      // 1. Store the draft exactly as the operator approved it; there is no default copy (REV-61). It is sent as
+      // escaped HTML with its line breaks, plus the same text as the plain-text part, exactly like the test send (REV-72)
       const trackingToken = crypto.randomUUID().replace(/-/g, '');
       const { subject, preheader, body } = req.body as { subject: string; preheader?: string; body: string };
 
-      // One campaign per lead (unique leadId, REV-201); the upsert takes leadId from the filter
-      const campaign = await EmailCampaign.findOneAndUpdate(
-        { leadId: lead._id },
-        {
-          status: 'SCHEDULED',
-          senderEmail: env.EMAIL_FROM,
-          recipientEmail: lead.contactEmail,
-          subject,
-          ...(preheader ? { previewText: preheader } : {}),
-          bodyHtml: draftToHtml(body, preheader),
-          bodyPlainText: body,
-          trackingToken,
-          requiresManualReview: false,
-          approvedBy: req.body.approvedBy || 'operator',
-          approvedAt: new Date(),
-          scheduledAt: req.body.scheduleTime ? new Date(req.body.scheduleTime) : new Date(),
-        },
-        { upsert: true, new: true },
-      ).exec();
+      // 2. The lead moves to SCHEDULED and its campaign is written in one transaction, only if the lead is still
+      // awaiting approval, so two approvals at once can't both queue an email (REV-59, REV-203)
+      const written = await approveOutreachWithCampaign(id, {
+        status: 'SCHEDULED',
+        senderEmail: env.EMAIL_FROM,
+        recipientEmail: existing.contactEmail,
+        subject,
+        ...(preheader ? { previewText: preheader } : {}),
+        bodyHtml: draftToHtml(body, preheader),
+        bodyPlainText: body,
+        trackingToken,
+        requiresManualReview: false,
+        approvedBy: req.body.approvedBy || 'operator',
+        approvedAt: new Date(),
+        scheduledAt: req.body.scheduleTime ? new Date(req.body.scheduleTime) : new Date(),
+      });
+      if (!written) throw notAwaitingApproval();
+      const { lead, campaign } = written;
 
-      // 3. Calculate throttled dispatch delay with randomized jitter (15–45s)
+      // 3. Throttled dispatch delay with randomized jitter (15–45s)
       const delayMs = calculateDispatchDelay(0);
 
-      // 4. Enqueue BullMQ dispatch job
-      const campaignIdStr = campaign?._id ? campaign._id.toString() : id;
-      const job = await addEmailDispatchJob(
-        {
-          campaignId: campaignIdStr,
-          leadId: lead._id.toString(),
-        },
-        { delay: delayMs },
-      );
+      // 4. Queue the send; a queue that fails or does not answer returns the lead to review with 503 (REV-203)
+      const campaignIdStr = campaign._id.toString();
+      const { jobId } = await enqueueEmailOrRevert({ campaignId: campaignIdStr, leadId: lead._id.toString() }, delayMs);
 
       res.status(200).json({
         success: true,
@@ -138,7 +121,7 @@ router.post(
         data: {
           campaignId: campaignIdStr,
           leadId: lead._id.toString(),
-          jobId: job?.id,
+          jobId,
           status: 'SCHEDULED',
           delayMs,
           approvedBy: req.body.approvedBy,
