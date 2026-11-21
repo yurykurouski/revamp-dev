@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { archiveCommand, parseArchiveArgs } from '../db-archive.js';
+import { archiveCommand, archiveContainer, parseArchiveArgs } from '../db-archive.js';
 
 const URI = 'mongodb://revamp_app:s3cr%40t@localhost:27017/revamp?authSource=admin&replicaSet=rs0&directConnection=true';
 
@@ -50,5 +50,19 @@ describe('parseArchiveArgs (REV-199)', () => {
   it('refuses a restore without a file and an unknown mode', () => {
     expect(() => parseArchiveArgs(['restore'], 'revamp', new Date())).toThrow(/file/);
     expect(() => parseArchiveArgs(['wipe'], 'revamp', new Date())).toThrow(/dump|restore/);
+  });
+});
+
+describe('archiveContainer (review I2)', () => {
+  it('uses revamp-mongo for the default port', () => {
+    expect(archiveContainer(URI, undefined)).toBe('revamp-mongo');
+    expect(archiveContainer('mongodb://localhost/revamp', undefined)).toBe('revamp-mongo');
+  });
+
+  it('refuses another port unless MONGO_CONTAINER names the container', () => {
+    const other = 'mongodb://revamp_app:pw@localhost:27117/revamp?replicaSet=rs0';
+    expect(() => archiveContainer(other, undefined)).toThrow(/27117.*MONGO_CONTAINER/);
+    expect(() => archiveContainer(other, '')).toThrow(/MONGO_CONTAINER/);
+    expect(archiveContainer(other, 'revamp-check-mongo')).toBe('revamp-check-mongo');
   });
 });

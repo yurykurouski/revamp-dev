@@ -386,6 +386,22 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
     });
 
+    it('reset also removes children a seed lead gained after seeding (review I1)', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      const failed = ds.leads.find((l) => l.status === 'AUDIT_FAILED')!;
+      const audited = ds.leads.find((l) => l.status === 'AUDITED')!;
+      const seededCampaign = ds.emailCampaigns[0]!;
+      await Audit.create({ leadId: failed._id, status: 'QUEUED' });
+      await MvpProject.create({ ...mvpFields(7), leadId: audited._id });
+      await EmailCampaign.create({ ...campaignFields(7), leadId: audited._id });
+      await AnalyticsEvent.create({ campaignId: seededCampaign._id, eventType: 'open' });
+      await seedDemoDataset(ds, { reset: true });
+      expect(await Audit.countDocuments()).toBe(ds.audits.length);
+      expect(await MvpProject.countDocuments()).toBe(ds.mvpProjects.length);
+      expect(await EmailCampaign.countDocuments()).toBe(ds.emailCampaigns.length);
+      expect(await AnalyticsEvent.countDocuments()).toBe(ds.analyticsEvents.length);
+    });
+
     it('leaves documents that are not seed documents alone', async () => {
       const foreign = await Lead.create(foreignLead);
       await seedDemoDataset(ds, { reset: false });

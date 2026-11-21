@@ -9,7 +9,7 @@
  *
  * Connects as the user of MONGODB_URI (revamp_app, readWrite on its database) to the database in its path. The
  * password travels in the environment and a config file inside the container, never in argv. MONGO_CONTAINER
- * names another container (default revamp-mongo). Refuses a database that is not local and NODE_ENV=production.
+ * names another container; without it the URI must use port 27017, the one revamp-mongo publishes. Refuses a database that is not local and NODE_ENV=production.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -65,6 +65,21 @@ export function archiveCommand(
   };
 }
 
+/**
+ * The container the tools run in. revamp-mongo publishes 27017; a URI on another port is another MongoDB (a check
+ * stack, a second compose project), so it needs MONGO_CONTAINER: never fall back to the shared container for it.
+ */
+export function archiveContainer(uri: string, envContainer: string | undefined): string {
+  if (envContainer) return envContainer;
+  const hostList = /^mongodb:\/\/(?:[^@/]*@)?([^/?]*)/.exec(uri.trim())?.[1] ?? '';
+  const first = hostList.split(',')[0] ?? '';
+  const port = /:(\d+)$/.exec(first)?.[1] ?? '27017';
+  if (port !== '27017') {
+    throw new Error(`MONGODB_URI uses port ${port}, not revamp-mongo's 27017: set MONGO_CONTAINER to the container of that database.`);
+  }
+  return 'revamp-mongo';
+}
+
 /** `dump [file]` or `restore <file> [--drop]`; a dump without a file goes to backups/<db>-<UTC timestamp>.archive.gz */
 export function parseArchiveArgs(argv: string[], db: string, now: Date): { mode: ArchiveMode; file: string; drop: boolean } {
   const [mode, ...rest] = argv;
@@ -85,7 +100,7 @@ async function main(): Promise<void> {
   const uri = process.env.MONGODB_URI || file['MONGODB_URI'] || '';
   assertLocalSeedTarget(uri, process.env.NODE_ENV || file['NODE_ENV']);
   const { mode, file: archive, drop } = parseArchiveArgs(process.argv.slice(2), uriParts(uri).db, new Date());
-  const container = process.env.MONGO_CONTAINER || 'revamp-mongo';
+  const container = archiveContainer(uri, process.env.MONGO_CONTAINER);
   const { args, env } = archiveCommand(mode, { uri, drop, container });
 
   let fd: number;

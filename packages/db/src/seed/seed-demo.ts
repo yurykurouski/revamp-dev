@@ -43,7 +43,8 @@ export type DemoSeedReport = Record<DemoCollection, { inserted: number; kept: nu
 
 /**
  * Seeds the dataset. A plain run inserts the seed documents that are missing and keeps the rest as they are, so a
- * demo's changes survive; `reset` deletes the seed documents and inserts them again. Any error rolls back everything.
+ * demo's changes survive; `reset` deletes the seed documents, and every document of a demo lead, campaign or MVP, then
+ * inserts the seed again. Any error rolls back everything.
  */
 export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean }): Promise<DemoSeedReport> {
   const steps: [DemoCollection, SeedModel, { _id: unknown }[]][] = [
@@ -62,7 +63,12 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
     for (const [name, model, docs] of steps) {
       let missing = docs;
       if (opts.reset) {
-        await model.deleteMany({ _id: { $in: ids[name] } }, { session });
+        // A demo lead's children belong to the demo, whatever their id: a retried audit, a generated MVP or campaign,
+        // tracking hits; leaving them would make the latest audit or the lead's MVP not the seeded one
+        const owned: Record<string, unknown>[] = [{ _id: { $in: ids[name] } }];
+        if (name !== 'leads') owned.push({ leadId: { $in: ids.leads } });
+        if (name === 'analyticsEvents') owned.push({ campaignId: { $in: ids.emailCampaigns } }, { mvpProjectId: { $in: ids.mvpProjects } });
+        await model.deleteMany({ $or: owned }, { session });
       } else {
         const existing = await model.find({ _id: { $in: ids[name] } }, { _id: 1 }, { session }).lean();
         const kept = new Set(existing.map((doc) => String((doc as { _id: unknown })._id)));
