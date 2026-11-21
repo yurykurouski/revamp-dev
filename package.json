@@ -29,6 +29,8 @@
     "docker:logs": "docker compose logs -f",
     "db:check-roles": "tsx scripts/check-mongo-roles.ts",
     "db:seed": "tsx scripts/db-seed.ts",
+    "db:dump": "tsx scripts/db-archive.ts dump",
+    "db:restore": "tsx scripts/db-archive.ts restore",
     "verify:env": "tsx scripts/verify-production-env.ts"
   },
   "devDependencies": {
