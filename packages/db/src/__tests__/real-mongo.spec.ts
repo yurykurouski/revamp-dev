@@ -7,6 +7,9 @@ import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { Lead } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
+import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
+import { buildDemoDataset } from '../seed/demo-dataset.js';
+import { seedDemoDataset } from '../seed/seed-demo.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 
 // Every real-MongoDB test lives in this file and shares one server: a mongod per file, started in
@@ -326,6 +329,76 @@ describe('real MongoDB (mongodb-memory-server)', () => {
     it('leaves nothing when the lead itself is invalid', async () => {
       await expect(createLeadWithAudit({ ...leadFields, businessName: undefined })).rejects.toThrow(/Business name/);
       expect(await Lead.countDocuments()).toBe(0);
+      expect(await Audit.countDocuments()).toBe(0);
+    });
+  });
+
+  describe('seedDemoDataset (REV-199)', () => {
+    const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
+    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent] as const;
+    const foreignLead = {
+      businessName: 'Real Customer',
+      originalUrl: 'https://real.example.org',
+      domain: 'real.example.org',
+      niche: 'other',
+      status: 'AUDITED',
+    };
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri);
+      await Promise.all(models.map((m) => (m as typeof Lead).init()));
+    });
+
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+
+    beforeEach(async () => {
+      await Promise.all(models.map((m) => (m as typeof Lead).deleteMany({})));
+    });
+
+    it('seeds every collection', async () => {
+      const report = await seedDemoDataset(ds, { reset: false });
+      expect(await Lead.countDocuments()).toBe(ds.leads.length);
+      expect(await Audit.countDocuments()).toBe(ds.audits.length);
+      expect(await MvpProject.countDocuments()).toBe(ds.mvpProjects.length);
+      expect(await EmailCampaign.countDocuments()).toBe(ds.emailCampaigns.length);
+      expect(await AnalyticsEvent.countDocuments()).toBe(ds.analyticsEvents.length);
+      expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
+    });
+
+    it('a second run inserts nothing', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      const report = await seedDemoDataset(ds, { reset: false });
+      for (const entry of Object.values(report)) expect(entry.inserted).toBe(0);
+      expect(report.leads.kept).toBe(ds.leads.length);
+      expect(await Lead.countDocuments()).toBe(ds.leads.length);
+    });
+
+    it('a plain run keeps an operator change and reset restores it', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      const target = ds.leads.find((l) => l.status === 'NEEDS_APPROVAL')!;
+      await Lead.updateOne({ _id: target._id }, { $set: { status: 'SCHEDULED' } });
+      await seedDemoDataset(ds, { reset: false });
+      expect((await Lead.findById(target._id).lean())?.status).toBe('SCHEDULED');
+      const report = await seedDemoDataset(ds, { reset: true });
+      expect((await Lead.findById(target._id).lean())?.status).toBe('NEEDS_APPROVAL');
+      expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
+    });
+
+    it('leaves documents that are not seed documents alone', async () => {
+      const foreign = await Lead.create(foreignLead);
+      await seedDemoDataset(ds, { reset: false });
+      await seedDemoDataset(ds, { reset: true });
+      expect(await Lead.findById(foreign._id).lean()).toMatchObject({ businessName: 'Real Customer' });
+      expect(await Lead.countDocuments()).toBe(ds.leads.length + 1);
+    });
+
+    it('a unique clash rolls the whole seed back', async () => {
+      const foreign = await Lead.create(foreignLead);
+      await EmailCampaign.create({ ...campaignFields(1), leadId: foreign._id, trackingToken: ds.emailCampaigns[0]!.trackingToken });
+      await expect(seedDemoDataset(ds, { reset: false })).rejects.toThrow(/E11000|duplicate/);
+      expect(await Lead.countDocuments({ _id: { $in: ds.leads.map((l) => l._id) } })).toBe(0);
       expect(await Audit.countDocuments()).toBe(0);
     });
   });
