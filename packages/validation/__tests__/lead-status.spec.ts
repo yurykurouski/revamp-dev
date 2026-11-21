@@ -29,6 +29,8 @@ const EXPECTED_EDGES: ReadonlyArray<[LeadStatus, LeadStatus]> = [
   ['NEEDS_APPROVAL', 'GENERATING'],
   ['NEEDS_APPROVAL', 'SCHEDULED'],
   ['SCHEDULED', 'SENT'],
+  // The send could not be queued after approval: the lead goes back to review (REV-203)
+  ['SCHEDULED', 'NEEDS_APPROVAL'],
   ['SENT', 'OPENED'],
   ['SENT', 'CLICKED'],
   ['SENT', 'ENGAGED'],
@@ -115,7 +117,7 @@ describe('Lead state machine (REV-62)', () => {
     expect(leadStatusesInto('SENT')).toEqual(['SCHEDULED']);
     expect(leadStatusesInto('OPENED')).toEqual(['SENT']);
     expect(leadStatusesInto('ENGAGED')).toEqual(['SENT', 'OPENED', 'CLICKED']);
-    expect(leadStatusesInto('NEEDS_APPROVAL')).toEqual(['GENERATING']);
+    expect(leadStatusesInto('NEEDS_APPROVAL')).toEqual(['GENERATING', 'SCHEDULED']);
     expect(leadStatusesInto('UNSUBSCRIBED')).toEqual(LEAD_STATUSES.filter((s) => s !== 'UNSUBSCRIBED'));
     expect(leadStatusesInto('QUEUED')).toEqual(['AUDIT_FAILED']);
     expect(leadStatusesInto('AUDIT_FAILED')).toEqual(['QUEUED', 'AUDITING']);

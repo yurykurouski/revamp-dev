@@ -1,6 +1,5 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import { IDeployJobData, ILead, IAudit, IMvpPageVersion, MVP_MAX_VERSIONS } from '@revamp/shared-types';
-import { leadStatusesInto } from '@revamp/validation';
 import { retryOnDuplicateKey } from '@revamp/db';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -42,7 +41,9 @@ async function deployPage(job: Job<IDeployJobData>) {
   const lead = await Lead.findById(leadId).exec();
   if (!lead) throw new Error(`Lead ${leadId} not found`);
   // A lead rejected or moved on while the model worked keeps its status and its MVP (REV-62)
-  if (!leadStatusesInto('NEEDS_APPROVAL').includes(lead.status)) {
+  // Only the GENERATING lead this job belongs to: SCHEDULED also leads into NEEDS_APPROVAL (a failed send revert,
+  // REV-203), and an approved lead must never be pulled back into review by a stale publish
+  if (lead.status !== 'GENERATING') {
     const reason = `Lead ${leadId} is ${lead.status}; the new page is not published.`;
     console.warn(`[DeployWorker] ${reason}`);
     return { success: false, skipped: true, leadId, reason };
@@ -137,7 +138,7 @@ async function deployPage(job: Job<IDeployJobData>) {
 
   // 6. The lead goes to review only if it is still waiting for this page (REV-62)
   const reviewLead = await Lead.findOneAndUpdate(
-    { _id: lead._id, status: { $in: leadStatusesInto('NEEDS_APPROVAL') } },
+    { _id: lead._id, status: 'GENERATING' },
     {
       $set: { status: 'NEEDS_APPROVAL', previewUrl: fullPreviewUrl, comparisonBannerUrl, mvpGeneratedAt: generatedAt },
       $unset: { generationError: '', generationFailure: '' },

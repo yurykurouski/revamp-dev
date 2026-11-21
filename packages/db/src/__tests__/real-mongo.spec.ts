@@ -10,6 +10,7 @@ import { Audit } from '../models/Audit.model.js';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { buildDemoDataset } from '../seed/demo-dataset.js';
 import { seedDemoDataset } from '../seed/seed-demo.js';
+import { approveOutreachWithCampaign, revertOutreachApproval } from '../approve-outreach.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 
 // Every real-MongoDB test lives in this file and shares one server: a mongod per file, started in
@@ -416,6 +417,82 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       await expect(seedDemoDataset(ds, { reset: false })).rejects.toThrow(/E11000|duplicate/);
       expect(await Lead.countDocuments({ _id: { $in: ds.leads.map((l) => l._id) } })).toBe(0);
       expect(await Audit.countDocuments()).toBe(0);
+    });
+  });
+
+  describe('approveOutreachWithCampaign and revertOutreachApproval (REV-203)', () => {
+    const leadFields = { businessName: 'Approve Co', originalUrl: 'https://approve.test', domain: 'approve.test', niche: 'other', contactEmail: 'owner@approve.test' };
+    const approved = (n: number) => ({
+      status: 'SCHEDULED',
+      senderEmail: 'sender@revamp.test',
+      recipientEmail: 'owner@approve.test',
+      subject: `Subject ${n}`,
+      bodyHtml: '<p>Hi</p>',
+      bodyPlainText: 'Hi',
+      trackingToken: `approve-token-${n}-${new Types.ObjectId().toString()}`,
+      requiresManualReview: false,
+      approvedBy: 'operator',
+      approvedAt: new Date(),
+      scheduledAt: new Date(),
+    });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri);
+      await Promise.all([Lead.init(), EmailCampaign.init()]);
+    });
+
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+
+    beforeEach(async () => {
+      vi.restoreAllMocks();
+      await Promise.all([Lead.deleteMany({}), EmailCampaign.deleteMany({})]);
+    });
+
+    it('moves the lead to SCHEDULED and writes its campaign together', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      const result = await approveOutreachWithCampaign(String(lead._id), approved(1));
+      expect(result?.lead.status).toBe('SCHEDULED');
+      expect(String(result?.campaign.leadId)).toBe(String(lead._id));
+      expect((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.status).toBe('SCHEDULED');
+    });
+
+    it('leaves the lead in review and no campaign when the campaign write fails', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockImplementationOnce(() => {
+        throw new Error('boom');
+      });
+      await expect(approveOutreachWithCampaign(String(lead._id), approved(2))).rejects.toThrow('boom');
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('NEEDS_APPROVAL');
+      expect(await EmailCampaign.countDocuments()).toBe(0);
+    });
+
+    it('writes nothing for a lead that is not awaiting approval', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'AUDITED' });
+      expect(await approveOutreachWithCampaign(String(lead._id), approved(3))).toBeNull();
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('AUDITED');
+      expect(await EmailCampaign.countDocuments()).toBe(0);
+    });
+
+    it('reverts an approval: the lead back to review, the campaign back to NEEDS_APPROVAL without its approval stamps', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      await approveOutreachWithCampaign(String(lead._id), approved(4));
+      expect(await revertOutreachApproval(String(lead._id))).toBe(true);
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('NEEDS_APPROVAL');
+      const campaign = await EmailCampaign.findOne({ leadId: lead._id }).lean();
+      expect(campaign?.status).toBe('NEEDS_APPROVAL');
+      expect(campaign?.approvedAt).toBeUndefined();
+      expect(campaign?.approvedBy).toBeUndefined();
+      expect(campaign?.scheduledAt).toBeUndefined();
+    });
+
+    it('leaves a lead the worker already sent alone', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'SENT' });
+      await EmailCampaign.create({ ...approved(5), status: 'DELIVERED', leadId: lead._id });
+      expect(await revertOutreachApproval(String(lead._id))).toBe(false);
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('SENT');
+      expect((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.status).toBe('DELIVERED');
     });
   });
 });
