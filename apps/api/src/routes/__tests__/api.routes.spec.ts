@@ -363,6 +363,25 @@ describe('API Routes Integration Tests (Supertest)', () => {
       });
     });
 
+    it('should answer 503 AUDIT_QUEUE_UNAVAILABLE and fail the lead when the retry cannot be queued (REV-202)', async () => {
+      const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status: 'AUDIT_FAILED' };
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: new mongoose.Types.ObjectId() } as any);
+      vi.spyOn(Audit, 'updateOne').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+      vi.spyOn(auditQueue, 'addAuditJob').mockRejectedValue(new Error('ECONNREFUSED'));
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+
+      const res = await request(app).post('/api/v1/audits/trigger').send({ leadId: mockLead._id.toString() });
+
+      expect(res.status).toBe(503);
+      expect(res.body.error.code).toBe('AUDIT_QUEUE_UNAVAILABLE');
+      expect(Lead.findOneAndUpdate).toHaveBeenLastCalledWith(
+        { _id: mockLead._id.toString(), status: 'QUEUED' },
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'AUDIT_FAILED' }) }),
+      );
+    });
+
     it('should re-run the audit of a queued lead without changing it', async () => {
       const mockLead = { _id: new mongoose.Types.ObjectId(), originalUrl: 'https://a.example', niche: 'auto', status: 'QUEUED' };
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(mockLead) } as any);

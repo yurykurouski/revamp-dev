@@ -6,10 +6,10 @@ import {
   normalizePhone,
   summarizeCompletenessReport,
 } from '@revamp/validation';
-import { Lead, ILeadDocument } from '../models/Lead.model.js';
+import { Lead, ILeadDocument, createLeadWithAudit } from '../models/Lead.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { addAuditJob } from '../queues/audit.queue.js';
+import { enqueueAuditOrFail } from './audit-enqueue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
 export interface GetLeadsQuery {
@@ -61,8 +61,8 @@ export class LeadService {
       throw new AppError(400, 'INVALID_URL', 'Invalid original URL format');
     }
 
-    // 1. Create Lead in MongoDB with status QUEUED
-    const lead = await Lead.create({
+    // 1. Lead and its first audit, both QUEUED, in one transaction: a failed audit insert leaves no lead (REV-202)
+    const { lead, audit } = await createLeadWithAudit({
       businessName: dto.businessName,
       originalUrl: dto.originalUrl,
       domain,
@@ -80,15 +80,10 @@ export class LeadService {
       ...(dto.operatorLocale ? { operatorLocale: dto.operatorLocale } : {}),
     });
 
-    // 2. Create corresponding Audit record in MongoDB
-    const audit = await Audit.create({
-      leadId: lead._id,
-      status: 'QUEUED',
-    });
-
-    // 3. Dispatch job to BullMQ audit-queue
-    const job = await addAuditJob({
+    // 2. Queue the audit; if that fails the lead becomes AUDIT_FAILED and a 503 is thrown (REV-202)
+    const { jobId } = await enqueueAuditOrFail({
       leadId: lead._id.toString(),
+      auditId: audit._id.toString(),
       url: lead.originalUrl,
       niche: lead.niche,
     });
@@ -96,7 +91,7 @@ export class LeadService {
     return {
       lead,
       auditId: audit._id.toString(),
-      jobId: job.id,
+      jobId,
     };
   }
 

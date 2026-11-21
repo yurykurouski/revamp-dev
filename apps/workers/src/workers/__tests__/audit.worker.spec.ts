@@ -63,7 +63,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     failedHandler({ id: 'j1', data: { leadId: 'lead-9', url: 'https://a.example', niche: 'other' } }, new Error('job stalled more than allowable limit'));
     await vi.waitFor(() =>
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-9', status: { $in: ['AUDITING'] } },
+        { _id: 'lead-9', status: 'AUDITING' },
         expect.objectContaining({ $set: expect.objectContaining({ status: 'AUDIT_FAILED' }) }),
       ),
     );
@@ -870,7 +870,7 @@ describe('AuditWorker (@revamp/workers)', () => {
 
       const reason = 'browserContext.close: Target page, context or browser has been closed';
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fail', status: { $in: ['AUDITING'] } },
+        { _id: 'lead-fail', status: 'AUDITING' },
         { $set: { status: 'AUDIT_FAILED', auditError: reason } },
       );
       expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
@@ -892,7 +892,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       expect(error).toBeInstanceOf(UnrecoverableError);
       expect((error as Error).message).toBe(reason);
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fail', status: { $in: ['AUDITING'] } },
+        { _id: 'lead-fail', status: 'AUDITING' },
         { $set: { status: 'AUDIT_FAILED', auditError: reason } },
       );
     });
@@ -913,6 +913,19 @@ describe('AuditWorker (@revamp/workers)', () => {
         { status: 'FAILED', errorMessage: expect.stringContaining('no longer waiting for an audit') },
         { sort: { createdAt: -1 } },
       );
+    });
+
+    it('leaves a lead failed because its job could not be queued alone when that job arrives late (REV-202)', async () => {
+      createAuditWorker();
+      vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+
+      const result = await capturedProcessor!({ id: 'job-late', data: { leadId: 'lead-late', url: 'https://x.example', niche: 'dental' } });
+
+      expect(result).toMatchObject({ success: false, skipped: true });
+      const filter = vi.mocked(Lead.findOneAndUpdate).mock.calls[0]![0] as { status: { $in: string[] } };
+      expect(filter.status.$in).not.toContain('AUDIT_FAILED');
+      expect(browserService.captureFullAudit).not.toHaveBeenCalled();
     });
 
     it('does not mark AUDITED or start generation for a lead rejected during the audit', async () => {

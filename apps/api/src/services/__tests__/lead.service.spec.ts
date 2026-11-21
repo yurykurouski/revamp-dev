@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LeadService, LEAD_LIST_SORT } from '../lead.service.js';
-import { Lead } from '../../models/Lead.model.js';
+import { Lead, createLeadWithAudit } from '../../models/Lead.model.js';
 import { Audit } from '../../models/Audit.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import * as auditQueueModule from '../../queues/audit.queue.js';
@@ -38,8 +38,7 @@ describe('LeadService', () => {
         status: 'QUEUED',
       };
 
-      vi.spyOn(Lead, 'create').mockResolvedValue(mockLead as any);
-      vi.spyOn(Audit, 'create').mockResolvedValue(mockAudit as any);
+      vi.mocked(createLeadWithAudit).mockResolvedValue({ lead: mockLead, audit: mockAudit } as any);
       vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job-999' } as any);
 
       const result = await LeadService.createLead({
@@ -49,16 +48,10 @@ describe('LeadService', () => {
         niche: 'dental',
       });
 
-      expect(Lead.create).toHaveBeenCalledWith(
+      expect(createLeadWithAudit).toHaveBeenCalledWith(
         expect.objectContaining({
           businessName: 'Dr. Smile',
           domain: 'drsmile.example.com',
-          status: 'QUEUED',
-        }),
-      );
-      expect(Audit.create).toHaveBeenCalledWith(
-        expect.objectContaining({
-          leadId: 'lead-123',
           status: 'QUEUED',
         }),
       );
@@ -82,12 +75,40 @@ describe('LeadService', () => {
         }),
       ).rejects.toSatisfy((e) => e instanceof AppError && e.statusCode === 400 && e.code === 'INVALID_URL');
     });
+
+    const dto = { businessName: 'A Clinic', originalUrl: 'https://a.lt', contactEmail: 'info@a.lt', niche: 'dental' as const };
+
+    it('queues nothing when the lead and audit insert fails (REV-202)', async () => {
+      vi.mocked(createLeadWithAudit).mockRejectedValue(new Error('audit insert failed'));
+      await expect(LeadService.createLead(dto)).rejects.toThrow('audit insert failed');
+      expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
+    });
+
+    it('answers AUDIT_QUEUE_UNAVAILABLE and fails the lead when the job cannot be queued (REV-202)', async () => {
+      vi.mocked(createLeadWithAudit).mockResolvedValue({
+        lead: { _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' },
+        audit: { _id: 'audit-1' },
+      } as any);
+      vi.mocked(auditQueueModule.addAuditJob).mockRejectedValue(new Error('ECONNREFUSED'));
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: () => Promise.resolve({}) } as any);
+      vi.mocked(Audit.updateOne).mockReturnValue({ exec: () => Promise.resolve({}) } as any);
+
+      await expect(LeadService.createLead(dto)).rejects.toSatisfy(
+        (e) => e instanceof AppError && e.statusCode === 503 && e.code === 'AUDIT_QUEUE_UNAVAILABLE',
+      );
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({ _id: 'lead-1' }),
+        expect.objectContaining({ $set: expect.objectContaining({ status: 'AUDIT_FAILED' }) }),
+      );
+    });
   });
 
   describe('createLead tags (REV-29)', () => {
     beforeEach(() => {
-      vi.spyOn(Lead, 'create').mockResolvedValue({ _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' } as any);
-      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: 'audit-1' } as any);
+      vi.mocked(createLeadWithAudit).mockResolvedValue({
+        lead: { _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' },
+        audit: { _id: 'audit-1' },
+      } as any);
       vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job-1' } as any);
     });
 
@@ -95,26 +116,28 @@ describe('LeadService', () => {
 
     it("should store the operator's locale, and none when the request had none (REV-162)", async () => {
       await LeadService.createLead({ ...dto, operatorLocale: 'pl' });
-      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ operatorLocale: 'pl' }));
+      expect(createLeadWithAudit).toHaveBeenCalledWith(expect.objectContaining({ operatorLocale: 'pl' }));
       await LeadService.createLead(dto);
-      expect(vi.mocked(Lead.create).mock.calls[1]?.[0]).not.toHaveProperty('operatorLocale');
+      expect(vi.mocked(createLeadWithAudit).mock.calls[1]?.[0]).not.toHaveProperty('operatorLocale');
     });
 
     it('should store the given tags', async () => {
       await LeadService.createLead(dto, { tags: ['discovered', 'source:osm'] });
-      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ tags: ['discovered', 'source:osm'] }));
+      expect(createLeadWithAudit).toHaveBeenCalledWith(expect.objectContaining({ tags: ['discovered', 'source:osm'] }));
     });
 
     it('should leave tags to the model default when none are given', async () => {
       await LeadService.createLead(dto);
-      expect(vi.mocked(Lead.create).mock.calls[0]?.[0]).not.toHaveProperty('tags');
+      expect(vi.mocked(createLeadWithAudit).mock.calls[0]?.[0]).not.toHaveProperty('tags');
     });
   });
 
   describe('createLead identity (REV-35)', () => {
     beforeEach(() => {
-      vi.spyOn(Lead, 'create').mockResolvedValue({ _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' } as any);
-      vi.spyOn(Audit, 'create').mockResolvedValue({ _id: 'audit-1' } as any);
+      vi.mocked(createLeadWithAudit).mockResolvedValue({
+        lead: { _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' },
+        audit: { _id: 'audit-1' },
+      } as any);
       vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job-1' } as any);
     });
 
@@ -122,29 +145,29 @@ describe('LeadService', () => {
 
     it('should store the domain in the same normalised form discovery matches on', async () => {
       await LeadService.createLead({ ...dto, originalUrl: 'https://WWW.A-Clinic.LT.:8443/contact' });
-      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ domain: 'a-clinic.lt' }));
+      expect(createLeadWithAudit).toHaveBeenCalledWith(expect.objectContaining({ domain: 'a-clinic.lt' }));
     });
 
     it('should default manual leads to source "manual" with no provider id', async () => {
       await LeadService.createLead(dto);
-      const created = vi.mocked(Lead.create).mock.calls[0]?.[0] as Record<string, unknown>;
+      const created = vi.mocked(createLeadWithAudit).mock.calls[0]?.[0] as Record<string, unknown>;
       expect(created['source']).toBe('manual');
       expect(created).not.toHaveProperty('externalId');
     });
 
     it('should store the discovery source and provider id when given', async () => {
       await LeadService.createLead(dto, { source: 'google', externalId: 'google:ChIJ123' });
-      expect(Lead.create).toHaveBeenCalledWith(expect.objectContaining({ source: 'google', externalId: 'google:ChIJ123' }));
+      expect(createLeadWithAudit).toHaveBeenCalledWith(expect.objectContaining({ source: 'google', externalId: 'google:ChIJ123' }));
     });
 
     it('should store the E.164 phone next to the phone as entered', async () => {
       await LeadService.createLead({ ...dto, contactPhone: '+370 (600) 12-345' });
-      expect(Lead.create).toHaveBeenCalledWith(
+      expect(createLeadWithAudit).toHaveBeenCalledWith(
         expect.objectContaining({ contactPhone: '+370 (600) 12-345', phoneE164: '+37060012345' }),
       );
 
       await LeadService.createLead({ ...dto, contactPhone: '8 600 12345' });
-      expect(vi.mocked(Lead.create).mock.calls[1]?.[0]).toMatchObject({ phoneE164: undefined });
+      expect(vi.mocked(createLeadWithAudit).mock.calls[1]?.[0]).toMatchObject({ phoneE164: undefined });
     });
   });
 
