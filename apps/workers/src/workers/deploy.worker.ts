@@ -10,6 +10,7 @@ import { MvpProject } from '../models/MvpProject.model.js';
 import { storageService } from '../services/storage.service.js';
 import { handleGenerationFailure } from './generation-failure.js';
 import { finishMvpPage } from '../services/mvp-page-finish.js';
+import { pageVersionEntry } from '../services/mvp-page-version.js';
 import { dropUnlistedVersions, pageContext, publishFinishedPage } from '../services/mvp-page-publish.js';
 
 function transliterate(str: string): string {
@@ -61,6 +62,19 @@ async function deployPage(job: Job<IDeployJobData>) {
   const retried = versions.find((v) => v.jobId === jobId);
   const n = retried?.n ?? Math.max(0, ...versions.map((v) => v.n)) + 1;
   const storagePath = await storageService.uploadPageVersion(slug, n, page.html);
+  // Checked before anything public changes: an entry the schema refuses must not leave a published page MongoDB never
+  // recorded (REV-200)
+  const generatedAt = new Date();
+  const entry: IMvpPageVersion = pageVersionEntry({
+    n,
+    kind: page.kind,
+    ...(page.instruction ? { instruction: page.instruction } : {}),
+    jobId,
+    ...(generationSource ? { provider: generationSource.provider, model: generationSource.modelUsed } : {}),
+    storagePath,
+    ...(page.changes ? { changes: page.changes } : {}),
+    createdAt: generatedAt,
+  });
 
   // 2. The published page: verified contacts, search tags from the audit, booking form and tracker
   const { finish } = pageContext(leadData, auditData);
@@ -76,17 +90,6 @@ async function deployPage(job: Job<IDeployJobData>) {
   });
 
   // 4. One update: the page, its checks and the version; every field of the old renderers goes
-  const generatedAt = new Date();
-  const entry: IMvpPageVersion = {
-    n,
-    kind: page.kind,
-    ...(page.instruction ? { instruction: page.instruction } : {}),
-    jobId,
-    ...(generationSource ? { provider: generationSource.provider, model: generationSource.modelUsed } : {}),
-    storagePath,
-    ...(page.changes ? { changes: page.changes } : {}),
-    createdAt: generatedAt,
-  };
   const unset: Record<string, ''> = Object.fromEntries([...OLD_MVP_FIELDS, 'controls', 'editedAt'].map((field) => [field, '']));
   if (!standards) unset['standards'] = '';
   if (!generationSource?.requestedProvider) Object.assign(unset, { requestedProvider: '', requestedModel: '' });

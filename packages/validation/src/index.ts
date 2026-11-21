@@ -10,6 +10,7 @@ import {
   SITE_ASSESSMENT_VERDICTS,
   SITE_BAD_SIGNS,
   SITE_COMPLEXITY_CLASSES,
+  SITE_LANGUAGE_SOURCES,
   SITE_COMPLEXITY_SIGNS,
   SITE_VERDICT_REASONS,
   findLlmProvider,
@@ -112,6 +113,34 @@ export const CreateLeadSchema = z.object({
 // ==============================================================================
 
 export const SiteComplexityClassSchema = z.enum(SITE_COMPLEXITY_CLASSES);
+
+// Contacts and content the audit reads from the original site (REV-23), stored as the Mixed Audit.extractedContacts and
+// Audit.extractedContent: validated by the brand extractor before the audit is saved (REV-200). They mirror
+// IExtractedContacts and ISiteContent; the extractor already bounds the lengths.
+export const ExtractedContactsSchema = z.object({
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  address: z.string().optional(),
+  workingHours: z.string().optional(),
+  socialLinks: z.array(z.object({ platform: z.string(), url: z.string() })),
+});
+
+export const SiteContentSchema = z.object({
+  language: z.string().optional(),
+  languageSource: z.enum(SITE_LANGUAGE_SOURCES).optional(),
+  title: z.string().optional(),
+  metaDescription: z.string().optional(),
+  ogImage: z.string().optional(),
+  h1: z.string().optional(),
+  headings: z.array(z.string()),
+  paragraphs: z.array(z.string()),
+  serviceItems: z.array(z.object({ title: z.string(), description: z.string().optional() })),
+  navItems: z.array(z.string()),
+  testimonials: z.array(z.object({ text: z.string(), author: z.string().optional() })),
+  images: z.array(z.string()),
+  rating: z.object({ value: z.number(), count: z.number().optional() }).optional(),
+  foundingYear: z.number().int().optional(),
+});
 
 export const SiteComplexitySignalsSchema = z.object({
   internalPageCount: z.number().int().min(0),

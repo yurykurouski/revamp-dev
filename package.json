@@ -31,6 +31,7 @@
     "db:seed": "tsx scripts/db-seed.ts",
     "db:dump": "tsx scripts/db-archive.ts dump",
     "db:restore": "tsx scripts/db-archive.ts restore",
+    "docs:check-dictionary": "tsx scripts/check-data-dictionary.ts",
     "verify:env": "tsx scripts/verify-production-env.ts"
   },
   "devDependencies": {

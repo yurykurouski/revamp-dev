@@ -100,6 +100,13 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     arrange();
   });
 
+  it('checks the version entry before the public page is overwritten (REV-200 review)', async () => {
+    const long = job({ generationSource: { provider: 'claude-cli', modelUsed: 'm'.repeat(150) } });
+    await expect(capturedProcessor!(long)).rejects.toThrow();
+    expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
   it('stores the raw page as version 1, publishes the finished page and writes the project in one update', async () => {
     const result = await capturedProcessor!(job());
 

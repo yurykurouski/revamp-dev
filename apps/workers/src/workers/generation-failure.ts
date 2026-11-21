@@ -1,5 +1,6 @@
 import { UnrecoverableError, type Job } from 'bullmq';
 import type { IMvpRenderFailure, LeadStatus } from '@revamp/shared-types';
+import { MvpRenderFailureSchema } from '@revamp/validation';
 import { Lead } from '../models/Lead.model.js';
 
 const MAX_ERROR_LENGTH = 300;
@@ -34,7 +35,14 @@ export async function handleGenerationFailure(
   const status = statusAfterFailedGeneration(job.data.previousStatus);
   const generationError = `MVP ${stage} failed: ${err?.message || 'unknown error'}`.slice(0, MAX_ERROR_LENGTH);
   // The code and reason the dashboard explains in the operator's language (REV-132)
-  const generationFailure = (err as { failure?: IMvpRenderFailure } | undefined)?.failure;
+  const rawFailure = (err as { failure?: unknown } | undefined)?.failure;
+  // Stored as the Mixed Lead.generationFailure, so only a failure MvpRenderFailureSchema accepts (REV-200); the reset
+  // itself never depends on it
+  const parsedFailure = rawFailure === undefined ? undefined : MvpRenderFailureSchema.safeParse(rawFailure);
+  if (parsedFailure && !parsedFailure.success) {
+    console.warn(`[GenerationFailure] Lead ${job.data.leadId}: generationFailure left out, it does not match MvpRenderFailureSchema`);
+  }
+  const generationFailure = parsedFailure?.success ? (parsedFailure.data as IMvpRenderFailure) : undefined;
   try {
     // Only a lead still marked GENERATING by this run is reset; never overwrite a newer state
     await Lead.findOneAndUpdate(

@@ -8,6 +8,7 @@ import {
   MvpPageCheck,
   MvpThemeKey,
 } from '@revamp/shared-types';
+import { MvpThemeSchema } from '@revamp/validation';
 import { withHtmlDocument } from './html-document.js';
 import { checkPageCss, readMvpTheme } from './mvp-page-css.js';
 import { allowedAttribute, allowedElement, isSvgElement, TEXT_ATTRIBUTES, urlScheme } from './mvp-page-allowlist.js';
@@ -171,6 +172,13 @@ export function checkMvpPage(html: string, brief: IMvpSourceBrief): MvpPageCheck
     const missing = (Object.keys(MVP_THEME_VARS) as MvpThemeKey[]).filter((key) => !theme[key]);
     if (missing.length) {
       report('page:theme', `:root must declare ${missing.map((key) => MVP_THEME_VARS[key]).join(', ')}`);
+    } else {
+      // The theme is stored as the Mixed MvpProject.theme: it must pass its schema (REV-200)
+      const parsed = MvpThemeSchema.safeParse(theme);
+      for (const issue of parsed.error?.issues ?? []) {
+        const key = String(issue.path[0] ?? '') as MvpThemeKey;
+        report('page:theme', `${MVP_THEME_VARS[key] ?? key}: ${issue.message}`);
+      }
     }
 
     const cssStrings = [...styleBlocks, ...Array.from(doc.querySelectorAll('[style]')).map((el) => el.getAttribute('style') ?? '')].flatMap((css) =>

@@ -1,4 +1,6 @@
+import { z } from 'zod';
 import { IMvpGroundingFlag, IMvpSourceBrief, MvpGroundingKind } from '@revamp/shared-types';
+import { MvpGroundingFlagSchema } from '@revamp/validation';
 import { withHtmlDocument } from './html-document.js';
 import { PLACEHOLDER_PATTERN } from './mvp-page-check.js';
 
@@ -10,6 +12,8 @@ import { PLACEHOLDER_PATTERN } from './mvp-page-check.js';
 const SKIP = new Set(['SVG', 'STYLE', 'SCRIPT', 'TEMPLATE', 'NOSCRIPT']);
 const INLINE = new Set(['ABBR', 'B', 'BDI', 'BDO', 'BR', 'CITE', 'CODE', 'DATA', 'EM', 'I', 'KBD', 'MARK', 'Q', 'S', 'SAMP', 'SMALL', 'SPAN', 'STRONG', 'SUB', 'SUP', 'TIME', 'U', 'VAR', 'WBR']);
 const CONTEXT_MAX = 80;
+/** MvpGroundingFlagSchema's limit for a flag's text (REV-200) */
+const TEXT_MAX = 200;
 /** Digits with thousands or decimal separators inside: "1 200", "1.200", "4,9" */
 const NUMBER = /\d+(?:[   .,]\d+)*/g;
 const WORD = /[\p{L}\p{N}][\p{L}\p{N}'’&-]*/gu;
@@ -139,7 +143,7 @@ export function checkMvpGrounding(html: string, brief: IMvpSourceBrief): IMvpGro
     const key = `${kind}:${kind === 'number' ? text : fold(text)}`;
     if (seen.has(key)) return;
     seen.add(key);
-    flags.push({ kind, text, context: unit.slice(0, CONTEXT_MAX) });
+    flags.push({ kind, text: text.slice(0, TEXT_MAX), context: unit.slice(0, CONTEXT_MAX) });
   };
 
   return withHtmlDocument(html, (doc) => {
@@ -176,6 +180,7 @@ export function checkMvpGrounding(html: string, brief: IMvpSourceBrief): IMvpGro
 
       for (const f of found.sort((a, b) => a.index - b.index)) add(f.kind, f.text, unit);
     }
-    return flags;
+    // Stored as the Mixed MvpProject.grounding: one shape for every flag (REV-200)
+    return z.array(MvpGroundingFlagSchema).parse(flags) as IMvpGroundingFlag[];
   });
 }

@@ -1,4 +1,6 @@
 import { IExtractedBrandTokens, IExtractedContacts, ISiteContent } from '@revamp/shared-types';
+import { ExtractedContactsSchema, SiteContentSchema } from '@revamp/validation';
+import type { ZodTypeAny } from 'zod';
 import { RawSiteContent } from './site-content.extractor.js';
 
 export interface RgbColor {
@@ -362,9 +364,9 @@ export class BrandExtractorService {
         logoUrl,
         faviconUrl: rawData.faviconUrl,
       },
-      contacts,
+      contacts: this.validated(ExtractedContactsSchema, contacts, 'extractedContacts') as IExtractedContacts,
       services,
-      siteContent: this.toSiteContent(content, rawData),
+      siteContent: this.validated(SiteContentSchema, this.toSiteContent(content, rawData), 'extractedContent') as ISiteContent,
       monogramSvg,
     };
   }
@@ -398,6 +400,33 @@ export class BrandExtractorService {
         : undefined,
       foundingYear: content?.structured?.foundingYear,
     };
+  }
+
+  /**
+   * The value as its schema accepts it (REV-200): it is stored as a Mixed field. A page can carry odd data (a rating
+   * written as text), so an invalid field is dropped with a warning rather than failing the audit; never replaced.
+   * A field the schema requires that is still invalid is a bug here, so that throws.
+   */
+  static validated(schema: ZodTypeAny, value: object, name: string): unknown {
+    // An optional field left undefined is left out: MongoDB would store it as null, which the schema refuses on read
+    value = this.withoutUndefined(value);
+    const first = schema.safeParse(value);
+    if (first.success) return first.data;
+    const dropped = [...new Set(first.error.issues.map((issue) => String(issue.path[0])))];
+    const rest = Object.fromEntries(Object.entries(value).filter(([key]) => !dropped.includes(key)));
+    console.warn(`[BrandExtractor] ${name}: left out ${dropped.join(', ')}, not valid`);
+    return schema.parse(rest);
+  }
+
+  /** The object without its undefined entries, in nested objects and in the objects inside arrays too */
+  static withoutUndefined(value: object): object {
+    const clean = (v: unknown): unknown =>
+      Array.isArray(v) ? v.map(clean) : v && typeof v === 'object' ? this.withoutUndefined(v) : v;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, clean(v)]),
+    );
   }
 
   static withDigits(value?: string): string | undefined {
