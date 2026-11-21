@@ -1,9 +1,12 @@
 import mongoose, { Types } from 'mongoose';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLeadWithAudit } from '../create-lead-with-audit.js';
 import { checkLeadChildIndexes, migrateLeadChildren } from '../lead-children-migration.js';
 import { retryOnDuplicateKey } from '../retry-duplicate-key.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
+import { Lead } from '../models/Lead.model.js';
+import { Audit } from '../models/Audit.model.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 
 // Every real-MongoDB test lives in this file and shares one server: a mongod per file, started in
@@ -278,6 +281,52 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       await closed.close();
       const warnings = await checkLeadChildIndexes(closed);
       expect(warnings.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('createLeadWithAudit (REV-202)', () => {
+    const leadFields = {
+      businessName: 'Demo Dental',
+      originalUrl: 'https://demo-dental.example.com',
+      domain: 'demo-dental.example.com',
+      niche: 'other',
+      status: 'QUEUED',
+    };
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri);
+      await Promise.all([Lead.init(), Audit.init()]);
+    });
+
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+
+    beforeEach(async () => {
+      vi.restoreAllMocks();
+      await Promise.all([Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    it('creates the lead and its queued audit together', async () => {
+      const { lead, audit } = await createLeadWithAudit(leadFields);
+      expect(lead.status).toBe('QUEUED');
+      expect(audit.status).toBe('QUEUED');
+      expect(String(audit.leadId)).toBe(String(lead._id));
+      expect(await Lead.countDocuments()).toBe(1);
+      expect(await Audit.countDocuments({ leadId: lead._id })).toBe(1);
+    });
+
+    it('leaves no lead when the audit insert fails', async () => {
+      vi.spyOn(Audit, 'create').mockRejectedValueOnce(new Error('boom'));
+      await expect(createLeadWithAudit(leadFields)).rejects.toThrow('boom');
+      expect(await Lead.countDocuments()).toBe(0);
+      expect(await Audit.countDocuments()).toBe(0);
+    });
+
+    it('leaves nothing when the lead itself is invalid', async () => {
+      await expect(createLeadWithAudit({ ...leadFields, businessName: undefined })).rejects.toThrow(/Business name/);
+      expect(await Lead.countDocuments()).toBe(0);
+      expect(await Audit.countDocuments()).toBe(0);
     });
   });
 });
