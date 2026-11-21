@@ -408,12 +408,23 @@ export class BrandExtractorService {
    * A field the schema requires that is still invalid is a bug here, so that throws.
    */
   static validated(schema: ZodTypeAny, value: object, name: string): unknown {
+    // An optional field left undefined is left out: MongoDB would store it as null, which the schema refuses on read
+    value = this.withoutUndefined(value);
     const first = schema.safeParse(value);
     if (first.success) return first.data;
     const dropped = [...new Set(first.error.issues.map((issue) => String(issue.path[0])))];
     const rest = Object.fromEntries(Object.entries(value).filter(([key]) => !dropped.includes(key)));
     console.warn(`[BrandExtractor] ${name}: left out ${dropped.join(', ')}, not valid`);
     return schema.parse(rest);
+  }
+
+  /** The object without its undefined entries, nested objects included (arrays are kept as they are) */
+  static withoutUndefined(value: object): object {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, v]) => v !== undefined)
+        .map(([k, v]) => [k, v && typeof v === 'object' && !Array.isArray(v) ? this.withoutUndefined(v) : v]),
+    );
   }
 
   static withDigits(value?: string): string | undefined {

@@ -216,6 +216,14 @@ describe('BrandExtractorService', () => {
       expect(SiteContentSchema.safeParse(result.siteContent).error).toBeUndefined();
     });
 
+    it('leaves no undefined keys, which MongoDB would store as null in the Mixed fields (REV-200)', () => {
+      const rawData: RawBrandExtractionData = { colors: [], fontFamilies: [], socialLinks: [], services: [] };
+      const result = BrandExtractorService.processBrandData(rawData, 'Apex Dental');
+      const undefinedKeys = (value: object) => Object.entries(value).filter(([, v]) => v === undefined).map(([k]) => k);
+      expect(undefinedKeys(result.contacts)).toEqual([]);
+      expect(undefinedKeys(result.siteContent)).toEqual([]);
+    });
+
     it('drops a site content field the schema refuses instead of failing the audit (REV-200)', () => {
       const rawData = {
         colors: [],
