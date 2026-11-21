@@ -28,9 +28,13 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "db:check-roles": "tsx scripts/check-mongo-roles.ts",
+    "db:seed": "tsx scripts/db-seed.ts",
+    "db:dump": "tsx scripts/db-archive.ts dump",
+    "db:restore": "tsx scripts/db-archive.ts restore",
     "verify:env": "tsx scripts/verify-production-env.ts"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1136.0",
     "@types/node": "^22.10.1",
     "@types/supertest": "^7.2.1",
     "@typescript-eslint/eslint-plugin": "^8.18.0",

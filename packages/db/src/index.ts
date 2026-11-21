@@ -8,3 +8,5 @@ export * from './redact-uri.js';
 export * from './lead-children-migration.js';
 export * from './retry-duplicate-key.js';
 export * from './create-lead-with-audit.js';
+export * from './seed/demo-dataset.js';
+export * from './seed/seed-demo.js';

@@ -169,6 +169,8 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm test` | Vitest, all workspaces |
 | `npm run docker:up` / `docker:down` / `docker:logs` | Local infrastructure; `docker:up` also sets up the MongoDB users and replica set |
 | `npm run db:check-roles` | Logs in as each MongoDB user and checks its rights (`ENV_FILE=<path>` to use another `.env`) |
+| `npm run db:seed` | REV-199: loads the demo dataset (see [Demo data](#demo-data-and-database-export)) into the local database and its MVP pages into MinIO. `-- --reset` puts the demo documents back to their seeded state |
+| `npm run db:dump` / `db:restore -- <file> [--drop]` | REV-199: exports the database to `backups/<db>-<time>.archive.gz` (gitignored) and imports an archive, through `mongodump` / `mongorestore` in the `revamp-mongo` container |
 | `npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] [--operator-locale <en\|ru\|be\|pl\|lt>] <out-dir> <url...>` | Dev tool (REV-137): audits each URL read-only, asks the model for a page, checks and finishes it, and writes `<host>.raw.html`, `<host>.html` and the grounding flags; no database, storage or queue writes. `--record` saves the brief and answers for the recorded-answer tests; `--self-review` adds the REV-143 revision pass and prints standards, axe violations and horizontal scroll at 360 px for the first and the kept page; `--operator-locale` asks for the model's design changes in that language and prints them with the page's `lang` (REV-162) |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
@@ -176,6 +178,28 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run migrate:audit-vitals --workspace=@revamp/api` | One-off (REV-105, REV-102): removes `lighthouseMetrics.speedIndex` and `lighthouseMetrics.fidOrInp` from stored audits (they were never measured), then renames `lighthouseMetrics` to `webVitals` (`-- --dry-run` to preview) |
 | `npm run migrate:unique-lead-children --workspace=@revamp/api` | REV-201: makes `leadId` unique on `mvpprojects` and `emailcampaigns`. It removes duplicates first, keeping the MVP the lead's `previewUrl` points at (else the newest) and the campaign furthest along (`UNSUBSCRIBED` first, else the newest), then rebuilds the `leadId_1` index. Dry run by default (unlike the migrations above), `-- --apply` writes; run it with the workers stopped. The dry run lists every record with its status, slug and date, and warns about removed campaigns whose email already went out (their tracking links stop working). Removed MVPs' storage folders are listed, not deleted |
 | `npm run repair:queued-leads --workspace=@revamp/api` | REV-202: moves leads stranded in `QUEUED` (no audit, or no audit job in the queue, unchanged for 10 minutes) to `AUDIT_FAILED`, so Retry audit recovers them. Dry run by default, `-- --apply` writes |
+
+### Demo data and database export
+
+`npm run db:seed` loads a fixed demo dataset for demos and grading, so a fresh clone has data on every dashboard screen without running audits or calling a model. It is test data that lives in a script (`packages/db/src/seed/demo-dataset.ts`); the app itself never makes data up (REV-45).
+
+| Lead | Status | What it shows |
+|---|---|---|
+| Demo Dental Studio | `QUEUED` | A queued audit |
+| Demo Auto Repair | `AUDIT_FAILED` | The failure reason and Retry audit |
+| Demo Law Office | `AUDITED` | A performance measurement that failed and the template design critique, both left unscored |
+| Demo Beauty Salon | `AUDITED` | No contact email |
+| Demo Fitness Club | `NEEDS_APPROVAL` | An MVP and an email waiting for review |
+| Demo Bistro, Demo Builders, Demo Clinic, Demo Realty | `SENT`, `OPENED`, `CLICKED`, `ENGAGED` | Sent campaigns and their tracking events |
+| Demo Florist | `UNSUBSCRIBED` | An unsubscribe |
+
+- Every domain and email ends in `.test`, a reserved name that never resolves, so the email worker's MX check bounces anything sent to it. Each lead is tagged `demo-seed`.
+- The documents have fixed ids and are written through the `@revamp/db` models in one transaction, so schema validation applies and a failure leaves nothing behind. A plain run adds the demo documents that are missing and keeps the ones you changed; `--reset` restores them and removes whatever the demo leads gained since (a retried audit, a generated MVP or campaign, tracking events). Documents of other leads are never read, changed or deleted, so it is safe next to real leads.
+- Demo Dental Studio stays `QUEUED`: it has no audit job, so no worker picks it up, and `repair:queued-leads -- --apply` would move it to `AUDIT_FAILED` (`--reset` brings it back).
+- The MVP pages are uploaded to `S3_BUCKET_DEMOS` first; when MinIO is down the script stops before writing to the database.
+- It refuses `NODE_ENV=production`, `mongodb+srv` URIs and any host other than `localhost`, `127.0.0.1`, `::1` or `mongo`. Settings come from the environment, else `.env` (`ENV_FILE=<path>` for another file).
+
+`npm run db:dump` writes the whole database (the one in `MONGODB_URI`) to a gzip archive, and `npm run db:restore -- <file>` loads one back: without `--drop` documents whose ids already exist are skipped, with `--drop` each collection in the archive is replaced. Both run the MongoDB tools inside the container as the `MONGODB_URI` user, with the password passed through the environment, never the command line. Without `MONGO_CONTAINER=<name>` they use `revamp-mongo`, and refuse a `MONGODB_URI` on any port but 27017, so a check database on another port is never confused with the shared one.
 
 Production deployment uses `.env.production.example`, `docker-compose.prod.yml` and `deploy/deploy.sh`.
 

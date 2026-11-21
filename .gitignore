@@ -43,3 +43,6 @@ coverage/
 
 # OS generated
 Thumbs.db
+
+# REV-199: npm run db:dump output
+backups/
