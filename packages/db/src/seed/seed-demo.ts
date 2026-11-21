@@ -9,6 +9,8 @@ import { DemoCollection, DemoDataset, demoDocumentIds } from './demo-dataset.js'
 // REV-199: writes the demo dataset through the models (insertMany validates every document) in one transaction, and
 // only ever reads, deletes or inserts the seed documents' fixed ids: the local database is shared with real work.
 
+type SeedModel = Model<Record<string, unknown>>;
+
 /** Hosts a seed may write to: this machine, or the compose service from inside the compose network */
 const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'mongo']);
 
@@ -44,12 +46,12 @@ export type DemoSeedReport = Record<DemoCollection, { inserted: number; kept: nu
  * demo's changes survive; `reset` deletes the seed documents and inserts them again. Any error rolls back everything.
  */
 export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean }): Promise<DemoSeedReport> {
-  const steps: [DemoCollection, Model<never>, { _id: unknown }[]][] = [
-    ['leads', Lead as unknown as Model<never>, ds.leads],
-    ['audits', Audit as unknown as Model<never>, ds.audits],
-    ['mvpProjects', MvpProject as unknown as Model<never>, ds.mvpProjects],
-    ['emailCampaigns', EmailCampaign as unknown as Model<never>, ds.emailCampaigns],
-    ['analyticsEvents', AnalyticsEvent as unknown as Model<never>, ds.analyticsEvents],
+  const steps: [DemoCollection, SeedModel, { _id: unknown }[]][] = [
+    ['leads', Lead as unknown as SeedModel, ds.leads],
+    ['audits', Audit as unknown as SeedModel, ds.audits],
+    ['mvpProjects', MvpProject as unknown as SeedModel, ds.mvpProjects],
+    ['emailCampaigns', EmailCampaign as unknown as SeedModel, ds.emailCampaigns],
+    ['analyticsEvents', AnalyticsEvent as unknown as SeedModel, ds.analyticsEvents],
   ];
   const ids = demoDocumentIds(ds);
   // Unique indexes must exist before the transaction: a collection or index cannot be created inside one reliably
@@ -66,7 +68,7 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
         const kept = new Set(existing.map((doc) => String((doc as { _id: unknown })._id)));
         missing = docs.filter((doc) => !kept.has(String(doc._id)));
       }
-      if (missing.length > 0) await model.insertMany(missing as never[], { session });
+      if (missing.length > 0) await model.insertMany(missing as Record<string, unknown>[], { session });
       report[name] = { inserted: missing.length, kept: docs.length - missing.length };
     }
   });
