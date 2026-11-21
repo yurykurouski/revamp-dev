@@ -19,6 +19,7 @@ import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
+import { pageVersionEntry } from '../services/mvp-page-version.js';
 import { desktopCapture } from '../services/desktop-capture.js';
 import { checkMvpPage } from '../services/mvp-page-check.js';
 import { checkMvpGrounding } from '../services/mvp-grounding.js';
@@ -171,7 +172,7 @@ export async function processMvpPageJob(
   if (next.version) {
     const n = Math.max(0, ...versions.map((v) => v.n)) + 1;
     const storagePath = await storageService.uploadPageVersion(slug, n, next.page);
-    entry = { n, ...next.version, storagePath, createdAt: new Date() };
+    entry = pageVersionEntry({ n, ...next.version, storagePath, createdAt: new Date() });
   }
 
   const html = finishMvpPage(next.page, { ...finish, theme: next.theme, controls: next.controls });

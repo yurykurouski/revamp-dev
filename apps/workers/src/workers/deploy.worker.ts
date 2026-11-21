@@ -10,6 +10,7 @@ import { MvpProject } from '../models/MvpProject.model.js';
 import { storageService } from '../services/storage.service.js';
 import { handleGenerationFailure } from './generation-failure.js';
 import { finishMvpPage } from '../services/mvp-page-finish.js';
+import { pageVersionEntry } from '../services/mvp-page-version.js';
 import { dropUnlistedVersions, pageContext, publishFinishedPage } from '../services/mvp-page-publish.js';
 
 function transliterate(str: string): string {
@@ -77,7 +78,7 @@ async function deployPage(job: Job<IDeployJobData>) {
 
   // 4. One update: the page, its checks and the version; every field of the old renderers goes
   const generatedAt = new Date();
-  const entry: IMvpPageVersion = {
+  const entry: IMvpPageVersion = pageVersionEntry({
     n,
     kind: page.kind,
     ...(page.instruction ? { instruction: page.instruction } : {}),
@@ -86,7 +87,7 @@ async function deployPage(job: Job<IDeployJobData>) {
     storagePath,
     ...(page.changes ? { changes: page.changes } : {}),
     createdAt: generatedAt,
-  };
+  });
   const unset: Record<string, ''> = Object.fromEntries([...OLD_MVP_FIELDS, 'controls', 'editedAt'].map((field) => [field, '']));
   if (!standards) unset['standards'] = '';
   if (!generationSource?.requestedProvider) Object.assign(unset, { requestedProvider: '', requestedModel: '' });

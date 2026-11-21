@@ -262,3 +262,29 @@ describe('collectComplexitySignalsInPage (REV-38)', () => {
     expect(collectComplexitySignalsInPage().sectionCount).toBe(4);
   });
 });
+
+describe('classifySiteComplexity output (REV-200)', () => {
+  it('passes SiteComplexitySchema for every class', async () => {
+    const { SiteComplexitySchema } = await import('@revamp/validation');
+    const { classifySiteComplexity } = await import('../site-complexity.service.js');
+    const base = { pageUrl: 'https://a.test/', links: [] as string[], sectionCount: 3, pageHeight: 2000 };
+    for (const raw of [
+      undefined,
+      base,
+      { ...base, hasBooking: true },
+      { ...base, hasEcommerce: true },
+    ]) {
+      expect(SiteComplexitySchema.safeParse(classifySiteComplexity(raw as never)).error).toBeUndefined();
+    }
+  });
+
+  it('leaves out of the listed sample a page URL longer than the schema allows, but still counts it', async () => {
+    const { SiteComplexitySchema } = await import('@revamp/validation');
+    const { classifySiteComplexity } = await import('../site-complexity.service.js');
+    const long = `https://a.test/${'x'.repeat(400)}`;
+    const result = classifySiteComplexity({ pageUrl: 'https://a.test/', links: [long, 'https://a.test/about'], sectionCount: 3, pageHeight: 2000 } as never);
+    expect(SiteComplexitySchema.safeParse(result).error).toBeUndefined();
+    expect(result.signals?.internalPages).not.toContain(long);
+    expect(result.signals?.internalPageCount).toBe(2);
+  });
+});

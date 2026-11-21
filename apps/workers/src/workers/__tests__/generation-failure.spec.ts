@@ -50,7 +50,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     );
   });
 
-  it('records a render failure at once, with its code and reason, without waiting for retries (REV-132)', async () => {
+  it('records a render failure at once but leaves out a failure MvpRenderFailureSchema rejects (REV-132, REV-200)', async () => {
     const at = new Date('2026-10-04T12:00:00Z');
     const err = Object.assign(new Error('MVP_MODERNIZE_UNAVAILABLE: not_configured'), {
       name: 'UnrecoverableError',
@@ -59,14 +59,9 @@ describe('MVP generation failure handling (REV-31)', () => {
     await handleGenerationFailure(job({ leadId: 'lead-1' }, 1), err, 'deploy');
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
       { _id: 'lead-1', status: 'GENERATING' },
-      {
-        $set: {
-          status: 'AUDITED',
-          generationError: 'MVP deploy failed: MVP_MODERNIZE_UNAVAILABLE: not_configured',
-          generationFailure: { code: 'MVP_MODERNIZE_UNAVAILABLE', reason: 'not_configured', level: 'modern', at },
-        },
-      },
+      { $set: { status: 'AUDITED', generationError: 'MVP deploy failed: MVP_MODERNIZE_UNAVAILABLE: not_configured' } },
     );
+    expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('generationFailure left out'));
   });
 
   it('records a page the model could not make at once, from the ai worker (REV-138)', async () => {

@@ -7,6 +7,7 @@
  * No LLM is involved at any step.
  */
 import type { ISiteComplexity, ISiteComplexitySignals, SiteComplexityClass } from '@revamp/shared-types';
+import { SiteComplexitySchema } from '@revamp/validation';
 
 export interface RawComplexitySignals {
   /** URL of the audited page after redirects */
@@ -103,6 +104,8 @@ export const SMALL_SITE_MAX_PAGES = 10;
 export const BROCHURE_MAX_SECTIONS = 20;
 export const BROCHURE_MAX_HEIGHT_PX = 20000;
 const MAX_LISTED_PAGES = 20;
+/** A listed page path is a sample for the operator; a longer one is counted but not listed (SiteComplexitySchema) */
+const MAX_LISTED_PAGE_LENGTH = 300;
 
 /** Links to these are not content pages the MVP has to replace */
 const ASSET_EXTENSION =
@@ -186,6 +189,11 @@ export function collectInternalPages(pageUrl: string, links: string[]): string[]
  * - UNKNOWN: the signals could not be collected
  */
 export function classifySiteComplexity(raw: RawComplexitySignals | undefined): ISiteComplexity {
+  // Validated before it is stored as the Mixed Audit.siteComplexity (REV-200)
+  return SiteComplexitySchema.parse(classify(raw)) as ISiteComplexity;
+}
+
+function classify(raw: RawComplexitySignals | undefined): ISiteComplexity {
   if (!raw || !Array.isArray(raw.links)) {
     return { class: 'UNKNOWN', reasons: ['signals_unavailable'] };
   }
@@ -193,7 +201,7 @@ export function classifySiteComplexity(raw: RawComplexitySignals | undefined): I
   const internalPages = collectInternalPages(raw.pageUrl, raw.links);
   const signals: ISiteComplexitySignals = {
     internalPageCount: internalPages.length,
-    internalPages: internalPages.slice(0, MAX_LISTED_PAGES),
+    internalPages: internalPages.filter((page) => page.length <= MAX_LISTED_PAGE_LENGTH).slice(0, MAX_LISTED_PAGES),
     hasEcommerce: Boolean(raw.hasEcommerce),
     hasBooking: Boolean(raw.hasBooking),
     hasLogin: Boolean(raw.hasLogin),

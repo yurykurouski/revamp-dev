@@ -81,6 +81,10 @@ describe('checkMvpPage (REV-136)', () => {
     expect(codes(inBody('<div style="background:url(https://x.com/a.jpg)"></div>'))).toEqual(['page:css']);
   });
 
+  it('page:theme rejects a theme value MvpThemeSchema refuses (REV-200)', () => {
+    expect(codes(swap('--rv-font-body: Inter, sans-serif;', `--rv-font-body: ${'Inter, '.repeat(40)}sans-serif;`))).toEqual(['page:theme']);
+  });
+
   it('page:theme rejects a :root without the body font', () => {
     expect(codes(swap('--rv-font-body: Inter, sans-serif;', ''))).toEqual(['page:theme']);
   });

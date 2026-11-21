@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { IMvpSourceBrief } from '@revamp/shared-types';
+import { MvpGroundingFlagSchema } from '@revamp/validation';
 import { checkMvpGrounding } from '../mvp-grounding.js';
 import { BRIEF } from './fixtures/page-gen/page.js';
 
@@ -101,5 +102,20 @@ describe('checkMvpGrounding (REV-136)', () => {
     it('compares decimals with trailing zeros and comma thousands', () => {
       expect(flags('<p>Cena 12.5 zł, 1,200 osób</p>', brief({ paragraphs: ['Cena 12,50 zł dla 1 200 osób'] }))).toEqual([]);
     });
+  });
+});
+
+describe('checkMvpGrounding output (REV-200)', () => {
+  it('passes MvpGroundingFlagSchema, so the stored flags have one shape', () => {
+    const html = '<html lang="en"><body><h1>Clinic</h1><p>Founded in 1987 by Dr Kowalski, 4500 happy patients.</p></body></html>';
+    const flags = checkMvpGrounding(html, { ...BRIEF });
+    expect(flags.length).toBeGreaterThan(0);
+    for (const flag of flags) expect(MvpGroundingFlagSchema.safeParse(flag).error).toBeUndefined();
+  });
+
+  it('cuts a flag text to the schema limit instead of failing the generation', () => {
+    const long = `Founded in ${'1987'.repeat(80)}`;
+    const flags = checkMvpGrounding(`<html lang="en"><body><h1>Clinic</h1><p>${long}</p></body></html>`, { ...BRIEF });
+    for (const flag of flags) expect(MvpGroundingFlagSchema.safeParse(flag).error).toBeUndefined();
   });
 });
