@@ -13,9 +13,10 @@ export const LeadStatusSchema = z.enum(LEAD_STATUSES);
  * - SCHEDULED → REJECTED is the email worker's pre-flight MX bounce, not an operator action.
  * - GENERATING → AUDITED / NEEDS_APPROVAL is a failed first generation / regeneration (REV-31).
  * - AUDIT_FAILED → QUEUED is an operator retry (REV-44).
+ * - QUEUED → AUDIT_FAILED is an audit job that could not be queued (REV-202).
  */
 export const LEAD_TRANSITIONS: Readonly<Record<LeadStatus, readonly LeadStatus[]>> = {
-  QUEUED: ['AUDITING', 'REJECTED', 'UNSUBSCRIBED'],
+  QUEUED: ['AUDITING', 'AUDIT_FAILED', 'REJECTED', 'UNSUBSCRIBED'],
   AUDITING: ['AUDITED', 'AUDIT_FAILED', 'REJECTED', 'UNSUBSCRIBED'],
   AUDIT_FAILED: ['QUEUED', 'REJECTED', 'UNSUBSCRIBED'],
   AUDITED: ['GENERATING', 'REJECTED', 'UNSUBSCRIBED'],

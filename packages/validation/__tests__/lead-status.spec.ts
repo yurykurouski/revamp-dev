@@ -20,6 +20,8 @@ const EXPECTED_EDGES: ReadonlyArray<[LeadStatus, LeadStatus]> = [
   ['QUEUED', 'AUDITING'],
   ['AUDITING', 'AUDITED'],
   ['AUDITING', 'AUDIT_FAILED'],
+  // The audit job could not be queued when the lead was added (REV-202)
+  ['QUEUED', 'AUDIT_FAILED'],
   ['AUDIT_FAILED', 'QUEUED'],
   ['AUDITED', 'GENERATING'],
   ['GENERATING', 'NEEDS_APPROVAL'],
@@ -116,6 +118,7 @@ describe('Lead state machine (REV-62)', () => {
     expect(leadStatusesInto('NEEDS_APPROVAL')).toEqual(['GENERATING']);
     expect(leadStatusesInto('UNSUBSCRIBED')).toEqual(LEAD_STATUSES.filter((s) => s !== 'UNSUBSCRIBED'));
     expect(leadStatusesInto('QUEUED')).toEqual(['AUDIT_FAILED']);
+    expect(leadStatusesInto('AUDIT_FAILED')).toEqual(['QUEUED', 'AUDITING']);
   });
 
   describe('outreach approve and reject (REV-59)', () => {

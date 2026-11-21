@@ -1092,6 +1092,8 @@ export const API_ERROR_CODES = [
   'LEAD_NOT_FOUND',
   'LEAD_NOT_AUDITABLE',
   'AUDIT_NOT_FOUND',
+  // REV-202: the lead was saved but its audit job could not be queued; the lead is AUDIT_FAILED
+  'AUDIT_QUEUE_UNAVAILABLE',
   // MVP generation and previews
   'LLM_PROVIDER_NOT_ALLOWED',
   'NO_COMPLETED_AUDIT',
