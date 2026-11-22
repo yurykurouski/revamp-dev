@@ -385,3 +385,49 @@ describe('npm scripts (REV-198)', () => {
     expect(pkg.scripts['db:check-roles']).toBe('tsx scripts/check-mongo-roles.ts');
   });
 });
+
+describe('ensureJwtSecret (REV-206)', () => {
+  let root: string;
+  const envFile = () => path.join(root, '.env');
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'rev206-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('appends a generated secret when .env has none', () => {
+    fs.writeFileSync(envFile(), 'PORT=4000\n');
+    expect(stack.ensureJwtSecret(root, () => 'a'.repeat(48))).toBe(true);
+    const env = stack.parseEnv(fs.readFileSync(envFile(), 'utf8'));
+    expect(env.JWT_SECRET).toBe('a'.repeat(48));
+    expect(env.PORT).toBe('4000');
+  });
+
+  it('fills an empty JWT_SECRET line copied from .env.example, without a second line', () => {
+    fs.writeFileSync(envFile(), 'JWT_SECRET=\nPORT=4000\n');
+    stack.ensureJwtSecret(root, () => 'b'.repeat(48));
+    const text = fs.readFileSync(envFile(), 'utf8');
+    expect(text.match(/^JWT_SECRET=/gm)).toHaveLength(1);
+    expect(stack.parseEnv(text).JWT_SECRET).toBe('b'.repeat(48));
+  });
+
+  it('keeps an existing secret and reports no change', () => {
+    fs.writeFileSync(envFile(), `JWT_SECRET=${'c'.repeat(40)}\n`);
+    const before = fs.readFileSync(envFile(), 'utf8');
+    expect(stack.ensureJwtSecret(root, () => 'never')).toBe(false);
+    expect(fs.readFileSync(envFile(), 'utf8')).toBe(before);
+  });
+
+  it('replaces an existing secret that is shorter than 32 characters, which the API would refuse', () => {
+    fs.writeFileSync(envFile(), 'JWT_SECRET=short\n');
+    expect(stack.ensureJwtSecret(root, () => 'd'.repeat(48))).toBe(true);
+    expect(stack.parseEnv(fs.readFileSync(envFile(), 'utf8')).JWT_SECRET).toBe('d'.repeat(48));
+  });
+
+  it('generates a secret of at least 32 characters by default', () => {
+    fs.writeFileSync(envFile(), '');
+    stack.ensureJwtSecret(root);
+    expect(stack.parseEnv(fs.readFileSync(envFile(), 'utf8')).JWT_SECRET.length).toBeGreaterThanOrEqual(32);
+  });
+});
