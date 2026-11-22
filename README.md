@@ -227,6 +227,8 @@ It also creates a demo studio with three accounts, one per role, all with the pa
 
 Production deployment uses `.env.production.example`, `docker-compose.prod.yml` and `deploy/deploy.sh`.
 
+**Images (REV-217).** Each app has its own multi-stage Dockerfile and all three run as a non-root user: the API and workers as `node`, the dashboard as the unprivileged `nginx` user on port 8080 (the production nginx proxies to `dashboard:8080`). The workers image is `node:22-bookworm-slim` plus the one Playwright headless Chromium build for the installed `playwright` version (958 MB; the API is 192 MB, the dashboard 57.6 MB). The workers listen on no port, so their `HEALTHCHECK` reads a heartbeat file (`/tmp/revamp-workers-heartbeat`) that the process refreshes every 15 s while MongoDB and Redis are connected. A root `.dockerignore` keeps `node_modules`, build output, `.env*` files, tests and documents out of the build context. `deploy.sh` tags the images `revamp-<app>:<commit>` through `IMAGE_TAG`, and the MinIO and certbot images are pinned, so no service uses `latest`.
+
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`, REV-177) runs on every pull request, every push to `main` and on manual dispatch:

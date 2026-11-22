@@ -32,16 +32,19 @@ RUN npm run build --workspace=@revamp/shared-types && \
     npm run build --workspace=@revamp/dashboard
 
 # ==========================================
-# 2. Production Web Server (Nginx)
+# 2. Production Web Server (Nginx, non-root)
 # ==========================================
-FROM nginx:1.27-alpine AS runner
+# REV-217: the unprivileged build runs as user `nginx` (101) and listens on 8080
+FROM nginxinc/nginx-unprivileged:1.27-alpine AS runner
 
-COPY --from=builder /app/apps/dashboard/dist /usr/share/nginx/html
-COPY apps/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder --chown=nginx:nginx /app/apps/dashboard/dist /usr/share/nginx/html
+COPY --chown=nginx:nginx apps/dashboard/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+USER nginx
+
+EXPOSE 8080
 
 HEALTHCHECK --interval=15s --timeout=3s --retries=3 \
-  CMD wget -q --spider http://localhost/ || exit 1
+  CMD wget -q --spider http://127.0.0.1:8080/ || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

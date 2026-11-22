@@ -1,0 +1,41 @@
+# REV-217: keep the build context small and the images free of local state.
+# Every Dockerfile copies explicit paths; this file stops those paths from carrying
+# local node_modules, build output, secrets or tests into a layer.
+
+# Dependencies and build output are produced inside the image
+**/node_modules
+**/dist
+**/build
+**/.vite
+**/*.tsbuildinfo
+**/coverage
+
+# Version control, editors, agent and OS files
+.git
+.github
+.claude
+.idea
+.vscode
+**/.DS_Store
+
+# Secrets and local environments (only the sample file may enter the context)
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Local data and logs
+backups
+**/*.log
+
+# Tests and documents the build does not read
+**/__tests__
+**/*.spec.ts
+**/*.test.ts
+ba
+docs
+deploy
+scripts
+*.docx
+*.md
+**/*.md

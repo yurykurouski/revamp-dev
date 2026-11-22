@@ -44,9 +44,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=4000
 
-# Install curl for container healthcheck
-RUN apk add --no-cache curl
-
 # Run as non-root user
 USER node
 
@@ -65,7 +62,8 @@ COPY --chown=node:node --from=builder /app/apps/api/src/public ./apps/api/dist/p
 
 EXPOSE 4000
 
+# REV-217: Node itself probes /health, so the image needs no extra HTTP client
 HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:4000/api/v1/health || exit 1
+  CMD ["node", "-e", "fetch('http://localhost:4000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 CMD ["node", "apps/api/dist/index.js"]

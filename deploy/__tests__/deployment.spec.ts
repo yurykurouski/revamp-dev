@@ -28,14 +28,21 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(content).toContain('npm prune --production');
     });
 
-    it('apps/workers/Dockerfile should use official Playwright runtime base and install chromium', () => {
+    it('apps/workers/Dockerfile should use a slim Node base with one Chromium, run as non-root and report health (REV-217)', () => {
       const filePath = path.join(rootDir, 'apps/workers/Dockerfile');
       expect(fs.existsSync(filePath)).toBe(true);
 
       const content = fs.readFileSync(filePath, 'utf-8');
       expect(content).toContain('FROM node:22-bookworm-slim AS builder');
-      expect(content).toContain('FROM mcr.microsoft.com/playwright:v1.49.0-noble AS runner');
-      expect(content).toContain('npx playwright install chromium');
+      expect(content).toContain('FROM node:22-bookworm-slim AS runner');
+      // The browser is installed once, by the installed Playwright version, and the apt lists are removed
+      expect(content).toContain('playwright/cli.js install --with-deps --only-shell chromium');
+      expect(content.match(/playwright[^\n]*install/g)).toHaveLength(1);
+      expect(content).toContain('rm -rf /var/lib/apt/lists/*');
+      expect(content).not.toContain('mcr.microsoft.com/playwright');
+      expect(content).toContain('USER node');
+      expect(content).toContain('HEALTHCHECK');
+      expect(content).toContain('/tmp/revamp-workers-heartbeat');
       expect(content).toContain('apps/workers/dist/index.js');
     });
 
@@ -55,11 +62,28 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
 
       const content = fs.readFileSync(filePath, 'utf-8');
       expect(content).toContain('FROM node:22-alpine AS builder');
-      expect(content).toContain('FROM nginx:1.27-alpine AS runner');
+      expect(content).toContain('FROM nginxinc/nginx-unprivileged:1.27-alpine AS runner');
       expect(content).toContain('/etc/nginx/conf.d/default.conf');
       expect(content).toContain('/usr/share/nginx/html');
-      expect(content).toContain('EXPOSE 80');
+      expect(content).toContain('USER nginx');
+      expect(content).toContain('EXPOSE 8080');
       expect(content).toContain('HEALTHCHECK');
+    });
+
+    it('every app image runs as a non-root user and the API image ships no curl (REV-217)', () => {
+      for (const app of ['api', 'workers', 'dashboard']) {
+        const content = fs.readFileSync(path.join(rootDir, `apps/${app}/Dockerfile`), 'utf-8');
+        expect(content, `${app} sets a USER`).toMatch(/^USER (node|nginx)$/m);
+      }
+      const api = fs.readFileSync(path.join(rootDir, 'apps/api/Dockerfile'), 'utf-8');
+      expect(api).not.toContain('curl');
+    });
+
+    it('the dashboard listens on the unprivileged port its image exposes and nginx proxies to it (REV-217)', () => {
+      expect(fs.readFileSync(path.join(rootDir, 'apps/dashboard/nginx.conf'), 'utf-8')).toContain('listen 8080;');
+      expect(fs.readFileSync(path.join(rootDir, 'deploy/nginx/conf.d/revamp.conf'), 'utf-8')).toContain(
+        'server dashboard:8080;',
+      );
     });
   });
 
@@ -144,6 +168,40 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
     it('creates no users through MONGO_INITDB_* (setup creates them, REV-198)', () => {
       const environment = JSON.stringify(mongo.environment ?? {});
       expect(environment).not.toContain('MONGO_INITDB_ROOT');
+    });
+  });
+
+  describe('.dockerignore (REV-217)', () => {
+    const lines = fs
+      .readFileSync(path.join(rootDir, '.dockerignore'), 'utf-8')
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line && !line.startsWith('#'));
+
+    it.each(['**/node_modules', '**/dist', '.git', '.env', '.env.*', '**/__tests__'])('excludes %s', (pattern) => {
+      expect(lines).toContain(pattern);
+    });
+
+    it('lets the sample environment files through', () => {
+      expect(lines).toContain('!.env.example');
+    });
+  });
+
+  describe('Image versions (REV-217)', () => {
+    it.each(['docker-compose.yml', 'docker-compose.prod.yml'])('%s uses no `latest` image tag', (file) => {
+      const content = fs.readFileSync(path.join(rootDir, file), 'utf-8');
+      expect(content).not.toMatch(/image:\s*\S+:latest/);
+      // An image without a tag or digest is `latest` too
+      const images = [...content.matchAll(/^\s*image:\s*(\S+)/gm)].map((match) => match[1] ?? '');
+      for (const image of images) expect(image, image).toMatch(/[:@]/);
+    });
+
+    it('versions the images it builds with the commit deploy.sh deploys', () => {
+      const compose = fs.readFileSync(path.join(rootDir, 'docker-compose.prod.yml'), 'utf-8');
+      for (const name of ['api', 'workers', 'dashboard']) {
+        expect(compose).toContain(`image: revamp-${name}:` + '${IMAGE_TAG:-local}');
+      }
+      expect(fs.readFileSync(path.join(rootDir, 'deploy/deploy.sh'), 'utf-8')).toContain('export IMAGE_TAG=');
     });
   });
 

@@ -100,7 +100,9 @@ fi
 # ------------------------------------------------------------------------------
 # 3. Build Production Docker Images
 # ------------------------------------------------------------------------------
-log_info "Building production containers (API, Workers, Dashboard)..."
+# REV-217: version the images with the commit they are built from
+export IMAGE_TAG="$(git rev-parse --short HEAD 2>/dev/null || echo local)"
+log_info "Building production containers (API, Workers, Dashboard) as ${IMAGE_TAG}..."
 docker compose -f docker-compose.prod.yml build --pull
 log_success "All images built successfully."
 
@@ -124,7 +126,7 @@ while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     
     # Attempt querying health check from container
-    if docker exec revamp-prod-api curl -s -f http://localhost:4000/api/v1/health &> /dev/null; then
+    if docker exec revamp-prod-api node -e "fetch('http://localhost:4000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))" &> /dev/null; then
         HEALTHY=true
         break
     fi
@@ -137,7 +139,7 @@ if [ "$HEALTHY" = true ]; then
     log_success "Healthcheck probe passed! System is operational."
     
     # Fetch detailed health payload
-    docker exec revamp-prod-api curl -s http://localhost:4000/api/v1/health || true
+    docker exec revamp-prod-api node -e "fetch('http://localhost:4000/api/v1/health').then((r) => r.text()).then(console.log)" || true
     echo ""
 else
     log_error "Healthcheck failed after ${MAX_RETRIES} attempts!"
