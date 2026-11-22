@@ -14,6 +14,7 @@ export * from './redact-uri.js';
 export * from './lead-children-migration.js';
 export * from './retry-duplicate-key.js';
 export * from './create-lead-with-audit.js';
+export * from './add-lead-to-business.js';
 export * from './create-organization-with-owner.js';
 export * from './organization-members.js';
 export * from './approve-outreach.js';
