@@ -3,6 +3,7 @@ export {
   Invitation,
   type IInvitationDocument,
   OrganizationError,
+  type OrganizationErrorCode,
   acceptInvitationAsMember,
   changeMemberRole,
   createInvitation,
