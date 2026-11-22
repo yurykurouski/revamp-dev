@@ -12,11 +12,13 @@ import {
   revokeInvitation,
 } from '../../models/Invitation.model.js';
 import { User } from '../../models/User.model.js';
+import { hashPassword } from '../password.js';
 import { verifySessionToken } from '../token.js';
 import {
   acceptInvitation,
   changeRole,
   inviteMember,
+  joinWithPassword,
   listMembers,
   previewInvitation,
   removeFromOrganization,
@@ -33,7 +35,7 @@ vi.mock('../../models/Invitation.model.js', async (importOriginal) => ({
   removeMember: vi.fn(),
   revokeInvitation: vi.fn(),
 }));
-vi.mock('../../models/User.model.js', () => ({ User: { findById: vi.fn() } }));
+vi.mock('../../models/User.model.js', () => ({ User: { findById: vi.fn(), findOne: vi.fn() } }));
 
 const auth = { userId: '5eed00000000000000000001', organizationId: '5eed00000000000000000002', role: 'owner' as const };
 const query = <T>(value: T) => ({ exec: () => Promise.resolve(value), then: (a: never, b: never) => Promise.resolve(value).then(a, b) });
@@ -142,6 +144,59 @@ describe('organization service (REV-207)', () => {
       await expect(acceptInvitation(auth, 'tok')).rejects.toMatchObject({ statusCode: 403, code: 'INVITATION_EMAIL_MISMATCH' });
       vi.mocked(acceptInvitationAsMember).mockRejectedValueOnce(new OrganizationError('INVITATION_EXPIRED', 'used'));
       await expect(acceptInvitation(auth, 'tok')).rejects.toMatchObject({ statusCode: 410, code: 'INVITATION_EXPIRED' });
+    });
+  });
+  describe('joinWithPassword (REV-207)', () => {
+    const orgId = new Types.ObjectId();
+    const preview = { id: 'i1', email: 'ann@studio.test', role: 'viewer' as const, expiresAt: 'x', createdAt: 'y', organizationId: String(orgId), organizationName: 'Pixel Studio' };
+    const joined = { organization: { _id: orgId, name: 'Pixel Studio' }, membership: { role: 'viewer' } };
+
+    it('checks the password of the account behind the invited address, then joins and returns a session for the invited studio', async () => {
+      const hash = await hashPassword('my old password');
+      vi.mocked(findInvitation).mockResolvedValue(preview);
+      vi.mocked(User.findOne).mockReturnValue(query({ _id: auth.userId, email: 'ann@studio.test', passwordHash: hash }) as never);
+      vi.mocked(acceptInvitationAsMember).mockResolvedValue(joined as never);
+      const session = await joinWithPassword('tok', 'my old password');
+      expect(User.findOne).toHaveBeenCalledWith({ email: 'ann@studio.test' });
+      expect(acceptInvitationAsMember).toHaveBeenCalledWith({ token: 'tok', userId: auth.userId, userEmail: 'ann@studio.test' });
+      expect(session.role).toBe('viewer');
+      expect(verifySessionToken(session.token)).toEqual({ userId: auth.userId, organizationId: String(orgId), role: 'viewer' });
+    });
+
+    it('works for a removed member: the account exists and has no membership', async () => {
+      const hash = await hashPassword('my old password');
+      vi.mocked(findInvitation).mockResolvedValue(preview);
+      vi.mocked(User.findOne).mockReturnValue(query({ _id: auth.userId, email: 'ann@studio.test', passwordHash: hash }) as never);
+      vi.mocked(acceptInvitationAsMember).mockResolvedValue(joined as never);
+      await expect(joinWithPassword('tok', 'my old password')).resolves.toMatchObject({ role: 'viewer' });
+    });
+
+    it('gives the same 401 INVALID_CREDENTIALS for a wrong password and for an address with no account, and never joins', async () => {
+      const hash = await hashPassword('my old password');
+      vi.mocked(findInvitation).mockResolvedValue(preview);
+      vi.mocked(User.findOne).mockReturnValueOnce(query({ _id: auth.userId, email: 'ann@studio.test', passwordHash: hash }) as never);
+      const wrong = await joinWithPassword('tok', 'nope').catch((e) => e);
+      vi.mocked(User.findOne).mockReturnValueOnce(query(null) as never);
+      const none = await joinWithPassword('tok', 'nope').catch((e) => e);
+      for (const error of [wrong, none]) expect(error).toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });
+      expect(wrong.message).toBe(none.message);
+      expect(acceptInvitationAsMember).not.toHaveBeenCalled();
+    });
+
+    it('does not look at the password of an unknown, expired or used invitation: 404 and 410 first', async () => {
+      vi.mocked(findInvitation).mockRejectedValueOnce(new OrganizationError('INVITATION_NOT_FOUND', 'nope'));
+      await expect(joinWithPassword('x', 'p')).rejects.toMatchObject({ statusCode: 404, code: 'INVITATION_NOT_FOUND' });
+      vi.mocked(findInvitation).mockRejectedValueOnce(new OrganizationError('INVITATION_EXPIRED', 'used'));
+      await expect(joinWithPassword('x', 'p')).rejects.toMatchObject({ statusCode: 410, code: 'INVITATION_EXPIRED' });
+      expect(User.findOne).not.toHaveBeenCalled();
+    });
+
+    it('maps ALREADY_MEMBER from the join', async () => {
+      const hash = await hashPassword('p');
+      vi.mocked(findInvitation).mockResolvedValue(preview);
+      vi.mocked(User.findOne).mockReturnValue(query({ _id: auth.userId, email: 'ann@studio.test', passwordHash: hash }) as never);
+      vi.mocked(acceptInvitationAsMember).mockRejectedValue(new OrganizationError('ALREADY_MEMBER', 'already'));
+      await expect(joinWithPassword('tok', 'p')).rejects.toMatchObject({ statusCode: 409, code: 'ALREADY_MEMBER' });
     });
   });
 });

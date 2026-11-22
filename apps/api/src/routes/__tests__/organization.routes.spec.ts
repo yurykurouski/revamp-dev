@@ -189,4 +189,27 @@ describe('organization and invitation routes (REV-207)', () => {
       expect((await request(server).post('/invitations/abc/accept').set(bearer)).status).toBe(410);
     });
   });
+  describe('POST /invitations/:token/join (public)', () => {
+    it('200 with a session for the invited studio, without a token, and the service gets the password', async () => {
+      vi.mocked(organization.joinWithPassword).mockResolvedValue(session);
+      const res = await request(server).post('/invitations/abc/join').send({ password: 'my old password' });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: session });
+      expect(organization.joinWithPassword).toHaveBeenCalledWith('abc', 'my old password');
+    });
+
+    it.each([{}, { password: '' }, { password: 5 }])('400 VALIDATION_ERROR for %j, without calling the service', async (body) => {
+      const res = await request(server).post('/invitations/abc/join').send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(organization.joinWithPassword).not.toHaveBeenCalled();
+    });
+
+    it('401 INVALID_CREDENTIALS and 410 from the service', async () => {
+      vi.mocked(organization.joinWithPassword).mockRejectedValueOnce(new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect'));
+      expect((await request(server).post('/invitations/abc/join').send({ password: 'x' })).status).toBe(401);
+      vi.mocked(organization.joinWithPassword).mockRejectedValueOnce(new AppError(410, 'INVITATION_EXPIRED', 'used'));
+      expect((await request(server).post('/invitations/abc/join').send({ password: 'x' })).status).toBe(410);
+    });
+  });
 });

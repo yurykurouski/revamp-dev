@@ -16,6 +16,7 @@ import {
   revokeInvitation,
 } from '../models/Invitation.model.js';
 import { User } from '../models/User.model.js';
+import { DUMMY_PASSWORD_HASH, verifyPassword } from './password.js';
 import { toSession } from './auth.service.js';
 import { mapOrganizationError } from './organization-errors.js';
 import type { SessionClaims } from './token.js';
@@ -82,6 +83,30 @@ export async function acceptInvitation(auth: SessionClaims, token: string): Prom
   if (!user) throw new AppError(401, 'UNAUTHENTICATED', 'The session is no longer valid');
   try {
     const { organization, membership } = await acceptInvitationAsMember({ token, userId: auth.userId, userEmail: user.email });
+    return toSession({ user, organization, membership });
+  } catch (error) {
+    return mapOrganizationError(error);
+  }
+}
+
+/**
+ * The invitee already has an account (also after being removed from a studio, when login has no organization to pick):
+ * the password of the account behind the invited address proves it is theirs, then the invitation is accepted and a
+ * session for the invited studio is returned. An unknown address and a wrong password answer alike. The token in the
+ * link is the first secret, so the check runs only for a usable invitation.
+ */
+export async function joinWithPassword(token: string, password: string): Promise<IAuthSession> {
+  let invitedEmail: string;
+  try {
+    invitedEmail = (await findInvitation(token)).email;
+  } catch (error) {
+    return mapOrganizationError(error);
+  }
+  const user = await User.findOne({ email: invitedEmail }).exec();
+  const matches = await verifyPassword(password, user?.passwordHash ?? DUMMY_PASSWORD_HASH);
+  if (!user || !matches) throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
+  try {
+    const { organization, membership } = await acceptInvitationAsMember({ token, userId: user._id, userEmail: user.email });
     return toSession({ user, organization, membership });
   } catch (error) {
     return mapOrganizationError(error);

@@ -34,6 +34,7 @@ const PUBLIC_ROUTES = [
   'POST /auth/login',
   // The join page reads an invitation by its token (REV-207); accepting one needs a session
   'GET /invitations/:token',
+  'POST /invitations/:token/join',
   // Recipients and MVP pages call these; they carry a campaign token instead of a session
   'GET /track/open/:token.gif',
   'GET /track/open/:token',

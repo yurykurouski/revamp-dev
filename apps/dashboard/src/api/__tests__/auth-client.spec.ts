@@ -230,4 +230,22 @@ describe('session refresh and member calls (REV-207)', () => {
     await authApi.register({ email: 'a@b.co', password: 'correct horse battery', invitationToken: 'abc_DEF-1' });
     expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toEqual({ email: 'a@b.co', password: 'correct horse battery', invitationToken: 'abc_DEF-1' });
   });
+  it('invitationApi.join posts the password without a token and returns the session of the invited studio', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: session }));
+    vi.stubGlobal('fetch', fetchMock);
+    useAuthStore.setState({ session: null });
+    await expect(invitationApi.join('abc_DEF-1', 'my old password')).resolves.toEqual(session);
+    const [url, init] = fetchMock.mock.calls[0]!;
+    expect(url).toMatch(/\/invitations\/abc_DEF-1\/join$/);
+    expect(init.method).toBe('POST');
+    expect(init.headers.Authorization).toBeUndefined();
+    expect(JSON.parse(init.body)).toEqual({ password: 'my old password' });
+  });
+
+  it('invitationApi.join keeps the error code (a wrong password must not sign anyone out)', async () => {
+    useAuthStore.setState({ session });
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'INVALID_CREDENTIALS', message: 'no' } }, 401)));
+    await expect(invitationApi.join('abc', 'bad')).rejects.toMatchObject({ status: 401, code: 'INVALID_CREDENTIALS' });
+    expect(useAuthStore.getState().session).toEqual(session);
+  });
 });

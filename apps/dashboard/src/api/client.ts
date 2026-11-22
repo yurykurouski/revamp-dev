@@ -568,6 +568,16 @@ export const invitationApi = {
     return readDataOrThrow<IInvitationPreview>(res);
   },
 
+  /** The invitee has an account: its password proves it, and the invitation is accepted (REV-207); public like the preview */
+  async join(token: string, password: string): Promise<IAuthSession> {
+    const res = await fetch(`${API_BASE_URL}/invitations/${encodeURIComponent(token)}/join`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password }),
+    });
+    return readDataOrThrow<IAuthSession>(res);
+  },
+
   /** A signed-in user joins the invited organization; returns the session for it */
   async accept(token: string): Promise<IAuthSession> {
     const res = await authFetch(`${API_BASE_URL}/invitations/${encodeURIComponent(token)}/accept`, { method: 'POST' });

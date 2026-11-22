@@ -181,40 +181,38 @@ describe('InvitePage (REV-207)', () => {
   describe('signed out: I already have an account', () => {
     const switchToLogin = () => act(async () => button(en.invite.haveAccount)!.click());
 
-    it('signs in with the invited address, then accepts the invitation and uses the session of the invited studio', async () => {
-      const login = vi.spyOn(authApi, 'login').mockResolvedValue(own);
-      const accept = vi.spyOn(invitationApi, 'accept').mockResolvedValue(joined());
+    it('joins with the password of the existing account in one call (it also works after a removal) and uses the session of the invited studio', async () => {
+      const join = vi.spyOn(invitationApi, 'join').mockResolvedValue(joined());
+      const login = vi.spyOn(authApi, 'login');
       await mount();
       await switchToLogin();
       expect(field('name')).toBeNull();
       await type('password', 'my old password');
       await submit();
-      expect(login).toHaveBeenCalledWith({ email: 'ann@studio.test', password: 'my old password' });
-      expect(accept).toHaveBeenCalledWith('abc_DEF-1');
+      expect(join).toHaveBeenCalledWith('abc_DEF-1', 'my old password');
+      expect(login).not.toHaveBeenCalled();
       expect(useAuthStore.getState().session).toEqual(joined());
       expect(where()).toBe('/');
     });
 
-    it('shows a wrong password and does not try to accept', async () => {
-      vi.spyOn(authApi, 'login').mockRejectedValue(new ApiError('x', 401, 'INVALID_CREDENTIALS'));
-      const accept = vi.spyOn(invitationApi, 'accept');
+    it('shows a wrong password and stays signed out', async () => {
+      vi.spyOn(invitationApi, 'join').mockRejectedValue(new ApiError('x', 401, 'INVALID_CREDENTIALS'));
       await mount();
       await switchToLogin();
       await type('password', 'wrong');
       await submit();
       expect(alert()).toBe(en.invite.errors.INVALID_CREDENTIALS);
-      expect(accept).not.toHaveBeenCalled();
       expect(useAuthStore.getState().session).toBeNull();
     });
 
-    it('shows why accepting failed after a successful sign-in (ALREADY_MEMBER) and keeps the user signed in', async () => {
-      vi.spyOn(authApi, 'login').mockResolvedValue(own);
-      vi.spyOn(invitationApi, 'accept').mockRejectedValue(new ApiError('x', 409, 'ALREADY_MEMBER'));
+    it('shows why joining failed (ALREADY_MEMBER) and stays signed out', async () => {
+      vi.spyOn(invitationApi, 'join').mockRejectedValue(new ApiError('x', 409, 'ALREADY_MEMBER'));
       await mount();
       await switchToLogin();
       await type('password', 'my old password');
       await submit();
-      expect(useAuthStore.getState().session).toEqual(own);
+      expect(alert()).toBe(en.invite.errors.ALREADY_MEMBER);
+      expect(useAuthStore.getState().session).toBeNull();
     });
   });
 

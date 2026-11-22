@@ -61,6 +61,8 @@ export async function createInvitation(input: {
   const token = generateInvitationToken();
   let created: IInvitation | undefined;
   await mongoose.connection.transaction(async (session) => {
+    // Serializes with other member changes of this organization, so two invitations for one address cannot both survive
+    await lockMembers(session, input.organizationId);
     const existing = await User.findOne({ email }, { _id: 1 }, { session }).lean();
     if (existing && (await Membership.exists({ userId: existing._id, organizationId: input.organizationId }).session(session))) {
       throw new OrganizationError('ALREADY_MEMBER', 'This address already belongs to a member');

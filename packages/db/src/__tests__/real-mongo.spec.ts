@@ -722,6 +722,32 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       });
     });
 
+    describe('a removed member (REV-207 review)', () => {
+      it('can be invited again and rejoin with the same account', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(60));
+        const ann = await newUser('ann@studio.test');
+        await Membership.create({ userId: ann._id, organizationId: organization._id, role: 'operator' });
+        await removeMember({ organizationId: organization._id, userId: ann._id });
+        expect(await roleOf(ann._id, organization._id)).toBeUndefined();
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        const result = await acceptInvitationAsMember({ token, userId: ann._id, userEmail: ann.email, now: NOW });
+        expect(result.membership.role).toBe('viewer');
+        expect(await User.countDocuments({ email: 'ann@studio.test' })).toBe(1);
+      });
+    });
+
+    describe('concurrent invitations for one address', () => {
+      it('leave exactly one pending: only the newest link works', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(61));
+        const created = await Promise.all(
+          Array.from({ length: 10 }, () => createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW })),
+        );
+        expect(await Invitation.countDocuments({ organizationId: organization._id, acceptedAt: null, revokedAt: null })).toBe(1);
+        const usable = await Promise.all(created.map((c) => findInvitation(c.token, NOW).then(() => true, () => false)));
+        expect(usable.filter(Boolean)).toHaveLength(1);
+      });
+    });
+
     describe('registerWithInvitation', () => {
       it('creates the user and the membership with the invited role in one go, and uses the invitation up', async () => {
         const { organization, user } = await createOrganizationWithOwner(owner(9));

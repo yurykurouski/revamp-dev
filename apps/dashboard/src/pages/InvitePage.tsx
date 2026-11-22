@@ -104,9 +104,10 @@ export const InvitePage: React.FC = () => {
       });
       return;
     }
+    // One call: it works after a removal too, when a plain sign-in has no studio to open
     void run(async () => {
-      signIn(await authApi.login({ email: invited.email, password }));
-      await accept();
+      signIn(await invitationApi.join(token, password));
+      toApp();
     });
   };
 

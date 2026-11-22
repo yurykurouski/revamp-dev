@@ -6,7 +6,7 @@ import {
   canWrite,
   type OrganizationRole,
 } from '@revamp/shared-types';
-import { ChangeMemberRoleSchema, CreateInvitationSchema, RegisterSchema } from '../src/index.js';
+import { ChangeMemberRoleSchema, CreateInvitationSchema, JoinInvitationSchema, RegisterSchema } from '../src/index.js';
 
 describe('roles (REV-207)', () => {
   it('lists owner, operator and viewer', () => {
@@ -91,5 +91,19 @@ describe('RegisterSchema with an invitation (REV-207)', () => {
 
   it.each(['', 'has space', 'x'.repeat(129), 'bad/slash'])('rejects the token %j', (token) => {
     expect(RegisterSchema.safeParse({ ...base, invitationToken: token }).success).toBe(false);
+  });
+});
+
+describe('JoinInvitationSchema (REV-207)', () => {
+  it('takes a password as it is (spaces are part of a passphrase)', () => {
+    expect(JoinInvitationSchema.parse({ password: '  old pass  ' })).toEqual({ password: '  old pass  ' });
+  });
+
+  it('does not apply the registration length rule: an old short password still reaches the check', () => {
+    expect(JoinInvitationSchema.safeParse({ password: 'short' }).success).toBe(true);
+  });
+
+  it.each([{}, { password: '' }, { password: 'x'.repeat(129) }, { password: 5 }])('rejects %j', (body) => {
+    expect(JoinInvitationSchema.safeParse(body).success).toBe(false);
   });
 });

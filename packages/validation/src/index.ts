@@ -69,6 +69,13 @@ export const CreateInvitationSchema = z.object({
 });
 export type CreateInvitationDto = z.infer<typeof CreateInvitationSchema>;
 
+/**
+ * `POST /invitations/:token/join` (public): the password of the account that owns the invited address. The length
+ * rule of registration does not apply, so an old short password still gets a clean 401
+ */
+export const JoinInvitationSchema = z.object({ password: z.string().min(1).max(128) });
+export type JoinInvitationDto = z.infer<typeof JoinInvitationSchema>;
+
 /** `PATCH /organization/members/:userId` (owners) */
 export const ChangeMemberRoleSchema = z.object({ role: z.enum(ORGANIZATION_ROLES) });
 export type ChangeMemberRoleDto = z.infer<typeof ChangeMemberRoleSchema>;
