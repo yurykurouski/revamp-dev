@@ -9,7 +9,7 @@ import { ThemeProvider } from '@mui/material';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
-import { apiClient, ILeadItem } from '../../api/client.js';
+import { apiClient, authApi, invitationApi, organizationApi, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore.js';
@@ -408,6 +408,79 @@ describe('app shell and routes (REV-76)', () => {
       await act(async () => useAuthStore.getState().signOut());
       await flush();
       expect(path()).toBe('/login');
+    });
+
+    it('asks the server for the current role when the app opens, so a stale stored role does not show actions the API would refuse (REV-207)', async () => {
+      const me = vi.spyOn(authApi, 'me').mockResolvedValue({ user: SESSION.user, organization: SESSION.organization, role: 'viewer' });
+      await mount('/leads');
+      expect(me).toHaveBeenCalledTimes(1);
+      expect(useAuthStore.getState().session?.role).toBe('viewer');
+      expect(document.body.textContent).not.toContain(en.topBar.addLead);
+    });
+
+    it('keeps the stored session when the role refresh fails', async () => {
+      vi.spyOn(authApi, 'me').mockRejectedValue(new TypeError('Failed to fetch'));
+      await mount('/leads');
+      expect(useAuthStore.getState().session?.role).toBe('owner');
+      expect(path()).toBe('/leads');
+    });
+
+    it('does not ask the server when signed out', async () => {
+      const me = vi.spyOn(authApi, 'me').mockResolvedValue({ user: SESSION.user, organization: SESSION.organization, role: 'viewer' });
+      useAuthStore.setState({ session: null });
+      await mount('/leads');
+      expect(me).not.toHaveBeenCalled();
+    });
+
+    describe('team and invitations (REV-207)', () => {
+      const as = (role: 'owner' | 'operator' | 'viewer') => {
+        useAuthStore.setState({ session: { ...SESSION, role } });
+        // The role refresh on start answers with the same role
+        vi.spyOn(authApi, 'me').mockResolvedValue({ user: SESSION.user, organization: SESSION.organization, role });
+      };
+      beforeEach(() => {
+        vi.spyOn(organizationApi, 'getMembers').mockResolvedValue({ members: [], invitations: [] });
+      });
+
+      it('shows the Team page to an owner, with its rail entry', async () => {
+        as('owner');
+        await mount('/team');
+        expect(path()).toBe('/team');
+        expect(document.querySelector('h1')!.textContent).toBe(en.team.title);
+        expect(document.querySelector('[data-rail="team"]')?.getAttribute('aria-current')).toBe('page');
+      });
+
+      it.each(['operator', 'viewer'] as const)('sends %s away from /team, and the rail has no Team entry', async (role) => {
+        as(role);
+        await mount('/team');
+        expect(path()).toBe('/');
+        expect(document.querySelector('[data-rail="team"]')).toBeNull();
+        expect(organizationApi.getMembers).not.toHaveBeenCalled();
+      });
+
+      it('sends a signed-out visitor from /team to /login', async () => {
+        useAuthStore.setState({ session: null });
+        await mount('/team');
+        expect(path()).toBe('/login');
+      });
+
+      it('opens an invitation link without a session, and also with one', async () => {
+        vi.spyOn(invitationApi, 'preview').mockResolvedValue({ organizationName: 'Pixel Studio', email: 'ann@studio.test', role: 'viewer', expiresAt: 'x' });
+        useAuthStore.setState({ session: null });
+        await mount('/invite/abc_DEF-1');
+        expect(path()).toBe('/invite/abc_DEF-1');
+        expect(document.querySelector('h1')!.textContent).toBe(en.invite.title);
+        as('owner');
+        await mount('/invite/abc_DEF-1');
+        expect(path()).toBe('/invite/abc_DEF-1');
+      });
+
+      it('hides Add lead and Find businesses from a viewer on every page of the app', async () => {
+        as('viewer');
+        await mount('/leads');
+        expect(document.body.textContent).not.toContain(en.topBar.addLead);
+        expect(document.querySelector('[data-rail="discovery"]')).toBeNull();
+      });
     });
 
     it('keeps a signed-in user out of /login and /register', async () => {

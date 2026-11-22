@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { ORGANIZATION_ROLES, type IAuthSession } from '@revamp/shared-types';
+import { ORGANIZATION_ROLES, type IAuthContext, type IAuthSession } from '@revamp/shared-types';
 
 export const AUTH_STORAGE_KEY = 'revamp_auth_session';
 
@@ -32,6 +32,8 @@ function readSession(): IAuthSession | null {
 interface AuthState {
   session: IAuthSession | null;
   signIn: (session: IAuthSession) => void;
+  /** Takes the user, organization and role the server says are current (REV-207); the token stays. No-op when signed out */
+  updateSession: (context: IAuthContext) => void;
   signOut: () => void;
 }
 
@@ -39,15 +41,26 @@ interface AuthState {
  * Who is signed in (REV-206). The token lives in local storage so a reload keeps the session; it expires on the
  * server after 7 days, and a 401 from the API signs out (`authFetch`).
  */
-export const useAuthStore = create<AuthState>((set) => ({
+const persist = (session: IAuthSession): void => {
+  try {
+    localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+  } catch {
+    // Storage unavailable: the session lasts until the tab closes
+  }
+};
+
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: readSession(),
   signIn: (session) => {
-    try {
-      localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-    } catch {
-      // Storage unavailable: the session lasts until the tab closes
-    }
+    persist(session);
     set({ session });
+  },
+  updateSession: (context) => {
+    const current = get().session;
+    if (!current) return;
+    const next = { ...context, token: current.token };
+    persist(next);
+    set({ session: next });
   },
   signOut: () => {
     try {

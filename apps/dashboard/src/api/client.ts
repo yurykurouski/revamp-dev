@@ -11,7 +11,12 @@ import {
 import {
   ApiErrorCode,
   IApiError,
+  IAuthContext,
   IAuthSession,
+  ICreatedInvitation,
+  IInvitationPreview,
+  IOrganizationMembers,
+  OrganizationRole,
   IAudit,
   IMeasurementError,
   IStandardsChecks,
@@ -94,7 +99,24 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
     headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
   });
   if (res.status === 401) useAuthStore.getState().signOut();
+  // 403 means the role changed since the session was stored (REV-207): take the current one, so the dashboard stops offering it
+  if (res.status === 403) void refreshSessionContext();
   return res;
+}
+
+let refreshing = false;
+
+/** Asks the server who the user is now and updates the session; one at a time, and a failure changes nothing */
+export async function refreshSessionContext(): Promise<void> {
+  if (refreshing) return;
+  refreshing = true;
+  try {
+    useAuthStore.getState().updateSession(await authApi.me());
+  } catch {
+    // A 401 already signed out; anything else leaves the stored session as it is
+  } finally {
+    refreshing = false;
+  }
 }
 
 /** The dashboard's language when the request is made: the model writes its design changes in it (REV-162) */
@@ -473,13 +495,26 @@ export class ApiError extends Error {
 
 /** Register and login need no token, so they use plain `fetch`: a 401 here is a wrong password, not an expired session */
 export const authApi = {
-  async register(body: { email: string; password: string; organizationName: string; name?: string }): Promise<IAuthSession> {
+  async register(body: {
+    email: string;
+    password: string;
+    organizationName?: string;
+    name?: string;
+    /** Joins the invited organization instead of creating one (REV-207) */
+    invitationToken?: string;
+  }): Promise<IAuthSession> {
     const res = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     return readDataOrThrow<IAuthSession>(res);
+  },
+
+  /** The user, organization and role as they are now (REV-207) */
+  async me(): Promise<IAuthContext> {
+    const res = await authFetch(`${API_BASE_URL}/auth/me`, { headers: { Accept: 'application/json' } });
+    return readDataOrThrow<IAuthContext>(res);
   },
 
   async login(body: { email: string; password: string }): Promise<IAuthSession> {
@@ -491,6 +526,66 @@ export const authApi = {
     return readDataOrThrow<IAuthSession>(res);
   },
 };
+
+/** Members and invitations (REV-207); owners only, the API answers 403 FORBIDDEN to other roles */
+export const organizationApi = {
+  async getMembers(): Promise<IOrganizationMembers> {
+    return readDataOrThrow<IOrganizationMembers>(await authFetch(`${API_BASE_URL}/organization/members`, { headers: { Accept: 'application/json' } }));
+  },
+
+  /** The token comes back once, here; the link to send is built from it */
+  async createInvitation(body: { email: string; role: OrganizationRole }): Promise<ICreatedInvitation> {
+    const res = await authFetch(`${API_BASE_URL}/organization/invitations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return readDataOrThrow<ICreatedInvitation>(res);
+  },
+
+  async revokeInvitation(id: string): Promise<void> {
+    await readOkOrThrow(await authFetch(`${API_BASE_URL}/organization/invitations/${encodeURIComponent(id)}`, { method: 'DELETE' }));
+  },
+
+  async changeMemberRole(userId: string, role: OrganizationRole): Promise<void> {
+    const res = await authFetch(`${API_BASE_URL}/organization/members/${encodeURIComponent(userId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    await readOkOrThrow(res);
+  },
+
+  async removeMember(userId: string): Promise<void> {
+    await readOkOrThrow(await authFetch(`${API_BASE_URL}/organization/members/${encodeURIComponent(userId)}`, { method: 'DELETE' }));
+  },
+};
+
+export const invitationApi = {
+  /** Public: the token in the link is the secret, so the join page needs no session */
+  async preview(token: string): Promise<IInvitationPreview> {
+    const res = await fetch(`${API_BASE_URL}/invitations/${encodeURIComponent(token)}`, { headers: { Accept: 'application/json' } });
+    return readDataOrThrow<IInvitationPreview>(res);
+  },
+
+  /** A signed-in user joins the invited organization; returns the session for it */
+  async accept(token: string): Promise<IAuthSession> {
+    const res = await authFetch(`${API_BASE_URL}/invitations/${encodeURIComponent(token)}/accept`, { method: 'POST' });
+    return readDataOrThrow<IAuthSession>(res);
+  },
+};
+
+/** For calls that answer `{ success: true }` and no data */
+async function readOkOrThrow(res: Response): Promise<void> {
+  if (res.ok) return;
+  let error: Partial<IApiError> | undefined;
+  try {
+    error = ((await res.json()) as { error?: Partial<IApiError> }).error;
+  } catch {
+    // Non-JSON body; fall through to the status-based message
+  }
+  throw new ApiError(error?.message || `Server error (${res.status})`, res.status, error?.code, error?.details);
+}
 
 async function readDataOrThrow<T>(res: Response): Promise<T> {
   let body: { error?: Partial<IApiError>; data?: T } | null = null;
