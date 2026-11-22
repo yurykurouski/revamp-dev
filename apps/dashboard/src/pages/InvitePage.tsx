@@ -52,8 +52,7 @@ export const InvitePage: React.FC = () => {
     return () => {
       current = false;
     };
-    // The message depends on the language only for display; the lookup is by token
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // The lookup is by token; the message is rendered in the language of the moment
   }, [token]);
 
   const toApp = () => navigate(ROUTES.queue, { replace: true });
