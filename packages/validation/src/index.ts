@@ -406,6 +406,9 @@ export const LlmProviderSchema = z.enum(LLM_PROVIDER_IDS);
 export const GenerateMvpSchema = z
   .object({
     auditId: z.string().min(1),
+    // The lead the page is for (REV-208). An audit can be read by several studios' leads, so the audit alone does not
+    // say whose lead to generate; an older client without it only gets an audit one lead reads
+    leadId: z.string().min(1).optional(),
     forceRegenerate: z.boolean().optional().default(false),
     provider: LlmProviderSchema.optional(),
     model: z.string().trim().min(1).max(100).optional(),

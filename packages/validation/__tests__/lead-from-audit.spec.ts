@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { API_ERROR_CODES, EMAIL_GUESSED_TAG } from '@revamp/shared-types';
-import { leadFieldsFromAudit } from '../src/index.js';
+import { GenerateMvpSchema, leadFieldsFromAudit } from '../src/index.js';
 
 const audit = (overrides: Record<string, unknown> = {}) => ({
   scores: { total: 63 },
@@ -53,5 +53,19 @@ describe('leadFieldsFromAudit (REV-208)', () => {
   it('copes with an audit without contacts, scores or complexity', () => {
     expect(leadFieldsFromAudit({}, {}).set).toEqual({ onePageBrochure: false });
     expect(leadFieldsFromAudit({ scores: { total: 0 } }, {}).set).toMatchObject({ totalScore: 0 });
+  });
+});
+
+describe('GenerateMvpSchema leadId (REV-208 review)', () => {
+  it('takes the lead the request is for, which decides whose lead is generated when the audit is shared', () => {
+    expect(GenerateMvpSchema.parse({ auditId: 'a1', leadId: 'l1' }).leadId).toBe('l1');
+  });
+
+  it('still accepts a request without one (an older client)', () => {
+    expect(GenerateMvpSchema.parse({ auditId: 'a1' }).leadId).toBeUndefined();
+  });
+
+  it('refuses an empty lead id', () => {
+    expect(GenerateMvpSchema.safeParse({ auditId: 'a1', leadId: '' }).success).toBe(false);
   });
 });

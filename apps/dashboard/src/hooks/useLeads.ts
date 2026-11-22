@@ -166,8 +166,9 @@ export interface GenerateMvpVariables {
 }
 
 /** Sends a generate or regenerate request (REV-31); exported for tests */
-export const generateMvpRequest = ({ auditId, forceRegenerate, provider, model }: GenerateMvpVariables) =>
+export const generateMvpRequest = ({ auditId, leadId, forceRegenerate, provider, model }: GenerateMvpVariables) =>
   apiClient.generateMvp(auditId, {
+    ...(leadId ? { leadId } : {}),
     forceRegenerate: forceRegenerate ?? false,
     ...(provider ? { provider, ...(model ? { model } : {}) } : {}),
   });

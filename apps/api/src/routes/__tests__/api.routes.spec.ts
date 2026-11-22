@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { createApp } from '../../app.js';
 import { LeadService } from '../../services/lead.service.js';
 import { AppError } from '../../middlewares/errorHandler.js';
-import { Audit, findAuditForLead } from '../../models/Audit.model.js';
+import { Audit, auditBelongsToLead, findAuditForLead } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign, approveOutreachWithCampaign, revertOutreachApproval } from '../../models/EmailCampaign.model.js';
@@ -1061,6 +1061,24 @@ describe('API Routes Integration Tests (Supertest)', () => {
         vi.mocked(findAuditForLead).mockResolvedValue({ _id: sharedAuditId, leadId: new mongoose.Types.ObjectId(), status: 'COMPLETED' } as never);
 
         const res = await request(app).post('/api/v1/mvp/generate').send({ auditId: askingLead });
+
+        expect(res.status).toBe(202);
+        expect(res.body.data.leadId).toBe(askingLead);
+        expect(Lead.findOneAndUpdate).toHaveBeenCalledWith({ _id: askingLead, status: 'AUDITED' }, expect.anything());
+        expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ leadId: askingLead, auditId: sharedAuditId }));
+      });
+
+      it("generates for the lead named in the request even when the audit id is another studio's (REV-208 review)", async () => {
+        const askingLead = new mongoose.Types.ObjectId().toString();
+        const sharedAuditId = new mongoose.Types.ObjectId().toString();
+        vi.spyOn(Lead, 'findById').mockReset().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: askingLead, businessName: 'Dr. Smile Clinic', status: 'AUDITED' }),
+        } as any);
+        vi.spyOn(Audit, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: sharedAuditId, leadId: new mongoose.Types.ObjectId(), status: 'COMPLETED' }) } as any);
+        vi.mocked(auditBelongsToLead).mockResolvedValue(true);
+        vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: askingLead, status: 'GENERATING' }) } as any);
+
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId: sharedAuditId, leadId: askingLead });
 
         expect(res.status).toBe(202);
         expect(res.body.data.leadId).toBe(askingLead);

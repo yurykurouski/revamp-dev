@@ -37,7 +37,7 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { auditId, forceRegenerate, provider, model, operatorLocale } = req.body;
+      const { auditId, leadId, forceRegenerate, provider, model, operatorLocale } = req.body;
 
       if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
         throw new AppError(400, 'LLM_PROVIDER_NOT_ALLOWED', `Provider "${provider}" is not available in production`);
@@ -45,7 +45,7 @@ router.post(
 
       // A lead can have several audits (one per retry); never build from a failed or stale one (REV-55)
       // The lead comes with the audit (REV-208): a lead that took another studio's audit is not the audit's lead
-      const found = await findGenerationAudit(auditId);
+      const found = await findGenerationAudit(auditId, leadId);
 
       if (!found) {
         throw new AppError(404, 'NO_COMPLETED_AUDIT', 'No completed audit found for this lead');
