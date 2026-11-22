@@ -11,6 +11,7 @@ import { handleGenerationFailure } from './generation-failure.js';
 import { finishMvpPage } from '../services/mvp-page-finish.js';
 import { pageVersionEntry } from '../services/mvp-page-version.js';
 import { dropUnlistedVersions, pageContext, publishFinishedPage } from '../services/mvp-page-publish.js';
+import { assertJobTenant, withTenant } from '../tenant.js';
 
 function transliterate(str: string): string {
   const ruToEn: Record<string, string> = {
@@ -40,6 +41,8 @@ async function deployPage(job: Job<IDeployJobData>) {
   const page = job.data.page!;
   const lead = await Lead.findById(leadId).exec();
   if (!lead) throw new Error(`Lead ${leadId} not found`);
+  // The job's studio must be the lead's, before anything is written (REV-210)
+  const tenant = assertJobTenant(job.data.tenantId, lead);
   // A lead rejected or moved on while the model worked keeps its status and its MVP (REV-62)
   // Only the GENERATING lead this job belongs to: SCHEDULED also leads into NEEDS_APPROVAL (a failed send revert,
   // REV-203), and an approved lead must never be pulled back into review by a stale publish
@@ -140,7 +143,7 @@ async function deployPage(job: Job<IDeployJobData>) {
 
   // 6. The lead goes to review only if it is still waiting for this page (REV-62)
   const reviewLead = await Lead.findOneAndUpdate(
-    { _id: lead._id, status: 'GENERATING' },
+    withTenant(tenant, { _id: lead._id, status: 'GENERATING' }),
     {
       $set: { status: 'NEEDS_APPROVAL', previewUrl: fullPreviewUrl, comparisonBannerUrl, mvpGeneratedAt: generatedAt },
       $unset: { generationError: '', generationFailure: '' },

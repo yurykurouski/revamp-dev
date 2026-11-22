@@ -1530,4 +1530,44 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await checkTenantLinks(mongoose.connection)).toEqual([]);
     });
   });
+  describe('tenant filters the workers use (REV-210)', () => {
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-worker-tenant-test' });
+      await Lead.init();
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Lead.deleteMany({});
+    });
+
+    const fields = { businessName: 'W', originalUrl: 'https://w.test', domain: 'w.test', niche: 'other' };
+
+    it("a status update filtered by the job's studio, given as a string, leaves another studio's lead and a lead with no studio alone", async () => {
+      const a = new Types.ObjectId();
+      const b = new Types.ObjectId();
+      const own = await Lead.create({ ...fields, tenantId: a, status: 'AUDITING' });
+      const foreign = await Lead.create({ ...fields, domain: 'x.test', tenantId: b, status: 'AUDITING' });
+      const legacy = await Lead.create({ ...fields, domain: 'y.test', status: 'AUDITING' });
+      for (const lead of [own, foreign, legacy]) {
+        // The failure handlers pass the job's tenantId as the string it travels as
+        await Lead.findOneAndUpdate({ _id: lead._id, status: 'AUDITING', tenantId: String(a) }, { $set: { status: 'AUDIT_FAILED' } });
+      }
+      expect((await Lead.findById(own._id).lean())?.status).toBe('AUDIT_FAILED');
+      expect((await Lead.findById(foreign._id).lean())?.status).toBe('AUDITING');
+      expect((await Lead.findById(legacy._id).lean())?.status).toBe('AUDITING');
+    });
+
+    it('the audit worker\'s foreign-lead probe { tenantId: { $ne } } finds another studio\'s lead and a lead with no studio, not its own', async () => {
+      const a = new Types.ObjectId();
+      const own = await Lead.create({ ...fields, tenantId: a });
+      const foreign = await Lead.create({ ...fields, domain: 'x.test', tenantId: new Types.ObjectId() });
+      const legacy = await Lead.create({ ...fields, domain: 'y.test' });
+      const probe = (id: Types.ObjectId) => Lead.exists({ _id: id, tenantId: { $ne: a } });
+      expect(await probe(own._id)).toBeNull();
+      expect(await probe(foreign._id)).not.toBeNull();
+      expect(await probe(legacy._id)).not.toBeNull();
+    });
+  });
 });

@@ -1,5 +1,5 @@
 import type { IAuditJobData } from '@revamp/shared-types';
-import type { TenantScope } from '../data/tenant-scope.js';
+import { tenantIdOf, type TenantScope } from '../data/tenant-scope.js';
 import { Audit } from '../models/Audit.model.js';
 import { addAuditJob } from '../queues/audit.queue.js';
 import { redisConnection } from '../queues/connection.js';
@@ -23,7 +23,7 @@ export const AUDIT_QUEUE_ERROR = 'The audit queue was unavailable when the audit
  */
 export async function enqueueAuditOrFail(
   scope: TenantScope,
-  params: IAuditJobData & { auditId: string },
+  params: Omit<IAuditJobData, 'tenantId'> & { auditId: string },
   timeoutMs: number = AUDIT_ENQUEUE_TIMEOUT_MS,
 ): Promise<{ jobId?: string }> {
   const { leadId, auditId, url, niche } = params;
@@ -31,7 +31,7 @@ export async function enqueueAuditOrFail(
     // ioredis keeps a command sent while disconnected and runs it on reconnect, so a timed-out add could still
     // land later next to the operator's retry. Not calling it while Redis is down leaves no such job.
     if (redisConnection.status !== 'ready') throw new Error(`Redis is ${redisConnection.status}`);
-    const job = await withTimeout(addAuditJob({ leadId, url, niche }), timeoutMs, 'Audit queue');
+    const job = await withTimeout(addAuditJob({ leadId, tenantId: tenantIdOf(scope), url, niche }), timeoutMs, 'Audit queue');
     return { jobId: job.id };
   } catch (queueError) {
     console.error(`[AuditQueue] Could not queue the audit of lead ${leadId}:`, queueError);

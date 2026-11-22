@@ -27,8 +27,12 @@ const repository = (model: () => Delegate) => ({
 export const tenantScopeMock = () => {
   return {
     TenantScopeError: class TenantScopeError extends Error {},
+    tenantIdOf: (scope: { tenantId?: { toString(): string } }) => {
+      if (!scope.tenantId) throw new Error('A job needs a studio: this scope has none');
+      return scope.tenantId.toString();
+    },
     scopeFor: (tenantId?: unknown) => ({
-      tenantId: tenantId && /^[0-9a-f]{24}$/i.test(String(tenantId)) ? new Types.ObjectId(String(tenantId)) : undefined,
+      tenantId: tenantId && /^[0-9a-f]{24}$/i.test(String(tenantId)) ? new Types.ObjectId(String(tenantId)) : tenantId,
       leads: repository(() => Lead as unknown as Delegate),
       mvps: repository(() => MvpProject as unknown as Delegate),
       campaigns: repository(() => EmailCampaign as unknown as Delegate),

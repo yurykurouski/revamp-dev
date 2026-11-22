@@ -18,6 +18,7 @@ import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadFieldsFromAudit, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
 import { handleAuditJobFailed, isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
+import { jobTenant, withTenant } from '../tenant.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
 const LATEST_AUDIT = { sort: { createdAt: -1 } } as const;
@@ -31,13 +32,19 @@ export const createAuditWorker = (): Worker => {
 
       // 1. Move the lead to AUDITING. Only a queued lead (or this job's own earlier attempt) is
       // audited; a lead that was rejected or moved on meanwhile is left alone (REV-62)
+      // The job's studio, before anything is written (REV-210)
+      const tenant = jobTenant(job.data.tenantId);
       const existingLead = await Lead.findOneAndUpdate(
-        { _id: leadId, status: { $in: leadStatusesInto('AUDITING', { includeSelf: true }) } },
+        withTenant(tenant, { _id: leadId, status: { $in: leadStatusesInto('AUDITING', { includeSelf: true }) } }),
         { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
         { new: true },
       ).exec();
 
       if (!existingLead) {
+        // A lead of another studio (or none) is not this job's to fail: nothing is written (REV-210)
+        if (await Lead.exists({ _id: leadId, tenantId: { $ne: tenant } })) {
+          throw new UnrecoverableError(`Lead ${leadId} does not belong to the job's studio; nothing was written`);
+        }
         const reason = `Lead ${leadId} is missing or no longer waiting for an audit; skipping it.`;
         console.warn(`[AuditWorker] ${reason}`);
         // Only an audit still waiting or running: a stray job (one queued late, REV-202) never overwrites a finished audit
@@ -237,7 +244,7 @@ export const createAuditWorker = (): Worker => {
 
         // Only a lead this run is still auditing becomes AUDITED (GENERATING → AUDITED is a failed
         // generation, not an audit); a lead rejected mid-audit stays so (REV-62)
-        const auditedLead = await Lead.findOneAndUpdate({ _id: leadId, status: 'AUDITING' }, leadUpdate).exec();
+        const auditedLead = await Lead.findOneAndUpdate(withTenant(tenant, { _id: leadId, status: 'AUDITING' }), leadUpdate).exec();
 
         // 11. Auto-chain to AI Content Generation Queue
         if (!auditedLead) {
@@ -246,6 +253,7 @@ export const createAuditWorker = (): Worker => {
           try {
             await addAiGenerationJob({
               leadId,
+              tenantId: job.data.tenantId,
               auditId: updatedAudit?._id?.toString() || leadId,
             });
             console.log(`[AuditWorker] Dispatched AI generation job for lead ${leadId}`);

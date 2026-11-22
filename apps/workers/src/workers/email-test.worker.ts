@@ -3,6 +3,7 @@ import { IEmailTestJobData, IEmailTestJobResult, draftToHtml } from '@revamp/sha
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { emailService } from '../services/email.service.js';
+import { jobTenant } from '../tenant.js';
 
 /** Marks test sends in the operator's inbox */
 export const TEST_SUBJECT_PREFIX = '[Test] ';
@@ -16,6 +17,8 @@ export const TEST_TRACKING_TOKEN = 'test-send';
  * tracking, and the lead and its campaign are left untouched. A missing provider fails the job.
  */
 export async function processEmailTestJob(data: IEmailTestJobData): Promise<IEmailTestJobResult> {
+  // The job names its studio even though it reads no record: a job without one is refused (REV-210)
+  jobTenant(data.tenantId);
   console.log(`[EmailTestWorker] Sending a test of lead ${data.leadId}'s draft to ${data.to}`);
   const result = await emailService.sendEmail({
     to: data.to,

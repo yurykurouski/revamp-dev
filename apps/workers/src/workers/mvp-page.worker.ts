@@ -27,6 +27,7 @@ import { finishMvpPage } from '../services/mvp-page-finish.js';
 import { MvpPageGenerator, defaultPageGenerator } from '../services/mvp-page-generator.js';
 import { dropUnlistedVersions, pageContext, publishFinishedPage } from '../services/mvp-page-publish.js';
 import { storageService } from '../services/storage.service.js';
+import { assertJobTenant, withTenant } from '../tenant.js';
 
 // The operator's own changes to a model-designed page (REV-139): a change in their words, palette and fonts, or a
 // restore of an earlier version. Each publishes the page again, or publishes nothing and says why. The API waits for
@@ -81,11 +82,14 @@ export async function processMvpPageJob(
 
   const doc = await MvpProject.findById(data.mvpProjectId).exec();
   if (!doc) throw new Error(`MVP ${data.mvpProjectId} not found.`);
+  // The job's studio must be the project's and its lead's, before anything is written (REV-210)
+  const tenant = assertJobTenant(data.tenantId, doc);
   const project = (doc.toObject ? doc.toObject() : doc) as unknown as IMvpProject & { _id: unknown };
   if (!project.page || !project.theme) throw new Error(PREVIOUS_GENERATOR_REFUSAL);
   const leadId = String(project.leadId);
   const lead = await Lead.findById(leadId).exec();
   if (!lead) throw new Error(`Lead ${leadId} not found.`);
+  assertJobTenant(data.tenantId, lead);
   if (!canChangeMvpLayout(lead.status)) throw leadLocked(lead.status);
   const audit = await findGenerationAudit(leadId, project.auditId ? String(project.auditId) : undefined);
   if (!audit) throw new Error(`No completed audit found for lead ${leadId}.`);
@@ -182,8 +186,8 @@ export async function processMvpPageJob(
   const unset: Record<string, ''> = {};
   if (!hasControls) unset['controls'] = '';
   if (!published.standards) unset['standards'] = '';
-  const saved = await MvpProject.findByIdAndUpdate(
-    project._id,
+  const saved = await MvpProject.findOneAndUpdate(
+    withTenant(tenant, { _id: project._id }),
     {
       $set: {
         page: next.page,

@@ -39,7 +39,7 @@ describe('enqueueAuditOrFail (REV-202)', () => {
   it('queues the job and returns its id', async () => {
     vi.mocked(auditQueueModule.addAuditJob).mockResolvedValue({ id: 'job-1' } as any);
     await expect(enqueueAuditOrFail(scope, params)).resolves.toEqual({ jobId: 'job-1' });
-    expect(auditQueueModule.addAuditJob).toHaveBeenCalledWith({ leadId: 'lead-1', url: 'https://a.lt', niche: 'dental' });
+    expect(auditQueueModule.addAuditJob).toHaveBeenCalledWith({ leadId: 'lead-1', tenantId: '5eed00000000000000000001', url: 'https://a.lt', niche: 'dental' });
     expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
   });
 

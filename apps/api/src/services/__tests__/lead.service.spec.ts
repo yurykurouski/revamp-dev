@@ -20,6 +20,8 @@ vi.mock('../../queues/connection.js', () => ({ redisConnection: { status: 'ready
 /** An MvpProject.find query resolving to the given projects */
 const mvpQuery = (result: Promise<unknown[]>) => ({ lean: () => ({ exec: () => result }) }) as any;
 
+const create = (dto: Parameters<typeof LeadService.createLead>[0], options: Partial<Parameters<typeof LeadService.createLead>[1]> = {}) =>
+  LeadService.createLead(dto, { tenantId: 'studio-1', ...options });
 const scope = scopeFor('5eed00000000000000000001');
 
 describe('LeadService', () => {
@@ -49,7 +51,7 @@ describe('LeadService', () => {
       vi.mocked(addLeadToBusiness).mockResolvedValue({ lead: mockLead, audit: mockAudit } as any);
       vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job-999' } as any);
 
-      const result = await LeadService.createLead({
+      const result = await create({
         businessName: 'Dr. Smile',
         originalUrl: 'https://drsmile.example.com',
         contactEmail: 'smile@example.com',
@@ -63,6 +65,7 @@ describe('LeadService', () => {
       );
       expect(auditQueueModule.addAuditJob).toHaveBeenCalledWith({
         leadId: 'lead-123',
+        tenantId: 'studio-1',
         url: 'https://drsmile.example.com',
         niche: 'dental',
       });
@@ -73,7 +76,7 @@ describe('LeadService', () => {
 
     it('should throw AppError if originalUrl is unparseable', async () => {
       await expect(
-        LeadService.createLead({
+        create({
           businessName: 'Bad URL Clinic',
           originalUrl: 'not_a_valid_url_at_all',
           contactEmail: 'bad@example.com',
@@ -86,7 +89,7 @@ describe('LeadService', () => {
 
     it('queues nothing when the lead and audit insert fails (REV-202)', async () => {
       vi.mocked(addLeadToBusiness).mockRejectedValue(new Error('audit insert failed'));
-      await expect(LeadService.createLead(dto)).rejects.toThrow('audit insert failed');
+      await expect(create(dto)).rejects.toThrow('audit insert failed');
       expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
     });
 
@@ -99,7 +102,7 @@ describe('LeadService', () => {
       vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: () => Promise.resolve({}) } as any);
       vi.mocked(Audit.updateOne).mockReturnValue({ exec: () => Promise.resolve({}) } as any);
 
-      await expect(LeadService.createLead(dto)).rejects.toSatisfy(
+      await expect(create(dto)).rejects.toSatisfy(
         (e) => e instanceof AppError && e.statusCode === 503 && e.code === 'AUDIT_QUEUE_UNAVAILABLE',
       );
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
@@ -121,19 +124,19 @@ describe('LeadService', () => {
     const dto = { businessName: 'A Clinic', originalUrl: 'https://a.lt', contactEmail: 'info@a.lt', niche: 'dental' as const };
 
     it("should store the operator's locale, and none when the request had none (REV-162)", async () => {
-      await LeadService.createLead({ ...dto, operatorLocale: 'pl' });
+      await create({ ...dto, operatorLocale: 'pl' });
       expect(addLeadToBusiness).toHaveBeenCalledWith(expect.objectContaining({ lead: expect.objectContaining({ operatorLocale: 'pl' }) }));
-      await LeadService.createLead(dto);
+      await create(dto);
       expect(vi.mocked(addLeadToBusiness).mock.calls[1]?.[0]?.lead).not.toHaveProperty('operatorLocale');
     });
 
     it('should store the given tags', async () => {
-      await LeadService.createLead(dto, { tags: ['discovered', 'source:osm'] });
+      await create(dto, { tags: ['discovered', 'source:osm'] });
       expect(addLeadToBusiness).toHaveBeenCalledWith(expect.objectContaining({ lead: expect.objectContaining({ tags: ['discovered', 'source:osm'] }) }));
     });
 
     it('should leave tags to the model default when none are given', async () => {
-      await LeadService.createLead(dto);
+      await create(dto);
       expect(vi.mocked(addLeadToBusiness).mock.calls[0]?.[0]?.lead).not.toHaveProperty('tags');
     });
   });
@@ -150,29 +153,29 @@ describe('LeadService', () => {
     const dto = { businessName: 'A Clinic', originalUrl: 'https://a.lt', contactEmail: 'info@a.lt', niche: 'dental' as const };
 
     it('should store the domain in the same normalised form discovery matches on', async () => {
-      await LeadService.createLead({ ...dto, originalUrl: 'https://WWW.A-Clinic.LT.:8443/contact' });
+      await create({ ...dto, originalUrl: 'https://WWW.A-Clinic.LT.:8443/contact' });
       expect(addLeadToBusiness).toHaveBeenCalledWith(expect.objectContaining({ lead: expect.objectContaining({ domain: 'a-clinic.lt' }) }));
     });
 
     it('should default manual leads to source "manual" with no provider id', async () => {
-      await LeadService.createLead(dto);
+      await create(dto);
       const created = vi.mocked(addLeadToBusiness).mock.calls[0]?.[0]?.lead as Record<string, unknown>;
       expect(created['source']).toBe('manual');
       expect(created).not.toHaveProperty('externalId');
     });
 
     it('should store the discovery source and provider id when given', async () => {
-      await LeadService.createLead(dto, { source: 'google', externalId: 'google:ChIJ123' });
+      await create(dto, { source: 'google', externalId: 'google:ChIJ123' });
       expect(addLeadToBusiness).toHaveBeenCalledWith(expect.objectContaining({ lead: expect.objectContaining({ source: 'google', externalId: 'google:ChIJ123' }) }));
     });
 
     it('should store the E.164 phone next to the phone as entered', async () => {
-      await LeadService.createLead({ ...dto, contactPhone: '+370 (600) 12-345' });
+      await create({ ...dto, contactPhone: '+370 (600) 12-345' });
       expect(addLeadToBusiness).toHaveBeenCalledWith(
         expect.objectContaining({ lead: expect.objectContaining({ contactPhone: '+370 (600) 12-345', phoneE164: '+37060012345' }) }),
       );
 
-      await LeadService.createLead({ ...dto, contactPhone: '8 600 12345' });
+      await create({ ...dto, contactPhone: '8 600 12345' });
       expect(vi.mocked(addLeadToBusiness).mock.calls[1]?.[0]?.lead).toMatchObject({ phoneE164: undefined });
     });
   });
@@ -186,7 +189,7 @@ describe('LeadService', () => {
 
     it("adds the lead for the caller's studio, on the canonical domain, and passes the audit-derived fields function", async () => {
       vi.mocked(addLeadToBusiness).mockResolvedValue({ lead: { _id: 'l1', originalUrl: dto.originalUrl, niche: 'dental' }, audit: { _id: 'a1' }, reused: false } as any);
-      await LeadService.createLead(dto, { tenantId: 'studio-1' });
+      await create(dto, { tenantId: 'studio-1' });
       const input = vi.mocked(addLeadToBusiness).mock.calls[0]![0];
       expect(input.tenantId).toBe('studio-1');
       expect(input.lead).toMatchObject({ domain: 'a.lt', status: 'QUEUED' });
@@ -198,7 +201,7 @@ describe('LeadService', () => {
 
     it('queues the audit job for a lead with its own audit', async () => {
       vi.mocked(addLeadToBusiness).mockResolvedValue({ lead: { _id: 'l1', originalUrl: dto.originalUrl, niche: 'dental' }, audit: { _id: 'a1' }, reused: false } as any);
-      const result = await LeadService.createLead(dto, { tenantId: 'studio-1' });
+      const result = await create(dto, { tenantId: 'studio-1' });
       expect(auditQueueModule.addAuditJob).toHaveBeenCalledTimes(1);
       expect(result).toMatchObject({ auditId: 'a1', jobId: 'job-1' });
     });
@@ -210,16 +213,16 @@ describe('LeadService', () => {
         reused: true,
       } as any);
       vi.mocked(addAiGenerationJob).mockResolvedValue({ id: 'ai-1' } as any);
-      const result = await LeadService.createLead(dto, { tenantId: 'studio-2' });
+      const result = await create(dto, { tenantId: 'studio-2' });
       expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
-      expect(addAiGenerationJob).toHaveBeenCalledWith({ leadId: 'l2', auditId: 'shared-audit' });
+      expect(addAiGenerationJob).toHaveBeenCalledWith({ leadId: 'l2', tenantId: 'studio-2', auditId: 'shared-audit' });
       expect(result).toMatchObject({ auditId: 'shared-audit', jobId: 'ai-1', reused: true });
     });
 
     it('keeps a reused lead as it is when the generation job cannot be queued: it is AUDITED and can be generated by hand', async () => {
       vi.mocked(addLeadToBusiness).mockResolvedValue({ lead: { _id: 'l2', originalUrl: dto.originalUrl, niche: 'dental' }, sourceAudit: { _id: 'shared-audit' }, reused: true } as any);
       vi.mocked(addAiGenerationJob).mockRejectedValue(new Error('redis down'));
-      const result = await LeadService.createLead(dto, { tenantId: 'studio-2' });
+      const result = await create(dto, { tenantId: 'studio-2' });
       expect(result).toMatchObject({ auditId: 'shared-audit' });
       expect(result.jobId).toBeUndefined();
       expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
@@ -232,7 +235,7 @@ describe('LeadService', () => {
         // Redis down: the connection retries forever, so the call neither resolves nor rejects
         vi.mocked(addAiGenerationJob).mockReturnValue(new Promise(() => undefined) as never);
         vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        const pending = LeadService.createLead(dto, { tenantId: 'studio-2' });
+        const pending = create(dto, { tenantId: 'studio-2' });
         await vi.advanceTimersByTimeAsync(AUDIT_ENQUEUE_TIMEOUT_MS + 1);
         const result = await pending;
         expect(result).toMatchObject({ auditId: 'shared-audit' });
@@ -245,7 +248,7 @@ describe('LeadService', () => {
 
     it('answers 409 LEAD_ALREADY_EXISTS with the id of the existing lead when the studio already has one for the site', async () => {
       vi.mocked(addLeadToBusiness).mockRejectedValue(Object.assign(new Error('exists'), { code: 'LEAD_ALREADY_EXISTS', leadId: 'old-lead' }));
-      const error = await LeadService.createLead(dto, { tenantId: 'studio-1' }).catch((e) => e);
+      const error = await create(dto, { tenantId: 'studio-1' }).catch((e) => e);
       expect(error).toBeInstanceOf(AppError);
       expect(error).toMatchObject({ statusCode: 409, code: 'LEAD_ALREADY_EXISTS', details: { leadId: 'old-lead' } });
       expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
@@ -254,7 +257,7 @@ describe('LeadService', () => {
     it('passes any other failure through', async () => {
       const boom = new Error('mongo down');
       vi.mocked(addLeadToBusiness).mockRejectedValue(boom);
-      await expect(LeadService.createLead(dto, { tenantId: 'studio-1' })).rejects.toBe(boom);
+      await expect(create(dto, { tenantId: 'studio-1' })).rejects.toBe(boom);
     });
   });
 

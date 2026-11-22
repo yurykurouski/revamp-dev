@@ -22,7 +22,7 @@ import {
 import { env } from '../config/env.js';
 import { addDiscoveryJob, getDiscoveryJob } from '../queues/discovery.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
-import type { TenantScope } from '../data/tenant-scope.js';
+import { tenantIdOf, type TenantScope } from '../data/tenant-scope.js';
 import { LeadService } from './lead.service.js';
 
 
@@ -179,7 +179,7 @@ export class DiscoveryService {
             tags,
             source: candidate.provider,
             externalId: leadExternalId(candidate.provider, candidate.externalId),
-            ...(scope.tenantId ? { tenantId: scope.tenantId.toString() } : {}),
+            tenantId: tenantIdOf(scope),
           },
         );
         results.push({ externalId, outcome: 'imported', leadId: lead._id.toString() });

@@ -124,6 +124,12 @@ function repository<D extends Document>(model: Model<D>, tenantId: TenantId): Re
   };
 }
 
+/** The studio of a signed-in request as the string a queue payload carries (REV-210); a scope without one cannot queue work */
+export function tenantIdOf(scope: { tenantId: Types.ObjectId | undefined }): string {
+  if (!scope.tenantId) throw new TenantScopeError('A job needs a studio: this scope has none');
+  return scope.tenantId.toString();
+}
+
 export interface TenantScope {
   /** The studio, or undefined for the legacy bucket (records without one, reached only through public secrets) */
   tenantId: Types.ObjectId | undefined;

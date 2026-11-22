@@ -6,6 +6,8 @@ import { MvpPageGenerator, defaultPageGenerator } from '../../services/mvp-page-
 import { addDeployJob } from '../../queues/deploy.queue.js';
 import { env } from '../../config/env.js';
 
+const TENANT = '5eed00000000000000000009';
+
 vi.mock('../../services/audit-lookup.js');
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../services/mvp-page-generator.js', () => ({
@@ -46,6 +48,7 @@ const PAGE = '<!DOCTYPE html><html lang="pl"></html>';
 
 const lead = {
   _id: 'lead-123',
+  tenantId: TENANT,
   businessName: 'Smile Dental',
   niche: 'dental',
   city: 'Warszawa',
@@ -75,7 +78,7 @@ const okResult = {
 };
 
 const generate = vi.fn();
-const job = (data: Record<string, unknown> = {}) => ({ id: 'job-1', data: { leadId: 'lead-123', auditId: 'audit-456', ...data } });
+const job = (data: Record<string, unknown> = {}) => ({ id: 'job-1', data: { leadId: 'lead-123', tenantId: TENANT, auditId: 'audit-456', ...data } });
 
 describe('AiWorker on the model-designed page (REV-138)', () => {
   beforeEach(() => {
@@ -115,6 +118,7 @@ describe('AiWorker on the model-designed page (REV-138)', () => {
 
     expect(addDeployJob).toHaveBeenCalledWith({
       leadId: 'lead-123',
+      tenantId: TENANT,
       auditId: 'audit-456',
       forceRegenerate: true,
       previousStatus: 'NEEDS_APPROVAL',

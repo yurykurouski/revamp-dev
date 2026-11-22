@@ -8,7 +8,7 @@ import {
   mvpGenerationMode,
 } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
-import { bySecret, type TenantScope } from '../data/tenant-scope.js';
+import { bySecret, tenantIdOf, type TenantScope } from '../data/tenant-scope.js';
 import { findGenerationAudit } from '../services/audit-lookup.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { MVP_PAGE_CHANGE_WAIT_MS, MVP_PAGE_PUBLISH_WAIT_MS, runMvpPageJob } from '../queues/mvp-page.queue.js';
@@ -77,6 +77,7 @@ router.post(
 
       const job = await addAiGenerationJob({
         leadId: lead._id.toString(),
+        tenantId: tenantIdOf(req.tenant!),
         auditId: audit._id.toString(),
         forceRegenerate: mode === 'regenerate',
         previousStatus,
@@ -174,8 +175,8 @@ async function loadChangeableMvp(scope: TenantScope, id: string) {
  * Runs a change on the workers and answers with its result and the MVP as saved after it (REV-85, REV-139). Nothing
  * is published when the model gave no page or a version no longer fits the audit; the reason is returned.
  */
-async function runPageChange(scope: TenantScope, res: Response, id: string, job: Omit<IMvpPageJobData, 'deadline' | 'mvpProjectId'>, waitMs: number): Promise<void> {
-  const outcome = await runMvpPageJob({ mvpProjectId: id, ...job }, waitMs);
+async function runPageChange(scope: TenantScope, res: Response, id: string, job: Omit<IMvpPageJobData, 'deadline' | 'mvpProjectId' | 'tenantId'>, waitMs: number): Promise<void> {
+  const outcome = await runMvpPageJob({ mvpProjectId: id, tenantId: tenantIdOf(scope), ...job }, waitMs);
   if (outcome.status === 'timeout') {
     if (outcome.running) {
       throw new AppError(504, 'MVP_EDIT_TIMEOUT', 'The change is taking longer than expected and may still be published. Reload the MVP in a minute before trying again.');

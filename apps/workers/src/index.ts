@@ -28,9 +28,11 @@ export async function recoverStalledAuditedLeads(): Promise<number> {
       // The lead's own completed audit, else the one of its business (REV-208)
       const audit = await findAuditForLead(lead, { completedOnly: true });
 
-      if (audit) {
+      // A lead without a studio is not generated for until `migrate:tenants` ran (REV-210)
+      if (audit && lead.tenantId) {
         await addAiGenerationJob({
           leadId: lead._id.toString(),
+          tenantId: lead.tenantId.toString(),
           auditId: audit._id.toString(),
         });
         enqueuedCount++;
