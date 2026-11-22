@@ -3,7 +3,6 @@ import { AppError } from './errorHandler.js';
 import { verifySessionToken, type SessionClaims } from '../services/token.js';
 
 declare global {
-  // eslint-disable-next-line @typescript-eslint/no-namespace
   namespace Express {
     interface Request {
       /** Who sent the request and for which organization; set by `requireAuth` (REV-206) */

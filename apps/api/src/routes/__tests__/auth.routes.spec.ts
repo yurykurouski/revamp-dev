@@ -101,7 +101,7 @@ describe('auth routes (REV-206)', () => {
     });
 
     it('200 with the context for the token holder', async () => {
-      const { token: _token, ...context } = session;
+      const context = { user: session.user, organization: session.organization, role: session.role };
       vi.mocked(authService.getAuthContext).mockResolvedValue(context);
       const res = await request(server).get('/auth/me').set('Authorization', `Bearer ${signSessionToken(claims)}`);
       expect(res.status).toBe(200);
