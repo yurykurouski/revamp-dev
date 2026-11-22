@@ -12,6 +12,7 @@ export * from './models/Invitation.model.js';
 export * from './password.js';
 export * from './redact-uri.js';
 export * from './lead-children-migration.js';
+export * from './business-migration.js';
 export * from './retry-duplicate-key.js';
 export * from './add-lead-to-business.js';
 export * from './audit-for-lead.js';

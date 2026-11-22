@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { env } from './config/env.js';
-import { checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
+import { checkBusinessLinks, checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
 import { createAuditWorker } from './workers/audit.worker.js';
 import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
@@ -53,6 +53,10 @@ async function startWorkers(): Promise<void> {
     console.log('[Workers] MongoDB connected successfully.');
     // REV-201: leadId must be unique on mvpprojects and emailcampaigns; say so until the migration ran
     void checkLeadChildIndexes(mongoose.connection).then((warnings) =>
+      warnings.forEach((warning) => console.warn(`[Workers] ${warning}`)),
+    );
+    // REV-208: leads made before the shared business get one with the backfill; say so until it ran
+    void checkBusinessLinks(mongoose.connection).then((warnings) =>
       warnings.forEach((warning) => console.warn(`[Workers] ${warning}`)),
     );
 

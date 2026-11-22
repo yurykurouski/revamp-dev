@@ -25,6 +25,7 @@ import { Invitation } from '../models/Invitation.model.js';
 import { Business } from '../models/Business.model.js';
 import { LeadAlreadyExistsError, addLeadToBusiness } from '../add-lead-to-business.js';
 import { auditBelongsToLead, findAuditForLead } from '../audit-for-lead.js';
+import { MIGRATE_BUSINESSES_COMMAND, checkBusinessLinks, migrateBusinesses } from '../business-migration.js';
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
@@ -1117,6 +1118,105 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       const stranger = await Audit.create({ leadId: new Types.ObjectId(), businessId: new Types.ObjectId(), status: 'COMPLETED' });
       expect(await auditBelongsToLead(stranger._id, b.lead)).toBe(false);
       expect(await auditBelongsToLead(new Types.ObjectId(), b.lead)).toBe(false);
+    });
+  });
+  describe('migrateBusinesses (REV-208)', () => {
+    const legacyLead = (domain: string, createdAt: string, extra: Record<string, unknown> = {}) => ({
+      businessName: `Clinic ${domain}`,
+      originalUrl: `https://${domain}`,
+      domain,
+      niche: 'dental',
+      city: 'Gdansk',
+      status: 'AUDITED',
+      createdAt: new Date(createdAt),
+      ...extra,
+    });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-business-migration-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    const seedLegacy = async () => {
+      // Written to the collection directly: leads made before the split have neither field
+      const docs = [
+        legacyLead('a.example', '2026-01-01'),
+        legacyLead('a.example', '2026-02-01', { businessName: 'Second copy' }),
+        legacyLead('b.example', '2026-03-01'),
+      ];
+      const inserted = await Lead.collection.insertMany(docs.map((d) => ({ ...d, updatedAt: d.createdAt })));
+      const ids = Object.values(inserted.insertedIds);
+      await Audit.collection.insertMany([
+        { leadId: ids[0], status: 'COMPLETED', createdAt: new Date(), updatedAt: new Date() },
+        { leadId: ids[0], status: 'FAILED', createdAt: new Date(), updatedAt: new Date() },
+        { leadId: ids[2], status: 'COMPLETED', createdAt: new Date(), updatedAt: new Date() },
+      ]);
+      return ids;
+    };
+
+    it('a dry run reports what it would do and writes nothing', async () => {
+      await seedLegacy();
+      const report = await migrateBusinesses({ apply: false });
+      expect(report).toMatchObject({ applied: false, leadsToLink: 3, businessesToCreate: 2, auditsToLink: 3 });
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments({ businessId: { $exists: true } }), Audit.countDocuments({ businessId: { $exists: true } })])).toEqual([0, 0, 0]);
+    });
+
+    it('applying gives leads that share a domain one business, from the oldest lead, and links the audits', async () => {
+      const ids = await seedLegacy();
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ applied: true, leadsToLink: 3, businessesToCreate: 2, auditsToLink: 3 });
+      const businesses = await Business.find().sort({ domain: 1 }).lean();
+      expect(businesses.map((b) => b.domain)).toEqual(['a.example', 'b.example']);
+      expect(businesses[0]).toMatchObject({ businessName: 'Clinic a.example', originalUrl: 'https://a.example', niche: 'dental', city: 'Gdansk' });
+      const leads = await Lead.find({ _id: { $in: ids } }).lean();
+      const businessOf = (id: unknown) => String(leads.find((l) => String(l._id) === String(id))!.businessId);
+      expect(businessOf(ids[0])).toBe(String(businesses[0]!._id));
+      expect(businessOf(ids[1])).toBe(String(businesses[0]!._id));
+      expect(businessOf(ids[2])).toBe(String(businesses[1]!._id));
+      expect(await Audit.countDocuments({ businessId: { $exists: false } })).toBe(0);
+      expect(await Audit.countDocuments({ leadId: ids[0], businessId: businesses[0]!._id })).toBe(2);
+      // No tenant is assigned here: that is REV-210
+      expect(await Lead.countDocuments({ tenantId: { $exists: true } })).toBe(0);
+    });
+
+    it('is idempotent: a second run changes nothing', async () => {
+      await seedLegacy();
+      await migrateBusinesses({ apply: true });
+      const before = await Business.find().lean();
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ leadsToLink: 0, businessesToCreate: 0, auditsToLink: 0 });
+      expect(await Business.find().lean()).toEqual(before);
+    });
+
+    it('reuses a business that already exists for the domain and leaves already linked leads and audits alone', async () => {
+      const existing = await Business.create({ domain: 'a.example', originalUrl: 'https://a.example', businessName: 'Kept', niche: 'dental' });
+      const linked = await Lead.create({ ...legacyLead('a.example', '2026-01-01'), businessId: existing._id });
+      await Audit.create({ leadId: linked._id, businessId: existing._id, status: 'COMPLETED' });
+      await Lead.collection.insertOne({ ...legacyLead('a.example', '2026-04-01'), updatedAt: new Date() });
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ leadsToLink: 1, businessesToCreate: 0, auditsToLink: 0 });
+      expect(await Business.countDocuments()).toBe(1);
+      expect((await Business.findOne().lean())!.businessName).toBe('Kept');
+    });
+
+    it('checkBusinessLinks warns while a lead has no business, with the command to run, and is quiet after', async () => {
+      await seedLegacy();
+      const warnings = await checkBusinessLinks(mongoose.connection);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('3 lead(s)');
+      expect(warnings[0]).toContain(MIGRATE_BUSINESSES_COMMAND);
+      await migrateBusinesses({ apply: true });
+      expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
+    });
+
+    it('checkBusinessLinks is quiet on an empty database', async () => {
+      expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
     });
   });
 });
