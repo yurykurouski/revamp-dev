@@ -2,14 +2,18 @@ import { ILeadStats, LeadSource, SiteComplexityClass } from '@revamp/shared-type
 import {
   CreateLeadDto,
   MvpCompletenessReportDto,
+  leadFieldsFromAudit,
   normalizeDomain,
   normalizePhone,
   summarizeCompletenessReport,
 } from '@revamp/validation';
-import { Lead, ILeadDocument, createLeadWithAudit } from '../models/Lead.model.js';
-import { Audit } from '../models/Audit.model.js';
+import { Lead, ILeadDocument, addLeadToBusiness } from '../models/Lead.model.js';
+import type { DeriveFromAudit } from '@revamp/db';
+import { addAiGenerationJob } from '../queues/ai.queue.js';
+import { findAuditForLead } from '../models/Audit.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { enqueueAuditOrFail } from './audit-enqueue.js';
+import { AUDIT_ENQUEUE_TIMEOUT_MS, enqueueAuditOrFail } from './audit-enqueue.js';
+import { withTimeout } from './with-timeout.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
 export interface GetLeadsQuery {
@@ -45,12 +49,14 @@ export class LeadService {
   }
 
   /**
-   * Creates a new lead, creates initial audit record, and enqueues audit job
+   * Adds a lead for a studio (REV-208). The site's shared business is found or created; when it already has a
+   * completed audit the lead starts AUDITED with it and only the MVP generation is queued, otherwise the lead gets
+   * its own QUEUED audit and the audit job is queued (REV-202).
    */
   static async createLead(
     dto: CreateLeadDto,
-    options: { tags?: string[]; source?: LeadSource; externalId?: string } = {},
-  ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string }> {
+    options: { tags?: string[]; source?: LeadSource; externalId?: string; tenantId?: string } = {},
+  ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string; reused?: boolean }> {
     let domain: string | undefined;
     try {
       domain = normalizeDomain(new URL(dto.originalUrl).hostname);
@@ -61,36 +67,65 @@ export class LeadService {
       throw new AppError(400, 'INVALID_URL', 'Invalid original URL format');
     }
 
-    // 1. Lead and its first audit, both QUEUED, in one transaction: a failed audit insert leaves no lead (REV-202)
-    const { lead, audit } = await createLeadWithAudit({
-      businessName: dto.businessName,
-      originalUrl: dto.originalUrl,
-      domain,
-      niche: dto.niche || 'other',
-      city: dto.city,
-      contactEmail: dto.contactEmail,
-      contactPhone: dto.contactPhone,
-      phoneE164: normalizePhone(dto.contactPhone),
-      ownerName: dto.ownerName,
-      status: 'QUEUED',
-      source: options.source ?? 'manual',
-      ...(options.externalId ? { externalId: options.externalId } : {}),
-      ...(options.tags ? { tags: options.tags } : {}),
-      // REV-162: the first MVP's design changes are written in the dashboard language the lead was added in
-      ...(dto.operatorLocale ? { operatorLocale: dto.operatorLocale } : {}),
-    });
+    // 1. The business, the lead and its audit (or the shared audit), in one transaction: a failed insert leaves nothing
+    let created;
+    try {
+      created = await addLeadToBusiness({
+        ...(options.tenantId ? { tenantId: options.tenantId } : {}),
+        deriveFromAudit: leadFieldsFromAudit as DeriveFromAudit,
+        lead: {
+          businessName: dto.businessName,
+          originalUrl: dto.originalUrl,
+          domain,
+          niche: dto.niche || 'other',
+          city: dto.city,
+          contactEmail: dto.contactEmail,
+          contactPhone: dto.contactPhone,
+          phoneE164: normalizePhone(dto.contactPhone),
+          ownerName: dto.ownerName,
+          status: 'QUEUED',
+          source: options.source ?? 'manual',
+          ...(options.externalId ? { externalId: options.externalId } : {}),
+          ...(options.tags ? { tags: options.tags } : {}),
+          // REV-162: the first MVP's design changes are written in the dashboard language the lead was added in
+          ...(dto.operatorLocale ? { operatorLocale: dto.operatorLocale } : {}),
+        },
+      });
+    } catch (error) {
+      if ((error as { code?: unknown } | null)?.code === 'LEAD_ALREADY_EXISTS') {
+        throw new AppError(409, 'LEAD_ALREADY_EXISTS', 'Your studio already has a lead for this site', {
+          leadId: (error as { leadId?: string }).leadId,
+        });
+      }
+      throw error;
+    }
+    const { lead } = created;
 
-    // 2. Queue the audit; if that fails the lead becomes AUDIT_FAILED and a 503 is thrown (REV-202)
+    // 2a. The lead took another studio's completed audit: it is AUDITED, so queue the MVP generation as after an audit.
+    // If that fails the lead stays AUDITED and the operator can press Generate MVP, so nothing is reverted
+    if (created.reused) {
+      const auditId = String(created.sourceAudit!._id);
+      let jobId: string | undefined;
+      try {
+        // The Redis connection retries forever, so the call needs the same limit as the audit job (REV-202)
+        jobId = (await withTimeout(addAiGenerationJob({ leadId: lead._id.toString(), auditId }), AUDIT_ENQUEUE_TIMEOUT_MS, 'AI generation queue')).id;
+      } catch (error) {
+        console.error(`[LeadService] Could not queue the MVP generation for lead ${lead._id}:`, error);
+      }
+      return { lead, auditId, jobId, reused: true };
+    }
+
+    // 2b. Queue the audit; if that fails the lead becomes AUDIT_FAILED and a 503 is thrown (REV-202)
     const { jobId } = await enqueueAuditOrFail({
       leadId: lead._id.toString(),
-      auditId: audit._id.toString(),
+      auditId: created.audit!._id.toString(),
       url: lead.originalUrl,
       niche: lead.niche,
     });
 
     return {
       lead,
-      auditId: audit._id.toString(),
+      auditId: created.audit!._id.toString(),
       jobId,
     };
   }
@@ -185,7 +220,8 @@ export class LeadService {
       throw new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found');
     }
 
-    const audit = await Audit.findOne({ leadId: lead._id }).sort({ createdAt: -1 }).exec();
+    // The lead's own newest audit, else the completed audit of its business (REV-208)
+    const audit = await findAuditForLead(lead);
 
     return {
       lead,

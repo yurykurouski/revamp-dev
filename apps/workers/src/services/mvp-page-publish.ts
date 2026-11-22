@@ -1,6 +1,5 @@
 import { IAudit, ILead, IMvpCompletenessReport, IMvpPageVersion, IMvpPerformance, IMvpSourceBrief, IMvpStandards } from '@revamp/shared-types';
 import { env } from '../config/env.js';
-import { Audit } from '../models/Audit.model.js';
 import { browserService } from './browser.service.js';
 import { ImageService } from './image.service.js';
 import { mvpCompletenessService } from './mvp-completeness.service.js';
@@ -136,7 +135,8 @@ export async function publishFinishedPage(input: {
   const standards = publishedStandards(html);
   const { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl } = await publishMvp(slug, html, lead, audit, standards);
   const performance = await measureMvpPerformance(fullPreviewUrl);
-  await Audit.findByIdAndUpdate(audit._id, { 'screenshotUrls.comparisonBanner': comparisonBannerUrl }).exec();
+  // The banner is kept on the lead and the MVP project, never on the audit (REV-208): another studio's lead may read
+  // the same audit, and the banner URL names this lead's MVP slug
   return { fullPreviewUrl, storageHtmlPath, comparisonBannerUrl, completenessReport, ...(standards ? { standards } : {}), performance };
 }
 

@@ -379,11 +379,13 @@ export const apiClient = {
    */
   async generateMvp(
     auditId: string,
-    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string } = {},
+    options: { forceRegenerate?: boolean; provider?: LlmProviderId; model?: string; leadId?: string } = {},
   ): Promise<{ success: boolean; status: LeadStatus }> {
     // Validated before the request, so an invalid provider/model never reaches the API
     const payload = GenerateMvpSchema.parse({
       auditId,
+      // Names the lead, so an audit another studio's lead ran is built for this one (REV-208)
+      leadId: options.leadId,
       forceRegenerate: options.forceRegenerate ?? false,
       provider: options.provider,
       model: options.model,

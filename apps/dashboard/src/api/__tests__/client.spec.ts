@@ -762,6 +762,15 @@ describe('Dashboard apiClient', () => {
     const respond = (status: number, body: unknown) =>
       vi.fn().mockResolvedValue({ ok: status < 400, status, json: async () => body });
 
+    it('sends the lead the request is for, so a shared audit is built for the right lead (REV-208 review)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { status: 'GENERATING' } }, 202));
+      vi.stubGlobal('fetch', fetchMock);
+      await apiClient.generateMvp('audit-1', { leadId: 'lead-9' });
+      expect(JSON.parse(fetchMock.mock.calls[0]![1].body)).toMatchObject({ auditId: 'audit-1', leadId: 'lead-9' });
+      await apiClient.generateMvp('audit-1');
+      expect(JSON.parse(fetchMock.mock.calls[1]![1].body)).not.toHaveProperty('leadId');
+    });
+
     it('sends forceRegenerate: false for a first generation', async () => {
       const fetchMock = respond(202, { success: true, data: { status: 'GENERATING' } });
       vi.stubGlobal('fetch', fetchMock);

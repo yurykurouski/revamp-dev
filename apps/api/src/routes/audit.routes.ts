@@ -2,7 +2,7 @@ import { Router, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
 import { TriggerAuditSchema, canTransition, leadStatusesInto } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
-import { Audit } from '../models/Audit.model.js';
+import { Audit, findAuditForLead } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
 import { enqueueAuditOrFail } from '../services/audit-enqueue.js';
 import { AppError } from '../middlewares/errorHandler.js';
@@ -42,6 +42,7 @@ router.post(
 
       const audit = await Audit.create({
         leadId: lead._id,
+        ...(lead.businessId ? { businessId: lead.businessId } : {}),
         status: 'QUEUED',
       });
 
@@ -78,7 +79,9 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     if (id && mongoose.Types.ObjectId.isValid(id)) {
       audit = await Audit.findById(id).exec();
       if (!audit) {
-        audit = await Audit.findOne({ leadId: id }).sort({ createdAt: -1 }).exec();
+        // A lead id: its own newest audit, else the completed audit of its business (REV-208)
+        const lead = await Lead.findById(id).exec();
+        audit = lead ? await findAuditForLead(lead) : null;
       }
     }
 

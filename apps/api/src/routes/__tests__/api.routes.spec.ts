@@ -6,7 +6,7 @@ import mongoose from 'mongoose';
 import { createApp } from '../../app.js';
 import { LeadService } from '../../services/lead.service.js';
 import { AppError } from '../../middlewares/errorHandler.js';
-import { Audit } from '../../models/Audit.model.js';
+import { Audit, auditBelongsToLead, findAuditForLead } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import { EmailCampaign, approveOutreachWithCampaign, revertOutreachApproval } from '../../models/EmailCampaign.model.js';
@@ -126,6 +126,28 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe('VALIDATION_ERROR');
       expect(res.body.error.details.issues.length).toBeGreaterThan(0);
+    });
+
+    it('says the audit of the site was reused when the lead took one (REV-208 review)', async () => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'shared', jobId: 'ai-1', reused: true } as any);
+      const res = await request(app).post('/api/v1/leads').send({ businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' });
+      expect(res.status).toBe(201);
+      expect(res.body.message).toBe('Lead created with the audit of this site; MVP generation queued');
+      spy.mockRestore();
+    });
+
+    it("creates the lead for the caller's studio, and says 409 LEAD_ALREADY_EXISTS when the studio has one for the site (REV-208)", async () => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j' } as any);
+      const body = { businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' };
+      expect((await request(app).post('/api/v1/leads').send(body)).status).toBe(201);
+      // The studio is the organization of the token (see authed-request.ts)
+      expect(spy.mock.calls[0]?.[1]).toEqual({ tenantId: '5eed00000000000000000002' });
+
+      spy.mockRejectedValueOnce(new AppError(409, 'LEAD_ALREADY_EXISTS', 'Your studio already has a lead for this site', { leadId: 'old' }));
+      const again = await request(app).post('/api/v1/leads').send(body);
+      expect(again.status).toBe(409);
+      expect(again.body.error).toEqual({ code: 'LEAD_ALREADY_EXISTS', message: 'Your studio already has a lead for this site', details: { leadId: 'old' } });
+      spy.mockRestore();
     });
 
     it("should pass the operator's locale to the service, and refuse an unknown one (REV-162)", async () => {
@@ -911,9 +933,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.spyOn(Audit, 'findById').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: auditId, leadId, status: 'COMPLETED' }),
       } as any);
-      vi.spyOn(Lead, 'findById').mockReturnValue({
-        exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status }),
-      } as any);
+      // The id sent is an audit id, so it is no lead (REV-208); the audit's lead is found next
+      vi.spyOn(Lead, 'findById')
+        .mockReset()
+        .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(null) } as any)
+        .mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status }) } as any);
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'GENERATING' }),
       } as any);
@@ -1011,25 +1035,63 @@ describe('API Routes Integration Tests (Supertest)', () => {
     describe('audit resolution when the lead has several audits (REV-55)', () => {
       const newestAuditId = new mongoose.Types.ObjectId().toString();
 
-      /** findById answers the id sent; findOne().sort() is the lead's newest COMPLETED audit */
+      /** Audit.findById answers the id sent; `findAuditForLead` is the lead's own completed audit, else its business's */
       const mockAudits = (byId: unknown, newest: unknown) => {
         mockLeadWithStatus('NEEDS_APPROVAL');
         vi.spyOn(Audit, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(byId) } as any);
-        const sort = vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(newest) });
-        vi.spyOn(Audit, 'findOne').mockReturnValue({ sort } as any);
-        return sort;
+        vi.mocked(findAuditForLead).mockResolvedValue(newest as never);
       };
 
       it("uses the lead's newest completed audit when the dashboard sends the lead id", async () => {
-        const sort = mockAudits(null, { _id: newestAuditId, leadId, status: 'COMPLETED' });
+        // The id sent is a lead: Lead.findById answers it, so no audit is looked up by that id (REV-208)
+        mockLeadWithStatus('NEEDS_APPROVAL');
+        vi.spyOn(Lead, 'findById').mockReset().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status: 'NEEDS_APPROVAL' }),
+        } as any);
+        vi.mocked(findAuditForLead).mockResolvedValue({ _id: newestAuditId, leadId, status: 'COMPLETED' } as never);
 
         const res = await request(app).post('/api/v1/mvp/generate').send({ auditId: leadId, forceRegenerate: true });
 
         expect(res.status).toBe(202);
         expect(res.body.data.auditId).toBe(newestAuditId);
-        expect(Audit.findOne).toHaveBeenCalledWith({ leadId, status: 'COMPLETED' });
-        expect(sort).toHaveBeenCalledWith({ createdAt: -1 });
+        expect(findAuditForLead).toHaveBeenCalledWith(expect.objectContaining({ _id: leadId }), { completedOnly: true });
         expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ leadId, auditId: newestAuditId }));
+      });
+
+      it('builds a lead that took another studio\'s audit from that audit, for the asking lead (REV-208)', async () => {
+        const askingLead = new mongoose.Types.ObjectId().toString();
+        const sharedAuditId = new mongoose.Types.ObjectId().toString();
+        vi.spyOn(Lead, 'findById').mockReset().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: askingLead, businessName: 'Dr. Smile Clinic', status: 'AUDITED' }),
+        } as any);
+        vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: askingLead, status: 'GENERATING' }) } as any);
+        // The audit was run by another studio's lead
+        vi.mocked(findAuditForLead).mockResolvedValue({ _id: sharedAuditId, leadId: new mongoose.Types.ObjectId(), status: 'COMPLETED' } as never);
+
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId: askingLead });
+
+        expect(res.status).toBe(202);
+        expect(res.body.data.leadId).toBe(askingLead);
+        expect(Lead.findOneAndUpdate).toHaveBeenCalledWith({ _id: askingLead, status: 'AUDITED' }, expect.anything());
+        expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ leadId: askingLead, auditId: sharedAuditId }));
+      });
+
+      it("generates for the lead named in the request even when the audit id is another studio's (REV-208 review)", async () => {
+        const askingLead = new mongoose.Types.ObjectId().toString();
+        const sharedAuditId = new mongoose.Types.ObjectId().toString();
+        vi.spyOn(Lead, 'findById').mockReset().mockReturnValue({
+          exec: vi.fn().mockResolvedValue({ _id: askingLead, businessName: 'Dr. Smile Clinic', status: 'AUDITED' }),
+        } as any);
+        vi.spyOn(Audit, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: sharedAuditId, leadId: new mongoose.Types.ObjectId(), status: 'COMPLETED' }) } as any);
+        vi.mocked(auditBelongsToLead).mockResolvedValue(true);
+        vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: askingLead, status: 'GENERATING' }) } as any);
+
+        const res = await request(app).post('/api/v1/mvp/generate').send({ auditId: sharedAuditId, leadId: askingLead });
+
+        expect(res.status).toBe(202);
+        expect(res.body.data.leadId).toBe(askingLead);
+        expect(Lead.findOneAndUpdate).toHaveBeenCalledWith({ _id: askingLead, status: 'AUDITED' }, expect.anything());
+        expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ leadId: askingLead, auditId: sharedAuditId }));
       });
 
       it('never builds from a failed audit when a newer completed one exists', async () => {
@@ -1125,6 +1187,13 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, layout: 'split' });
       expect(res.status).toBe(202);
       expect(vi.mocked(addAiGenerationJob).mock.calls.at(-1)![0]).not.toHaveProperty('layout');
+    });
+
+    it("GET /mvp/:id never matches an audit id: several studios' MVPs can be built from one shared audit (REV-208 review)", async () => {
+      const id = new mongoose.Types.ObjectId().toString();
+      const find = vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: id, leadId, fullPreviewUrl: 'http://s3/v/a/index.html' }) } as any);
+      expect((await request(app).get(`/api/v1/mvp/${id}`)).status).toBe(200);
+      expect(find).toHaveBeenCalledWith({ $or: [{ _id: id }, { leadId: id }] });
     });
 
     it('GET /mvp/:id still answers an MVP stored with the previous generator\'s fields (REV-141)', async () => {
@@ -1239,7 +1308,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('GET /api/v1/mvp/:id', () => {
-    it('should return the MVP project looked up by id, lead or audit', async () => {
+    it('should return the MVP project looked up by id or lead (never by audit, REV-208)', async () => {
       const leadId = new mongoose.Types.ObjectId().toString();
       const project = { leadId, fullPreviewUrl: 'http://minio/revamp-demos/v/smile/index.html' };
       const findOne = vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue(project) } as any);
@@ -1248,7 +1317,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual(project);
-      expect(findOne).toHaveBeenCalledWith({ $or: [{ _id: leadId }, { leadId }, { auditId: leadId }] });
+      expect(findOne).toHaveBeenCalledWith({ $or: [{ _id: leadId }, { leadId }] });
     });
 
     it('should look up a slug by previewSlug', async () => {

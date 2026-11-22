@@ -84,7 +84,7 @@ describe('Prototype step: a page the model could not make (REV-132, REV-140)', (
     const generate = vi.spyOn(apiClient, 'generateMvp').mockResolvedValue({ success: true, status: 'GENERATING' });
     render(audited);
     act(() => tryAgain()!.click());
-    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: false }));
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { leadId: 'lead-1', forceRegenerate: false }));
   });
 
   it('regenerates over an MVP the lead already has, which stays published', async () => {
@@ -94,7 +94,7 @@ describe('Prototype step: a page the model could not make (REV-132, REV-140)', (
     expect(panel()).not.toBeNull();
     expect(container.querySelector('iframe')).not.toBeNull();
     act(() => tryAgain()!.click());
-    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { forceRegenerate: true }));
+    await vi.waitFor(() => expect(generate).toHaveBeenCalledWith('audit-1', { leadId: 'lead-1', forceRegenerate: true }));
   });
 
   it('shows a generic text for a failure of the previous generator, never a raw key', () => {

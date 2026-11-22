@@ -42,6 +42,7 @@ export interface DemoLead extends Extra {
 export interface DemoAudit extends Extra {
   _id: Types.ObjectId;
   leadId: Types.ObjectId;
+  businessId: Types.ObjectId;
   status: AuditStatus;
   measurementErrors?: { measurement: AuditMeasurement; message: string }[];
   aiFallbackUsed?: boolean;
@@ -90,6 +91,17 @@ export interface DemoPage {
   versionHtml: string;
 }
 
+export interface DemoBusiness extends Extra {
+  _id: Types.ObjectId;
+  domain: string;
+  originalUrl: string;
+  businessName: string;
+  niche: NicheType;
+  city?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface DemoOrganization extends Extra {
   _id: Types.ObjectId;
   name: string;
@@ -123,6 +135,7 @@ export interface DemoDataset {
   analyticsEvents: DemoAnalyticsEvent[];
   /** The demo studio and its owner, who signs in with `DEMO_OWNER_EMAIL` and `DEMO_OWNER_PASSWORD` (REV-206) */
   organizations: DemoOrganization[];
+  businesses: DemoBusiness[];
   users: DemoUser[];
   memberships: DemoMembership[];
   pages: DemoPage[];
@@ -140,11 +153,12 @@ export type DemoCollection =
   | 'emailCampaigns'
   | 'analyticsEvents'
   | 'organizations'
+  | 'businesses'
   | 'users'
   | 'memberships';
 
 /** Fixed ids: prefix `5eed`, one byte for the collection, then the index */
-const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5, organization: 6, user: 7, membership: 8 } as const;
+const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5, organization: 6, user: 7, membership: 8, business: 9 } as const;
 const demoId = (kind: keyof typeof KIND, n: number) =>
   new Types.ObjectId(`5eed${KIND[kind].toString(16).padStart(2, '0')}${n.toString(16).padStart(18, '0')}`);
 
@@ -303,6 +317,7 @@ export function buildDemoDataset(
     emailCampaigns: [],
     analyticsEvents: [],
     organizations: [],
+    businesses: [],
     users: [],
     memberships: [],
     pages: [],
@@ -356,8 +371,23 @@ export function buildDemoDataset(
       ? { total: 48, accessibility: 55, standards: 40 }
       : { total: 38 + n, design: 42, accessibility: 60, performance: 35 + n, standards: 40 };
 
+    // The shared business of the site, and the lead of the demo studio that pursues it (REV-208)
+    const businessId = demoId('business', n);
+    ds.businesses.push({
+      _id: businessId,
+      domain,
+      originalUrl: `https://www.${domain}/`,
+      businessName: spec.name,
+      niche: spec.niche,
+      city: spec.city,
+      createdAt: added,
+      updatedAt: added,
+    });
+
     const lead: DemoLead = {
       _id: leadId,
+      tenantId: organizationId,
+      businessId,
       businessName: spec.name,
       originalUrl: `https://www.${domain}/`,
       domain,
@@ -378,6 +408,7 @@ export function buildDemoDataset(
     const audit: DemoAudit = {
       _id: auditId,
       leadId,
+      businessId,
       status: spec.status === 'QUEUED' ? 'QUEUED' : spec.status === 'AUDIT_FAILED' ? 'FAILED' : 'COMPLETED',
       createdAt: added,
       updatedAt: audited,
@@ -516,6 +547,7 @@ export function demoDocumentIds(ds: DemoDataset): Record<DemoCollection, Types.O
     emailCampaigns: ds.emailCampaigns.map((d) => d._id),
     analyticsEvents: ds.analyticsEvents.map((d) => d._id),
     organizations: ds.organizations.map((d) => d._id),
+    businesses: ds.businesses.map((d) => d._id),
     users: ds.users.map((d) => d._id),
     memberships: ds.memberships.map((d) => d._id),
   };

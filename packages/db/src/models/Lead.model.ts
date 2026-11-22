@@ -1,13 +1,19 @@
-import mongoose, { Schema, Document, Model } from 'mongoose';
+import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 import { ILead, NicheType, LEAD_STATUSES, LeadSource, OPERATOR_LOCALES, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 
-export interface ILeadDocument extends Omit<ILead, '_id' | 'createdAt' | 'updatedAt'>, Document {
+export interface ILeadDocument extends Omit<ILead, '_id' | 'tenantId' | 'businessId' | 'createdAt' | 'updatedAt'>, Document {
+  /** The studio (organization) this lead belongs to (REV-208); absent on leads made before the split until REV-210 */
+  tenantId?: Types.ObjectId;
+  /** The shared business this lead pursues (REV-208); absent until the backfill */
+  businessId?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
 
 const LeadSchema = new Schema<ILeadDocument>(
   {
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Organization' },
+    businessId: { type: Schema.Types.ObjectId, ref: 'Business', index: true },
     businessName: {
       type: String,
       required: [true, 'Business name is required'],
@@ -144,6 +150,13 @@ const LeadSchema = new Schema<ILeadDocument>(
 
 // Default list order (REV-38): one-page brochure sites first, newest first within each group
 LeadSchema.index({ onePageBrochure: -1, createdAt: -1 });
+
+// A studio has at most one lead per business (REV-208). Partial, so leads made before the split (no tenant or no
+// business yet) are not restricted until they are migrated
+LeadSchema.index(
+  { tenantId: 1, businessId: 1 },
+  { unique: true, partialFilterExpression: { tenantId: { $type: 'objectId' }, businessId: { $type: 'objectId' } } },
+);
 
 export const Lead: Model<ILeadDocument> =
   mongoose.models['Lead'] || mongoose.model<ILeadDocument>('Lead', LeadSchema);

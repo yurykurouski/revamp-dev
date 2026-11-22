@@ -14,7 +14,7 @@ export interface NewOrganizationOwner {
  * Registration (REV-206): inserts the organization, its first user and the owner membership in one
  * transaction, so a failed insert never leaves a user without an organization. A second registration
  * of an existing email fails with E11000 from the unique index on `users.email`; the caller maps it
- * to EMAIL_TAKEN. Needs a replica set, like `createLeadWithAudit`.
+ * to EMAIL_TAKEN. Needs a replica set, like `addLeadToBusiness`.
  */
 export async function createOrganizationWithOwner(
   input: NewOrganizationOwner,

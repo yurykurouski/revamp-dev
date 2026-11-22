@@ -2,7 +2,8 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../apps/workers/src/config/env.js';
-import { redactMongoUri } from '@revamp/db';
+import { addLeadToBusiness, redactMongoUri } from '@revamp/db';
+import { normalizeDomain } from '@revamp/validation';
 import { browserService } from '../apps/workers/src/services/browser.service.js';
 import { ImageService } from '../apps/workers/src/services/image.service.js';
 import { storageService } from '../apps/workers/src/services/storage.service.js';
@@ -51,18 +52,25 @@ async function runLiveCrawl(urlToCrawl: string = 'https://stripe.com'): Promise<
   // 3. Create Demo Lead and Audit records
   console.log(`[3/6] Initializing Lead & Audit documents in MongoDB...`);
   const domain = new URL(urlToCrawl).hostname;
-  const lead = await Lead.create({
-    businessName: `${domain} (Live Demo)`,
-    originalUrl: urlToCrawl,
-    domain: domain,
-    niche: 'other',
-    contactEmail: `contact@${domain}`,
-    status: 'AUDITING',
+  // The business, the lead and its audit through the same path as Add lead (REV-208); this script then runs the audit by hand
+  const added = await addLeadToBusiness({
+    deriveFromAudit: () => ({ set: {}, clearsEmailGuess: false }),
+    lead: {
+      businessName: `${domain} (Live Demo)`,
+      originalUrl: urlToCrawl,
+      domain: normalizeDomain(domain) ?? domain.toLowerCase(),
+      niche: 'other',
+      contactEmail: `contact@${domain}`,
+      status: 'QUEUED',
+    },
   });
-  const audit = await Audit.create({
-    leadId: lead._id,
-    status: 'PROCESSING',
-  });
+  if (added.reused) {
+    throw new Error(`${domain} already has a completed audit (REV-208): use another URL, or delete its business to crawl it again`);
+  }
+  const lead = added.lead;
+  const audit = added.audit!;
+  await Lead.updateOne({ _id: lead._id }, { status: 'AUDITING' });
+  await Audit.updateOne({ _id: audit._id }, { status: 'PROCESSING' });
   console.log(`      ✅ Lead created: ${lead._id}`);
   console.log(`      ✅ Audit initiated: ${audit._id}`);
 

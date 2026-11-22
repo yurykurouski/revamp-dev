@@ -12,11 +12,11 @@ import { storageService } from '../services/storage.service.js';
 import { designCritiqueService } from '../services/design-critique.service.js';
 import { ScoringService } from '../services/scoring.service.js';
 import { BrandExtractorService } from '../services/brand-extractor.service.js';
-import { classifySiteComplexity, isOnePageBrochure } from '../services/site-complexity.service.js';
+import { classifySiteComplexity } from '../services/site-complexity.service.js';
 import { readSiteEra } from '../services/site-era.service.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
-import { isPermanentAuditError, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
+import { isPermanentAuditError, leadFieldsFromAudit, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
 import { handleAuditJobFailed, isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
@@ -223,22 +223,14 @@ export const createAuditWorker = (): Worker => {
         ).exec();
 
         // 10. Update Lead status to AUDITED, save totalScore, and enrich contacts if found
-        const leadUpdate: Record<string, unknown> = {
-          status: 'AUDITED',
-          totalScore: scores.total,
-          siteComplexity: siteComplexity.class,
-          onePageBrochure: isOnePageBrochure(siteComplexity.class),
-        };
-        if (!existingLead?.contactPhone && brandResult.contacts.phone) {
-          leadUpdate['contactPhone'] = brandResult.contacts.phone;
-        }
-        // Discovered leads start with an info@<domain> guess and manual leads may have no email at
-        // all; either way the email published on the site takes its place (REV-45)
-        const emailGuessed = existingLead?.tags?.includes(EMAIL_GUESSED_TAG);
-        if ((emailGuessed || !existingLead?.contactEmail) && brandResult.contacts.email) {
-          leadUpdate['contactEmail'] = brandResult.contacts.email;
-          if (emailGuessed) leadUpdate['$pull'] = { tags: EMAIL_GUESSED_TAG };
-        }
+        // The same function fills a lead that reuses this audit at add time (REV-208), so the two cannot drift. A
+        // guessed email is replaced by the one the site publishes (REV-45)
+        const { set: auditedFields, clearsEmailGuess } = leadFieldsFromAudit(
+          { scores, siteComplexity, extractedContacts: brandResult.contacts },
+          { contactPhone: existingLead?.contactPhone, contactEmail: existingLead?.contactEmail, tags: existingLead?.tags },
+        );
+        const leadUpdate: Record<string, unknown> = { status: 'AUDITED', ...auditedFields };
+        if (clearsEmailGuess) leadUpdate['$pull'] = { tags: EMAIL_GUESSED_TAG };
         // The full street address is persisted on the Audit (extractedContacts), not as the lead's city
 
         // Only a lead this run is still auditing becomes AUDITED (GENERATING → AUDITED is a failed

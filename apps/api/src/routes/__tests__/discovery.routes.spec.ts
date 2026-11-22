@@ -172,7 +172,8 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ success: true, message: 'Imported 1 of 2 selected businesses', data });
-      expect(DiscoveryService.importCandidates).toHaveBeenCalledWith('disc-1', { externalIds: ['node/1', 'node/2'] });
+      // The imported leads belong to the caller's studio (REV-208)
+      expect(DiscoveryService.importCandidates).toHaveBeenCalledWith('disc-1', { externalIds: ['node/1', 'node/2'] }, '5eed00000000000000000002');
     });
 
     it.each([

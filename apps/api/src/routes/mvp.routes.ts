@@ -37,23 +37,20 @@ router.post(
   validateBody(GenerateMvpSchema),
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { auditId, forceRegenerate, provider, model, operatorLocale } = req.body;
+      const { auditId, leadId, forceRegenerate, provider, model, operatorLocale } = req.body;
 
       if (provider && findLlmProvider(provider)?.devOnly && env.NODE_ENV === 'production') {
         throw new AppError(400, 'LLM_PROVIDER_NOT_ALLOWED', `Provider "${provider}" is not available in production`);
       }
 
       // A lead can have several audits (one per retry); never build from a failed or stale one (REV-55)
-      const audit = await findGenerationAudit(auditId);
+      // The lead comes with the audit (REV-208): a lead that took another studio's audit is not the audit's lead
+      const found = await findGenerationAudit(auditId, leadId);
 
-      if (!audit) {
+      if (!found) {
         throw new AppError(404, 'NO_COMPLETED_AUDIT', 'No completed audit found for this lead');
       }
-
-      const lead = await Lead.findById(audit.leadId).exec();
-      if (!lead) {
-        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
-      }
+      const { audit, lead } = found;
 
       // REV-31: generate once from AUDITED; regenerating needs forceRegenerate and is never
       // allowed once outreach is scheduled or dispatched (Human-In-The-Loop)
@@ -104,7 +101,8 @@ router.post(
   },
 );
 
-// GET /mvp/:id (lookup by ID, leadId, or slug)
+// GET /mvp/:id (lookup by ID, leadId, or slug). Never by audit id: several studios' MVPs can be built from one shared
+// audit (REV-208)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const id = req.params['id'] || '';
@@ -112,7 +110,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction): Prom
 
     if (id && mongoose.Types.ObjectId.isValid(id)) {
       project = await MvpProject.findOne({
-        $or: [{ _id: id }, { leadId: id }, { auditId: id }],
+        $or: [{ _id: id }, { leadId: id }],
       }).exec();
     } else if (id) {
       project = await MvpProject.findOne({ previewSlug: id }).exec();

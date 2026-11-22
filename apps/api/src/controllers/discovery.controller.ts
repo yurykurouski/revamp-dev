@@ -44,6 +44,8 @@ export const importDiscoveryCandidates = async (req: Request, res: Response, nex
     const result = await DiscoveryService.importCandidates(
       req.params['jobId'] as string,
       req.body as ImportDiscoveryDto,
+      // The imported leads belong to the caller's studio (REV-208)
+      req.auth!.organizationId,
     );
     res.status(200).json({
       success: true,

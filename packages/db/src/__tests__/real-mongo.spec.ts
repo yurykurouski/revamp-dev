@@ -1,6 +1,5 @@
 import mongoose, { Types } from 'mongoose';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createLeadWithAudit } from '../create-lead-with-audit.js';
 import { checkLeadChildIndexes, migrateLeadChildren } from '../lead-children-migration.js';
 import { retryOnDuplicateKey } from '../retry-duplicate-key.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
@@ -23,6 +22,10 @@ import {
   removeMember,
 } from '../organization-members.js';
 import { Invitation } from '../models/Invitation.model.js';
+import { Business } from '../models/Business.model.js';
+import { LeadAlreadyExistsError, addLeadToBusiness } from '../add-lead-to-business.js';
+import { auditBelongsToLead, findAuditForLead } from '../audit-for-lead.js';
+import { MIGRATE_BUSINESSES_COMMAND, checkBusinessLinks, migrateBusinesses } from '../business-migration.js';
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
@@ -303,7 +306,8 @@ describe('real MongoDB (mongodb-memory-server)', () => {
     });
   });
 
-  describe('createLeadWithAudit (REV-202)', () => {
+  // REV-202: adding a lead is atomic (now `addLeadToBusiness`, REV-208)
+  describe('addLeadToBusiness is atomic (REV-202)', () => {
     const leadFields = {
       businessName: 'Demo Dental',
       originalUrl: 'https://demo-dental.example.com',
@@ -311,10 +315,12 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       niche: 'other',
       status: 'QUEUED',
     };
+    const add = (lead: Record<string, unknown>) => addLeadToBusiness({ lead, deriveFromAudit: () => ({ set: {}, clearsEmailGuess: false }) });
+    const counts = () => Promise.all([Business.countDocuments(), Lead.countDocuments(), Audit.countDocuments()]);
 
     beforeAll(async () => {
       await mongoose.connect(mongo.uri);
-      await Promise.all([Lead.init(), Audit.init()]);
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
     });
 
     afterAll(async () => {
@@ -323,35 +329,32 @@ describe('real MongoDB (mongodb-memory-server)', () => {
 
     beforeEach(async () => {
       vi.restoreAllMocks();
-      await Promise.all([Lead.deleteMany({}), Audit.deleteMany({})]);
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
     });
 
     it('creates the lead and its queued audit together', async () => {
-      const { lead, audit } = await createLeadWithAudit(leadFields);
+      const { lead, audit } = await add(leadFields);
       expect(lead.status).toBe('QUEUED');
-      expect(audit.status).toBe('QUEUED');
-      expect(String(audit.leadId)).toBe(String(lead._id));
-      expect(await Lead.countDocuments()).toBe(1);
-      expect(await Audit.countDocuments({ leadId: lead._id })).toBe(1);
+      expect(audit!.status).toBe('QUEUED');
+      expect(String(audit!.leadId)).toBe(String(lead._id));
+      expect(await counts()).toEqual([1, 1, 1]);
     });
 
-    it('leaves no lead when the audit insert fails', async () => {
+    it('leaves no lead and no business when the audit insert fails', async () => {
       vi.spyOn(Audit, 'create').mockRejectedValueOnce(new Error('boom'));
-      await expect(createLeadWithAudit(leadFields)).rejects.toThrow('boom');
-      expect(await Lead.countDocuments()).toBe(0);
-      expect(await Audit.countDocuments()).toBe(0);
+      await expect(add(leadFields)).rejects.toThrow('boom');
+      expect(await counts()).toEqual([0, 0, 0]);
     });
 
     it('leaves nothing when the lead itself is invalid', async () => {
-      await expect(createLeadWithAudit({ ...leadFields, businessName: undefined })).rejects.toThrow(/Business name/);
-      expect(await Lead.countDocuments()).toBe(0);
-      expect(await Audit.countDocuments()).toBe(0);
+      await expect(add({ ...leadFields, businessName: undefined })).rejects.toThrow(/Business name/);
+      expect(await counts()).toEqual([0, 0, 0]);
     });
   });
 
   describe('seedDemoDataset (REV-199)', () => {
     const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
-    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership] as const;
+    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership, Business] as const;
     const foreignLead = {
       businessName: 'Real Customer',
       originalUrl: 'https://real.example.org',
@@ -383,6 +386,9 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
       expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 3, 3]);
       expect(report.users).toEqual({ inserted: 3, kept: 0 });
+      // REV-208: every demo lead has its business, and the unique {tenant, business} index accepted all of them
+      expect(await Business.countDocuments()).toBe(ds.leads.length);
+      expect(await Lead.countDocuments({ tenantId: { $exists: true }, businessId: { $exists: true } })).toBe(ds.leads.length);
     });
 
     it('leaves a real user and organization alone, also on reset (REV-206)', async () => {
@@ -847,6 +853,487 @@ describe('real MongoDB (mongodb-memory-server)', () => {
         expect(JSON.stringify(list)).not.toContain('passwordHash');
         expect(JSON.stringify(list)).not.toContain(pending.token);
         expect(expired.invitation).toBeDefined();
+      });
+    });
+  });
+  // REV-208: the shared business and the tenant-owned lead
+  describe('business and lead indexes (REV-208)', () => {
+    const lead = (n: number, extra: Record<string, unknown> = {}) => ({
+      businessName: `Clinic ${n}`,
+      originalUrl: `https://clinic${n}.example`,
+      domain: `clinic${n}.example`,
+      niche: 'dental',
+      status: 'QUEUED',
+      ...extra,
+    });
+    const code = (promise: Promise<unknown>) => promise.then(() => undefined, (e: { code?: unknown }) => e.code);
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-business-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    it('keeps one business per domain', async () => {
+      await Business.create({ domain: 'clinic1.example', originalUrl: 'https://clinic1.example', businessName: 'Clinic', niche: 'dental' });
+      expect(await code(Business.create({ domain: 'clinic1.example', originalUrl: 'https://www.clinic1.example', businessName: 'Again', niche: 'dental' }))).toBe(11000);
+      expect(await Business.countDocuments()).toBe(1);
+    });
+
+    it('lowercases the domain and requires it', async () => {
+      const business = await Business.create({ domain: 'Clinic2.Example', originalUrl: 'https://clinic2.example', businessName: 'C', niche: 'dental' });
+      expect(business.domain).toBe('clinic2.example');
+      await expect(Business.create({ originalUrl: 'https://x.example', businessName: 'C', niche: 'dental' })).rejects.toThrow(/domain/i);
+    });
+
+    it('lets one studio have one lead per business, and two studios share a business', async () => {
+      const business = await Business.create({ domain: 'clinic3.example', originalUrl: 'https://clinic3.example', businessName: 'C', niche: 'dental' });
+      const studioA = new Types.ObjectId();
+      const studioB = new Types.ObjectId();
+      await Lead.create(lead(3, { tenantId: studioA, businessId: business._id }));
+      expect(await code(Lead.create(lead(3, { tenantId: studioA, businessId: business._id })))).toBe(11000);
+      await Lead.create(lead(3, { tenantId: studioB, businessId: business._id }));
+      const other = await Business.create({ domain: 'clinic4.example', originalUrl: 'https://clinic4.example', businessName: 'D', niche: 'dental' });
+      await Lead.create(lead(4, { tenantId: studioA, businessId: other._id }));
+      expect(await Lead.countDocuments()).toBe(3);
+    });
+
+    it('does not restrict leads made before the split: any number without a tenant or a business', async () => {
+      const studio = new Types.ObjectId();
+      const business = await Business.create({ domain: 'clinic5.example', originalUrl: 'https://clinic5.example', businessName: 'C', niche: 'dental' });
+      await Lead.create([lead(5), lead(5), lead(5, { businessId: business._id }), lead(5, { businessId: business._id }), lead(5, { tenantId: studio }), lead(5, { tenantId: studio })]);
+      expect(await Lead.countDocuments()).toBe(6);
+    });
+
+    it('stores the business of an audit', async () => {
+      const business = await Business.create({ domain: 'clinic6.example', originalUrl: 'https://clinic6.example', businessName: 'C', niche: 'dental' });
+      const audit = await Audit.create({ leadId: new Types.ObjectId(), businessId: business._id, status: 'COMPLETED' });
+      expect(String((await Audit.findById(audit._id).lean())?.businessId)).toBe(String(business._id));
+    });
+  });
+  describe('addLeadToBusiness (REV-208)', () => {
+    const studioA = new Types.ObjectId();
+    const studioB = new Types.ObjectId();
+    const leadOf = (domain: string, extra: Record<string, unknown> = {}) => ({
+      businessName: 'Harbor Dental',
+      originalUrl: `https://${domain}`,
+      domain,
+      niche: 'dental',
+      city: 'Gdansk',
+      status: 'QUEUED',
+      ...extra,
+    });
+    /** What the API passes in: the lead fields an audit decides */
+    const derive = (audit: { scores?: { total?: number }; siteComplexity?: unknown }) => ({
+      set: { totalScore: audit.scores?.total, onePageBrochure: false },
+      clearsEmailGuess: false,
+    });
+    const add = (domain: string, tenantId: Types.ObjectId | undefined, extra: Record<string, unknown> = {}) =>
+      addLeadToBusiness({ tenantId, lead: leadOf(domain, extra), deriveFromAudit: derive as never });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-addlead-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    it('the first add creates the business, the lead and its audit together, and the lead waits for the audit', async () => {
+      const result = await add('harbor.example', studioA);
+      expect(result.reused).toBe(false);
+      expect(result.lead.status).toBe('QUEUED');
+      expect(String(result.lead.tenantId)).toBe(String(studioA));
+      expect(String(result.lead.businessId)).toBe(String(result.business._id));
+      expect(result.audit).toMatchObject({ status: 'QUEUED' });
+      expect(String(result.audit!.leadId)).toBe(String(result.lead._id));
+      expect(String(result.audit!.businessId)).toBe(String(result.business._id));
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments(), Audit.countDocuments()])).toEqual([1, 1, 1]);
+    });
+
+    it('leaves nothing behind when the audit insert fails', async () => {
+      vi.spyOn(Audit, 'create').mockRejectedValueOnce(new Error('audit insert failed'));
+      await expect(add('harbor.example', studioA)).rejects.toThrow('audit insert failed');
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments(), Audit.countDocuments()])).toEqual([0, 0, 0]);
+      vi.restoreAllMocks();
+    });
+
+    it('a second studio adding a site with a completed audit gets an AUDITED lead from it, and no new audit', async () => {
+      const first = await add('harbor.example', studioA);
+      await Audit.updateOne({ _id: first.audit!._id }, { status: 'COMPLETED', 'scores.total': 71 });
+      const second = await add('harbor.example', studioB);
+      expect(second.reused).toBe(true);
+      expect(second.audit).toBeUndefined();
+      expect(second.lead.status).toBe('AUDITED');
+      expect(second.lead.totalScore).toBe(71);
+      expect(String(second.business._id)).toBe(String(first.business._id));
+      expect(String(second.lead.tenantId)).toBe(String(studioB));
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments(), Audit.countDocuments()])).toEqual([1, 2, 1]);
+    });
+
+    it.each(['QUEUED', 'PROCESSING', 'FAILED'])('a business whose audit is %s gives the second studio a normal QUEUED lead with its own audit', async (status) => {
+      const first = await add('harbor.example', studioA);
+      await Audit.updateOne({ _id: first.audit!._id }, { status });
+      const second = await add('harbor.example', studioB);
+      expect(second.reused).toBe(false);
+      expect(second.lead.status).toBe('QUEUED');
+      expect(String(second.audit!.leadId)).toBe(String(second.lead._id));
+      expect(await Audit.countDocuments()).toBe(2);
+    });
+
+    it('takes the newest completed audit of the business', async () => {
+      const first = await add('harbor.example', studioA);
+      // `createdAt` is immutable through Mongoose, so the dates are written straight to the collection
+      await Audit.collection.updateOne({ _id: first.audit!._id }, { $set: { status: 'COMPLETED', 'scores.total': 40, createdAt: new Date('2026-01-01') } });
+      const newer = await Audit.create({ leadId: first.lead._id, businessId: first.business._id, status: 'COMPLETED', scores: { total: 88 } });
+      await Audit.collection.updateOne({ _id: newer._id }, { $set: { createdAt: new Date('2026-06-01') } });
+      expect((await add('harbor.example', studioB)).lead.totalScore).toBe(88);
+    });
+
+    it('refuses a second lead of one studio on one site with LEAD_ALREADY_EXISTS and the id of the first', async () => {
+      const first = await add('harbor.example', studioA);
+      const error = await add('harbor.example', studioA).catch((e) => e);
+      expect(error).toBeInstanceOf(LeadAlreadyExistsError);
+      expect(error).toMatchObject({ code: 'LEAD_ALREADY_EXISTS', leadId: String(first.lead._id) });
+      expect(await Promise.all([Lead.countDocuments(), Audit.countDocuments()])).toEqual([1, 1]);
+    });
+
+    it('looks the business up by the domain in any letter case (the caller normalizes www and ports with `normalizeDomain`)', async () => {
+      const first = await add('harbor.example', studioA);
+      const again = await add('HARBOR.example', studioB);
+      expect(String(again.business._id)).toBe(String(first.business._id));
+    });
+
+    it('lets a lead without a tenant (a script, a legacy path) be added; the same site twice is not restricted', async () => {
+      await add('harbor.example', undefined);
+      await add('harbor.example', undefined);
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments()])).toEqual([1, 2]);
+    });
+
+    it('keeps one business and one lead per studio when two studios race 20 adds of a new site', async () => {
+      const studios = Array.from({ length: 4 }, () => new Types.ObjectId());
+      const results = await Promise.allSettled(Array.from({ length: 20 }, (_, i) => add('race.example', studios[i % 4])));
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(4);
+      for (const r of results.filter((r) => r.status === 'rejected')) {
+        expect((r as PromiseRejectedResult).reason).toBeInstanceOf(LeadAlreadyExistsError);
+      }
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments()])).toEqual([1, 4]);
+    });
+
+    it('applies the audit-derived fields and drops the guessed-email tag when told to', async () => {
+      const first = await add('harbor.example', studioA);
+      await Audit.updateOne({ _id: first.audit!._id }, { status: 'COMPLETED', 'scores.total': 55 });
+      const result = await addLeadToBusiness({
+        tenantId: studioB,
+        lead: leadOf('harbor.example', { contactEmail: 'info@harbor.example', tags: ['email-guessed', 'manual'] }),
+        deriveFromAudit: () => ({ set: { contactEmail: 'hello@harbor.example' }, clearsEmailGuess: true }),
+      });
+      expect(result.lead.contactEmail).toBe('hello@harbor.example');
+      expect(result.lead.tags).toEqual(['manual']);
+    });
+  });
+  describe('findAuditForLead (REV-208)', () => {
+    const studioA = new Types.ObjectId();
+    const studioB = new Types.ObjectId();
+    const domain = 'lookup.example';
+    const derive = () => ({ set: {}, clearsEmailGuess: false });
+    const add = (tenantId: Types.ObjectId) =>
+      addLeadToBusiness({ tenantId, lead: { businessName: 'Lookup', originalUrl: `https://${domain}`, domain, niche: 'dental', status: 'QUEUED' }, deriveFromAudit: derive as never });
+    const finish = (id: unknown, total: number) => Audit.updateOne({ _id: id }, { status: 'COMPLETED', 'scores.total': total });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-lookup-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    it("gives a lead its own newest audit, whatever its status, before the business's", async () => {
+      const a = await add(studioA);
+      expect(String((await findAuditForLead(a.lead))!._id)).toBe(String(a.audit!._id));
+      await finish(a.audit!._id, 70);
+      const retry = await Audit.create({ leadId: a.lead._id, businessId: a.business._id, status: 'FAILED' });
+      expect(String((await findAuditForLead(a.lead))!._id)).toBe(String(retry._id));
+    });
+
+    it('gives a lead that reused an audit the completed audit of its business', async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      expect(b.audit).toBeUndefined();
+      expect(String((await findAuditForLead(b.lead))!._id)).toBe(String(a.audit!._id));
+    });
+
+    it("does not let studio A's retry or failure change what studio B sees", async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      await Audit.create({ leadId: a.lead._id, businessId: a.business._id, status: 'FAILED' });
+      await Audit.create({ leadId: a.lead._id, businessId: a.business._id, status: 'PROCESSING' });
+      expect(String((await findAuditForLead(b.lead))!._id)).toBe(String(a.audit!._id));
+      expect((await findAuditForLead(b.lead, { completedOnly: true }))!.status).toBe('COMPLETED');
+    });
+
+    it('with completedOnly skips the lead own unfinished audits, then falls back to the business', async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      await Audit.create({ leadId: b.lead._id, businessId: b.business._id, status: 'QUEUED' });
+      expect(String((await findAuditForLead(b.lead, { completedOnly: true }))!._id)).toBe(String(a.audit!._id));
+      expect((await findAuditForLead(b.lead))!.status).toBe('QUEUED');
+    });
+
+    it('finds nothing for a lead with no audit and no completed one in its business', async () => {
+      const a = await add(studioA);
+      await Audit.deleteMany({});
+      expect(await findAuditForLead(a.lead)).toBeNull();
+    });
+
+    it('treats a lead made before the split (no business) as before: its own audits only', async () => {
+      const legacy = await Lead.create({ businessName: 'Old', originalUrl: 'https://old.example', domain: 'old.example', niche: 'dental' });
+      expect(await findAuditForLead(legacy)).toBeNull();
+      const own = await Audit.create({ leadId: legacy._id, status: 'COMPLETED' });
+      expect(String((await findAuditForLead(legacy, { completedOnly: true }))!._id)).toBe(String(own._id));
+      const other = await Audit.create({ leadId: new Types.ObjectId(), businessId: new Types.ObjectId(), status: 'COMPLETED' });
+      expect(String((await findAuditForLead(legacy, { completedOnly: true }))!._id)).not.toBe(String(other._id));
+    });
+
+    it('auditBelongsToLead: own audit and an audit of its business yes, another business no', async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      expect(await auditBelongsToLead(a.audit!._id, a.lead)).toBe(true);
+      expect(await auditBelongsToLead(a.audit!._id, b.lead)).toBe(true);
+      const stranger = await Audit.create({ leadId: new Types.ObjectId(), businessId: new Types.ObjectId(), status: 'COMPLETED' });
+      expect(await auditBelongsToLead(stranger._id, b.lead)).toBe(false);
+      expect(await auditBelongsToLead(new Types.ObjectId(), b.lead)).toBe(false);
+    });
+  });
+  describe('migrateBusinesses (REV-208)', () => {
+    const legacyLead = (domain: string, createdAt: string, extra: Record<string, unknown> = {}) => ({
+      businessName: `Clinic ${domain}`,
+      originalUrl: `https://${domain}`,
+      domain,
+      niche: 'dental',
+      city: 'Gdansk',
+      status: 'AUDITED',
+      createdAt: new Date(createdAt),
+      ...extra,
+    });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-business-migration-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    const seedLegacy = async () => {
+      // Written to the collection directly: leads made before the split have neither field
+      const docs = [
+        legacyLead('a.example', '2026-01-01'),
+        legacyLead('a.example', '2026-02-01', { businessName: 'Second copy' }),
+        legacyLead('b.example', '2026-03-01'),
+      ];
+      const inserted = await Lead.collection.insertMany(docs.map((d) => ({ ...d, updatedAt: d.createdAt })));
+      const ids = Object.values(inserted.insertedIds);
+      await Audit.collection.insertMany([
+        { leadId: ids[0], status: 'COMPLETED', createdAt: new Date(), updatedAt: new Date() },
+        { leadId: ids[0], status: 'FAILED', createdAt: new Date(), updatedAt: new Date() },
+        { leadId: ids[2], status: 'COMPLETED', createdAt: new Date(), updatedAt: new Date() },
+      ]);
+      return ids;
+    };
+
+    it('a dry run reports what it would do and writes nothing', async () => {
+      await seedLegacy();
+      const report = await migrateBusinesses({ apply: false });
+      expect(report).toMatchObject({ applied: false, leadsToLink: 3, businessesToCreate: 2, auditsToLink: 3 });
+      expect(await Promise.all([Business.countDocuments(), Lead.countDocuments({ businessId: { $exists: true } }), Audit.countDocuments({ businessId: { $exists: true } })])).toEqual([0, 0, 0]);
+    });
+
+    it('applying gives leads that share a domain one business, from the oldest lead, and links the audits', async () => {
+      const ids = await seedLegacy();
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ applied: true, leadsToLink: 3, businessesToCreate: 2, auditsToLink: 3 });
+      const businesses = await Business.find().sort({ domain: 1 }).lean();
+      expect(businesses.map((b) => b.domain)).toEqual(['a.example', 'b.example']);
+      expect(businesses[0]).toMatchObject({ businessName: 'Clinic a.example', originalUrl: 'https://a.example', niche: 'dental', city: 'Gdansk' });
+      const leads = await Lead.find({ _id: { $in: ids } }).lean();
+      const businessOf = (id: unknown) => String(leads.find((l) => String(l._id) === String(id))!.businessId);
+      expect(businessOf(ids[0])).toBe(String(businesses[0]!._id));
+      expect(businessOf(ids[1])).toBe(String(businesses[0]!._id));
+      expect(businessOf(ids[2])).toBe(String(businesses[1]!._id));
+      expect(await Audit.countDocuments({ businessId: { $exists: false } })).toBe(0);
+      expect(await Audit.countDocuments({ leadId: ids[0], businessId: businesses[0]!._id })).toBe(2);
+      // No tenant is assigned here: that is REV-210
+      expect(await Lead.countDocuments({ tenantId: { $exists: true } })).toBe(0);
+    });
+
+    it('is idempotent: a second run changes nothing', async () => {
+      await seedLegacy();
+      await migrateBusinesses({ apply: true });
+      const before = await Business.find().lean();
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ leadsToLink: 0, businessesToCreate: 0, auditsToLink: 0 });
+      expect(await Business.find().lean()).toEqual(before);
+    });
+
+    it('reuses a business that already exists for the domain and leaves already linked leads and audits alone', async () => {
+      const existing = await Business.create({ domain: 'a.example', originalUrl: 'https://a.example', businessName: 'Kept', niche: 'dental' });
+      const linked = await Lead.create({ ...legacyLead('a.example', '2026-01-01'), businessId: existing._id });
+      await Audit.create({ leadId: linked._id, businessId: existing._id, status: 'COMPLETED' });
+      await Lead.collection.insertOne({ ...legacyLead('a.example', '2026-04-01'), updatedAt: new Date() });
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ leadsToLink: 1, businessesToCreate: 0, auditsToLink: 0 });
+      expect(await Business.countDocuments()).toBe(1);
+      expect((await Business.findOne().lean())!.businessName).toBe('Kept');
+    });
+
+    it('checkBusinessLinks warns while a lead has no business, with the command to run, and is quiet after', async () => {
+      await seedLegacy();
+      const warnings = await checkBusinessLinks(mongoose.connection);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('3 lead(s)');
+      expect(warnings[0]).toContain(MIGRATE_BUSINESSES_COMMAND);
+      await migrateBusinesses({ apply: true });
+      expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
+    });
+
+    it('links an audit that has no business although its lead is linked (an old API during a rolling deploy)', async () => {
+      const business = await Business.create({ domain: 'a.example', originalUrl: 'https://a.example', businessName: 'A', niche: 'dental' });
+      const lead = await Lead.create({ ...legacyLead('a.example', '2026-01-01'), businessId: business._id });
+      await Audit.collection.insertOne({ leadId: lead._id, status: 'COMPLETED', createdAt: new Date(), updatedAt: new Date() });
+      const warnings = await checkBusinessLinks(mongoose.connection);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('1 audit(s)');
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ leadsToLink: 0, businessesToCreate: 0, auditsToLink: 1 });
+      expect(String((await Audit.findOne({ leadId: lead._id }).lean())!.businessId)).toBe(String(business._id));
+      expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
+    });
+
+    it('does not fail when the API creates the business of a domain while the backfill does', async () => {
+      await seedLegacy();
+      const original = Business.findOneAndUpdate.bind(Business);
+      let raced = false;
+      vi.spyOn(Business, 'findOneAndUpdate').mockImplementation(((...args: Parameters<typeof original>) => {
+        if (!raced) {
+          raced = true;
+          // Another process wins the unique domain between the lookup and the upsert
+          return { lean: () => Promise.reject(Object.assign(new Error('E11000 duplicate key'), { code: 11000 })) } as never;
+        }
+        return original(...args);
+      }) as never);
+      const report = await migrateBusinesses({ apply: true });
+      vi.restoreAllMocks();
+      expect(report.leadsToLink).toBe(3);
+      expect(await Lead.countDocuments({ businessId: { $exists: false } })).toBe(0);
+    });
+
+    it('checkBusinessLinks is quiet on an empty database', async () => {
+      expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
+    });
+  });
+  describe('review fixes (REV-208)', () => {
+    const studio = new Types.ObjectId();
+    const derive = () => ({ set: {}, clearsEmailGuess: false });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-review-fixes-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init(), Organization.init(), User.init(), Membership.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({}), Organization.deleteMany({}), User.deleteMany({}), Membership.deleteMany({})]);
+    });
+
+    it('audits are indexed by business, status and date: the lookups of a shared audit do not scan every completed audit', async () => {
+      const indexes = await Audit.collection.indexes();
+      expect(indexes.some((i) => JSON.stringify(i.key) === JSON.stringify({ businessId: 1, status: 1, createdAt: -1 }))).toBe(true);
+    });
+
+    it('a studio with other leads still gets LEAD_ALREADY_EXISTS (not a raw duplicate-key error) when its adds of one new site race', async () => {
+      // The studio already has leads of other sites: a fallback that picks "any lead of the studio" would pick one of those
+      for (const domain of ['one.example', 'two.example', 'three.example']) {
+        await addLeadToBusiness({ tenantId: studio, deriveFromAudit: derive as never, lead: { businessName: domain, originalUrl: `https://${domain}`, domain, niche: 'dental', status: 'QUEUED' } });
+      }
+      const results = await Promise.allSettled(
+        Array.from({ length: 12 }, () =>
+          addLeadToBusiness({ tenantId: studio, deriveFromAudit: derive as never, lead: { businessName: 'New', originalUrl: 'https://new.example', domain: 'new.example', niche: 'dental', status: 'QUEUED' } }),
+        ),
+      );
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      for (const r of results.filter((r) => r.status === 'rejected')) {
+        expect((r as PromiseRejectedResult).reason).toBeInstanceOf(LeadAlreadyExistsError);
+      }
+      expect(await Lead.countDocuments({ tenantId: studio, domain: 'new.example' })).toBe(1);
+    });
+
+    describe('seeding a database that was seeded before the split and then backfilled', () => {
+      const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
+
+      /** The state the README describes: seeded long ago, no businesses, then `migrate:businesses --apply` ran */
+      const preSplitThenBackfilled = async () => {
+        await seedDemoDataset(ds, { reset: false });
+        await Business.deleteMany({});
+        await Lead.updateMany({}, { $unset: { businessId: 1, tenantId: 1 } });
+        await Audit.updateMany({}, { $unset: { businessId: 1 } });
+        await migrateBusinesses({ apply: true });
+        expect(await Business.countDocuments({ _id: { $in: ds.businesses.map((b) => b._id) } })).toBe(0);
+      };
+
+      it('a plain run keeps the backfilled businesses, and a demo lead it has to insert points at them', async () => {
+        await preSplitThenBackfilled();
+        const gone = ds.leads[0]!;
+        await Lead.deleteOne({ _id: gone._id });
+        await Audit.deleteMany({ leadId: gone._id });
+        const report = await seedDemoDataset(ds, { reset: false });
+        expect(report.businesses).toEqual({ inserted: 0, kept: ds.businesses.length });
+        expect(await Business.countDocuments()).toBe(ds.leads.length);
+        const reinserted = await Lead.findById(gone._id).lean();
+        const business = await Business.findOne({ domain: gone.domain }).lean();
+        expect(String(reinserted!.businessId)).toBe(String(business!._id));
+        expect(String((await Audit.findOne({ leadId: gone._id }).lean())!.businessId)).toBe(String(business!._id));
+      });
+
+      it('a reset replaces the backfilled businesses of the demo domains with the seed ones, leaving none behind', async () => {
+        await preSplitThenBackfilled();
+        await seedDemoDataset(ds, { reset: true });
+        const seedIds = new Set(ds.businesses.map((b) => String(b._id)));
+        const businesses = await Business.find().lean();
+        expect(businesses).toHaveLength(ds.leads.length);
+        expect(businesses.every((b) => seedIds.has(String(b._id)))).toBe(true);
+        const leads = await Lead.find().lean();
+        expect(leads.every((l) => seedIds.has(String(l.businessId)))).toBe(true);
+      });
+
+      it('a reset leaves the business and the lead of a real studio alone', async () => {
+        await preSplitThenBackfilled();
+        const real = await Lead.create({ businessName: 'Real', originalUrl: 'https://real.example', domain: 'real.example', niche: 'dental' });
+        const realBusiness = await Business.create({ domain: 'real.example', originalUrl: 'https://real.example', businessName: 'Real', niche: 'dental' });
+        await Lead.updateOne({ _id: real._id }, { businessId: realBusiness._id });
+        await seedDemoDataset(ds, { reset: true });
+        expect(await Business.findById(realBusiness._id).lean()).not.toBeNull();
+        expect(await Lead.findById(real._id).lean()).not.toBeNull();
       });
     });
   });
