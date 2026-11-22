@@ -465,6 +465,7 @@ export function buildDemoDataset(
 
     ds.mvpProjects.push({
       _id: mvpId,
+      tenantId: organizationId,
       leadId,
       auditId,
       previewSlug: slug,
@@ -490,6 +491,7 @@ export function buildDemoDataset(
     const trackingToken = `demo-token-${spec.key}`;
     ds.emailCampaigns.push({
       _id: campaignId,
+      tenantId: organizationId,
       leadId,
       auditId,
       mvpProjectId: mvpId,
@@ -520,6 +522,7 @@ export function buildDemoDataset(
       const timestamp = new Date((sent as Date).getTime() + HOUR + k * 60_000);
       ds.analyticsEvents.push({
         _id: demoId('event', ++eventN),
+        tenantId: organizationId,
         leadId,
         campaignId,
         ...(eventType === 'open' || eventType === 'unsubscribe' ? {} : { mvpProjectId: mvpId }),
