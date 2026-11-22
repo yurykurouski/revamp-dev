@@ -1,7 +1,7 @@
 import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-import { checkBusinessLinks, checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
+import { checkBusinessLinks, checkTenantLinks, checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
 import { closeQueues, redisConnection } from './queues/index.js';
 import { createShutdown } from './shutdown.js';
 
@@ -18,6 +18,10 @@ async function startServer(): Promise<void> {
     );
     // REV-208: leads made before the shared business get one with the backfill; say so until it ran
     void checkBusinessLinks(mongoose.connection).then((warnings) =>
+      warnings.forEach((warning) => console.warn(`[API] ${warning}`)),
+    );
+    // REV-209: records made before the studios have none; no studio sees them until the migration ran
+    void checkTenantLinks(mongoose.connection).then((warnings) =>
       warnings.forEach((warning) => console.warn(`[API] ${warning}`)),
     );
 
