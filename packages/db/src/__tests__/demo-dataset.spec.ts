@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { DesignCritiqueOutputSchema, MvpPageVersionSchema, MvpStandardsSchema, MvpThemeSchema } from '@revamp/validation';
 import { DEMO_OPERATOR_EMAIL, DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, DEMO_VIEWER_EMAIL, buildDemoDataset, demoDocumentIds } from '../seed/demo-dataset.js';
 import { verifyPassword } from '../password.js';
+import { Business } from '../models/Business.model.js';
 import { Membership } from '../models/Membership.model.js';
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
@@ -26,13 +27,13 @@ describe('buildDemoDataset (REV-199)', () => {
   });
 
   it('has documents in every collection', () => {
-    for (const docs of [ds.leads, ds.audits, ds.mvpProjects, ds.emailCampaigns, ds.analyticsEvents, ds.pages, ds.organizations, ds.users, ds.memberships]) {
+    for (const docs of [ds.leads, ds.audits, ds.mvpProjects, ds.emailCampaigns, ds.analyticsEvents, ds.pages, ds.organizations, ds.users, ds.memberships, ds.businesses]) {
       expect(docs.length).toBeGreaterThan(0);
     }
   });
 
   it('every document passes its Mongoose schema', () => {
-    const pairs: [typeof Lead | typeof Audit | typeof MvpProject | typeof EmailCampaign | typeof AnalyticsEvent | typeof Organization | typeof User | typeof Membership, object[]][] = [
+    const pairs: [typeof Lead | typeof Audit | typeof MvpProject | typeof EmailCampaign | typeof AnalyticsEvent | typeof Organization | typeof User | typeof Membership | typeof Business, object[]][] = [
       [Lead, ds.leads],
       [Audit, ds.audits],
       [MvpProject, ds.mvpProjects],
@@ -41,6 +42,7 @@ describe('buildDemoDataset (REV-199)', () => {
       [Organization, ds.organizations],
       [User, ds.users],
       [Membership, ds.memberships],
+      [Business, ds.businesses],
     ];
     for (const [Model, docs] of pairs) {
       for (const doc of docs) {
@@ -142,6 +144,23 @@ describe('buildDemoDataset (REV-199)', () => {
     }
     // One studio with exactly one owner, so the last-owner rule can be shown
     expect(ds.memberships.filter((m) => m.role === 'owner')).toHaveLength(1);
+  });
+
+  it('has a shared business per demo lead, and every demo lead and audit points at it (REV-208)', () => {
+    expect(ds.businesses).toHaveLength(ds.leads.length);
+    const byId = new Map(ds.businesses.map((b) => [String(b._id), b]));
+    expect(new Set(ds.businesses.map((b) => b.domain)).size).toBe(ds.businesses.length);
+    const studio = String(ds.organizations[0]!._id);
+    for (const lead of ds.leads) {
+      const business = byId.get(String(lead['businessId']));
+      expect(business, lead.businessName).toBeDefined();
+      expect(business!.domain).toBe(lead.domain);
+      expect(business!.businessName).toBe(lead.businessName);
+      // The demo leads belong to the demo studio
+      expect(String(lead['tenantId'])).toBe(studio);
+    }
+    const leadBusiness = new Map(ds.leads.map((l) => [String(l._id), String(l['businessId'])]));
+    for (const audit of ds.audits) expect(String(audit['businessId'])).toBe(leadBusiness.get(String(audit.leadId)));
   });
 
   it('is deterministic for a given time and has unique ids', () => {

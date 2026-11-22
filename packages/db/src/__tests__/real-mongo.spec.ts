@@ -354,7 +354,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
 
   describe('seedDemoDataset (REV-199)', () => {
     const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
-    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership] as const;
+    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership, Business] as const;
     const foreignLead = {
       businessName: 'Real Customer',
       originalUrl: 'https://real.example.org',
@@ -386,6 +386,9 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
       expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 3, 3]);
       expect(report.users).toEqual({ inserted: 3, kept: 0 });
+      // REV-208: every demo lead has its business, and the unique {tenant, business} index accepted all of them
+      expect(await Business.countDocuments()).toBe(ds.leads.length);
+      expect(await Lead.countDocuments({ tenantId: { $exists: true }, businessId: { $exists: true } })).toBe(ds.leads.length);
     });
 
     it('leaves a real user and organization alone, also on reset (REV-206)', async () => {

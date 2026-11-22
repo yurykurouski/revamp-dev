@@ -1,5 +1,6 @@
 import mongoose, { Model } from 'mongoose';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
+import { Business } from '../models/Business.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { Lead } from '../models/Lead.model.js';
@@ -57,6 +58,7 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
     ['emailCampaigns', EmailCampaign as unknown as SeedModel, ds.emailCampaigns],
     ['analyticsEvents', AnalyticsEvent as unknown as SeedModel, ds.analyticsEvents],
     ['organizations', Organization as unknown as SeedModel, ds.organizations],
+    ['businesses', Business as unknown as SeedModel, ds.businesses],
     ['users', User as unknown as SeedModel, ds.users],
     ['memberships', Membership as unknown as SeedModel, ds.memberships],
   ];

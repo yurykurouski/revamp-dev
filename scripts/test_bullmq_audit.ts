@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { redisConnection } from '../apps/workers/src/queues/connection.js';
 import { QUEUE_NAMES } from '../apps/workers/src/queues/queue.constants.js';
 import { createAuditWorker } from '../apps/workers/src/workers/audit.worker.js';
+import { addLeadToBusiness } from '@revamp/db';
 import { Lead } from '../apps/workers/src/models/Lead.model.js';
 import { Audit } from '../apps/workers/src/models/Audit.model.js';
 import { env } from '../apps/workers/src/config/env.js';
@@ -26,18 +27,20 @@ async function testBullMQWorker() {
   // Create Lead & Audit in Mongo
   const targetUrl = process.argv[2] || 'https://news.ycombinator.com';
   const domain = new URL(targetUrl).hostname;
-  const lead = await Lead.create({
-    businessName: `${domain} (REV-9 Demo)`,
-    originalUrl: targetUrl,
-    domain: domain,
-    niche: 'other',
-    contactEmail: `contact@${domain}`,
-    status: 'QUEUED',
+  // The business, the lead and its QUEUED audit, as Add lead does (REV-208)
+  const added = await addLeadToBusiness({
+    deriveFromAudit: () => ({ set: {}, clearsEmailGuess: false }),
+    lead: {
+      businessName: `${domain} (REV-9 Demo)`,
+      originalUrl: targetUrl,
+      domain: domain.toLowerCase(),
+      niche: 'other',
+      contactEmail: `contact@${domain}`,
+      status: 'QUEUED',
+    },
   });
-  const audit = await Audit.create({
-    leadId: lead._id,
-    status: 'QUEUED',
-  });
+  const lead = added.lead;
+  const audit = added.audit!;
 
   console.log(`[3] Enqueuing job in BullMQ for lead ${lead._id} (${targetUrl})...`);
   const job = await auditQueue.add('audit-lead', {
