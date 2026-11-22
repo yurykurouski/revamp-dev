@@ -12,7 +12,8 @@ import type { DeriveFromAudit } from '@revamp/db';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { findAuditForLead } from '../models/Audit.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
-import { enqueueAuditOrFail } from './audit-enqueue.js';
+import { AUDIT_ENQUEUE_TIMEOUT_MS, enqueueAuditOrFail } from './audit-enqueue.js';
+import { withTimeout } from './with-timeout.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
 export interface GetLeadsQuery {
@@ -106,7 +107,8 @@ export class LeadService {
       const auditId = String(created.sourceAudit!._id);
       let jobId: string | undefined;
       try {
-        jobId = (await addAiGenerationJob({ leadId: lead._id.toString(), auditId })).id;
+        // The Redis connection retries forever, so the call needs the same limit as the audit job (REV-202)
+        jobId = (await withTimeout(addAiGenerationJob({ leadId: lead._id.toString(), auditId }), AUDIT_ENQUEUE_TIMEOUT_MS, 'AI generation queue')).id;
       } catch (error) {
         console.error(`[LeadService] Could not queue the MVP generation for lead ${lead._id}:`, error);
       }

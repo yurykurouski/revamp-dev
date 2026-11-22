@@ -5,6 +5,7 @@ import { Audit, findAuditForLead } from '../../models/Audit.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import * as auditQueueModule from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
+import { AUDIT_ENQUEUE_TIMEOUT_MS } from '../audit-enqueue.js';
 import { AppError } from '../../middlewares/errorHandler.js';
 
 vi.mock('../../models/Lead.model.js');
@@ -218,6 +219,24 @@ describe('LeadService', () => {
       expect(result).toMatchObject({ auditId: 'shared-audit' });
       expect(result.jobId).toBeUndefined();
       expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('does not hang when the queue never answers: the reused lead is returned after the enqueue limit, still AUDITED (REV-208 review)', async () => {
+      vi.useFakeTimers();
+      try {
+        vi.mocked(addLeadToBusiness).mockResolvedValue({ lead: { _id: 'l2', originalUrl: dto.originalUrl, niche: 'dental' }, sourceAudit: { _id: 'shared-audit' }, reused: true } as any);
+        // Redis down: the connection retries forever, so the call neither resolves nor rejects
+        vi.mocked(addAiGenerationJob).mockReturnValue(new Promise(() => undefined) as never);
+        vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const pending = LeadService.createLead(dto, { tenantId: 'studio-2' });
+        await vi.advanceTimersByTimeAsync(AUDIT_ENQUEUE_TIMEOUT_MS + 1);
+        const result = await pending;
+        expect(result).toMatchObject({ auditId: 'shared-audit' });
+        expect(result.jobId).toBeUndefined();
+        expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it('answers 409 LEAD_ALREADY_EXISTS with the id of the existing lead when the studio already has one for the site', async () => {
