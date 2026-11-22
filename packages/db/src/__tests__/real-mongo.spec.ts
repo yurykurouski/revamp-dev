@@ -31,6 +31,7 @@ import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
 import { MIGRATE_TENANTS_COMMAND, TenantMigrationError, checkTenantLinks, migrateTenants } from '../tenant-migration.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
+import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
 
 // Every real-MongoDB test lives in this file and shares one server: a mongod per file, started in
 // parallel with the Chromium tests, slowed them enough to break their timing (REV-201)
@@ -450,6 +451,46 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       await expect(seedDemoDataset(ds, { reset: false })).rejects.toThrow(/E11000|duplicate/);
       expect(await Lead.countDocuments({ _id: { $in: ds.leads.map((l) => l._id) } })).toBe(0);
       expect(await Audit.countDocuments()).toBe(0);
+    });
+  });
+
+  describe('stalledAuditedLeadFilter (REV-204)', () => {
+    const ds = buildDemoDataset(new Date('2026-11-22T12:00:00.000Z'));
+    const audited = (name: string, tags: string[]) => ({
+      businessName: name,
+      originalUrl: `https://${name.toLowerCase().replace(/\s+/g, '-')}.example.org`,
+      domain: `${name.toLowerCase().replace(/\s+/g, '-')}.example.org`,
+      niche: 'other',
+      status: 'AUDITED',
+      tags,
+    });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri);
+      await Promise.all([Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => (m as typeof Lead).init()));
+    });
+
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+
+    beforeEach(async () => {
+      await Promise.all([Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => (m as typeof Lead).deleteMany({})));
+    });
+
+    it('matches ordinary AUDITED leads and never a seeded demo lead', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      // the seed really holds AUDITED leads, so the exclusion is what keeps them out
+      expect(await Lead.countDocuments({ status: 'AUDITED', _id: { $in: ds.leads.map((l) => l._id) } })).toBeGreaterThan(0);
+      const plain = await Lead.create(audited('Plain Customer', []));
+      const tagged = await Lead.create(audited('Tagged Customer', ['vip']));
+      await Lead.create(audited('Mixed Demo', ['vip', 'demo-seed']));
+      await Lead.create({ ...audited('Queued Customer', []), status: 'QUEUED' });
+
+      const found = await Lead.find(stalledAuditedLeadFilter()).lean();
+      expect(found.map((l) => String(l._id)).sort()).toEqual([String(plain._id), String(tagged._id)].sort());
+      const seededAudited = ds.leads.filter((l) => l.status === 'AUDITED').length;
+      expect(await Lead.countDocuments(skippedDemoLeadFilter())).toBe(seededAudited + 1);
     });
   });
 

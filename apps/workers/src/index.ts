@@ -10,43 +10,9 @@ import { createDiscoveryWorker } from './workers/discovery.worker.js';
 import { createMvpPageWorker } from './workers/mvp-page.worker.js';
 import { redisConnection } from './queues/connection.js';
 import { browserService } from './services/browser.service.js';
-import { Lead } from './models/Lead.model.js';
-import { findAuditForLead } from './models/Audit.model.js';
-import { addAiGenerationJob } from './queues/ai.queue.js';
+import { recoverStalledAuditedLeads } from './services/stalled-lead-recovery.js';
 import { startLlmCapabilitiesReporter } from './services/llm-capabilities.js';
 import { providerConfigWarnings } from './services/provider-config.js';
-
-export async function recoverStalledAuditedLeads(): Promise<number> {
-  try {
-    const stalledLeads = await Lead.find({ status: 'AUDITED' }).exec();
-    if (stalledLeads.length === 0) return 0;
-
-    console.log(`[Workers Recovery] Found ${stalledLeads.length} leads in AUDITED status. Checking for completed audits to auto-enqueue...`);
-    let enqueuedCount = 0;
-
-    for (const lead of stalledLeads) {
-      // The lead's own completed audit, else the one of its business (REV-208)
-      const audit = await findAuditForLead(lead, { completedOnly: true });
-
-      // A lead without a studio is not generated for until `migrate:tenants` ran (REV-210)
-      if (audit && lead.tenantId) {
-        await addAiGenerationJob({
-          leadId: lead._id.toString(),
-          tenantId: lead.tenantId.toString(),
-          auditId: audit._id.toString(),
-        });
-        enqueuedCount++;
-        console.log(`[Workers Recovery] Auto-enqueued stalled lead: ${lead.businessName} (${lead._id}) -> AI Generation Queue`);
-      }
-    }
-
-    console.log(`[Workers Recovery] Auto-enqueued ${enqueuedCount} leads for AI content synthesis.`);
-    return enqueuedCount;
-  } catch (error) {
-    console.error('[Workers Recovery] Error recovering stalled audited leads:', error);
-    return 0;
-  }
-}
 
 async function startWorkers(): Promise<void> {
   try {
