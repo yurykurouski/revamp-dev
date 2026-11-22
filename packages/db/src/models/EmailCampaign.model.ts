@@ -8,6 +8,7 @@ export interface IEmailCampaignDocument
       | 'leadId'
       | 'auditId'
       | 'mvpProjectId'
+      | 'tenantId'
       | 'createdAt'
       | 'updatedAt'
       | 'scheduledAt'
@@ -16,6 +17,8 @@ export interface IEmailCampaignDocument
       | 'unsubscribedAt'
     >,
     Document {
+  /** The studio of the lead (REV-209); absent on records made before the migration */
+  tenantId?: Types.ObjectId;
   leadId: Types.ObjectId;
   auditId?: Types.ObjectId;
   mvpProjectId?: Types.ObjectId;
@@ -43,6 +46,8 @@ const EmailMetricsSchema = new Schema(
 
 const EmailCampaignSchema = new Schema<IEmailCampaignDocument>(
   {
+    // The studio of the lead (REV-209): every read of the API filters on it
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Organization', index: true },
     // REV-201: one campaign per lead, enforced by the database (migrate:unique-lead-children builds it on old data)
     leadId: {
       type: Schema.Types.ObjectId,

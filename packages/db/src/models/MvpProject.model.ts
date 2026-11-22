@@ -2,8 +2,10 @@ import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 import { IMvpProject } from '@revamp/shared-types';
 
 export interface IMvpProjectDocument
-  extends Omit<IMvpProject, '_id' | 'leadId' | 'auditId' | 'createdAt' | 'updatedAt'>,
+  extends Omit<IMvpProject, '_id' | 'leadId' | 'auditId' | 'tenantId' | 'createdAt' | 'updatedAt'>,
     Document {
+  /** The studio of the lead (REV-209); absent on records made before the migration */
+  tenantId?: Types.ObjectId;
   leadId: Types.ObjectId;
   auditId: Types.ObjectId;
   createdAt: Date;
@@ -12,6 +14,8 @@ export interface IMvpProjectDocument
 
 const MvpProjectSchema = new Schema<IMvpProjectDocument>(
   {
+    // The studio of the lead (REV-209): every read of the API filters on it
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Organization', index: true },
     // REV-201: one MVP per lead, enforced by the database (migrate:unique-lead-children builds it on old data)
     leadId: {
       type: Schema.Types.ObjectId,

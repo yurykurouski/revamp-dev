@@ -1337,4 +1337,54 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       });
     });
   });
+  describe('tenant indexes (REV-209)', () => {
+    const SORT = { onePageBrochure: -1, createdAt: -1 } as const;
+    const keyOf = (indexes: { key: Record<string, number> }[], key: Record<string, number>) =>
+      indexes.some((i) => JSON.stringify(i.key) === JSON.stringify(key));
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-tenant-index-test' });
+      await Promise.all([Lead.init(), MvpProject.init(), EmailCampaign.init(), AnalyticsEvent.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Lead.deleteMany({});
+    });
+
+    it("has the studio's list and status indexes on leads and a studio index on each child collection", async () => {
+      const leads = await Lead.collection.indexes();
+      expect(keyOf(leads, { tenantId: 1, onePageBrochure: -1, createdAt: -1 })).toBe(true);
+      expect(keyOf(leads, { tenantId: 1, status: 1 })).toBe(true);
+      for (const model of [MvpProject, EmailCampaign, AnalyticsEvent]) {
+        expect(keyOf(await model.collection.indexes(), { tenantId: 1 }), model.modelName).toBe(true);
+      }
+    });
+
+    it("answers a studio's lead list and status filter from an index, with no in-memory sort", async () => {
+      const studioA = new Types.ObjectId();
+      const studioB = new Types.ObjectId();
+      await Lead.insertMany(
+        Array.from({ length: 60 }, (_, i) => ({
+          businessName: `Lead ${i}`,
+          originalUrl: `https://l${i}.example`,
+          domain: `l${i}.example`,
+          niche: 'dental',
+          tenantId: i % 2 ? studioA : studioB,
+          status: i % 3 ? 'QUEUED' : 'AUDITED',
+          onePageBrochure: i % 5 === 0,
+        })),
+      );
+      // Only the winning plan counts: the planner also lists the plans it rejected
+      const plan = async (query: ReturnType<typeof Lead.find>) =>
+        JSON.stringify(((await query.explain('queryPlanner')) as { queryPlanner: { winningPlan: unknown } }).queryPlanner.winningPlan);
+      const list = await plan(Lead.find({ tenantId: studioA }).sort(SORT).limit(20));
+      expect(list).toContain('tenantId_1_onePageBrochure_-1_createdAt_-1');
+      expect(list).not.toContain('"stage":"SORT"');
+      const filtered = await plan(Lead.find({ tenantId: studioA, status: 'QUEUED' }));
+      expect(filtered).toContain('IXSCAN');
+      expect(filtered).not.toContain('COLLSCAN');
+    });
+  });
 });

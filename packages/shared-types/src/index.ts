@@ -509,6 +509,8 @@ export interface IMvpCompletenessSummary {
 }
 
 export interface IMvpProject {
+  /** The studio of the lead (REV-209) */
+  tenantId?: string;
   _id: string;
   auditId: string;
   leadId: string;
@@ -668,6 +670,8 @@ export interface IEmailMetrics {
 }
 
 export interface IEmailCampaign {
+  /** The studio of the lead (REV-209) */
+  tenantId?: string;
   _id: string;
   leadId: string;
   auditId: string;
@@ -704,6 +708,8 @@ export type AnalyticsEventType =
   | 'unsubscribe';
 
 export interface IAnalyticsEvent {
+  /** The studio of the lead (REV-209) */
+  tenantId?: string;
   _id: string;
   leadId?: string;
   campaignId?: string;
