@@ -1,0 +1,10 @@
+# apps/api — agent rules
+
+Read this when you change the API gateway: routes, services, enqueueing and repair scripts. The root [AGENTS.md](../../AGENTS.md) applies too; this file adds the rules for this area.
+
+## Transactions and enqueueing
+
+* Adding a lead is one transaction (REV-202): `createLeadWithAudit` (`@revamp/db`) inserts the Lead and its first Audit together, then `enqueueAuditOrFail` (`apps/api/src/services/audit-enqueue.ts`, used by Add lead, discovery import and Retry audit) queues the job with `AUDIT_ENQUEUE_TIMEOUT_MS` (the Redis connection retries forever). On failure a lead still `QUEUED` moves to `AUDIT_FAILED` (the `QUEUED → AUDIT_FAILED` edge) and the API answers `503 AUDIT_QUEUE_UNAVAILABLE`. Writers into `AUDIT_FAILED` filter on the one status they move from (`QUEUED` there, `AUDITING` in the workers), not on every source in the table, so a stale job never fails a retried lead. `npm run repair:queued-leads --workspace=@revamp/api` (dry run, `-- --apply`) fixes leads stranded before this.
+* Approving outreach is one transaction too (REV-203): `approveOutreachWithCampaign` (`@revamp/db`) moves the lead `NEEDS_APPROVAL → SCHEDULED` and upserts its campaign together (null, nothing written, when the lead is no longer awaiting approval), then `enqueueEmailOrRevert` (`apps/api/src/services/email-enqueue.ts`, `EMAIL_ENQUEUE_TIMEOUT_MS`, refuses at once while Redis is not `ready`) queues the send. On failure `revertOutreachApproval` moves a lead still `SCHEDULED` back to `NEEDS_APPROVAL` (the `SCHEDULED → NEEDS_APPROVAL` edge) and its `SCHEDULED` campaign to `NEEDS_APPROVAL` without its approval stamps, and the API answers `503 EMAIL_QUEUE_UNAVAILABLE`. Because that edge widens `leadStatusesInto('NEEDS_APPROVAL')`, the deploy worker publishes only over a `GENERATING` lead. `npm run repair:scheduled-leads --workspace=@revamp/api` (dry run, `-- --apply`) fixes leads stranded before this.
+
+Errors: throw `AppError` with a code from `API_ERROR_CODES`; only `errorHandler` writes error JSON (root §3.2.9). The `@revamp/db` side of these transactions: [packages/db/AGENTS.md](../../packages/db/AGENTS.md).
