@@ -239,6 +239,109 @@ Production deployment uses `.env.production.example`, `docker-compose.prod.yml` 
 * Measured (22 Nov 2026, Docker Desktop on an M-series Mac): `stack:up` with a warm Docker layer cache (the base images pulled, the dependency layers cached) took 123 s including the three builds; starting from empty volumes with the images present took 31 s. Idle, the stack uses about 390 MB of memory (workers 125 MB, MongoDB 125 MB, MinIO 73 MB, API 41 MB).
 * Not in the stack: LLM keys, email provider and discovery settings come from `.env` like in development. The preview links of generated MVPs use MinIO's address inside the stack (`http://minio:9000`), so open them through the dashboard only after pointing `S3_ENDPOINT` at an address the browser can reach; a public MinIO endpoint is part of the production setup.
 
+## Containers
+
+How the system is packaged (REV-217, REV-218, REV-219). Start it with `npm run stack:up` (see [Local development](#local-development)); production uses `docker-compose.prod.yml` and `deploy/deploy.sh` (see [CI/CD](#cicd)).
+
+### Architecture
+
+```mermaid
+flowchart LR
+  browser([Browser]) -->|127.0.0.1:8080| dashboard
+  browser -->|127.0.0.1:4000| api
+  subgraph frontend [network: frontend]
+    dashboard["dashboard<br/>nginx, :8080"]
+    api["api<br/>Express, :4000"]
+  end
+  subgraph backend [network: backend]
+    workers["workers<br/>BullMQ + Chromium"]
+    mongo[("mongo<br/>rs0")]
+    redis[("redis")]
+    minio[("minio<br/>S3")]
+  end
+  api --- mongo
+  api --- redis
+  api --- minio
+  workers --- mongo
+  workers --- redis
+  workers --- minio
+  mongo_init["mongo-init (one-shot)"] -.->|users and rs0| mongo
+  minio_init["minio-init (one-shot)"] -.->|buckets| minio
+```
+
+Volumes: `mongo_data`, `mongo_config` (the replica set keyFile), `redis_data`, `minio_data`. In production the data services are managed cloud services (Atlas, Upstash, R2) and nginx with certbot terminates TLS in front of the API and dashboard.
+
+### Images
+
+| Image | Purpose | Base and why | Size | User, port | Healthcheck |
+| --- | --- | --- | --- | --- | --- |
+| `revamp-api` (`apps/api/Dockerfile`) | REST API, validation, queue producer | `node:22-alpine`, multi-stage, `npm prune --production`: small, no compiler in the runner | 192 MB | `node`, 4000 | `GET /api/v1/health` through Node; 503 while MongoDB or Redis is down |
+| `revamp-workers` (`apps/workers/Dockerfile`) | Audit (Playwright), AI generation, publishing, email | `node:22-bookworm-slim` plus one headless-shell Chromium of the installed Playwright version: Chromium needs glibc, so not Alpine | 958 MB | `node`, none | heartbeat file refreshed every 15 s while MongoDB and Redis are connected |
+| `revamp-dashboard` (`apps/dashboard/Dockerfile`) | Static React app | `nginxinc/nginx-unprivileged:1.27-alpine`, Vite build in a Node stage | 57.6 MB | `nginx` (101), 8080 | `wget` on `/` |
+| `mongo` | Data (replica set `rs0`, access control) | official `mongo:7.0` | n/a | | `mongosh` ping |
+| `redis` | BullMQ queues and tokens | official `redis:7.0-alpine` | n/a | | `redis-cli ping` |
+| `minio`, `minio-init` | S3 storage, bucket creation | official images pinned by digest | n/a | | `mc ready` |
+
+Sizes are `docker images` output on 22 Nov 2026; before REV-217 the workers image was 3.27 GB. Every app image is built in two stages (compile with dev dependencies, copy only `dist` and production `node_modules` into the runner), runs as a non-root user, holds no secret (settings arrive as environment variables at run time) and logs to stdout and stderr.
+
+### Containers (full stack and production)
+
+| Container | Role | Published | Volumes | Limits (memory / CPU) | Restart |
+| --- | --- | --- | --- | --- | --- |
+| `api` | REST API | 127.0.0.1:4000 | none | 512 MB / 1 | unless-stopped |
+| `workers` | Background jobs, Chromium audits | none | none | 2 GB / 2 | unless-stopped |
+| `dashboard` | Operator UI | 127.0.0.1:8080 | none | 128 MB / 0.5 | unless-stopped |
+| `mongo` | Database | none | `mongo_data`, `mongo_config` | 1 GB / 1 | unless-stopped |
+| `redis` | Queues | none | `redis_data` | 256 MB / 0.5 | unless-stopped |
+| `minio` | Object storage | none | `minio_data` | 512 MB / 0.5 | unless-stopped |
+| `nginx`, `certbot` (production only) | TLS and reverse proxy, certificate renewal | 80, 443 (nginx) | `certs`, `certbot-challenge` | none | nginx always; certbot loops `renew` every 12 h itself |
+
+The production file runs only api, workers, dashboard, nginx and certbot, with the workers limited to 2 GB and `json-file` log rotation (10 to 20 MB, 3 to 5 files) on every container except certbot.
+
+### Resource requirements
+
+* Idle, the whole stack uses about 390 MB of memory (measured with `docker stats`: workers 125 MB, MongoDB 125 MB, MinIO 73 MB, API 41 MB, dashboard 12 MB, Redis 10 MB). A running audit adds a Chromium process inside the workers' 2 GB limit; that figure has not been measured under load.
+* Minimum for the full stack: 2 CPUs and 4 GB of RAM given to Docker (the limits add up to about 4.4 GB when every service peaks at once, which a normal run does not), and roughly 3 GB of disk for the images and empty volumes.
+* Time: with the images built, the stack starts from empty volumes in about 31 s; the first `stack:up` with three builds took about 2 min on a warm layer cache.
+
+### Layer caching and clean-up
+
+Each Dockerfile copies the `package*.json` and `tsconfig` files and runs `npm ci` before it copies any source, so a source change rebuilds only the compile layers and reuses the dependency layer. The workers runner copies `node_modules` and installs Chromium before it copies the compiled code, so the 600 MB browser layer is rebuilt only when dependencies change. `.dockerignore` keeps `node_modules`, build output, `.env*` files and tests out of the context, so an edit to a test never invalidates a layer. `npm run docker:prune` removes dangling images and build cache older than a week; `deploy.sh` also prunes images older than a day on the server.
+
+### Environment variables
+
+Settings reach every container as environment variables: `npm run dev` reads the root `.env`, the full stack reads `.env` and overrides the connection settings for its own network, and production reads `.env.production` (template: `.env.production.example`). Nothing is hardcoded in an image. "Stack" means `docker-compose.full.yml`, "prod" means `docker-compose.prod.yml`.
+
+| Variable | Used by | Meaning |
+| --- | --- | --- |
+| `PORT` | api | API listen port (4000) |
+| `NODE_ENV` | api, workers | `production` in the stack and in production |
+| `CORS_ORIGIN` | api | Allowed dashboard origin(s), comma separated |
+| `API_PREFIX` | api | URL prefix of the API (`/api/v1`) |
+| `JWT_SECRET` | api | Signs sign-in tokens, 32+ characters; generated by `npm run setup` / `stack:up` |
+| `MONGODB_URI` | api, workers | MongoDB connection string; the stack builds it for the `revamp_app` user |
+| `MONGO_ROOT_PASSWORD`, `MONGO_APP_PASSWORD`, `MONGO_READ_PASSWORD`, `MONGO_ADMIN_PASSWORD` | mongo-init | Passwords of the four MongoDB users; generated |
+| `REDIS_HOST`, `REDIS_PORT`, `REDIS_PASSWORD` | api, workers | Redis address and password |
+| `REDIS_URL`, `REDIS_TLS` | api, workers | Managed Redis (`rediss://` URI) and TLS switch, production |
+| `S3_ENDPOINT`, `S3_REGION`, `S3_FORCE_PATH_STYLE` | api, workers | S3 or MinIO endpoint, region, path-style addressing |
+| `S3_ACCESS_KEY`, `S3_SECRET_KEY` | api, workers, dev MinIO | S3 credentials; also the dev MinIO root user |
+| `S3_BUCKET_ASSETS`, `S3_BUCKET_DEMOS` | api, workers | Bucket names for assets and generated MVPs |
+| `PREVIEW_DOMAIN` | api | Domain that serves generated MVPs (CORS) |
+| `PUBLIC_API_URL` | api, workers | Public API address used by MVP telemetry and email links |
+| `TRACKING_BASE_URL` | none | In `.env.production.example` only; no code reads it today (tracking links are built from `PUBLIC_API_URL`) |
+| `STACK_S3_ACCESS_KEY`, `STACK_S3_SECRET_KEY` | stack | MinIO root credentials of the stack; generated by `stack:up` |
+| `STACK_API_PORT`, `STACK_DASHBOARD_PORT` | stack | Host ports of the API (4000) and the dashboard (8080) |
+| `IMAGE_TAG` | stack, prod | Version tag of the built images (`revamp-<app>:<tag>`); `deploy.sh` sets it to the commit, default `local` |
+| `VITE_API_URL` | dashboard build | API address compiled into the dashboard |
+| `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY` | workers | LLM provider keys; at least one (or the Claude CLI) is needed for audits |
+| `MVP_LLM_PROVIDER`, `VISION_LLM_PROVIDER` | workers | Provider for text and for vision calls |
+| `CLAUDE_CLI_PATH`, `CLAUDE_CLI_MODEL`, `CLAUDE_CLI_TIMEOUT_MS` | workers | Local Claude Code CLI settings (not available inside the images) |
+| `MVP_COMPLETENESS_LLM`, `MVP_COMPLETENESS_LLM_TIMEOUT_MS`, `MVP_PAGE_SELF_REVIEW` | workers | MVP completeness judge and visual self-review switches |
+| `EMAIL_PROVIDER`, `RESEND_API_KEY`, `SENDGRID_API_KEY`, `EMAIL_FROM` | api, workers | Email provider and sender; none configured means approved emails fail at dispatch |
+| `OPERATOR_NOTIFY_EMAIL` | none | In both example files only; no code reads it today (approval is manual in the dashboard) |
+| `GOOGLE_PLACES_API_KEY`, `OVERPASS_URL`, `NOMINATIM_URL`, `NOMINATIM_REVERSE_URL`, `DISCOVERY_USER_AGENT` | workers (reverse geocoding: api) | Business discovery providers |
+| `DISCOVERY_MAX_REQUESTS`, `DISCOVERY_ASSESS_TIMEOUT_MS`, `DISCOVERY_ASSESS_CONCURRENCY` | workers | Discovery paging and pre-assessment limits |
+
 ## CI/CD
 
 GitHub Actions (`.github/workflows/ci.yml`, REV-177) runs on every pull request, every push to `main` and on manual dispatch:
