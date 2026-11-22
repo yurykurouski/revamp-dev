@@ -10,6 +10,7 @@ import {
   leadMatchKeys,
 } from '@revamp/validation';
 import {
+  EMAIL_GUESSED_TAG,
   DiscoveryJobState,
   IDiscoveryCandidate,
   IDiscoveryImportResult,
@@ -23,8 +24,6 @@ import { AppError } from '../middlewares/errorHandler.js';
 import { Lead } from '../models/Lead.model.js';
 import { LeadService } from './lead.service.js';
 
-/** Must match the workers' EMAIL_GUESSED_TAG: the audit swaps the guessed email for the site's own */
-const EMAIL_GUESSED_TAG = 'email-guessed';
 
 /**
  * Finds which candidates are already leads, matching on the provider id, domain and phone.

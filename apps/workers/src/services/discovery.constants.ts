@@ -1,2 +1,2 @@
-/** Tag marking a lead whose contactEmail is an info@<domain> guess, replaced after the audit */
-export const EMAIL_GUESSED_TAG = 'email-guessed';
+// One definition for the API and the workers (REV-208)
+export { EMAIL_GUESSED_TAG } from '@revamp/shared-types';

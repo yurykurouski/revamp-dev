@@ -1134,6 +1134,8 @@ export const API_ERROR_CODES = [
   'INVITATION_NOT_FOUND',
   'INVITATION_EXPIRED',
   'INVITATION_EMAIL_MISMATCH',
+  // Business and lead split (REV-208): this studio already has a lead for the site, `details.leadId`
+  'LEAD_ALREADY_EXISTS',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1381,4 +1383,19 @@ export interface IInvitationPreview {
   email: string;
   role: OrganizationRole;
   expiresAt: string;
+}
+
+// 11. Shared business and tenant-owned lead (REV-208)
+/** Tag marking a lead whose contactEmail is an info@<domain> guess, replaced after the audit */
+export const EMAIL_GUESSED_TAG = 'email-guessed';
+
+/** The company and its site, shared by every studio that pursues it; audits are computed once per business */
+export interface IBusiness {
+  _id: string;
+  /** Canonical domain (`normalizeDomain`), unique */
+  domain: string;
+  originalUrl: string;
+  businessName: string;
+  niche: NicheType;
+  city?: string;
 }

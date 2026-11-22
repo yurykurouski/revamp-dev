@@ -23,6 +23,8 @@ import {
   MVP_PLACEHOLDERS,
   OPERATOR_LOCALES,
   ORGANIZATION_ROLES,
+  EMAIL_GUESSED_TAG,
+  type SiteComplexityClass,
 } from '@revamp/shared-types';
 
 export * from './lead-status.js';
@@ -1028,3 +1030,47 @@ export const MvpPageVersionSchema = z
     createdAt: z.coerce.date(),
   })
   .strict();
+
+// ==============================================================================
+// Lead fields an audit decides (REV-208)
+// ==============================================================================
+
+/** What the audit measured and the lead's score, complexity and contacts are taken from */
+export interface LeadAuditSource {
+  scores?: { total?: number };
+  siteComplexity?: { class?: SiteComplexityClass };
+  extractedContacts?: { phone?: string; email?: string };
+}
+
+/** The lead's own contact data and tags, which decide what the audit may fill in */
+export interface LeadAuditTarget {
+  contactPhone?: string;
+  contactEmail?: string;
+  tags?: string[];
+}
+
+/**
+ * The lead fields an audit decides: score, complexity class, the one-page flag, and the contacts the site publishes.
+ * The audit worker applies it when its own audit finishes (REV-45) and the add-lead path applies it to a lead that
+ * reuses another studio's audit (REV-208), so the two cannot drift. A phone the lead has is kept; a missing email, or
+ * one guessed as info@<domain>, is replaced by the one on the site, and `clearsEmailGuess` then says to drop the tag.
+ */
+export function leadFieldsFromAudit(
+  audit: LeadAuditSource,
+  lead: LeadAuditTarget,
+): { set: Record<string, unknown>; clearsEmailGuess: boolean } {
+  const set: Record<string, unknown> = {};
+  if (audit.scores?.total !== undefined) set['totalScore'] = audit.scores.total;
+  const complexity = audit.siteComplexity?.class;
+  if (complexity) set['siteComplexity'] = complexity;
+  set['onePageBrochure'] = complexity === 'ONE_PAGE_BROCHURE';
+  const contacts = audit.extractedContacts;
+  if (!lead.contactPhone && contacts?.phone) set['contactPhone'] = contacts.phone;
+  const emailGuessed = Boolean(lead.tags?.includes(EMAIL_GUESSED_TAG));
+  let clearsEmailGuess = false;
+  if ((emailGuessed || !lead.contactEmail) && contacts?.email) {
+    set['contactEmail'] = contacts.email;
+    clearsEmailGuess = emailGuessed;
+  }
+  return { set, clearsEmailGuess };
+}
