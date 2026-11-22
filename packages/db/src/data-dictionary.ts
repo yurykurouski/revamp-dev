@@ -2,6 +2,7 @@ import type { Schema } from 'mongoose';
 import { AnalyticsEvent } from './models/AnalyticsEvent.model.js';
 import { Audit } from './models/Audit.model.js';
 import { EmailCampaign } from './models/EmailCampaign.model.js';
+import { Business } from './models/Business.model.js';
 import { Invitation } from './models/Invitation.model.js';
 import { Lead } from './models/Lead.model.js';
 import { MvpProject } from './models/MvpProject.model.js';
@@ -27,10 +28,10 @@ function schemaPaths(schema: Schema, prefix = ''): string[] {
   return paths;
 }
 
-/** Every field path of the nine models, per MongoDB collection, without ids, the version key and timestamps */
+/** Every field path of the ten models, per MongoDB collection, without ids, the version key and timestamps */
 export function modelFieldPaths(): Record<string, string[]> {
   return Object.fromEntries(
-    [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership, Invitation].map((model) => [model.collection.collectionName, schemaPaths(model.schema)]),
+    [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership, Invitation, Business].map((model) => [model.collection.collectionName, schemaPaths(model.schema)]),
   );
 }
 

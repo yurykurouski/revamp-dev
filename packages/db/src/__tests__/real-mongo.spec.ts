@@ -23,6 +23,7 @@ import {
   removeMember,
 } from '../organization-members.js';
 import { Invitation } from '../models/Invitation.model.js';
+import { Business } from '../models/Business.model.js';
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
@@ -848,6 +849,66 @@ describe('real MongoDB (mongodb-memory-server)', () => {
         expect(JSON.stringify(list)).not.toContain(pending.token);
         expect(expired.invitation).toBeDefined();
       });
+    });
+  });
+  // REV-208: the shared business and the tenant-owned lead
+  describe('business and lead indexes (REV-208)', () => {
+    const lead = (n: number, extra: Record<string, unknown> = {}) => ({
+      businessName: `Clinic ${n}`,
+      originalUrl: `https://clinic${n}.example`,
+      domain: `clinic${n}.example`,
+      niche: 'dental',
+      status: 'QUEUED',
+      ...extra,
+    });
+    const code = (promise: Promise<unknown>) => promise.then(() => undefined, (e: { code?: unknown }) => e.code);
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-business-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    it('keeps one business per domain', async () => {
+      await Business.create({ domain: 'clinic1.example', originalUrl: 'https://clinic1.example', businessName: 'Clinic', niche: 'dental' });
+      expect(await code(Business.create({ domain: 'clinic1.example', originalUrl: 'https://www.clinic1.example', businessName: 'Again', niche: 'dental' }))).toBe(11000);
+      expect(await Business.countDocuments()).toBe(1);
+    });
+
+    it('lowercases the domain and requires it', async () => {
+      const business = await Business.create({ domain: 'Clinic2.Example', originalUrl: 'https://clinic2.example', businessName: 'C', niche: 'dental' });
+      expect(business.domain).toBe('clinic2.example');
+      await expect(Business.create({ originalUrl: 'https://x.example', businessName: 'C', niche: 'dental' })).rejects.toThrow(/domain/i);
+    });
+
+    it('lets one studio have one lead per business, and two studios share a business', async () => {
+      const business = await Business.create({ domain: 'clinic3.example', originalUrl: 'https://clinic3.example', businessName: 'C', niche: 'dental' });
+      const studioA = new Types.ObjectId();
+      const studioB = new Types.ObjectId();
+      await Lead.create(lead(3, { tenantId: studioA, businessId: business._id }));
+      expect(await code(Lead.create(lead(3, { tenantId: studioA, businessId: business._id })))).toBe(11000);
+      await Lead.create(lead(3, { tenantId: studioB, businessId: business._id }));
+      const other = await Business.create({ domain: 'clinic4.example', originalUrl: 'https://clinic4.example', businessName: 'D', niche: 'dental' });
+      await Lead.create(lead(4, { tenantId: studioA, businessId: other._id }));
+      expect(await Lead.countDocuments()).toBe(3);
+    });
+
+    it('does not restrict leads made before the split: any number without a tenant or a business', async () => {
+      const studio = new Types.ObjectId();
+      const business = await Business.create({ domain: 'clinic5.example', originalUrl: 'https://clinic5.example', businessName: 'C', niche: 'dental' });
+      await Lead.create([lead(5), lead(5), lead(5, { businessId: business._id }), lead(5, { businessId: business._id }), lead(5, { tenantId: studio }), lead(5, { tenantId: studio })]);
+      expect(await Lead.countDocuments()).toBe(6);
+    });
+
+    it('stores the business of an audit', async () => {
+      const business = await Business.create({ domain: 'clinic6.example', originalUrl: 'https://clinic6.example', businessName: 'C', niche: 'dental' });
+      const audit = await Audit.create({ leadId: new Types.ObjectId(), businessId: business._id, status: 'COMPLETED' });
+      expect(String((await Audit.findById(audit._id).lean())?.businessId)).toBe(String(business._id));
     });
   });
 });

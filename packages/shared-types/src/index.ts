@@ -112,6 +112,10 @@ export const OPERATOR_LOCALE_NAMES: Record<OperatorLocale, string> = {
 
 export interface ILead {
   _id: string;
+  /** The studio this lead belongs to (REV-208) */
+  tenantId?: string;
+  /** The shared business this lead pursues (REV-208) */
+  businessId?: string;
   businessName: string;
   originalUrl: string;
   domain: string;
@@ -407,6 +411,8 @@ export interface IScreenshotUrls {
 export interface IAudit {
   _id: string;
   leadId: string;
+  /** The shared business this audit measured (REV-208) */
+  businessId?: string;
   status: AuditStatus;
   scores: IAuditScores;
   webVitals: IWebVitals;

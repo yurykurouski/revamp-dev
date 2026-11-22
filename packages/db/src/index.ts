@@ -6,6 +6,7 @@ export * from './models/AnalyticsEvent.model.js';
 export * from './models/Organization.model.js';
 export * from './models/User.model.js';
 export * from './models/Membership.model.js';
+export * from './models/Business.model.js';
 export * from './models/Invitation.model.js';
 
 export * from './password.js';

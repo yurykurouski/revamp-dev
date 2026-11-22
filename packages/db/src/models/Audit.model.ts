@@ -2,9 +2,11 @@ import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 import { IAudit, AuditStatus, AUDIT_MEASUREMENTS } from '@revamp/shared-types';
 
 export interface IAuditDocument
-  extends Omit<IAudit, '_id' | 'leadId' | 'createdAt' | 'completedAt'>,
+  extends Omit<IAudit, '_id' | 'leadId' | 'businessId' | 'createdAt' | 'completedAt'>,
     Document {
   leadId: Types.ObjectId;
+  /** The shared business this audit measured (REV-208); other studios' leads of the business read it too */
+  businessId?: Types.ObjectId;
   desktopScreenshotUrl?: string;
   mobileScreenshotUrl?: string;
   lcp?: number;
@@ -52,6 +54,7 @@ const AuditSchema = new Schema<IAuditDocument>(
       required: [true, 'Lead ID is required'],
       index: true,
     },
+    businessId: { type: Schema.Types.ObjectId, ref: 'Business' },
     status: {
       type: String,
       enum: ['QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED'] as AuditStatus[],
