@@ -34,6 +34,9 @@ export const ru: Translation = {
       generic: 'Что-то пошло не так. Попробуйте ещё раз.',
     },
   },
+  permissions: {
+    readOnly: 'Ваша роль позволяет читать данные, но не менять их.',
+  },
   header: {
     findBusinesses: 'Найти компании',
     discoveryRunning: 'Идёт поиск компаний… Нажмите, чтобы увидеть прогресс',
@@ -51,6 +54,7 @@ export const ru: Translation = {
     discovery: 'Найти компании',
     discoveryReady: 'Поиск завершён. Нажмите, чтобы просмотреть',
     settings: 'Настройки',
+    team: 'Команда',
   },
   shortcuts: {
     title: 'Горячие клавиши',

@@ -34,6 +34,9 @@ export const pl: Translation = {
       generic: 'Coś poszło nie tak. Spróbuj ponownie.',
     },
   },
+  permissions: {
+    readOnly: 'Twoja rola pozwala czytać dane, ale ich nie zmieniać.',
+  },
   header: {
     findBusinesses: 'Znajdź firmy',
     discoveryRunning: 'Trwa wyszukiwanie firm… Kliknij, aby zobaczyć postęp',
@@ -51,6 +54,7 @@ export const pl: Translation = {
     discovery: 'Znajdź firmy',
     discoveryReady: 'Wyszukiwanie zakończone. Kliknij, aby przejrzeć',
     settings: 'Ustawienia',
+    team: 'Zespół',
   },
   shortcuts: {
     title: 'Skróty klawiszowe',

@@ -35,6 +35,9 @@ export const en = {
       generic: 'Something went wrong. Try again.',
     },
   },
+  permissions: {
+    readOnly: 'Your role can read but not change data.',
+  },
   header: {
     findBusinesses: 'Find businesses',
     discoveryRunning: 'Searching for businesses… Click to see progress',
@@ -52,6 +55,7 @@ export const en = {
     discovery: 'Find businesses',
     discoveryReady: 'Search finished. Click to review',
     settings: 'Settings',
+    team: 'Team',
   },
   shortcuts: {
     title: 'Keyboard shortcuts',

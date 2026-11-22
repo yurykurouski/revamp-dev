@@ -7,6 +7,8 @@ export const ROUTES = {
   settings: '/settings',
   login: '/login',
   register: '/register',
+  team: '/team',
+  invite: '/invite/:token',
 } as const;
 
 /** The URL of one lead */
@@ -15,8 +17,11 @@ export const leadPath = (id: string): string => `${ROUTES.leads}/${encodeURIComp
 /** The lead's MVP full-window, with the Design tools (REV-91) */
 export const leadPreviewPath = (id: string): string => `${leadPath(id)}/preview`;
 
+/** The URL of an invitation, built from its one-time token (REV-207) */
+export const invitePath = (token: string): string => `/invite/${encodeURIComponent(token)}`;
+
 /** Rail entries that are pages; Discovery opens its overlay instead */
-export type RailPage = 'queue' | 'leads' | 'settings';
+export type RailPage = 'queue' | 'leads' | 'settings' | 'team';
 
 /** The rail entry to mark as the current page; a lead belongs to All leads */
 export function activeRailPage(pathname: string): RailPage | null {
@@ -24,6 +29,7 @@ export function activeRailPage(pathname: string): RailPage | null {
   if (path === ROUTES.queue) return 'queue';
   if (path === ROUTES.leads || path.startsWith(`${ROUTES.leads}/`)) return 'leads';
   if (path === ROUTES.settings || path.startsWith(`${ROUTES.settings}/`)) return 'settings';
+  if (path === ROUTES.team || path.startsWith(`${ROUTES.team}/`)) return 'team';
   return null;
 }
 

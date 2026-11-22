@@ -34,6 +34,9 @@ export const lt: Translation = {
       generic: 'Kažkas nepavyko. Bandykite dar kartą.',
     },
   },
+  permissions: {
+    readOnly: 'Jūsų vaidmuo leidžia skaityti duomenis, bet ne jų keisti.',
+  },
   header: {
     findBusinesses: 'Rasti įmones',
     discoveryRunning: 'Ieškoma įmonių… Spustelėkite, kad matytumėte eigą',
@@ -51,6 +54,7 @@ export const lt: Translation = {
     discovery: 'Rasti įmones',
     discoveryReady: 'Paieška baigta. Spustelėkite, kad peržiūrėtumėte',
     settings: 'Nustatymai',
+    team: 'Komanda',
   },
   shortcuts: {
     title: 'Spartieji klavišai',

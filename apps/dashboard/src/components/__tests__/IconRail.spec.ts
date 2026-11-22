@@ -13,12 +13,14 @@ const render = ({
   needsYouCount = 0,
   discovery = 'idle' as DiscoveryIndicator,
   account = undefined as { name?: string; email: string; organization: string } | undefined,
+  canWrite = undefined as boolean | undefined,
+  canManageMembers = undefined as boolean | undefined,
 } = {}) =>
   renderToStaticMarkup(
     React.createElement(
       MemoryRouter,
       null,
-      React.createElement(IconRail, { activePage, needsYouCount, discovery, onOpenDiscovery: () => {}, onOpenShortcuts: () => {}, account, onSignOut: () => {} }),
+      React.createElement(IconRail, { activePage, needsYouCount, discovery, onOpenDiscovery: () => {}, onOpenShortcuts: () => {}, account, onSignOut: () => {}, canWrite, canManageMembers }),
     ),
   );
 
@@ -120,6 +122,30 @@ describe('IconRail (REV-76)', () => {
 
     it('uses the first letters of the email when the user has no name', () => {
       expect(render({ account: { email: 'owner@studio.test', organization: 'Pixel Studio' } })).toContain('>OW</div>');
+    });
+  });
+  describe('by role (REV-207)', () => {
+    it('shows Find businesses to a role that can write, and by default', () => {
+      expect(entry(render(), 'discovery')).toMatch(/^<button/);
+      expect(entry(render({ canWrite: true }), 'discovery')).toMatch(/^<button/);
+    });
+
+    it('hides Find businesses from a role that cannot write', () => {
+      expect(render({ canWrite: false })).not.toContain('data-rail="discovery"');
+    });
+
+    it('shows Team only to a role that manages members', () => {
+      expect(render()).not.toContain('data-rail="team"');
+      expect(render({ canManageMembers: false })).not.toContain('data-rail="team"');
+      const html = render({ canManageMembers: true });
+      expect(entry(html, 'team')).toContain('href="/team"');
+      expect(entry(html, 'team')).toContain(`aria-label="${en.rail.team}"`);
+    });
+
+    it('marks Team as the current page on /team', () => {
+      const html = render({ activePage: 'team', canManageMembers: true });
+      expect(entry(html, 'team')).toContain('aria-current="page"');
+      expect(html.match(/aria-current="page"/g)).toHaveLength(1);
     });
   });
 });

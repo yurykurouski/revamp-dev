@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['**/*.spec.ts', '**/*.test.ts'],
+    setupFiles: ['./vitest.setup.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],
     // Keep tests off the operator's local LLM provider (e.g. claude-cli in .env); dotenv won't override it.
     // The design critique picks the CLI whenever the binary is found, so tests point it nowhere (REV-51).

@@ -34,6 +34,9 @@ export const be: Translation = {
       generic: 'Нешта пайшло не так. Паспрабуйце яшчэ раз.',
     },
   },
+  permissions: {
+    readOnly: 'Ваша роля дазваляе чытаць даныя, але не мяняць іх.',
+  },
   header: {
     findBusinesses: 'Знайсці кампаніі',
     discoveryRunning: 'Ідзе пошук кампаній… Націсніце, каб убачыць прагрэс',
@@ -51,6 +54,7 @@ export const be: Translation = {
     discovery: 'Знайсці кампаніі',
     discoveryReady: 'Пошук завершаны. Націсніце, каб праглядзець',
     settings: 'Налады',
+    team: 'Каманда',
   },
   shortcuts: {
     title: 'Гарачыя клавішы',

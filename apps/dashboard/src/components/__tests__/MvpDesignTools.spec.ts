@@ -12,6 +12,7 @@ import { ApiError, apiClient, IAuditDetail, ILeadItem, IMvpPageResult, IMvpProje
 import { getTheme } from '../../theme/theme.js';
 import { PrototypeStep } from '../leadReview/PrototypeStep.js';
 import { useMvpQuery } from '../../hooks/useLeads.js';
+import { useAuthStore } from '../../store/useAuthStore.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -136,6 +137,25 @@ describe('Design tools for a model-designed page (REV-140)', () => {
         ),
       ),
     );
+
+  it('disables every tool for a viewer, who can still see the preview (REV-207)', async () => {
+    useAuthStore.setState({
+      session: { token: 't', user: { id: 'u', email: 'v@studio.test' }, organization: { id: 'o', name: 'S' }, role: 'viewer' },
+    });
+    render();
+    await vi.waitFor(() => expect(controls().length).toBeGreaterThan(4));
+    expect(controls().every((control) => control.disabled)).toBe(true);
+    expect(container.querySelector('iframe')).not.toBeNull();
+  });
+
+  it('keeps the tools enabled for an operator (REV-207)', async () => {
+    useAuthStore.setState({
+      session: { token: 't', user: { id: 'u', email: 'o@studio.test' }, organization: { id: 'o', name: 'S' }, role: 'operator' },
+    });
+    render();
+    await vi.waitFor(() => expect(controls().length).toBeGreaterThan(4));
+    expect(textarea().disabled).toBe(false);
+  });
 
   it('holds the change, colors, fonts, versions and Regenerate', () => {
     render();

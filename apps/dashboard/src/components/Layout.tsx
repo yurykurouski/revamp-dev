@@ -12,6 +12,7 @@ import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useDiscoveryIndicator } from '../hooks/useDiscovery.js';
 import { useLeadStatsQuery } from '../hooks/useLeads.js';
+import { usePermissions } from '../hooks/usePermissions.js';
 import { useShortcuts } from '../hooks/useShortcuts.js';
 import { activeRailPage, ROUTES } from '../routes/paths.js';
 import { countStatsByBucket } from '../utils/leadStages.js';
@@ -24,6 +25,7 @@ export const Layout: React.FC = () => {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   const session = useAuthStore((s) => s.session);
+  const { canWrite, canManageMembers } = usePermissions();
   const signOut = useAuthStore((s) => s.signOut);
   const openDiscovery = useDiscoveryStore((s) => s.open);
   const openAddModal = useLeadFilterStore((s) => s.openAddModal);
@@ -38,8 +40,9 @@ export const Layout: React.FC = () => {
     goQueue: () => navigate(ROUTES.queue),
     goLeads: () => navigate(ROUTES.leads),
     goSettings: () => navigate(ROUTES.settings),
-    openDiscovery,
-    addLead: openAddModal,
+    // Adding leads and discovery are for roles that can write (REV-207)
+    openDiscovery: canWrite ? openDiscovery : undefined,
+    addLead: canWrite ? openAddModal : undefined,
     focusSearch: () => searchRef.current?.focus(),
     showHelp: () => setShortcutsOpen(true),
   });
@@ -54,6 +57,8 @@ export const Layout: React.FC = () => {
         onOpenShortcuts={() => setShortcutsOpen(true)}
         account={session ? { name: session.user.name, email: session.user.email, organization: session.organization.name } : undefined}
         onSignOut={signOut}
+        canWrite={canWrite}
+        canManageMembers={canManageMembers}
       />
       <Box sx={{ flexGrow: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
         <TopBar discovery={discovery.indicator} discoveryNewCount={discovery.newCount} searchRef={searchRef} />

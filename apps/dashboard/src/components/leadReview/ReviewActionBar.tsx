@@ -23,6 +23,7 @@ import type { CompletenessField } from '@revamp/shared-types';
 import { canApproveOutreach, canRejectLead } from '@revamp/validation';
 import { useTranslation } from 'react-i18next';
 import type { IEmailDraft, ILeadItem } from '../../api/client.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
 import { useShortcuts } from '../../hooks/useShortcuts.js';
 import { ariaKeyShortcuts, getShortcut } from '../../utils/shortcuts.js';
 import { ShortcutTitle } from '../KeyCaps.js';
@@ -68,6 +69,8 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
   criticalDataIssues = [],
 }) => {
   const { t } = useTranslation();
+  // A viewer reads the review and changes nothing (REV-207); the API would answer 403 to each of these actions
+  const { canWrite } = usePermissions();
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testEmail, setTestEmail] = useState('operator@revamp.io');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -109,7 +112,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
 
   // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
   const handleApproveSubmit = async () => {
-    if (!isEmailStep || !approveArmed || !canApprove || isActionLoading) return;
+    if (!canWrite || !isEmailStep || !approveArmed || !canApprove || isActionLoading) return;
     if (criticalDataIssues.length > 0) {
       setDataConfirmOpen(true);
       return;
@@ -150,7 +153,12 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
           {errorAlert}
         </Alert>
       )}
-      {isEmailStep && !canApprove && !successAlert && (
+      {!canWrite && (
+        <Alert severity="info" data-testid="read-only-notice">
+          {t('permissions.readOnly')}
+        </Alert>
+      )}
+      {canWrite && isEmailStep && !canApprove && !successAlert && (
         <Alert severity="info" data-testid="outreach-status-notice">
           {t(canReject ? 'email.approveUnavailable' : 'email.outreachClosed', { status: lead.status })}
         </Alert>
@@ -203,7 +211,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
               variant="outlined"
               startIcon={<MarkEmailReadIcon />}
               onClick={() => setTestDialogOpen(true)}
-              disabled={isActionLoading}
+              disabled={isActionLoading || !canWrite}
               sx={{ fontWeight: 600 }}
             >
               {t('email.sendTestToMe')}
@@ -215,7 +223,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
             variant="outlined"
             startIcon={<DoDisturbIcon />}
             onClick={() => setRejectDialogOpen(true)}
-            disabled={isActionLoading || !canReject}
+            disabled={isActionLoading || !canReject || !canWrite}
             sx={{ fontWeight: 600 }}
           >
             {t('email.reject')}
@@ -231,7 +239,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
                   variant="contained"
                   startIcon={isActionLoading ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
                   onClick={handleApproveSubmit}
-                  disabled={isActionLoading || !canApprove || !approveArmed}
+                  disabled={isActionLoading || !canApprove || !approveArmed || !canWrite}
                   aria-keyshortcuts={ariaKeyShortcuts(getShortcut('approve'))}
                   sx={{ px: 2 }}
                 >

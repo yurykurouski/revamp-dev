@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Button, Snackbar } from '@mui/material';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../hooks/usePermissions.js';
 import { ILeadItem } from '../api/client.js';
 import { useGenerateMvpMutation } from '../hooks/useLeads.js';
 import { MvpGenerationChoice, MvpGenerationDialog } from './MvpGenerationDialog.js';
@@ -16,6 +17,7 @@ interface GenerateMvpButtonProps {
  */
 export const GenerateMvpButton: React.FC<GenerateMvpButtonProps> = ({ lead }) => {
   const { t } = useTranslation();
+  const { canWrite } = usePermissions();
   const generateMvpMutation = useGenerateMvpMutation();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,6 +31,9 @@ export const GenerateMvpButton: React.FC<GenerateMvpButtonProps> = ({ lead }) =>
       { onError: (err) => setError(err instanceof Error ? err.message : String(err)) },
     );
   };
+
+  // A viewer cannot change data (REV-207); the API would answer 403
+  if (!canWrite) return null;
 
   return (
     <>

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Alert, Box, Divider, Typography } from '@mui/material';
 import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../../hooks/usePermissions.js';
 import { ApiError, type IAuditDetail, type ILeadItem, type IMvpProjectDetail } from '../../api/client.js';
 import { MvpPageAction, mvpRecordId, useMvpPageMutation } from '../../hooks/useLeads.js';
 import {
@@ -99,10 +100,12 @@ interface MvpDesignToolsProps {
  */
 export const MvpDesignTools: React.FC<MvpDesignToolsProps> = ({ tools, lead, locked }) => {
   const { t } = useTranslation();
+  const { canWrite } = usePermissions();
   if (!tools.hasMvp) return null;
   const busy = tools.pending !== null;
-  const disabled = locked || !tools.canChange || busy;
-  const disabledReason = busy ? t('mvpEdit.busy') : t('mvpEdit.locked');
+  // A viewer sees the page and the tools but changes nothing (REV-207)
+  const disabled = locked || !canWrite || !tools.canChange || busy;
+  const disabledReason = !canWrite ? t('permissions.readOnly') : busy ? t('mvpEdit.busy') : t('mvpEdit.locked');
 
   return (
     <FloatingToolsPanel>
