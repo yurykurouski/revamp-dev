@@ -14,7 +14,8 @@
     "migrate:lead-statuses": "tsx src/scripts/migrate-lead-statuses.ts",
     "migrate:audit-vitals": "tsx src/scripts/migrate-audit-vitals.ts",
     "migrate:unique-lead-children": "tsx src/scripts/migrate-unique-lead-children.ts",
-    "repair:queued-leads": "tsx src/scripts/repair-queued-leads.ts"
+    "repair:queued-leads": "tsx src/scripts/repair-queued-leads.ts",
+    "repair:scheduled-leads": "tsx src/scripts/repair-scheduled-leads.ts"
   },
   "dependencies": {
     "@revamp/db": "*",

@@ -4,6 +4,7 @@ import { Audit } from '../models/Audit.model.js';
 import { addAuditJob } from '../queues/audit.queue.js';
 import { redisConnection } from '../queues/connection.js';
 import { AppError } from '../middlewares/errorHandler.js';
+import { withTimeout } from './with-timeout.js';
 
 /**
  * How long the API waits for Redis to accept an audit job (REV-202). The connection retries forever
@@ -13,21 +14,6 @@ export const AUDIT_ENQUEUE_TIMEOUT_MS = 5000;
 
 /** Shown on the lead (`auditError`) and the audit when the job could not be queued; Retry audit recovers it */
 export const AUDIT_QUEUE_ERROR = 'The audit queue was unavailable when the audit was requested. Retry the audit.';
-
-const withTimeout = <T>(promise: Promise<T>, ms: number): Promise<T> =>
-  new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`Audit queue did not answer within ${ms} ms`)), ms);
-    promise.then(
-      (value) => {
-        clearTimeout(timer);
-        resolve(value);
-      },
-      (error: unknown) => {
-        clearTimeout(timer);
-        reject(error);
-      },
-    );
-  });
 
 /**
  * Queues the audit of a lead that was just saved QUEUED. When the queue fails or does not answer, the
@@ -44,7 +30,7 @@ export async function enqueueAuditOrFail(
     // ioredis keeps a command sent while disconnected and runs it on reconnect, so a timed-out add could still
     // land later next to the operator's retry. Not calling it while Redis is down leaves no such job.
     if (redisConnection.status !== 'ready') throw new Error(`Redis is ${redisConnection.status}`);
-    const job = await withTimeout(addAuditJob({ leadId, url, niche }), timeoutMs);
+    const job = await withTimeout(addAuditJob({ leadId, url, niche }), timeoutMs, 'Audit queue');
     return { jobId: job.id };
   } catch (queueError) {
     console.error(`[AuditQueue] Could not queue the audit of lead ${leadId}:`, queueError);

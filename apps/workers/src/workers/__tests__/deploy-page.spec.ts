@@ -100,6 +100,20 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     arrange();
   });
 
+  it('never publishes over a lead the operator already approved (REV-203: SCHEDULED can move to NEEDS_APPROVAL only by a revert)', async () => {
+    const approved = { ...lead, status: 'SCHEDULED', toObject: () => approved };
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(approved) } as any);
+    const result = await capturedProcessor!(job());
+    expect(result).toMatchObject({ skipped: true });
+    expect(storageService.uploadHtml).not.toHaveBeenCalled();
+  });
+
+  it('moves only a GENERATING lead to review after publishing (REV-203)', async () => {
+    await capturedProcessor!(job());
+    const filter = vi.mocked(Lead.findOneAndUpdate).mock.calls.at(-1)![0] as Record<string, unknown>;
+    expect(filter).toMatchObject({ status: 'GENERATING' });
+  });
+
   it('checks the version entry before the public page is overwritten (REV-200 review)', async () => {
     const long = job({ generationSource: { provider: 'claude-cli', modelUsed: 'm'.repeat(150) } });
     await expect(capturedProcessor!(long)).rejects.toThrow();
@@ -148,7 +162,7 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![2]).toEqual(expect.objectContaining({ strict: false }));
 
     const [filter, leadSet] = leadUpdate.mock.calls[0]!;
-    expect(filter).toMatchObject({ _id: LEAD_ID, status: { $in: expect.arrayContaining(['GENERATING']) } });
+    expect(filter).toEqual({ _id: LEAD_ID, status: 'GENERATING' });
     expect(leadSet).toMatchObject({ $set: { status: 'NEEDS_APPROVAL' }, $unset: { generationError: '', generationFailure: '' } });
     expect(result).toMatchObject({ success: true, version: 1 });
   });
