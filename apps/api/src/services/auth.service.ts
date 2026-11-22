@@ -2,8 +2,10 @@ import type { IAuthContext, IAuthSession } from '@revamp/shared-types';
 import type { LoginDto, RegisterDto } from '@revamp/validation';
 import { AppError } from '../middlewares/errorHandler.js';
 import { Membership } from '../models/Membership.model.js';
+import { registerWithInvitation } from '../models/Invitation.model.js';
 import { Organization, createOrganizationWithOwner } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
+import { mapOrganizationError } from './organization-errors.js';
 import { DUMMY_PASSWORD_HASH, hashPassword, verifyPassword } from './password.js';
 import { signSessionToken, type SessionClaims } from './token.js';
 
@@ -19,7 +21,7 @@ const toContext = ({ user, organization, membership }: AccountDocs): IAuthContex
   role: membership.role,
 });
 
-const toSession = (docs: AccountDocs): IAuthSession => {
+export const toSession = (docs: AccountDocs): IAuthSession => {
   const context = toContext(docs);
   return {
     ...context,
@@ -29,22 +31,36 @@ const toSession = (docs: AccountDocs): IAuthSession => {
 
 const unauthenticated = (message: string): AppError => new AppError(401, 'UNAUTHENTICATED', message);
 
-/** REV-206: a new user and the organization they own; a second registration of an email is 409 EMAIL_TAKEN */
+/**
+ * REV-206: a new user and the organization they own; a second registration of an email is 409 EMAIL_TAKEN.
+ * REV-207: with an invitation token the user joins the invited organization with the invited role instead, and the
+ * studio name is ignored.
+ */
 export async function registerUser(dto: RegisterDto): Promise<IAuthSession> {
+  if (!dto.invitationToken && !dto.organizationName) {
+    throw new AppError(400, 'VALIDATION_ERROR', 'organizationName is required');
+  }
   const passwordHash = await hashPassword(dto.password);
   try {
-    const created = await createOrganizationWithOwner({
-      email: dto.email,
-      passwordHash,
-      organizationName: dto.organizationName,
-      ...(dto.name ? { name: dto.name } : {}),
-    });
+    const created = dto.invitationToken
+      ? await registerWithInvitation({
+          token: dto.invitationToken,
+          email: dto.email,
+          passwordHash,
+          ...(dto.name ? { name: dto.name } : {}),
+        })
+      : await createOrganizationWithOwner({
+          email: dto.email,
+          passwordHash,
+          organizationName: dto.organizationName!,
+          ...(dto.name ? { name: dto.name } : {}),
+        });
     return toSession(created);
   } catch (error) {
     if ((error as { code?: unknown } | null)?.code === 11000) {
       throw new AppError(409, 'EMAIL_TAKEN', 'An account with this email already exists');
     }
-    throw error;
+    return mapOrganizationError(error);
   }
 }
 

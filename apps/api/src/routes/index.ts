@@ -1,13 +1,15 @@
 import { Router } from 'express';
 import healthRoutes from './health.routes.js';
 import authRoutes from './auth.routes.js';
+import invitationRoutes from './invitation.routes.js';
+import organizationRoutes from './organization.routes.js';
 import leadRoutes from './lead.routes.js';
 import auditRoutes from './audit.routes.js';
 import mvpRoutes from './mvp.routes.js';
 import outreachRoutes from './outreach.routes.js';
 import trackRoutes from './track.routes.js';
 import discoveryRoutes from './discovery.routes.js';
-import { requireAuth, requireAuthUnless, requireWriter } from '../middlewares/requireAuth.js';
+import { requireAuth, requireAuthUnless, requireOwner, requireWriter } from '../middlewares/requireAuth.js';
 
 const router = Router();
 
@@ -18,8 +20,13 @@ const router = Router();
 // Public: liveness check, register and login (`/auth/me` guards itself)
 router.use('/', healthRoutes);
 router.use('/auth', authRoutes);
+// Public: the join page reads an invitation by its token; accepting one guards itself (`/invitations/:token/accept`)
+router.use('/invitations', invitationRoutes);
 // Public: called by email recipients and by the generated MVP pages, which carry a campaign token
 router.use('/track', trackRoutes);
+
+// REV-207: members and invitations of the caller's organization are for owners
+router.use('/organization', requireAuth, requireOwner, organizationRoutes);
 
 // REV-207: every non-GET request on these mounts needs the owner or operator role (`requireWriter`); a viewer reads
 router.use('/leads', requireAuth, requireWriter, leadRoutes);

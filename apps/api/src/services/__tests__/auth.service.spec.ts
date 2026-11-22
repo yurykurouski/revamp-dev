@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Types } from 'mongoose';
 import { AppError } from '../../middlewares/errorHandler.js';
 import { createOrganizationWithOwner } from '../../models/Organization.model.js';
+import { OrganizationError, registerWithInvitation } from '../../models/Invitation.model.js';
 import { Organization } from '../../models/Organization.model.js';
 import { User } from '../../models/User.model.js';
 import { Membership } from '../../models/Membership.model.js';
@@ -12,6 +13,10 @@ import { loginUser, getAuthContext, registerUser } from '../auth.service.js';
 vi.mock('../../models/Organization.model.js', () => ({
   Organization: { findById: vi.fn() },
   createOrganizationWithOwner: vi.fn(),
+}));
+vi.mock('../../models/Invitation.model.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../models/Invitation.model.js')>()),
+  registerWithInvitation: vi.fn(),
 }));
 vi.mock('../../models/User.model.js', () => ({ User: { findOne: vi.fn(), findById: vi.fn() } }));
 vi.mock('../../models/Membership.model.js', () => ({ Membership: { findOne: vi.fn() } }));
@@ -131,5 +136,51 @@ describe('getAuthContext (REV-206)', () => {
     vi.mocked(Membership.findOne).mockReturnValue(query(membership) as any);
     vi.mocked(Organization.findById).mockReturnValue(query(org) as any);
     await expect(getAuthContext(claims)).rejects.toMatchObject({ statusCode: 401, code: 'UNAUTHENTICATED' });
+  });
+});
+
+describe('registerUser with an invitation (REV-207)', () => {
+  beforeEach(() => vi.clearAllMocks());
+  const dto = { email: 'ann@studio.test', password: 'correct horse battery', invitationToken: 'tok_123' };
+
+  it('joins the invited organization with the invited role instead of creating one, and returns a session for it', async () => {
+    vi.mocked(registerWithInvitation).mockResolvedValue({
+      user: userDoc('x'),
+      organization: orgDoc,
+      membership: { userId: ids.user, organizationId: ids.org, role: 'viewer' },
+    } as any);
+    const session = await registerUser({ ...dto, name: 'Ann' });
+    expect(createOrganizationWithOwner).not.toHaveBeenCalled();
+    const input = vi.mocked(registerWithInvitation).mock.calls[0]![0];
+    expect(input).toMatchObject({ token: 'tok_123', email: 'ann@studio.test', name: 'Ann' });
+    expect(input.passwordHash).toMatch(/^scrypt\$/);
+    expect(JSON.stringify(input)).not.toContain('correct horse battery');
+    expect(session.role).toBe('viewer');
+    expect(verifySessionToken(session.token)).toEqual({ userId: String(ids.user), organizationId: String(ids.org), role: 'viewer' });
+  });
+
+  it('ignores a studio name that came with the token', async () => {
+    vi.mocked(registerWithInvitation).mockResolvedValue({ user: userDoc('x'), organization: orgDoc, membership: membershipDoc } as any);
+    await registerUser({ ...dto, organizationName: 'Ignored Studio' });
+    expect(createOrganizationWithOwner).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['INVITATION_NOT_FOUND', 404],
+    ['INVITATION_EXPIRED', 410],
+    ['INVITATION_EMAIL_MISMATCH', 403],
+  ] as const)('maps %s to %i', async (code, status) => {
+    vi.mocked(registerWithInvitation).mockRejectedValue(new OrganizationError(code, 'rule'));
+    await expect(registerUser(dto)).rejects.toMatchObject({ statusCode: status, code });
+  });
+
+  it('maps a taken email (E11000) to 409 EMAIL_TAKEN', async () => {
+    vi.mocked(registerWithInvitation).mockRejectedValue(Object.assign(new Error('dup'), { code: 11000 }));
+    await expect(registerUser(dto)).rejects.toMatchObject({ statusCode: 409, code: 'EMAIL_TAKEN' });
+  });
+
+  it('refuses a registration with neither a token nor a studio name', async () => {
+    await expect(registerUser({ email: 'a@b.co', password: 'correct horse battery' })).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
+    expect(createOrganizationWithOwner).not.toHaveBeenCalled();
   });
 });

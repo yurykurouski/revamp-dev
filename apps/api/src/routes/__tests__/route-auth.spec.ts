@@ -32,6 +32,8 @@ const PUBLIC_ROUTES = [
   'GET /health',
   'POST /auth/register',
   'POST /auth/login',
+  // The join page reads an invitation by its token (REV-207); accepting one needs a session
+  'GET /invitations/:token',
   // Recipients and MVP pages call these; they carry a campaign token instead of a session
   'GET /track/open/:token.gif',
   'GET /track/open/:token',
@@ -136,8 +138,8 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
   });
   describe('roles (REV-207)', () => {
     const READ = new Set(['GET', 'HEAD', 'OPTIONS']);
-    // /auth/me answers every signed-in role about itself; the rest of /auth is public
-    const own = (route: string) => route.startsWith('GET /auth/') || route.startsWith('POST /auth/');
+    // /auth/me and accepting an invitation answer every signed-in role about themselves; the rest of both is public
+    const own = (route: string) => /^(GET|POST) \/(auth|invitations)\//.test(route);
     const rolePath = (route: string) => `${env.API_PREFIX}${route.split(' ')[1]!.replace(/:\w+/g, 'x1')}`;
     const call = async (route: string) => {
       const method = route.split(' ')[0]!.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';

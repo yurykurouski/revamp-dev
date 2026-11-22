@@ -58,6 +58,24 @@ describe('auth routes (REV-206)', () => {
       expect(authService.registerUser).not.toHaveBeenCalled();
     });
 
+    it('201 with an invitation token and no studio name: the service gets the token (REV-207)', async () => {
+      vi.mocked(authService.registerUser).mockResolvedValue({ ...session, role: 'viewer' });
+      const res = await request(server).post('/auth/register').send({ email: 'Ann@Studio.Test', password: 'correct horse battery', invitationToken: 'abc_DEF-1' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.role).toBe('viewer');
+      expect(authService.registerUser).toHaveBeenCalledWith({ email: 'ann@studio.test', password: 'correct horse battery', invitationToken: 'abc_DEF-1' });
+    });
+
+    it.each([
+      ['neither a studio name nor a token', { email: 'a@b.co', password: 'correct horse battery' }],
+      ['a malformed token', { email: 'a@b.co', password: 'correct horse battery', invitationToken: 'bad token!' }],
+    ])('400 VALIDATION_ERROR for %s (REV-207)', async (_label, body) => {
+      const res = await request(server).post('/auth/register').send(body);
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe('VALIDATION_ERROR');
+      expect(authService.registerUser).not.toHaveBeenCalled();
+    });
+
     it('409 EMAIL_TAKEN in the standard error format', async () => {
       vi.mocked(authService.registerUser).mockRejectedValue(new AppError(409, 'EMAIL_TAKEN', 'An account with this email already exists'));
       const res = await request(server).post('/auth/register').send(register);
