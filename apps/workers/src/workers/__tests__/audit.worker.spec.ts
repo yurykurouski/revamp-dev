@@ -89,7 +89,8 @@ describe('AuditWorker (@revamp/workers)', () => {
     };
 
     const mockAuditExec = vi.fn().mockResolvedValue({});
-    const mockLeadExec = vi.fn().mockResolvedValue({ contactEmail: 'owner@test-dental.com' });
+    // The lead carries its studio, which the events the worker writes copy (REV-209)
+    const mockLeadExec = vi.fn().mockResolvedValue({ contactEmail: 'owner@test-dental.com', tenantId: 'studio-9' });
 
     vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({
       exec: mockAuditExec,
@@ -329,6 +330,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     expect(AnalyticsEvent.create).toHaveBeenCalledWith(
       expect.objectContaining({
         leadId: 'lead-123',
+        tenantId: 'studio-9',
         eventType: 'token_usage',
         metadata: {
           model: 'claude-3-5-sonnet-20241022',

@@ -21,7 +21,7 @@ export async function approveOutreachWithCampaign(
       { new: true, session },
     ).exec();
     if (!lead) return;
-    const written = await EmailCampaign.findOneAndUpdate({ leadId: lead._id }, { $set: campaign }, { upsert: true, new: true, session }).exec();
+    const written = await EmailCampaign.findOneAndUpdate({ leadId: lead._id }, { $set: { ...campaign, ...(lead.tenantId ? { tenantId: lead.tenantId } : {}) } }, { upsert: true, new: true, session }).exec();
     result = { lead, campaign: written! };
   });
   return result;

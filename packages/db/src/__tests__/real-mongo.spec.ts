@@ -490,6 +490,21 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.status).toBe('SCHEDULED');
     });
 
+    it("writes the campaign with the lead's studio, also onto a campaign that already exists without one (REV-209)", async () => {
+      const studio = new Types.ObjectId();
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL', tenantId: studio });
+      await EmailCampaign.collection.insertOne({ leadId: lead._id, status: 'NEEDS_APPROVAL', trackingToken: 'old-draft' });
+      const result = await approveOutreachWithCampaign(String(lead._id), approved(9));
+      expect(String(result?.campaign.tenantId)).toBe(String(studio));
+      expect(String((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.tenantId)).toBe(String(studio));
+    });
+
+    it('leaves the studio off the campaign of a lead that has none (before the migration)', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      const result = await approveOutreachWithCampaign(String(lead._id), approved(10));
+      expect(result?.campaign.tenantId).toBeUndefined();
+    });
+
     it('leaves the lead in review and no campaign when the campaign write fails', async () => {
       const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
       vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockImplementationOnce(() => {

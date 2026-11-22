@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { UnrecoverableError } from 'bullmq';
 import { createDeployWorker } from '../deploy.worker.js';
@@ -106,6 +107,19 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     const result = await capturedProcessor!(job());
     expect(result).toMatchObject({ skipped: true });
     expect(storageService.uploadHtml).not.toHaveBeenCalled();
+  });
+
+  it("writes the MVP project with the lead's studio, so the API's studio filter finds it (REV-209)", async () => {
+    const studio = new Types.ObjectId();
+    const owned = { ...lead, tenantId: studio, toObject: () => owned };
+    vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(owned) } as any);
+    await capturedProcessor!(job());
+    expect(projectUpdate().$set).toMatchObject({ tenantId: studio });
+  });
+
+  it('leaves the studio off the MVP project of a lead that has none yet (before the migration)', async () => {
+    await capturedProcessor!(job());
+    expect(projectUpdate().$set).not.toHaveProperty('tenantId');
   });
 
   it('moves only a GENERATING lead to review after publishing (REV-203)', async () => {

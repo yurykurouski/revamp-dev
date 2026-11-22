@@ -101,6 +101,8 @@ async function deployPage(job: Job<IDeployJobData>) {
     { leadId: lead._id },
     {
       $set: {
+        // The project belongs to the lead's studio, so the API's studio filter finds it (REV-209)
+        ...(lead.tenantId ? { tenantId: lead.tenantId } : {}),
         auditId: audit._id,
         previewSlug: slug,
         fullPreviewUrl,
