@@ -2,8 +2,10 @@ import mongoose, { Schema, Document, Model, Types } from 'mongoose';
 import { IAnalyticsEvent, AnalyticsEventType } from '@revamp/shared-types';
 
 export interface IAnalyticsEventDocument
-  extends Omit<IAnalyticsEvent, '_id' | 'leadId' | 'campaignId' | 'mvpProjectId' | 'timestamp'>,
+  extends Omit<IAnalyticsEvent, '_id' | 'tenantId' | 'leadId' | 'campaignId' | 'mvpProjectId' | 'timestamp'>,
     Document {
+  /** The studio of the lead or campaign the event belongs to (REV-209) */
+  tenantId?: Types.ObjectId;
   leadId?: Types.ObjectId;
   campaignId?: Types.ObjectId;
   mvpProjectId?: Types.ObjectId;
@@ -14,6 +16,8 @@ export interface IAnalyticsEventDocument
 
 const AnalyticsEventSchema = new Schema<IAnalyticsEventDocument>(
   {
+    // The studio of the lead (REV-209): every read of the API filters on it
+    tenantId: { type: Schema.Types.ObjectId, ref: 'Organization', index: true },
     leadId: {
       type: Schema.Types.ObjectId,
       ref: 'Lead',

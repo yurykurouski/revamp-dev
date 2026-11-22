@@ -151,6 +151,10 @@ const LeadSchema = new Schema<ILeadDocument>(
 // Default list order (REV-38): one-page brochure sites first, newest first within each group
 LeadSchema.index({ onePageBrochure: -1, createdAt: -1 });
 
+// A studio sees only its own leads (REV-209): its list in the default order, and its status filter
+LeadSchema.index({ tenantId: 1, onePageBrochure: -1, createdAt: -1 });
+LeadSchema.index({ tenantId: 1, status: 1 });
+
 // A studio has at most one lead per business (REV-208). Partial, so leads made before the split (no tenant or no
 // business yet) are not restricted until they are migrated
 LeadSchema.index(

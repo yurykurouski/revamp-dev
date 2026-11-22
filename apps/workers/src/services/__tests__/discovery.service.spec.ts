@@ -179,6 +179,12 @@ describe('runDiscovery', () => {
     ]);
   });
 
+  it("looks for existing leads only among the studio's own, so another studio's lead id is never shown (REV-209)", async () => {
+    mockExistingDomains([]);
+    await runDiscovery({ ...jobData, tenantId: '5eed00000000000000000001' }, providerReturning([business('1')]));
+    expect(vi.mocked(Lead.find).mock.calls[0]![0]).toMatchObject({ $and: [{ tenantId: '5eed00000000000000000001' }, expect.anything()] });
+  });
+
   it('should mark in-batch duplicates and existing leads, keeping provider order', async () => {
     mockExistingDomains(['clinic-2.lt']);
     const { candidates } = await runDiscovery(
@@ -189,9 +195,14 @@ describe('runDiscovery', () => {
     // Only `new` candidates are looked up, on every key they have
     expect(Lead.find).toHaveBeenCalledWith(
       {
-        $or: [
-          { externalId: { $in: ['osm:node/1', 'osm:node/2'] } },
-          { domain: { $in: ['clinic-1.lt', 'clinic-2.lt'] } },
+        $and: [
+          { tenantId: null },
+          {
+            $or: [
+              { externalId: { $in: ['osm:node/1', 'osm:node/2'] } },
+              { domain: { $in: ['clinic-1.lt', 'clinic-2.lt'] } },
+            ],
+          },
         ],
       },
       { externalId: 1, domain: 1, phoneE164: 1 },

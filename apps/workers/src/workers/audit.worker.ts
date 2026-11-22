@@ -140,6 +140,8 @@ export const createAuditWorker = (): Worker => {
           try {
             await AnalyticsEvent.create({
               leadId,
+              // The event belongs to the lead's studio, so the API's studio filter finds it (REV-209)
+              ...(existingLead.tenantId ? { tenantId: existingLead.tenantId } : {}),
               eventType: 'token_usage',
               metadata: {
                 model,

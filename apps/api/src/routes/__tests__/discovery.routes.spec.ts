@@ -6,6 +6,7 @@ import { createApp } from '../../app.js';
 import { DiscoveryService } from '../../services/discovery.service.js';
 import { AppError } from '../../middlewares/errorHandler.js';
 
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/discovery.service.js');
 
@@ -36,7 +37,7 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
         message: 'Discovery job queued successfully',
         data: { jobId: 'disc-1', params: { provider: 'osm', niche: 'dental', location: 'Vilnius', limit: 20 } },
       });
-      expect(DiscoveryService.startDiscovery).toHaveBeenCalledWith({
+      expect(DiscoveryService.startDiscovery).toHaveBeenCalledWith(expect.anything(), {
         provider: 'osm',
         niche: 'dental',
         location: 'Vilnius',
@@ -56,6 +57,7 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
 
       expect(res.status).toBe(202);
       expect(DiscoveryService.startDiscovery).toHaveBeenCalledWith(
+        expect.anything(),
         expect.objectContaining({ excludeDomains: ['a.lt', 'b.lt'] }),
       );
     });
@@ -103,7 +105,7 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ success: true, data: status });
-      expect(DiscoveryService.getDiscoveryStatus).toHaveBeenCalledWith('disc-1');
+      expect(DiscoveryService.getDiscoveryStatus).toHaveBeenCalledWith(expect.anything(), 'disc-1');
     });
 
     it('should return 404 for an unknown job', async () => {
@@ -173,7 +175,7 @@ describe('Discovery Routes Integration Tests (REV-26)', () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ success: true, message: 'Imported 1 of 2 selected businesses', data });
       // The imported leads belong to the caller's studio (REV-208)
-      expect(DiscoveryService.importCandidates).toHaveBeenCalledWith('disc-1', { externalIds: ['node/1', 'node/2'] }, '5eed00000000000000000002');
+      expect(DiscoveryService.importCandidates).toHaveBeenCalledWith(expect.objectContaining({ tenantId: expect.anything() }), 'disc-1', { externalIds: ['node/1', 'node/2'] });
     });
 
     it.each([

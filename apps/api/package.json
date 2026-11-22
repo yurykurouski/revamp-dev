@@ -15,6 +15,7 @@
     "migrate:audit-vitals": "tsx src/scripts/migrate-audit-vitals.ts",
     "migrate:unique-lead-children": "tsx src/scripts/migrate-unique-lead-children.ts",
     "migrate:businesses": "tsx src/scripts/migrate-businesses.ts",
+    "migrate:tenants": "tsx src/scripts/migrate-tenants.ts",
     "repair:queued-leads": "tsx src/scripts/repair-queued-leads.ts",
     "repair:scheduled-leads": "tsx src/scripts/repair-scheduled-leads.ts"
   },

@@ -29,6 +29,7 @@ import { MIGRATE_BUSINESSES_COMMAND, checkBusinessLinks, migrateBusinesses } fro
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
+import { MIGRATE_TENANTS_COMMAND, TenantMigrationError, checkTenantLinks, migrateTenants } from '../tenant-migration.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 
 // Every real-MongoDB test lives in this file and shares one server: a mongod per file, started in
@@ -488,6 +489,21 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(result?.lead.status).toBe('SCHEDULED');
       expect(String(result?.campaign.leadId)).toBe(String(lead._id));
       expect((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.status).toBe('SCHEDULED');
+    });
+
+    it("writes the campaign with the lead's studio, also onto a campaign that already exists without one (REV-209)", async () => {
+      const studio = new Types.ObjectId();
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL', tenantId: studio });
+      await EmailCampaign.collection.insertOne({ leadId: lead._id, status: 'NEEDS_APPROVAL', trackingToken: 'old-draft' });
+      const result = await approveOutreachWithCampaign(String(lead._id), approved(9));
+      expect(String(result?.campaign.tenantId)).toBe(String(studio));
+      expect(String((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.tenantId)).toBe(String(studio));
+    });
+
+    it('leaves the studio off the campaign of a lead that has none (before the migration)', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      const result = await approveOutreachWithCampaign(String(lead._id), approved(10));
+      expect(result?.campaign.tenantId).toBeUndefined();
     });
 
     it('leaves the lead in review and no campaign when the campaign write fails', async () => {
@@ -1335,6 +1351,183 @@ describe('real MongoDB (mongodb-memory-server)', () => {
         expect(await Business.findById(realBusiness._id).lean()).not.toBeNull();
         expect(await Lead.findById(real._id).lean()).not.toBeNull();
       });
+    });
+  });
+  describe('tenant indexes (REV-209)', () => {
+    const SORT = { onePageBrochure: -1, createdAt: -1 } as const;
+    const keyOf = (indexes: { key: Record<string, number> }[], key: Record<string, number>) =>
+      indexes.some((i) => JSON.stringify(i.key) === JSON.stringify(key));
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-tenant-index-test' });
+      await Promise.all([Lead.init(), MvpProject.init(), EmailCampaign.init(), AnalyticsEvent.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Lead.deleteMany({});
+    });
+
+    it("has the studio's list and status indexes on leads and a studio index on each child collection", async () => {
+      const leads = await Lead.collection.indexes();
+      expect(keyOf(leads, { tenantId: 1, onePageBrochure: -1, createdAt: -1 })).toBe(true);
+      expect(keyOf(leads, { tenantId: 1, status: 1 })).toBe(true);
+      for (const model of [MvpProject, EmailCampaign, AnalyticsEvent]) {
+        expect(keyOf(await model.collection.indexes(), { tenantId: 1 }), model.modelName).toBe(true);
+      }
+    });
+
+    it("answers a studio's lead list and status filter from an index, with no in-memory sort", async () => {
+      const studioA = new Types.ObjectId();
+      const studioB = new Types.ObjectId();
+      await Lead.insertMany(
+        Array.from({ length: 60 }, (_, i) => ({
+          businessName: `Lead ${i}`,
+          originalUrl: `https://l${i}.example`,
+          domain: `l${i}.example`,
+          niche: 'dental',
+          tenantId: i % 2 ? studioA : studioB,
+          status: i % 3 ? 'QUEUED' : 'AUDITED',
+          onePageBrochure: i % 5 === 0,
+        })),
+      );
+      // Only the winning plan counts: the planner also lists the plans it rejected
+      const plan = async (query: ReturnType<typeof Lead.find>) =>
+        JSON.stringify(((await query.explain('queryPlanner')) as { queryPlanner: { winningPlan: unknown } }).queryPlanner.winningPlan);
+      const list = await plan(Lead.find({ tenantId: studioA }).sort(SORT).limit(20));
+      expect(list).toContain('tenantId_1_onePageBrochure_-1_createdAt_-1');
+      expect(list).not.toContain('"stage":"SORT"');
+      const filtered = await plan(Lead.find({ tenantId: studioA, status: 'QUEUED' }));
+      expect(filtered).toContain('IXSCAN');
+      expect(filtered).not.toContain('COLLSCAN');
+    });
+  });
+  describe('migrateTenants and checkTenantLinks (REV-209)', () => {
+    let older: Types.ObjectId;
+    let newer: Types.ObjectId;
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-tenant-migration-test' });
+      await Promise.all([Lead.init(), MvpProject.init(), EmailCampaign.init(), AnalyticsEvent.init(), Organization.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Lead.deleteMany({}), MvpProject.deleteMany({}), EmailCampaign.deleteMany({}), AnalyticsEvent.deleteMany({}), Organization.deleteMany({})]);
+      // createdAt is immutable through Mongoose updates: the age is written through the collection
+      older = new Types.ObjectId();
+      newer = new Types.ObjectId();
+      await Organization.collection.insertMany([
+        { _id: newer, name: 'Newer Studio', createdAt: new Date('2026-06-01'), updatedAt: new Date('2026-06-01') },
+        { _id: older, name: 'Older Studio', createdAt: new Date('2026-01-01'), updatedAt: new Date('2026-01-01') },
+      ]);
+    });
+
+    const leadDoc = (domain: string, extra: Record<string, unknown> = {}) => ({
+      businessName: `Clinic ${domain}`,
+      originalUrl: `https://${domain}`,
+      domain,
+      niche: 'dental',
+      status: 'AUDITED',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...extra,
+    });
+
+    /** Records as they were before the tenants: none has a studio */
+    const seedLegacy = async () => {
+      const [a, b] = Object.values((await Lead.collection.insertMany([leadDoc('a.example'), leadDoc('b.example')])).insertedIds);
+      await MvpProject.collection.insertMany([{ leadId: a, ...mvpFields(1) }, { leadId: b, ...mvpFields(2) }]);
+      await EmailCampaign.collection.insertOne({ leadId: a, ...campaignFields(1) });
+      await AnalyticsEvent.collection.insertMany([
+        { leadId: a, eventType: 'open', timestamp: new Date() },
+        { eventType: 'open', timestamp: new Date() },
+      ]);
+      return { a: a!, b: b! };
+    };
+
+    it('a dry run reports what it would do and writes nothing', async () => {
+      await seedLegacy();
+      const report = await migrateTenants({ apply: false });
+      expect(report).toMatchObject({ applied: false, conflicts: [], organizationId: String(older), leadsToAssign: 2, mvpsToAssign: 2, campaignsToAssign: 1, eventsToAssign: 1 });
+      expect(await Promise.all([Lead, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => m.countDocuments({ tenantId: { $exists: true } })))).toEqual([0, 0, 0, 0]);
+    });
+
+    it('gives the leads to the oldest organization by default, and each child the studio of its lead', async () => {
+      const { a, b } = await seedLegacy();
+      await Lead.collection.updateOne({ _id: b }, { $set: { tenantId: newer } });
+      const report = await migrateTenants({ apply: true });
+      expect(report).toMatchObject({ applied: true, leadsToAssign: 1 });
+      expect(String((await Lead.findById(a).lean())?.tenantId)).toBe(String(older));
+      // b kept the studio it had; its MVP follows it, not the chosen organization
+      expect(String((await Lead.findById(b).lean())?.tenantId)).toBe(String(newer));
+      expect(String((await MvpProject.findOne({ leadId: a }).lean())?.tenantId)).toBe(String(older));
+      expect(String((await MvpProject.findOne({ leadId: b }).lean())?.tenantId)).toBe(String(newer));
+      expect(String((await EmailCampaign.findOne({ leadId: a }).lean())?.tenantId)).toBe(String(older));
+      expect(String((await AnalyticsEvent.findOne({ leadId: a }).lean())?.tenantId)).toBe(String(older));
+    });
+
+    it('uses the organization it is given', async () => {
+      const { a } = await seedLegacy();
+      await migrateTenants({ apply: true, organizationId: String(newer) });
+      expect(String((await Lead.findById(a).lean())?.tenantId)).toBe(String(newer));
+    });
+
+    it('leaves an event that names no lead in no studio, and gives an MVP whose lead is gone to the chosen organization', async () => {
+      await seedLegacy();
+      await MvpProject.collection.insertOne({ leadId: new Types.ObjectId(), ...mvpFields(3) });
+      await migrateTenants({ apply: true });
+      expect(await AnalyticsEvent.countDocuments({ leadId: { $exists: false }, tenantId: { $exists: true } })).toBe(0);
+      expect(await MvpProject.countDocuments({ tenantId: { $exists: false } })).toBe(0);
+    });
+
+    it('is idempotent: a second run changes nothing', async () => {
+      await seedLegacy();
+      await migrateTenants({ apply: true });
+      const before = await Promise.all([Lead, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => m.find().lean()));
+      const report = await migrateTenants({ apply: true });
+      expect(report).toMatchObject({ leadsToAssign: 0, mvpsToAssign: 0, campaignsToAssign: 0, eventsToAssign: 0 });
+      expect(await Promise.all([Lead, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => m.find().lean()))).toEqual(before);
+    });
+
+    it('reports two leads on one business as a conflict and refuses to apply, writing nothing (the unique { tenantId, businessId } index)', async () => {
+      const business = new Types.ObjectId();
+      const [x, y] = Object.values((await Lead.collection.insertMany([leadDoc('dup.example', { businessId: business }), leadDoc('dup.example', { businessId: business })])).insertedIds);
+      const report = await migrateTenants({ apply: false });
+      expect(report.conflicts).toEqual([{ businessId: String(business), leadIds: [String(x), String(y)] }]);
+      await expect(migrateTenants({ apply: true })).rejects.toBeInstanceOf(TenantMigrationError);
+      expect(await Lead.countDocuments({ tenantId: { $exists: true } })).toBe(0);
+    });
+
+    it('also finds a conflict with a lead the target organization already has', async () => {
+      const business = new Types.ObjectId();
+      await Lead.collection.insertOne(leadDoc('own.example', { businessId: business, tenantId: older }));
+      await Lead.collection.insertOne(leadDoc('own.example', { businessId: business }));
+      const report = await migrateTenants({ apply: false });
+      expect(report.conflicts).toHaveLength(1);
+      // Another organization as the target has no conflict
+      expect((await migrateTenants({ apply: false, organizationId: String(newer) })).conflicts).toEqual([]);
+    });
+
+    it('refuses an unknown organization, an invalid id, and a database with no organization, writing nothing', async () => {
+      await seedLegacy();
+      await expect(migrateTenants({ apply: true, organizationId: String(new Types.ObjectId()) })).rejects.toBeInstanceOf(TenantMigrationError);
+      await expect(migrateTenants({ apply: true, organizationId: 'nope' })).rejects.toBeInstanceOf(TenantMigrationError);
+      expect(await Lead.countDocuments({ tenantId: { $exists: true } })).toBe(0);
+      await Organization.deleteMany({});
+      await expect(migrateTenants({ apply: true })).rejects.toThrow('No organization exists');
+    });
+
+    it('checkTenantLinks warns with the command while a record has no studio, and is quiet after the migration', async () => {
+      expect(await checkTenantLinks(mongoose.connection)).toEqual([]);
+      await seedLegacy();
+      const [warning] = await checkTenantLinks(mongoose.connection);
+      expect(warning).toContain('2 lead(s), 2 MVP(s), 1 campaign(s), 1 event(s)');
+      expect(warning).toContain(MIGRATE_TENANTS_COMMAND);
+      await migrateTenants({ apply: true });
+      expect(await checkTenantLinks(mongoose.connection)).toEqual([]);
     });
   });
 });

@@ -1,15 +1,20 @@
 import crypto from 'crypto';
+import { isValidObjectId } from 'mongoose';
 import { MvpTrackEventDto, canTransition, leadStatusesInto } from '@revamp/validation';
-import { Lead } from '../models/Lead.model.js';
-import { EmailCampaign } from '../models/EmailCampaign.model.js';
-import { MvpProject } from '../models/MvpProject.model.js';
-import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
+import { bySecret, scopeFor, type TenantScope } from '../data/tenant-scope.js';
 
 export interface IRequestMetadata {
   ip?: string;
   userAgent?: string;
   referer?: string;
 }
+
+/**
+ * The studio a public request belongs to is the one of the campaign (or MVP) its secret names, never one the request
+ * states (REV-209). Records made before the migration have none and form the legacy bucket.
+ */
+const scopeOf = (record: { tenantId?: unknown } | null | undefined): TenantScope =>
+  scopeFor(record?.tenantId as Parameters<typeof scopeFor>[0]);
 
 export class TrackingService {
   /**
@@ -29,7 +34,8 @@ export class TrackingService {
     token: string,
     meta: IRequestMetadata = {},
   ): Promise<{ success: boolean; leadId?: string; campaignId?: string }> {
-    const campaign = await EmailCampaign.findOne({ trackingToken: token }).exec();
+    const campaign = await bySecret.campaignByToken(token).exec();
+    const scope = scopeOf(campaign);
     const now = new Date();
     const ipHash = this.hashClientIp(meta.ip || '');
 
@@ -49,7 +55,7 @@ export class TrackingService {
       await campaign.save();
 
       if (campaign.leadId) {
-        const lead = await Lead.findById(campaign.leadId).exec();
+        const lead = await scope.leads.findById(campaign.leadId).exec();
         if (lead && canTransition(lead.status, 'OPENED')) {
           lead.status = 'OPENED';
           await lead.save();
@@ -58,7 +64,7 @@ export class TrackingService {
     }
 
     // Persist immutable AnalyticsEvent
-    await AnalyticsEvent.create({
+    await scope.events.create({
       leadId: campaign?.leadId,
       campaignId: campaign?._id,
       mvpProjectId: campaign?.mvpProjectId,
@@ -85,7 +91,8 @@ export class TrackingService {
     token: string,
     meta: IRequestMetadata = {},
   ): Promise<{ success: boolean; redirectUrl: string; leadId?: string }> {
-    const campaign = await EmailCampaign.findOne({ trackingToken: token }).exec();
+    const campaign = await bySecret.campaignByToken(token).exec();
+    const scope = scopeOf(campaign);
     const now = new Date();
     const ipHash = this.hashClientIp(meta.ip || '');
 
@@ -107,7 +114,7 @@ export class TrackingService {
       await campaign.save();
 
       if (campaign.leadId) {
-        const lead = await Lead.findById(campaign.leadId).exec();
+        const lead = await scope.leads.findById(campaign.leadId).exec();
         if (lead && canTransition(lead.status, 'CLICKED')) {
           lead.status = 'CLICKED';
           await lead.save();
@@ -116,12 +123,12 @@ export class TrackingService {
 
       // Resolve destination preview URL from MvpProject
       if (campaign.mvpProjectId) {
-        const project = await MvpProject.findById(campaign.mvpProjectId).exec();
+        const project = await scope.mvps.findById(campaign.mvpProjectId).exec();
         if (project?.fullPreviewUrl) {
           redirectUrl = project.fullPreviewUrl;
         }
       } else if (campaign.leadId) {
-        const project = await MvpProject.findOne({ leadId: campaign.leadId }).exec();
+        const project = await scope.mvps.findOne({ leadId: campaign.leadId }).exec();
         if (project?.fullPreviewUrl) {
           redirectUrl = project.fullPreviewUrl;
         }
@@ -135,7 +142,7 @@ export class TrackingService {
     }
 
     // Persist immutable AnalyticsEvent
-    await AnalyticsEvent.create({
+    await scope.events.create({
       leadId: campaign?.leadId,
       campaignId: campaign?._id,
       mvpProjectId: campaign?.mvpProjectId,
@@ -164,7 +171,7 @@ export class TrackingService {
   public async findUnsubscribeCampaign(
     token: string,
   ): Promise<{ found: boolean; unsubscribed: boolean }> {
-    const campaign = await EmailCampaign.findOne({ trackingToken: token }).exec();
+    const campaign = await bySecret.campaignByToken(token).exec();
     return { found: Boolean(campaign), unsubscribed: campaign?.status === 'UNSUBSCRIBED' };
   }
 
@@ -177,18 +184,23 @@ export class TrackingService {
     meta: IRequestMetadata = {},
   ): Promise<{ found: boolean; alreadyUnsubscribed: boolean; leadId?: string }> {
     const now = new Date();
+    // The token names the campaign and so the studio; the opt-out touches that studio's records only (REV-209)
+    const named = await bySecret.campaignByToken(token).exec();
+    if (!named) return { found: false, alreadyUnsubscribed: false };
+    const scope = scopeOf(named);
     // The status filter makes the first opt-out win, so a repeat call records nothing new
-    const campaign = await EmailCampaign.findOneAndUpdate(
-      { trackingToken: token, status: { $ne: 'UNSUBSCRIBED' } },
-      { $set: { status: 'UNSUBSCRIBED', unsubscribedAt: now } },
-      { new: true },
-    ).exec();
+    const campaign = await scope.campaigns
+      .findOneAndUpdate(
+        { trackingToken: token, status: { $ne: 'UNSUBSCRIBED' } },
+        { $set: { status: 'UNSUBSCRIBED', unsubscribedAt: now } },
+        { new: true },
+      )
+      .exec();
 
     if (!campaign) {
-      const existing = await EmailCampaign.findOne({ trackingToken: token }).exec();
-      if (!existing) return { found: false, alreadyUnsubscribed: false };
+      const existing = named;
       // Make sure the lead is opted out too, in case the first call failed before updating it
-      await Lead.findOneAndUpdate(
+      await scope.leads.findOneAndUpdate(
         { _id: existing.leadId, status: { $in: leadStatusesInto('UNSUBSCRIBED') } },
         { $set: { status: 'UNSUBSCRIBED' } },
       ).exec();
@@ -196,12 +208,12 @@ export class TrackingService {
     }
 
     // An opt-out applies whatever stage the lead reached; approve and dispatch refuse it from now on
-    await Lead.findOneAndUpdate(
+    await scope.leads.findOneAndUpdate(
       { _id: campaign.leadId, status: { $in: leadStatusesInto('UNSUBSCRIBED') } },
       { $set: { status: 'UNSUBSCRIBED' }, $addToSet: { tags: 'unsubscribed' } },
     ).exec();
 
-    await AnalyticsEvent.create({
+    await scope.events.create({
       leadId: campaign.leadId,
       campaignId: campaign._id,
       mvpProjectId: campaign.mvpProjectId,
@@ -229,18 +241,14 @@ export class TrackingService {
     const ipHash = this.hashClientIp(meta.ip || '');
     const now = new Date();
 
-    const campaign = token ? await EmailCampaign.findOne({ trackingToken: token }).exec() : null;
+    const campaign = token ? await bySecret.campaignByToken(token).exec() : null;
+    // Without a campaign the event may still carry an MVP id; either names the studio. A lead id in the request is
+    // never trusted: the lead is the campaign's or the MVP's own (REV-209)
+    const project = campaign || !eventData.mvpProjectId || !isValidObjectId(eventData.mvpProjectId) ? null : await bySecret.mvpById(eventData.mvpProjectId).exec();
+    const scope = scopeOf(campaign ?? project);
 
-    let leadId = eventData.leadId || campaign?.leadId?.toString();
-    let mvpProjectId = eventData.mvpProjectId || campaign?.mvpProjectId?.toString();
-
-    // If leadId is still not resolved but mvpProjectId exists, resolve from MvpProject
-    if (!leadId && mvpProjectId) {
-      const project = await MvpProject.findById(mvpProjectId).exec();
-      if (project?.leadId) {
-        leadId = project.leadId.toString();
-      }
-    }
+    const leadId = campaign?.leadId?.toString() ?? project?.leadId?.toString();
+    const mvpProjectId = campaign?.mvpProjectId?.toString() ?? project?._id?.toString();
 
     // Update campaign metrics if campaign exists
     if (campaign) {
@@ -276,7 +284,7 @@ export class TrackingService {
     let leadTransitionedToEngaged = false;
 
     if (isEngagedTrigger && leadId) {
-      const lead = await Lead.findById(leadId).exec();
+      const lead = await scope.leads.findById(leadId).exec();
       if (lead && canTransition(lead.status, 'ENGAGED')) {
         lead.status = 'ENGAGED';
         if (!lead.tags.includes('engaged_visitor')) {
@@ -288,7 +296,7 @@ export class TrackingService {
     }
 
     // Persist immutable AnalyticsEvent
-    await AnalyticsEvent.create({
+    await scope.events.create({
       leadId,
       campaignId: campaign?._id,
       mvpProjectId,

@@ -159,6 +159,11 @@ describe('buildDemoDataset (REV-199)', () => {
       // The demo leads belong to the demo studio
       expect(String(lead['tenantId'])).toBe(studio);
     }
+    // Their MVPs, campaigns and events carry the demo studio too, or the API's studio filter would hide them (REV-209)
+    expect(ds.mvpProjects.length).toBeGreaterThan(0);
+    for (const child of [...ds.mvpProjects, ...ds.emailCampaigns, ...ds.analyticsEvents]) {
+      expect(String(child['tenantId'])).toBe(studio);
+    }
     const leadBusiness = new Map(ds.leads.map((l) => [String(l._id), String(l['businessId'])]));
     for (const audit of ds.audits) expect(String(audit['businessId'])).toBe(leadBusiness.get(String(audit.leadId)));
   });

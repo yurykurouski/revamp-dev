@@ -5,6 +5,7 @@ import { createApp } from '../../app.js';
 import { env } from '../../config/env.js';
 import { authedRequest, setMemberRole } from './authed-request.js';
 import { closeServer, listenOnLoopback } from './loopback-server.js';
+import { listApiRoutes } from './route-table.js';
 
 // Loading the routes imports the queues; none of them may connect to Redis or Mongo here
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
@@ -12,6 +13,7 @@ vi.mock('../../services/lead.service.js');
 // The owner-only routes run their handlers in the role table below; none of them may reach a database
 vi.mock('../../services/organization.service.js');
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
@@ -49,42 +51,13 @@ const PUBLIC_ROUTES = [
   'GET /mvp/preview/:slug',
 ];
 
-interface Layer {
-  route?: { path: string | string[]; methods: Record<string, boolean> };
-  name?: string;
-  regexp?: RegExp;
-  handle?: { stack?: Layer[] };
-}
-
-const prefixOf = (layer: Layer): string =>
-  (layer.regexp?.source ?? '')
-    .replace('\\/?(?=\\/|$)', '')
-    .replace(/^\^/, '')
-    .replace(/\\\//g, '/')
-    .replace(/\(\?:\(\[\^\/\]\+\?\)\)/g, ':param');
-
-const routesOf = (stack: Layer[], prefix = ''): string[] =>
-  stack.flatMap((layer) => {
-    if (layer.route) {
-      const paths = [layer.route.path].flat();
-      return Object.keys(layer.route.methods).flatMap((method) =>
-        paths.map((path) => `${method.toUpperCase()} ${prefix}${path}`.replace(/\/$/, '')),
-      );
-    }
-    if (layer.name === 'router' && layer.handle?.stack) return routesOf(layer.handle.stack, prefix + prefixOf(layer));
-    return [];
-  });
-
 describe('every API route needs a token unless it is public (REV-206)', () => {
   let server: Server;
   let routes: string[];
   beforeAll(async () => {
     const app = createApp();
     // The API router is mounted at API_PREFIX; its routes are listed relative to it
-    const api = (app as unknown as { _router: { stack: Layer[] } })._router.stack.find(
-      (layer) => layer.name === 'router' && layer.handle?.stack,
-    )!;
-    routes = routesOf(api.handle!.stack!);
+    routes = listApiRoutes(app);
     server = await listenOnLoopback(app);
   });
   afterAll(() => closeServer(server));
