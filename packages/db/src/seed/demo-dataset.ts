@@ -13,6 +13,7 @@ import {
   STANDARDS_CHECKS,
   STANDARDS_POINTS,
 } from '@revamp/shared-types';
+import { hashPasswordWithSalt } from '../password.js';
 
 // REV-199: the fixed demo dataset `npm run db:seed` loads. Test data that lives in a script, never read at runtime
 // (REV-45): every domain and email is a reserved `.test` name, which never resolves, so the email worker's MX
@@ -88,12 +89,41 @@ export interface DemoPage {
   versionHtml: string;
 }
 
+export interface DemoOrganization extends Extra {
+  _id: Types.ObjectId;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DemoUser extends Extra {
+  _id: Types.ObjectId;
+  email: string;
+  passwordHash: string;
+  name: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DemoMembership extends Extra {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  organizationId: Types.ObjectId;
+  role: 'owner';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface DemoDataset {
   leads: DemoLead[];
   audits: DemoAudit[];
   mvpProjects: DemoMvpProject[];
   emailCampaigns: DemoEmailCampaign[];
   analyticsEvents: DemoAnalyticsEvent[];
+  /** The demo studio and its owner, who signs in with `DEMO_OWNER_EMAIL` and `DEMO_OWNER_PASSWORD` (REV-206) */
+  organizations: DemoOrganization[];
+  users: DemoUser[];
+  memberships: DemoMembership[];
   pages: DemoPage[];
 }
 
@@ -102,14 +132,31 @@ export interface DemoStorage {
   demosBucket: string;
 }
 
-export type DemoCollection = 'leads' | 'audits' | 'mvpProjects' | 'emailCampaigns' | 'analyticsEvents';
+export type DemoCollection =
+  | 'leads'
+  | 'audits'
+  | 'mvpProjects'
+  | 'emailCampaigns'
+  | 'analyticsEvents'
+  | 'organizations'
+  | 'users'
+  | 'memberships';
 
 /** Fixed ids: prefix `5eed`, one byte for the collection, then the index */
-const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5 } as const;
+const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5, organization: 6, user: 7, membership: 8 } as const;
 const demoId = (kind: keyof typeof KIND, n: number) =>
   new Types.ObjectId(`5eed${KIND[kind].toString(16).padStart(2, '0')}${n.toString(16).padStart(18, '0')}`);
 
 const SENDER = 'outreach@revamp-demo.test';
+
+/**
+ * The demo owner (REV-206): a local test account, so its password is documented and public. The seed refuses any
+ * database that is not on this machine (`assertLocalSeedTarget`), so the account never exists in production.
+ */
+export const DEMO_OWNER_EMAIL = 'demo-owner@revamp-demo.test';
+export const DEMO_OWNER_PASSWORD = 'demo-owner-password';
+/** A fixed salt keeps the hash, and so the seed, the same on every run */
+const DEMO_OWNER_SALT = Buffer.from('revamp-demo-salt');
 const DAY = 86_400_000;
 const HOUR = 3_600_000;
 
@@ -245,8 +292,38 @@ export function buildDemoDataset(
   now: Date,
   storage: DemoStorage = { s3Endpoint: 'http://localhost:9000', demosBucket: 'revamp-demos' },
 ): DemoDataset {
-  const ds: DemoDataset = { leads: [], audits: [], mvpProjects: [], emailCampaigns: [], analyticsEvents: [], pages: [] };
+  const ds: DemoDataset = {
+    leads: [],
+    audits: [],
+    mvpProjects: [],
+    emailCampaigns: [],
+    analyticsEvents: [],
+    organizations: [],
+    users: [],
+    memberships: [],
+    pages: [],
+  };
   const at = (ms: number) => new Date(now.getTime() - ms);
+  const accountCreated = at(30 * DAY);
+  const organizationId = demoId('organization', 1);
+  const userId = demoId('user', 1);
+  ds.organizations.push({ _id: organizationId, name: 'Demo Studio', createdAt: accountCreated, updatedAt: accountCreated });
+  ds.users.push({
+    _id: userId,
+    email: DEMO_OWNER_EMAIL,
+    passwordHash: hashPasswordWithSalt(DEMO_OWNER_PASSWORD, DEMO_OWNER_SALT),
+    name: 'Demo Owner',
+    createdAt: accountCreated,
+    updatedAt: accountCreated,
+  });
+  ds.memberships.push({
+    _id: demoId('membership', 1),
+    userId,
+    organizationId,
+    role: 'owner',
+    createdAt: accountCreated,
+    updatedAt: accountCreated,
+  });
   const endpoint = storage.s3Endpoint.replace(/\/+$/, '');
   let eventN = 0;
   let outreachN = 0;
@@ -426,5 +503,8 @@ export function demoDocumentIds(ds: DemoDataset): Record<DemoCollection, Types.O
     mvpProjects: ds.mvpProjects.map((d) => d._id),
     emailCampaigns: ds.emailCampaigns.map((d) => d._id),
     analyticsEvents: ds.analyticsEvents.map((d) => d._id),
+    organizations: ds.organizations.map((d) => d._id),
+    users: ds.users.map((d) => d._id),
+    memberships: ds.memberships.map((d) => d._id),
   };
 }

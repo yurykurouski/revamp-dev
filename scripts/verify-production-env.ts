@@ -210,6 +210,21 @@ export function checkApiKeys(): VerificationResult {
   };
 }
 
+/** The API will not start with a missing or short JWT_SECRET (REV-206); the value is never printed */
+export function checkJwtSecret(): VerificationResult {
+  const secret = process.env.JWT_SECRET ?? '';
+  if (secret.length >= 32) {
+    return { service: 'JWT secret', status: 'SUCCESS', message: 'JWT_SECRET is set and long enough.' };
+  }
+  return {
+    service: 'JWT secret',
+    status: 'FAILED',
+    message: secret
+      ? 'JWT_SECRET is shorter than 32 characters; the API refuses to start.'
+      : 'JWT_SECRET is not set; the API refuses to start. Generate one with: openssl rand -base64 48',
+  };
+}
+
 export async function runDiagnostics(): Promise<boolean> {
   console.log('\n======================================================');
   console.log('🔍 Revamp SaaS - Production Preflight Environment Diagnostic');
@@ -222,6 +237,7 @@ export async function runDiagnostics(): Promise<boolean> {
   results.push(await checkRedis());
   results.push(await checkS3Storage());
   results.push(checkApiKeys());
+  results.push(checkJwtSecret());
 
   let allSuccess = true;
   for (const res of results) {

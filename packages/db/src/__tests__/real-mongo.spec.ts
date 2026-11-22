@@ -11,6 +11,10 @@ import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { buildDemoDataset } from '../seed/demo-dataset.js';
 import { seedDemoDataset } from '../seed/seed-demo.js';
 import { approveOutreachWithCampaign, revertOutreachApproval } from '../approve-outreach.js';
+import { createOrganizationWithOwner } from '../create-organization-with-owner.js';
+import { Organization } from '../models/Organization.model.js';
+import { User } from '../models/User.model.js';
+import { Membership } from '../models/Membership.model.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 
 // Every real-MongoDB test lives in this file and shares one server: a mongod per file, started in
@@ -336,7 +340,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
 
   describe('seedDemoDataset (REV-199)', () => {
     const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
-    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent] as const;
+    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership] as const;
     const foreignLead = {
       businessName: 'Real Customer',
       originalUrl: 'https://real.example.org',
@@ -366,6 +370,17 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await EmailCampaign.countDocuments()).toBe(ds.emailCampaigns.length);
       expect(await AnalyticsEvent.countDocuments()).toBe(ds.analyticsEvents.length);
       expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 1, 1]);
+      expect(report.users).toEqual({ inserted: 1, kept: 0 });
+    });
+
+    it('leaves a real user and organization alone, also on reset (REV-206)', async () => {
+      const real = await createOrganizationWithOwner({ email: 'real@studio.example', passwordHash: 'scrypt$a$b', organizationName: 'Real Studio' });
+      await seedDemoDataset(ds, { reset: false });
+      await seedDemoDataset(ds, { reset: true });
+      expect(await User.findById(real.user._id).lean()).toMatchObject({ email: 'real@studio.example' });
+      expect(await Organization.findById(real.organization._id).lean()).toMatchObject({ name: 'Real Studio' });
+      expect(await Membership.countDocuments()).toBe(2);
     });
 
     it('a second run inserts nothing', async () => {
@@ -525,6 +540,68 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await revertOutreachApproval(String(lead._id))).toBe(false);
       expect((await Lead.findById(lead._id).lean())?.status).toBe('SENT');
       expect((await EmailCampaign.findOne({ leadId: lead._id }).lean())?.status).toBe('DELIVERED');
+    });
+  });
+  // REV-206: registration writes the organization, the user and the owner membership together
+  describe('createOrganizationWithOwner (REV-206)', () => {
+    const owner = (n: number, email = `owner${n}@studio.test`) => ({
+      email,
+      passwordHash: 'scrypt$salt$hash',
+      organizationName: `Studio ${n}`,
+      name: `Owner ${n}`,
+    });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-org-test' });
+      await Promise.all([Organization.init(), User.init(), Membership.init()]);
+    });
+
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+
+    beforeEach(async () => {
+      await Promise.all([Organization.deleteMany({}), User.deleteMany({}), Membership.deleteMany({})]);
+    });
+
+    it('writes the organization, the user and an owner membership that link to each other', async () => {
+      const result = await createOrganizationWithOwner(owner(1));
+      expect(result.membership.role).toBe('owner');
+      expect(String(result.membership.userId)).toBe(String(result.user._id));
+      expect(String(result.membership.organizationId)).toBe(String(result.organization._id));
+      expect(result.organization.name).toBe('Studio 1');
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 1, 1]);
+    });
+
+    it('leaves no user and no organization when the membership insert fails', async () => {
+      vi.spyOn(Membership, 'create').mockRejectedValueOnce(new Error('membership insert failed'));
+      await expect(createOrganizationWithOwner(owner(2))).rejects.toThrow('membership insert failed');
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([0, 0, 0]);
+      vi.restoreAllMocks();
+    });
+
+    it('rejects a second registration of the same email, in any letter case, with E11000 and writes nothing for it', async () => {
+      await createOrganizationWithOwner(owner(3, 'same@studio.test'));
+      const second = createOrganizationWithOwner(owner(4, 'SAME@Studio.Test'));
+      await expect(second).rejects.toMatchObject({ code: 11000 });
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 1, 1]);
+    });
+
+    it('keeps one user, one organization and one membership when 20 registrations of one email race', async () => {
+      const results = await Promise.allSettled(
+        Array.from({ length: 20 }, (_, i) => createOrganizationWithOwner(owner(i, 'race@studio.test'))),
+      );
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 1, 1]);
+    });
+
+    it('allows one user a membership in two organizations but not two in the same one', async () => {
+      const first = await createOrganizationWithOwner(owner(5));
+      const other = await Organization.create({ name: 'Other' });
+      await Membership.create({ userId: first.user._id, organizationId: other._id, role: 'owner' });
+      await expect(
+        Membership.create({ userId: first.user._id, organizationId: other._id, role: 'owner' }),
+      ).rejects.toMatchObject({ code: 11000 });
     });
   });
 });

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
   checkApiKeys,
+  checkJwtSecret,
   checkMongoDB,
   checkRedis,
   checkS3Storage,
@@ -175,6 +176,15 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
   });
 
   describe('Deployment Automation Script (deploy/deploy.sh)', () => {
+
+    it('refuses to deploy without a JWT_SECRET of 32+ characters, before it builds or replaces containers (REV-206)', () => {
+      const script = fs.readFileSync(path.join(rootDir, 'deploy/deploy.sh'), 'utf-8');
+      const check = script.indexOf('JWT_SECRET');
+      expect(check, 'deploy.sh checks JWT_SECRET').toBeGreaterThan(-1);
+      expect(check).toBeLessThan(script.indexOf('docker compose -f docker-compose.prod.yml build'));
+      expect(check).toBeLessThan(script.indexOf('up -d'));
+      expect(script).toMatch(/JWT_SECRET[\s\S]{0,400}exit 1/);
+    });
     it('should have bash strict mode and executable preflight and healthcheck loop', () => {
       const filePath = path.join(rootDir, 'deploy/deploy.sh');
       expect(fs.existsSync(filePath)).toBe(true);
@@ -204,6 +214,7 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(content).toContain('PREVIEW_DOMAIN=preview.revamp.io');
       expect(content).toContain('CORS_ORIGIN=https://app.revamp.io');
       expect(content).toContain('ANTHROPIC_API_KEY=');
+      expect(content).toContain('JWT_SECRET=');
       expect(content).toContain('RESEND_API_KEY=');
       expect(content).toContain('TRACKING_BASE_URL=');
 
@@ -219,6 +230,32 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(result).toHaveProperty('service', 'API Keys & Secrets');
       expect(['SUCCESS', 'WARNING', 'FAILED']).toContain(result.status);
       expect(result).toHaveProperty('details');
+    });
+
+    it('checkJwtSecret fails when the sign-in secret is missing or shorter than 32 characters (REV-206)', () => {
+      const original = process.env.JWT_SECRET;
+      try {
+        delete process.env.JWT_SECRET;
+        expect(checkJwtSecret()).toMatchObject({ service: 'JWT secret', status: 'FAILED' });
+        process.env.JWT_SECRET = 'x'.repeat(31);
+        expect(checkJwtSecret().status).toBe('FAILED');
+        process.env.JWT_SECRET = 'x'.repeat(32);
+        expect(checkJwtSecret().status).toBe('SUCCESS');
+      } finally {
+        if (original === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = original;
+      }
+    });
+
+    it('checkJwtSecret never prints the secret (REV-206)', () => {
+      const original = process.env.JWT_SECRET;
+      process.env.JWT_SECRET = 'super-secret-value-that-is-long-enough-123';
+      try {
+        expect(JSON.stringify(checkJwtSecret())).not.toContain('super-secret-value');
+      } finally {
+        if (original === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = original;
+      }
     });
 
     it('checkMongoDB should fail gracefully when connection is invalid', async () => {

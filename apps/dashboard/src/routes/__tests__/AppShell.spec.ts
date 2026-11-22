@@ -13,6 +13,7 @@ import { apiClient, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore.js';
+import { useAuthStore } from '../../store/useAuthStore.js';
 import { AppRoutes } from '../AppRoutes.js';
 
 // The review itself has its own tests; here only which lead it shows and its close callback matter
@@ -41,6 +42,13 @@ const LEADS = [
   lead('l4', 'SENT', 'Bright Smile'),
 ];
 
+const SESSION = {
+  token: 'tok',
+  user: { id: 'u1', email: 'owner@studio.test' },
+  organization: { id: 'o1', name: 'Pixel Studio' },
+  role: 'owner' as const,
+};
+
 /** Shows the router's current path, so tests can follow navigation */
 const PathProbe: React.FC = () => {
   const { pathname } = useLocation();
@@ -57,6 +65,8 @@ describe('app shell and routes (REV-76)', () => {
     vi.spyOn(apiClient, 'getLlmProviders').mockResolvedValue({ workersOnline: false, providers: [] });
     useLeadFilterStore.getState().resetFilters();
     useLeadFilterStore.getState().setViewMode('kanban');
+    // The app is behind sign-in (REV-206)
+    useAuthStore.setState({ session: SESSION });
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -361,6 +371,50 @@ describe('app shell and routes (REV-76)', () => {
 
       await act(async () => railEntry('shortcuts').click());
       expect(shortcutsDialog()).not.toBeNull();
+    });
+  });
+  describe('sign-in guard (REV-206)', () => {
+    beforeEach(() => {
+      vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined, removeItem: () => undefined });
+    });
+    afterEach(() => vi.unstubAllGlobals());
+
+    it.each(['/', '/leads', '/leads/l1', '/settings', '/leads/l1/preview'])('sends a signed-out visitor from %s to /login', async (target) => {
+      useAuthStore.setState({ session: null });
+      await mount(target);
+      expect(path()).toBe('/login');
+      expect(document.querySelector('h1')!.textContent).toBe(en.auth.signInTitle);
+    });
+
+    it('opens the page the visitor wanted after signing in', async () => {
+      useAuthStore.setState({ session: null });
+      await mount('/leads/l1');
+      expect(path()).toBe('/login');
+      await act(async () => useAuthStore.getState().signIn(SESSION));
+      await flush();
+      expect(path()).toBe('/leads/l1');
+    });
+
+    it('shows the registration page without a session', async () => {
+      useAuthStore.setState({ session: null });
+      await mount('/register');
+      expect(path()).toBe('/register');
+      expect(document.querySelector('h1')!.textContent).toBe(en.auth.registerTitle);
+    });
+
+    it('goes to the sign-in page when the session ends while the app is open', async () => {
+      await mount('/leads');
+      expect(path()).toBe('/leads');
+      await act(async () => useAuthStore.getState().signOut());
+      await flush();
+      expect(path()).toBe('/login');
+    });
+
+    it('keeps a signed-in user out of /login and /register', async () => {
+      await mount('/login');
+      expect(path()).toBe('/');
+      await mount('/register');
+      expect(path()).toBe('/');
     });
   });
 });

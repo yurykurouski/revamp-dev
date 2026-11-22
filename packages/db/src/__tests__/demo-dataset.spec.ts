@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { DesignCritiqueOutputSchema, MvpPageVersionSchema, MvpStandardsSchema, MvpThemeSchema } from '@revamp/validation';
-import { buildDemoDataset, demoDocumentIds } from '../seed/demo-dataset.js';
+import { DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, buildDemoDataset, demoDocumentIds } from '../seed/demo-dataset.js';
+import { verifyPassword } from '../password.js';
+import { Membership } from '../models/Membership.model.js';
+import { Organization } from '../models/Organization.model.js';
+import { User } from '../models/User.model.js';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
@@ -22,18 +26,21 @@ describe('buildDemoDataset (REV-199)', () => {
   });
 
   it('has documents in every collection', () => {
-    for (const docs of [ds.leads, ds.audits, ds.mvpProjects, ds.emailCampaigns, ds.analyticsEvents, ds.pages]) {
+    for (const docs of [ds.leads, ds.audits, ds.mvpProjects, ds.emailCampaigns, ds.analyticsEvents, ds.pages, ds.organizations, ds.users, ds.memberships]) {
       expect(docs.length).toBeGreaterThan(0);
     }
   });
 
   it('every document passes its Mongoose schema', () => {
-    const pairs: [typeof Lead | typeof Audit | typeof MvpProject | typeof EmailCampaign | typeof AnalyticsEvent, object[]][] = [
+    const pairs: [typeof Lead | typeof Audit | typeof MvpProject | typeof EmailCampaign | typeof AnalyticsEvent | typeof Organization | typeof User | typeof Membership, object[]][] = [
       [Lead, ds.leads],
       [Audit, ds.audits],
       [MvpProject, ds.mvpProjects],
       [EmailCampaign, ds.emailCampaigns],
       [AnalyticsEvent, ds.analyticsEvents],
+      [Organization, ds.organizations],
+      [User, ds.users],
+      [Membership, ds.memberships],
     ];
     for (const [Model, docs] of pairs) {
       for (const doc of docs) {
@@ -105,6 +112,21 @@ describe('buildDemoDataset (REV-199)', () => {
       expect(c.recipientEmail).toMatch(/@[a-z0-9.-]+\.test$/);
       expect(c.senderEmail).toMatch(/@[a-z0-9.-]+\.test$/);
     }
+  });
+
+  it('has a demo studio whose owner can sign in with the documented demo password (REV-206)', async () => {
+    expect(ds.organizations).toHaveLength(1);
+    expect(ds.users).toHaveLength(1);
+    expect(ds.memberships).toHaveLength(1);
+    const [user] = ds.users;
+    const [membership] = ds.memberships;
+    expect(user!.email).toBe(DEMO_OWNER_EMAIL);
+    expect(DEMO_OWNER_EMAIL).toMatch(/@[a-z0-9.-]+\.test$/);
+    expect(await verifyPassword(DEMO_OWNER_PASSWORD, user!.passwordHash)).toBe(true);
+    expect(await verifyPassword(`${DEMO_OWNER_PASSWORD}x`, user!.passwordHash)).toBe(false);
+    expect(membership).toMatchObject({ role: 'owner' });
+    expect(String(membership!.userId)).toBe(String(user!._id));
+    expect(String(membership!.organizationId)).toBe(String(ds.organizations[0]!._id));
   });
 
   it('is deterministic for a given time and has unique ids', () => {

@@ -11,6 +11,7 @@ import {
 import {
   ApiErrorCode,
   IApiError,
+  IAuthSession,
   IAudit,
   IMeasurementError,
   IStandardsChecks,
@@ -33,6 +34,7 @@ import {
   SiteComplexityClass,
 } from '@revamp/shared-types';
 import { ComplexityFilter } from '../utils/siteComplexity.js';
+import { getAuthToken, useAuthStore } from '../store/useAuthStore.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 
 export interface ILeadItem {
@@ -79,6 +81,21 @@ const getApiBaseUrl = (): string => {
 };
 
 const API_BASE_URL = getApiBaseUrl();
+
+/**
+ * `fetch` that sends the session token (REV-206). A 401 to a signed-in request means the token expired or is no
+ * longer valid, so it signs out and the route guard shows the sign-in page. Signed out, the request goes unchanged.
+ */
+export async function authFetch(input: string, init: RequestInit = {}): Promise<Response> {
+  const token = getAuthToken();
+  if (!token) return fetch(input, init);
+  const res = await fetch(input, {
+    ...init,
+    headers: { ...(init.headers as Record<string, string> | undefined), Authorization: `Bearer ${token}` },
+  });
+  if (res.status === 401) useAuthStore.getState().signOut();
+  return res;
+}
 
 /** The dashboard's language when the request is made: the model writes its design changes in it (REV-162) */
 const operatorLocale = () => useLanguageStore.getState().language;
@@ -143,7 +160,7 @@ export async function fetchAllLeadPages(filters?: LeadListFilters): Promise<{ le
     const search = filters?.search?.trim();
     if (search) params.append('search', search);
 
-    const res = await fetch(`${API_BASE_URL}/leads?${params.toString()}`, {
+    const res = await authFetch(`${API_BASE_URL}/leads?${params.toString()}`, {
       headers: { Accept: 'application/json' },
     });
     if (!res.ok) throw new Error(`Failed to load leads (HTTP ${res.status})`);
@@ -165,7 +182,7 @@ export async function fetchAllLeadPages(filters?: LeadListFilters): Promise<{ le
 
 /** Pipeline-wide counts by status, independent of the list filters (REV-43); feeds the rail's Needs-you badge (REV-76) */
 export async function fetchLeadStats(): Promise<ILeadStats> {
-  const res = await fetch(`${API_BASE_URL}/leads/stats`, { headers: { Accept: 'application/json' } });
+  const res = await authFetch(`${API_BASE_URL}/leads/stats`, { headers: { Accept: 'application/json' } });
   return readDataOrThrow<ILeadStats>(res);
 }
 
@@ -199,7 +216,7 @@ export const apiClient = {
       validated.businessName ||
       capitalizedDomain.charAt(0).toUpperCase() + capitalizedDomain.slice(1);
 
-    const res = await fetch(`${API_BASE_URL}/leads`, {
+    const res = await authFetch(`${API_BASE_URL}/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -231,7 +248,7 @@ export const apiClient = {
    * Fetches audit diagnostics and critique details for Side-by-Side Inspector
    */
   async getAudit(auditId: string): Promise<IAuditDetail> {
-    const res = await fetch(`${API_BASE_URL}/audits/${encodeURIComponent(auditId)}`);
+    const res = await authFetch(`${API_BASE_URL}/audits/${encodeURIComponent(auditId)}`);
     return mapServerAudit(await readDataOrThrow<IServerAudit>(res), auditId);
   },
 
@@ -243,7 +260,7 @@ export const apiClient = {
     leadId: string,
     emailData: IEmailDraft,
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
-    const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/approve`, {
+    const res = await authFetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -260,7 +277,7 @@ export const apiClient = {
    * provider accepted it; a missing provider or a failed send rejects with the API's message.
    */
   async sendTestEmail(leadId: string, testEmail: string, draft: IEmailDraft): Promise<ITestEmailResult> {
-    const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/test`, {
+    const res = await authFetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ testEmail, ...draft }),
@@ -275,7 +292,7 @@ export const apiClient = {
     leadId: string,
     reason: string,
   ): Promise<{ success: boolean; leadId: string; status: LeadStatus }> {
-    const res = await fetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/reject`, {
+    const res = await authFetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ reason }),
@@ -290,7 +307,7 @@ export const apiClient = {
    */
   async updateMvpTokens(mvpId: string, body: IMvpControlsUpdate): Promise<IMvpPageResult> {
     const payload = UpdateMvpTokensSchema.parse(body);
-    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/tokens`, {
+    const res = await authFetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/tokens`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -303,7 +320,7 @@ export const apiClient = {
    * re-published as a new version, or with why nothing was.
    */
   async editMvp(mvpId: string, instruction: string): Promise<IMvpPageResult> {
-    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/edit`, {
+    const res = await authFetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/edit`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ instruction, operatorLocale: operatorLocale() }),
@@ -313,7 +330,7 @@ export const apiClient = {
 
   /** Publishes version `n` of the page again, with the current colors and fonts, as a new version (REV-139) */
   async restoreMvpVersion(mvpId: string, n: number): Promise<IMvpPageResult> {
-    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/versions/${n}/restore`, { method: 'POST' });
+    const res = await authFetch(`${API_BASE_URL}/mvp/${encodeURIComponent(mvpId)}/versions/${n}/restore`, { method: 'POST' });
     return readDataOrThrow<IMvpPageResult>(res);
   },
 
@@ -321,7 +338,7 @@ export const apiClient = {
    * Fetches MVP project details by leadId, mvpId, or slug
    */
   async getMvp(idOrLeadId: string): Promise<IMvpProjectDetail | null> {
-    const res = await fetch(`${API_BASE_URL}/mvp/${encodeURIComponent(idOrLeadId)}`);
+    const res = await authFetch(`${API_BASE_URL}/mvp/${encodeURIComponent(idOrLeadId)}`);
     // No MVP generated yet for this lead
     if (res.status === 404) return null;
     return readDataOrThrow<IMvpProjectDetail>(res);
@@ -344,7 +361,7 @@ export const apiClient = {
       model: options.model,
       operatorLocale: operatorLocale(),
     });
-    const res = await fetch(`${API_BASE_URL}/mvp/generate`, {
+    const res = await authFetch(`${API_BASE_URL}/mvp/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -359,7 +376,7 @@ export const apiClient = {
    */
   async retryAudit(leadId: string): Promise<{ success: boolean; status: LeadStatus }> {
     const payload = TriggerAuditSchema.parse({ leadId });
-    const res = await fetch(`${API_BASE_URL}/audits/trigger`, {
+    const res = await authFetch(`${API_BASE_URL}/audits/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -372,7 +389,7 @@ export const apiClient = {
    * LLM providers/models for MVP generation and which the workers can run right now (REV-32)
    */
   async getLlmProviders(): Promise<ILlmProvidersResponse> {
-    const res = await fetch(`${API_BASE_URL}/mvp/providers`, { headers: { Accept: 'application/json' } });
+    const res = await authFetch(`${API_BASE_URL}/mvp/providers`, { headers: { Accept: 'application/json' } });
     return readDataOrThrow<ILlmProvidersResponse>(res);
   },
 
@@ -381,7 +398,7 @@ export const apiClient = {
    */
   async startDiscovery(input: StartDiscoveryInput): Promise<{ jobId: string }> {
     const validated = StartDiscoverySchema.parse(input);
-    const res = await fetch(`${API_BASE_URL}/discovery`, {
+    const res = await authFetch(`${API_BASE_URL}/discovery`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(validated),
@@ -394,7 +411,7 @@ export const apiClient = {
    * Polls a discovery job for its state and import summary
    */
   async getDiscoveryStatus(jobId: string): Promise<IDiscoveryJobStatus> {
-    const res = await fetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}`, {
+    const res = await authFetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}`, {
       headers: { Accept: 'application/json' },
     });
     return readDataOrThrow<IDiscoveryJobStatus>(res);
@@ -404,7 +421,7 @@ export const apiClient = {
    * Imports the operator's selection from a finished discovery job as leads (REV-29)
    */
   async importDiscoveryCandidates(jobId: string, externalIds: string[]): Promise<IDiscoveryImportResult> {
-    const res = await fetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}/import`, {
+    const res = await authFetch(`${API_BASE_URL}/discovery/${encodeURIComponent(jobId)}/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(ImportDiscoverySchema.parse({ externalIds, operatorLocale: operatorLocale() })),
@@ -418,7 +435,7 @@ export const apiClient = {
   async reverseGeocode(lat: number, lng: number, lang?: string): Promise<IReverseGeocodeResult> {
     const params = new URLSearchParams({ lat: String(lat), lng: String(lng) });
     if (lang) params.set('lang', lang);
-    const res = await fetch(`${API_BASE_URL}/discovery/reverse-geocode?${params.toString()}`, {
+    const res = await authFetch(`${API_BASE_URL}/discovery/reverse-geocode?${params.toString()}`, {
       headers: { Accept: 'application/json' },
     });
     return readDataOrThrow<IReverseGeocodeResult>(res);
@@ -453,6 +470,27 @@ export class ApiError extends Error {
     this.name = 'ApiError';
   }
 }
+
+/** Register and login need no token, so they use plain `fetch`: a 401 here is a wrong password, not an expired session */
+export const authApi = {
+  async register(body: { email: string; password: string; organizationName: string; name?: string }): Promise<IAuthSession> {
+    const res = await fetch(`${API_BASE_URL}/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return readDataOrThrow<IAuthSession>(res);
+  },
+
+  async login(body: { email: string; password: string }): Promise<IAuthSession> {
+    const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return readDataOrThrow<IAuthSession>(res);
+  },
+};
 
 async function readDataOrThrow<T>(res: Response): Promise<T> {
   let body: { error?: Partial<IApiError>; data?: T } | null = null;

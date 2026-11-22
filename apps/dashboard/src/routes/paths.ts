@@ -5,6 +5,8 @@ export const ROUTES = {
   lead: '/leads/:id',
   leadPreview: '/leads/:id/preview',
   settings: '/settings',
+  login: '/login',
+  register: '/register',
 } as const;
 
 /** The URL of one lead */

@@ -9,6 +9,8 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 const EnvSchema = z.object({
   PORT: z.coerce.number().default(4000),
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  // Signs the sign-in tokens (REV-206); `npm run setup` generates one into .env
+  JWT_SECRET: z.string().min(32, 'JWT_SECRET must be at least 32 characters'),
   CORS_ORIGIN: z.string().default('http://localhost:5173'),
   API_PREFIX: z.string().default('/api/v1'),
   MONGODB_URI: z.string().default('mongodb://localhost:27017/revamp'),

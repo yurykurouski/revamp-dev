@@ -1122,6 +1122,10 @@ export const API_ERROR_CODES = [
   'DISCOVERY_JOB_NOT_COMPLETED',
   'GEOCODING_UNAVAILABLE',
   'PLACE_NOT_FOUND',
+  // Accounts and sign-in (REV-206)
+  'UNAUTHENTICATED',
+  'INVALID_CREDENTIALS',
+  'EMAIL_TAKEN',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1297,4 +1301,32 @@ export interface IMvpPageJob {
 export interface IMvpDesignChange {
   change: string;
   reason: string;
+}
+
+// 10. Organizations and sign-in (REV-206)
+/** What a member may do in an organization; `operator` and `viewer` join with invitations (REV-207) */
+export const ORGANIZATION_ROLES = ['owner'] as const;
+export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+
+export interface IAuthUser {
+  id: string;
+  email: string;
+  name?: string;
+}
+
+export interface IAuthOrganization {
+  id: string;
+  name: string;
+}
+
+/** The caller of a request: who they are, in which organization, with which role */
+export interface IAuthContext {
+  user: IAuthUser;
+  organization: IAuthOrganization;
+  role: OrganizationRole;
+}
+
+/** Response of `POST /auth/register` and `POST /auth/login`; `GET /auth/me` returns the context without the token */
+export interface IAuthSession extends IAuthContext {
+  token: string;
 }

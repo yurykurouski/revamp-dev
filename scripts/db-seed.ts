@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import mongoose from 'mongoose';
 import { CreateBucketCommand, HeadBucketCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3';
-import { assertLocalSeedTarget, buildDemoDataset, DemoPage, redactMongoUri, seedDemoDataset } from '@revamp/db';
+import { assertLocalSeedTarget, buildDemoDataset, DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, DemoPage, redactMongoUri, seedDemoDataset } from '@revamp/db';
 // @ts-expect-error plain .mjs helper without type declarations
 import { parseEnv } from './lib/dev-stack.mjs';
 
@@ -79,6 +79,8 @@ async function main(): Promise<void> {
     for (const [collection, { inserted, kept }] of Object.entries(report)) {
       console.log(`[Seed] ${collection.padEnd(16)} inserted ${inserted}, kept ${kept}`);
     }
+    // A local test account (REV-206); the seed never runs against a hosted database
+    console.log(`[Seed] Sign in to the dashboard as ${DEMO_OWNER_EMAIL} with the password ${DEMO_OWNER_PASSWORD}`);
   } finally {
     await mongoose.disconnect();
   }

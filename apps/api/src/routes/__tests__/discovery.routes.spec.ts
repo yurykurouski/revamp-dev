@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from 'vitest';
 import type { Server } from 'node:http';
 import { listenOnLoopback, closeServer } from './loopback-server.js';
-import request from 'supertest';
+import { authedRequest as request } from './authed-request.js';
 import { createApp } from '../../app.js';
 import { DiscoveryService } from '../../services/discovery.service.js';
 import { AppError } from '../../middlewares/errorHandler.js';

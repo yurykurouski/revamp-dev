@@ -14,3 +14,9 @@ Read this when you change Mongoose schemas, indexes, migrations, the seed datase
 * Tests that need a real MongoDB (unique indexes, transactions) go in `packages/db/src/__tests__/real-mongo.spec.ts`, which starts one `startMongoReplSet()` server (`packages/db/src/testing/mongo-memory.ts`, `mongodb-memory-server`, binary pinned in the root `package.json` and cached in CI) for all of them. Don't start another server in a new file: parallel `mongod` start-ups slow the Chromium tests enough to break their timing.
 
 The transactions `createLeadWithAudit` and `approveOutreachWithCampaign` live here; how the API uses them and reverts on a failed enqueue is in [apps/api/AGENTS.md](../../apps/api/AGENTS.md).
+
+## Accounts (REV-206)
+
+* `organizations`, `users` and `memberships` are the account collections: a unique `users.email` (lowercase) and a unique `{ userId, organizationId }` on memberships. `createOrganizationWithOwner` writes an organization, its first user and the owner membership in one transaction. Password hashing (`hashPassword`, `verifyPassword`, `hashPasswordWithSalt`) lives here so the API and the seed share one format (`scrypt$<salt>$<key>`); a hash is never logged or returned.
+* The demo dataset has one studio, `Demo Studio`, and its owner `DEMO_OWNER_EMAIL` / `DEMO_OWNER_PASSWORD` (a fixed salt keeps the seed idempotent). It is a local test account; `assertLocalSeedTarget` keeps it out of production. `--reset` deletes these three seed documents by id and nothing else, so real users survive it.
+

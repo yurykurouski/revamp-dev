@@ -69,6 +69,15 @@ if [ ! -f "docker-compose.prod.yml" ]; then
     exit 1
 fi
 
+# The API refuses to start without a JWT_SECRET of at least 32 characters (REV-206). Check it here, before the images
+# are built and the running containers are replaced, so a missing secret cannot take the API down.
+JWT_SECRET_VALUE="$(grep -E '^[[:space:]]*JWT_SECRET=' .env.production | tail -n 1 | cut -d= -f2- | tr -d '"'"'"'[:space:]')"
+if [ "${#JWT_SECRET_VALUE}" -lt 32 ]; then
+    log_error "JWT_SECRET in .env.production is missing or shorter than 32 characters; the API would not start."
+    log_info "Generate one with: openssl rand -base64 48"
+    exit 1
+fi
+
 log_success "Prerequisites verified."
 
 # ------------------------------------------------------------------------------

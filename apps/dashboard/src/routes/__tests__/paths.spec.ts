@@ -22,7 +22,8 @@ describe('dashboard routes (REV-76)', () => {
 
   it('opens a lead review as a page of its own, not on top of All leads (REV-77)', () => {
     const matches = matchRoutes(APP_ROUTES, '/leads/abc')!;
-    expect(matches.map((m) => m.route.path)).toEqual([ROUTES.queue, ROUTES.lead]);
+    // The pathless first route is the sign-in guard (REV-206)
+    expect(matches.map((m) => m.route.path)).toEqual([undefined, ROUTES.queue, ROUTES.lead]);
   });
 
   it('sends unknown paths to the catch-all route', () => {
@@ -32,8 +33,8 @@ describe('dashboard routes (REV-76)', () => {
 
   it("opens a lead's MVP full-window outside the app shell (REV-91)", () => {
     const matches = matchRoutes(APP_ROUTES, '/leads/abc/preview')!;
-    expect(matches.map((m) => m.route.path)).toEqual([ROUTES.leadPreview]);
-    expect(matches[0]!.params.id).toBe('abc');
+    expect(matches.map((m) => m.route.path)).toEqual([undefined, ROUTES.leadPreview]);
+    expect(matches[1]!.params.id).toBe('abc');
     expect(leadPreviewPath('abc')).toBe('/leads/abc/preview');
     expect(leadPreviewPath('a/b')).toBe('/leads/a%2Fb/preview');
   });

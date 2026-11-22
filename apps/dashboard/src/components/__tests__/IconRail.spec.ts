@@ -12,12 +12,13 @@ const render = ({
   activePage = 'queue' as RailPage | null,
   needsYouCount = 0,
   discovery = 'idle' as DiscoveryIndicator,
+  account = undefined as { name?: string; email: string; organization: string } | undefined,
 } = {}) =>
   renderToStaticMarkup(
     React.createElement(
       MemoryRouter,
       null,
-      React.createElement(IconRail, { activePage, needsYouCount, discovery, onOpenDiscovery: () => {}, onOpenShortcuts: () => {} }),
+      React.createElement(IconRail, { activePage, needsYouCount, discovery, onOpenDiscovery: () => {}, onOpenShortcuts: () => {}, account, onSignOut: () => {} }),
     ),
   );
 
@@ -102,7 +103,23 @@ describe('IconRail (REV-76)', () => {
     expect(html).not.toContain('AutoAwesomeIcon');
   });
 
-  it('shows the operator avatar', () => {
+  it('shows the operator avatar while signed out', () => {
     expect(render()).toContain(`>${en.header.operatorInitials}</div>`);
+    expect(render()).not.toContain('data-rail="sign-out"');
+  });
+
+  describe('signed in (REV-206)', () => {
+    const account = { name: 'Ann Lee', email: 'owner@studio.test', organization: 'Pixel Studio' };
+
+    it('shows the initials of the user, and a labelled sign-out button', () => {
+      const html = render({ account });
+      expect(html).toContain('>AL</div>');
+      expect(entry(html, 'sign-out')).toMatch(/^<button/);
+      expect(entry(html, 'sign-out')).toContain(`aria-label="${en.auth.signOut}"`);
+    });
+
+    it('uses the first letters of the email when the user has no name', () => {
+      expect(render({ account: { email: 'owner@studio.test', organization: 'Pixel Studio' } })).toContain('>OW</div>');
+    });
   });
 });
