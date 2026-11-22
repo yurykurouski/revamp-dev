@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import { redisConnection } from '../apps/workers/src/queues/connection.js';
 import { QUEUE_NAMES } from '../apps/workers/src/queues/queue.constants.js';
 import { createAuditWorker } from '../apps/workers/src/workers/audit.worker.js';
-import { addLeadToBusiness } from '@revamp/db';
+import { addLeadToBusiness, Organization } from '@revamp/db';
 import { normalizeDomain } from '@revamp/validation';
 import { Lead } from '../apps/workers/src/models/Lead.model.js';
 import { Audit } from '../apps/workers/src/models/Audit.model.js';
@@ -29,7 +29,11 @@ async function testBullMQWorker() {
   const targetUrl = process.argv[2] || 'https://news.ycombinator.com';
   const domain = new URL(targetUrl).hostname;
   // The business, the lead and its QUEUED audit, as Add lead does (REV-208)
+  // The studio the lead and its job belong to (REV-210): argv[3], else the oldest organization
+  const studio = process.argv[3] ?? String((await Organization.findOne({}, { _id: 1 }).sort({ createdAt: 1 }).lean())?._id ?? '');
+  if (!studio) throw new Error('No organization exists: register one or pass an organization id as the third argument');
   const added = await addLeadToBusiness({
+    tenantId: studio,
     deriveFromAudit: () => ({ set: {}, clearsEmailGuess: false }),
     lead: {
       businessName: `${domain} (REV-9 Demo)`,
@@ -49,6 +53,7 @@ async function testBullMQWorker() {
   console.log(`[3] Enqueuing job in BullMQ for lead ${lead._id} (${targetUrl})...`);
   const job = await auditQueue.add('audit-lead', {
     leadId: lead._id.toString(),
+    tenantId: studio,
     url: targetUrl,
     niche: 'other',
   });

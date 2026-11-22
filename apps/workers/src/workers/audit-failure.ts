@@ -49,7 +49,7 @@ export const STALLED_AUDIT_MESSAGE =
 export async function handleAuditJobFailed(job: Job<IAuditJobData> | undefined, error: Error): Promise<void> {
   if (!job || !STALLED_JOB_ERROR.test(error.message)) return;
   // The audit is shared with other studios' leads: it is closed only for a lead of the job's studio
-  if (typeof job.data.tenantId !== 'string') return;
+  if (typeof job.data.tenantId !== 'string' || !/^[0-9a-f]{24}$/i.test(job.data.tenantId)) return;
   try {
     if (!(await Lead.exists({ _id: job.data.leadId, tenantId: job.data.tenantId }))) return;
     // Only an audit still running is closed; a finished one is never overwritten
