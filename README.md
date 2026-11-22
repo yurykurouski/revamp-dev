@@ -38,6 +38,10 @@ npm run dev     # every time: starts everything, then open http://localhost:5173
 | http://localhost:4000/api/v1 | API |
 | http://localhost:9001 | MinIO console (`minioadmin` / `minioadmin`), where the generated MVPs are stored |
 
+### Sign in
+
+The dashboard and the API need an account (REV-206). Open http://localhost:5173/register to create a studio: you become its owner and are signed in at once. After `npm run db:seed` you can also sign in as the demo owner, `demo-owner@revamp-demo.test` with the password `demo-owner-password` (a local test account; the seed refuses any database that is not on this machine). Sessions are JWTs signed with `JWT_SECRET` (at least 32 characters; `npm run setup` and `npm run dev` generate it into `.env`, and the production preflight `npm run verify:env` checks it) and last 7 days. The API reads the token from `Authorization: Bearer <token>`; only `/health`, `/auth/register`, `/auth/login`, `/track/*` (email recipients and MVP pages) and `GET /mvp/preview/:slug` (loaded in an iframe) are public. Roles beyond owner and invitations come with REV-207; until the tenant split (REV-209) every signed-in user still sees the same leads.
+
 Press **Ctrl+C** to stop the apps. The Docker containers keep running so the next start is fast; `npm run docker:down` stops them (your data stays in Docker volumes).
 
 ### Add an LLM provider
@@ -197,6 +201,8 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | Demo Fitness Club | `NEEDS_APPROVAL` | An MVP and an email waiting for review |
 | Demo Bistro, Demo Builders, Demo Clinic, Demo Realty | `SENT`, `OPENED`, `CLICKED`, `ENGAGED` | Sent campaigns and their tracking events |
 | Demo Florist | `UNSUBSCRIBED` | An unsubscribe |
+
+It also creates a demo studio with its owner (`demo-owner@revamp-demo.test`, see [Sign in](#sign-in)).
 
 - Every domain and email ends in `.test`, a reserved name that never resolves, so the email worker's MX check bounces anything sent to it. Each lead is tagged `demo-seed`.
 - The documents have fixed ids and are written through the `@revamp/db` models in one transaction, so schema validation applies and a failure leaves nothing behind. A plain run adds the demo documents that are missing and keeps the ones you changed; `--reset` restores them and removes whatever the demo leads gained since (a retried audit, a generated MVP or campaign, tracking events). Documents of other leads are never read, changed or deleted, so it is safe next to real leads.

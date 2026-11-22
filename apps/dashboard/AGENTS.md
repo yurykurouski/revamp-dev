@@ -17,3 +17,10 @@ Read this when you change the operator dashboard (React, MUI, Zustand, React Que
 ## API responses
 
 * The dashboard types API responses as `Serialized<T>` of the shared-types entities (`ILead`, `IAudit`, `IMvpProject`; dates arrive as strings) instead of redeclaring server shapes (REV-67). Mappers read only fields the API returns, with no legacy fallbacks, and a record without an id is a malformed response, never given a made-up id.
+
+## Sign-in (REV-206)
+
+* Every page except `/login` and `/register` sits under `RequireAuth` in `APP_ROUTES`; a new page goes inside it. The session (`useAuthStore`: token, user, organization, role) is kept in local storage, and signing out drops the React Query cache so the next user sees none of it.
+* Call the API through `authFetch` (`api/client.ts`), never plain `fetch`: it sends the bearer token and signs out on a 401. Only `authApi.register` / `login` use plain `fetch`, because a 401 there is a wrong password. A `src` or `href` the browser loads itself (an iframe, an image) cannot send the header, so its route must be public on the API side, and that is decided in `apps/api/src/routes/index.ts`.
+* Labels of the sign-in pages are the `auth` block of all five locales.
+
