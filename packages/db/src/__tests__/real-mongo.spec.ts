@@ -340,7 +340,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
 
   describe('seedDemoDataset (REV-199)', () => {
     const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
-    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent] as const;
+    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership] as const;
     const foreignLead = {
       businessName: 'Real Customer',
       originalUrl: 'https://real.example.org',
@@ -370,6 +370,17 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await EmailCampaign.countDocuments()).toBe(ds.emailCampaigns.length);
       expect(await AnalyticsEvent.countDocuments()).toBe(ds.analyticsEvents.length);
       expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 1, 1]);
+      expect(report.users).toEqual({ inserted: 1, kept: 0 });
+    });
+
+    it('leaves a real user and organization alone, also on reset (REV-206)', async () => {
+      const real = await createOrganizationWithOwner({ email: 'real@studio.example', passwordHash: 'scrypt$a$b', organizationName: 'Real Studio' });
+      await seedDemoDataset(ds, { reset: false });
+      await seedDemoDataset(ds, { reset: true });
+      expect(await User.findById(real.user._id).lean()).toMatchObject({ email: 'real@studio.example' });
+      expect(await Organization.findById(real.organization._id).lean()).toMatchObject({ name: 'Real Studio' });
+      expect(await Membership.countDocuments()).toBe(2);
     });
 
     it('a second run inserts nothing', async () => {

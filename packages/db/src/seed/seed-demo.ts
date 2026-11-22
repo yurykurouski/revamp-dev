@@ -3,7 +3,10 @@ import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { Lead } from '../models/Lead.model.js';
+import { Membership } from '../models/Membership.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
+import { Organization } from '../models/Organization.model.js';
+import { User } from '../models/User.model.js';
 import { DemoCollection, DemoDataset, demoDocumentIds } from './demo-dataset.js';
 
 // REV-199: writes the demo dataset through the models (insertMany validates every document) in one transaction, and
@@ -53,6 +56,9 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
     ['mvpProjects', MvpProject as unknown as SeedModel, ds.mvpProjects],
     ['emailCampaigns', EmailCampaign as unknown as SeedModel, ds.emailCampaigns],
     ['analyticsEvents', AnalyticsEvent as unknown as SeedModel, ds.analyticsEvents],
+    ['organizations', Organization as unknown as SeedModel, ds.organizations],
+    ['users', User as unknown as SeedModel, ds.users],
+    ['memberships', Membership as unknown as SeedModel, ds.memberships],
   ];
   const ids = demoDocumentIds(ds);
   // Unique indexes must exist before the transaction: a collection or index cannot be created inside one reliably
@@ -66,7 +72,7 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
         // A demo lead's children belong to the demo, whatever their id: a retried audit, a generated MVP or campaign,
         // tracking hits; leaving them would make the latest audit or the lead's MVP not the seeded one
         const owned: Record<string, unknown>[] = [{ _id: { $in: ids[name] } }];
-        if (name !== 'leads') owned.push({ leadId: { $in: ids.leads } });
+        if (['audits', 'mvpProjects', 'emailCampaigns', 'analyticsEvents'].includes(name)) owned.push({ leadId: { $in: ids.leads } });
         if (name === 'analyticsEvents') owned.push({ campaignId: { $in: ids.emailCampaigns } }, { mvpProjectId: { $in: ids.mvpProjects } });
         await model.deleteMany({ $or: owned }, { session });
       } else {
