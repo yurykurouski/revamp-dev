@@ -1,6 +1,26 @@
 import { LeadStatus } from '@revamp/shared-types';
+import { DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD } from '@revamp/db';
 
 const API_BASE = 'http://localhost:4000/api/v1';
+
+// The API needs a session token (REV-206). The scenarios sign in as the demo owner `npm run db:seed` creates, or as
+// E2E_EMAIL / E2E_PASSWORD
+let authHeaders: Record<string, string> = {};
+const apiFetch = (url: string, init: RequestInit = {}) =>
+  fetch(url, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), ...authHeaders } });
+
+async function signIn(): Promise<void> {
+  const res = await fetch(`${API_BASE}/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: process.env.E2E_EMAIL ?? DEMO_OWNER_EMAIL,
+      password: process.env.E2E_PASSWORD ?? DEMO_OWNER_PASSWORD,
+    }),
+  });
+  if (!res.ok) throw new Error(`Sign-in failed (${res.status}): run npm run db:seed, or set E2E_EMAIL and E2E_PASSWORD`);
+  authHeaders = { Authorization: `Bearer ${(await res.json()).data.token}` };
+}
 
 interface ScenarioResult {
   category: string;
@@ -41,6 +61,7 @@ async function main() {
   console.log('🚀 RUNNING AUTOMATED LIVE API SCENARIOS VERIFICATION');
   console.log('Target API:', API_BASE);
   console.log('====================================================\n');
+  await signIn();
 
   // --- Category 1: Health & System Diagnostics ---
   await runScenario('Diagnostics', 'Health Check endpoint returns OK and all dependencies connected', async () => {
@@ -55,7 +76,7 @@ async function main() {
 
   // --- Category 2: Validation & Error Handling (Boundary / Negative Tests) ---
   await runScenario('Validation', 'POST /leads rejects empty or invalid payload with 400', async () => {
-    const res = await fetch(`${API_BASE}/leads`, {
+    const res = await apiFetch(`${API_BASE}/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: 'not-a-url', niche: 'invalid-niche' }),
@@ -66,12 +87,12 @@ async function main() {
   });
 
   await runScenario('Validation', 'GET /leads/non-existent-id returns 404', async () => {
-    const res = await fetch(`${API_BASE}/leads/000000000000000000000000`);
+    const res = await apiFetch(`${API_BASE}/leads/000000000000000000000000`);
     if (res.status !== 404) throw new Error(`Expected status 404, got ${res.status}`);
   });
 
   await runScenario('Validation', 'POST /audits/trigger rejects invalid leadId with 400', async () => {
-    const res = await fetch(`${API_BASE}/audits/trigger`, {
+    const res = await apiFetch(`${API_BASE}/audits/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ leadId: 'invalid-id' }),
@@ -80,7 +101,7 @@ async function main() {
   });
 
   await runScenario('Validation', 'POST /outreach/:id/approve rejects missing required fields with 400', async () => {
-    const res = await fetch(`${API_BASE}/outreach/000000000000000000000000/approve`, {
+    const res = await apiFetch(`${API_BASE}/outreach/000000000000000000000000/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({}), // missing subject, approvedBy, etc. if required
@@ -95,7 +116,7 @@ async function main() {
   const testUrl = `https://verification-test-${Date.now()}.com`;
 
   await runScenario('Leads API', 'POST /leads creates new lead and queues initial audit', async () => {
-    const res = await fetch(`${API_BASE}/leads`, {
+    const res = await apiFetch(`${API_BASE}/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -118,7 +139,7 @@ async function main() {
   });
 
   await runScenario('Leads API', 'GET /leads lists leads with pagination and filters', async () => {
-    const res = await fetch(`${API_BASE}/leads?niche=dental&page=1&limit=10`);
+    const res = await apiFetch(`${API_BASE}/leads?niche=dental&page=1&limit=10`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     if (!data.success || !Array.isArray(data.data)) throw new Error('Expected data array');
@@ -132,7 +153,7 @@ async function main() {
   });
 
   await runScenario('Leads API', 'GET /leads with search query finds the lead', async () => {
-    const res = await fetch(`${API_BASE}/leads?search=Automated+Test+Dental`);
+    const res = await apiFetch(`${API_BASE}/leads?search=Automated+Test+Dental`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     const found = data.data.some((l: any) => l._id === createdLeadId || l.id === createdLeadId);
@@ -140,7 +161,7 @@ async function main() {
   });
 
   await runScenario('Leads API', 'GET /leads/:id returns lead details', async () => {
-    const res = await fetch(`${API_BASE}/leads/${createdLeadId}`);
+    const res = await apiFetch(`${API_BASE}/leads/${createdLeadId}`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     if (data.data.lead._id !== createdLeadId && data.data.lead.id !== createdLeadId) {
@@ -150,7 +171,7 @@ async function main() {
 
   // --- Category 4: Audit & MVP Services ---
   await runScenario('Audit API', 'POST /audits/trigger enqueues audit job for lead', async () => {
-    const res = await fetch(`${API_BASE}/audits/trigger`, {
+    const res = await apiFetch(`${API_BASE}/audits/trigger`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ leadId: createdLeadId }),
@@ -164,7 +185,7 @@ async function main() {
   });
 
   await runScenario('MVP API', 'POST /mvp/generate triggers MVP generation', async () => {
-    const res = await fetch(`${API_BASE}/mvp/generate`, {
+    const res = await apiFetch(`${API_BASE}/mvp/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -177,7 +198,7 @@ async function main() {
   });
 
   await runScenario('MVP API', 'GET /mvp/:id returns MVP project details or demo preview URL', async () => {
-    const res = await fetch(`${API_BASE}/mvp/${createdLeadId}`);
+    const res = await apiFetch(`${API_BASE}/mvp/${createdLeadId}`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     if (!data.success || !data.data?.fullPreviewUrl) {
@@ -186,7 +207,7 @@ async function main() {
   });
 
   await runScenario('MVP API', 'PATCH /mvp/:id/tokens updates MVP color tokens', async () => {
-    const res = await fetch(`${API_BASE}/mvp/${createdLeadId}/tokens`, {
+    const res = await apiFetch(`${API_BASE}/mvp/${createdLeadId}/tokens`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -207,7 +228,7 @@ async function main() {
   // Find or use a lead for outreach testing
   let outreachLeadId = '';
   await runScenario('Outreach API', 'GET /outreach/pending returns leads in NEEDS_APPROVAL or AWAITING_APPROVAL', async () => {
-    const res = await fetch(`${API_BASE}/outreach/pending`);
+    const res = await apiFetch(`${API_BASE}/outreach/pending`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const data = await res.json();
     if (!data.success || !Array.isArray(data.data)) throw new Error('Invalid pending response');
@@ -222,7 +243,7 @@ async function main() {
   }
 
   await runScenario('Outreach API', 'POST /outreach/:id/test sends operator test email', async () => {
-    const res = await fetch(`${API_BASE}/outreach/${outreachLeadId}/test`, {
+    const res = await apiFetch(`${API_BASE}/outreach/${outreachLeadId}/test`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -239,7 +260,7 @@ async function main() {
 
   let trackingToken = '';
   await runScenario('Outreach API', 'POST /outreach/:id/approve approves draft, transitions to SCHEDULED and queues dispatch job', async () => {
-    const res = await fetch(`${API_BASE}/outreach/${outreachLeadId}/approve`, {
+    const res = await apiFetch(`${API_BASE}/outreach/${outreachLeadId}/approve`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -262,7 +283,7 @@ async function main() {
 
   // --- Category 6: Telemetry, Web Tracking & Engaged Funnel Transitions ---
   await runScenario('Telemetry', 'GET /track/revamp-tracker.js serves tracking script', async () => {
-    const res = await fetch(`${API_BASE}/track/revamp-tracker.js`);
+    const res = await apiFetch(`${API_BASE}/track/revamp-tracker.js`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const script = await res.text();
     if (!script.includes('RevampTracker') && !script.includes('mvp-event')) {
@@ -274,7 +295,7 @@ async function main() {
   await runScenario('Telemetry', 'GET /track/open/:token.gif returns 1x1 transparent GIF & registers email open', async () => {
     // Generate a test token
     const testToken = `track_test_${Date.now()}`;
-    const res = await fetch(`${API_BASE}/track/open/${testToken}.gif`);
+    const res = await apiFetch(`${API_BASE}/track/open/${testToken}.gif`);
     if (!res.ok) throw new Error(`Status ${res.status}`);
     const contentType = res.headers.get('content-type');
     if (!contentType?.includes('image/gif')) {
@@ -285,7 +306,7 @@ async function main() {
   await runScenario('Telemetry', 'GET /track/click/:token records click and redirects (302)', async () => {
     const testToken = `track_test_${Date.now()}`;
     // Using redirect: 'manual' to verify 302
-    const res = await fetch(`${API_BASE}/track/click/${testToken}`, {
+    const res = await apiFetch(`${API_BASE}/track/click/${testToken}`, {
       redirect: 'manual',
     });
     if (res.status !== 302 && res.status !== 301) {
@@ -294,7 +315,7 @@ async function main() {
   });
 
   await runScenario('Telemetry', 'POST /track/mvp-event ingests dwell_time / cta_click and records engagement', async () => {
-    const res = await fetch(`${API_BASE}/track/mvp-event`, {
+    const res = await apiFetch(`${API_BASE}/track/mvp-event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -317,7 +338,7 @@ async function main() {
   // Create another lead specifically to test rejection flow
   await runScenario('Outreach API', 'POST /outreach/:id/reject transitions lead and campaign to REJECTED', async () => {
     // 1. Create a lead for rejection
-    const createRes = await fetch(`${API_BASE}/leads`, {
+    const createRes = await apiFetch(`${API_BASE}/leads`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -330,7 +351,7 @@ async function main() {
     const createData = await createRes.json();
     const rejectLeadId = createData.data.id || createData.data.lead?._id;
 
-    const res = await fetch(`${API_BASE}/outreach/${rejectLeadId}/reject`, {
+    const res = await apiFetch(`${API_BASE}/outreach/${rejectLeadId}/reject`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -347,7 +368,7 @@ async function main() {
     }
 
     // Verify lead status in GET /leads/:id
-    const leadRes = await fetch(`${API_BASE}/leads/${rejectLeadId}`);
+    const leadRes = await apiFetch(`${API_BASE}/leads/${rejectLeadId}`);
     const leadData = await leadRes.json();
     if (leadData.data.lead.status !== 'REJECTED') {
       throw new Error(`Lead status not updated in DB, got ${leadData.data.lead.status}`);
