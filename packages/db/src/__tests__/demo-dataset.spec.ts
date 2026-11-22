@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DesignCritiqueOutputSchema, MvpPageVersionSchema, MvpStandardsSchema, MvpThemeSchema } from '@revamp/validation';
-import { DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, buildDemoDataset, demoDocumentIds } from '../seed/demo-dataset.js';
+import { DEMO_OPERATOR_EMAIL, DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, DEMO_VIEWER_EMAIL, buildDemoDataset, demoDocumentIds } from '../seed/demo-dataset.js';
 import { verifyPassword } from '../password.js';
 import { Membership } from '../models/Membership.model.js';
 import { Organization } from '../models/Organization.model.js';
@@ -116,8 +116,8 @@ describe('buildDemoDataset (REV-199)', () => {
 
   it('has a demo studio whose owner can sign in with the documented demo password (REV-206)', async () => {
     expect(ds.organizations).toHaveLength(1);
-    expect(ds.users).toHaveLength(1);
-    expect(ds.memberships).toHaveLength(1);
+    expect(ds.users).toHaveLength(3);
+    expect(ds.memberships).toHaveLength(3);
     const [user] = ds.users;
     const [membership] = ds.memberships;
     expect(user!.email).toBe(DEMO_OWNER_EMAIL);
@@ -127,6 +127,21 @@ describe('buildDemoDataset (REV-199)', () => {
     expect(membership).toMatchObject({ role: 'owner' });
     expect(String(membership!.userId)).toBe(String(user!._id));
     expect(String(membership!.organizationId)).toBe(String(ds.organizations[0]!._id));
+  });
+
+  it('has an operator and a viewer in the demo studio, who sign in with the same demo password (REV-207)', async () => {
+    const byEmail = new Map(ds.users.map((u) => [u.email, u]));
+    for (const [email, role] of [[DEMO_OWNER_EMAIL, 'owner'], [DEMO_OPERATOR_EMAIL, 'operator'], [DEMO_VIEWER_EMAIL, 'viewer']] as const) {
+      const user = byEmail.get(email);
+      expect(user, email).toBeDefined();
+      expect(email).toMatch(/@[a-z0-9.-]+\.test$/);
+      expect(await verifyPassword(DEMO_OWNER_PASSWORD, user!.passwordHash)).toBe(true);
+      const membership = ds.memberships.find((m) => String(m.userId) === String(user!._id));
+      expect(membership?.role, email).toBe(role);
+      expect(String(membership!.organizationId)).toBe(String(ds.organizations[0]!._id));
+    }
+    // One studio with exactly one owner, so the last-owner rule can be shown
+    expect(ds.memberships.filter((m) => m.role === 'owner')).toHaveLength(1);
   });
 
   it('is deterministic for a given time and has unique ids', () => {

@@ -381,8 +381,8 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await EmailCampaign.countDocuments()).toBe(ds.emailCampaigns.length);
       expect(await AnalyticsEvent.countDocuments()).toBe(ds.analyticsEvents.length);
       expect(report.leads).toEqual({ inserted: ds.leads.length, kept: 0 });
-      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 1, 1]);
-      expect(report.users).toEqual({ inserted: 1, kept: 0 });
+      expect(await Promise.all([Organization.countDocuments(), User.countDocuments(), Membership.countDocuments()])).toEqual([1, 3, 3]);
+      expect(report.users).toEqual({ inserted: 3, kept: 0 });
     });
 
     it('leaves a real user and organization alone, also on reset (REV-206)', async () => {
@@ -391,7 +391,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       await seedDemoDataset(ds, { reset: true });
       expect(await User.findById(real.user._id).lean()).toMatchObject({ email: 'real@studio.example' });
       expect(await Organization.findById(real.organization._id).lean()).toMatchObject({ name: 'Real Studio' });
-      expect(await Membership.countDocuments()).toBe(2);
+      expect(await Membership.countDocuments()).toBe(4);
     });
 
     it('a second run inserts nothing', async () => {

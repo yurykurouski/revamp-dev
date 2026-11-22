@@ -10,6 +10,7 @@ import {
   IStandardsChecks,
   LeadStatus,
   NicheType,
+  OrganizationRole,
   STANDARDS_CHECKS,
   STANDARDS_POINTS,
 } from '@revamp/shared-types';
@@ -109,7 +110,7 @@ export interface DemoMembership extends Extra {
   _id: Types.ObjectId;
   userId: Types.ObjectId;
   organizationId: Types.ObjectId;
-  role: 'owner';
+  role: OrganizationRole;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -155,6 +156,9 @@ const SENDER = 'outreach@revamp-demo.test';
  */
 export const DEMO_OWNER_EMAIL = 'demo-owner@revamp-demo.test';
 export const DEMO_OWNER_PASSWORD = 'demo-owner-password';
+/** An operator and a viewer in the same studio (REV-207), with the same password, to show what each role sees */
+export const DEMO_OPERATOR_EMAIL = 'demo-operator@revamp-demo.test';
+export const DEMO_VIEWER_EMAIL = 'demo-viewer@revamp-demo.test';
 /** A fixed salt keeps the hash, and so the seed, the same on every run */
 const DEMO_OWNER_SALT = Buffer.from('revamp-demo-salt');
 const DAY = 86_400_000;
@@ -306,24 +310,32 @@ export function buildDemoDataset(
   const at = (ms: number) => new Date(now.getTime() - ms);
   const accountCreated = at(30 * DAY);
   const organizationId = demoId('organization', 1);
-  const userId = demoId('user', 1);
   ds.organizations.push({ _id: organizationId, name: 'Demo Studio', createdAt: accountCreated, updatedAt: accountCreated });
-  ds.users.push({
-    _id: userId,
-    email: DEMO_OWNER_EMAIL,
-    passwordHash: hashPasswordWithSalt(DEMO_OWNER_PASSWORD, DEMO_OWNER_SALT),
-    name: 'Demo Owner',
-    createdAt: accountCreated,
-    updatedAt: accountCreated,
+  const accounts: { email: string; name: string; role: OrganizationRole }[] = [
+    { email: DEMO_OWNER_EMAIL, name: 'Demo Owner', role: 'owner' },
+    { email: DEMO_OPERATOR_EMAIL, name: 'Demo Operator', role: 'operator' },
+    { email: DEMO_VIEWER_EMAIL, name: 'Demo Viewer', role: 'viewer' },
+  ];
+  accounts.forEach((account, i) => {
+    const accountUserId = demoId('user', i + 1);
+    ds.users.push({
+      _id: accountUserId,
+      email: account.email,
+      passwordHash: hashPasswordWithSalt(DEMO_OWNER_PASSWORD, DEMO_OWNER_SALT),
+      name: account.name,
+      createdAt: accountCreated,
+      updatedAt: accountCreated,
+    });
+    ds.memberships.push({
+      _id: demoId('membership', i + 1),
+      userId: accountUserId,
+      organizationId,
+      role: account.role,
+      createdAt: accountCreated,
+      updatedAt: accountCreated,
+    });
   });
-  ds.memberships.push({
-    _id: demoId('membership', 1),
-    userId,
-    organizationId,
-    role: 'owner',
-    createdAt: accountCreated,
-    updatedAt: accountCreated,
-  });
+
   const endpoint = storage.s3Endpoint.replace(/\/+$/, '');
   let eventN = 0;
   let outreachN = 0;
