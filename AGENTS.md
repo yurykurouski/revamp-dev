@@ -1,6 +1,6 @@
 # Revamp SaaS — AI Agent Guidelines (AGENTS.md)
 
-Operational rules, repository links, the Linear pipeline and the definition of done for coding agents (Claude Code, Cursor, Antigravity, Copilot). Area rules live next to the code they govern (§3.3); an agent loads them when it works there.
+Operational rules, repository links and the Linear workflow for coding agents (Claude Code, Cursor, Antigravity, Copilot). Area rules live next to the code they govern (§3.3); an agent loads them when it works there.
 
 ---
 
@@ -20,8 +20,6 @@ The Revamp project consists of two linked repositories and a centralized Linear 
 > **Where Project Documentation Lives:**
 > The source documentation for this project is maintained in the [revamp-docs](https://github.com/yurykurouski/revamp-docs) repository. In a local development environment, it is located as a sibling directory: `../Revamp-docs`.
 > When implementing any feature, the agent **MUST consult** the relevant documentation files in `../Revamp-docs`.
-
----
 
 ---
 
@@ -67,7 +65,11 @@ Revamp-dev/
 * `npm run setup` (once, idempotent) checks Node 20+ and Docker, installs dependencies and Playwright Chromium, creates `.env` from `.env.example` without overwriting it, starts MongoDB/Redis/MinIO (waits until healthy, runs `minio-init`) and builds the packages.
 * `npm run dev` starts the infrastructure, rebuilds stale packages, then runs API, workers and dashboard in one terminal with prefixed output; it refuses to start while port 4000 or 5173 is taken. Ctrl+C stops the apps, not the containers. Use `dev:api` / `dev:workers` / `dev:dashboard` to run one app.
 * `scripts/setup.mjs` and `scripts/dev.mjs` run before `npm install`, so they stay plain Node with no dependencies; their logic lives in `scripts/lib/dev-stack.mjs` and is tested in `scripts/__tests__/dev-stack.spec.ts`.
-* MongoDB runs with access control as replica set `rs0` under least-privilege users, and `npm run db:seed` loads demo data; read [packages/db/AGENTS.md](packages/db/AGENTS.md) before touching MongoDB users, connection strings, seed data or dumps.
+* MongoDB runs with access control as replica set `rs0` under least-privilege users, and `npm run db:seed` loads demo data; read [packages/db/AGENTS.md](packages/db/AGENTS.md) before touching MongoDB users, connection strings, seed data or dumps. Always, in every area:
+  * start infrastructure only through setup, dev or `npm run docker:up`, never plain `docker compose up`;
+  * the app runs as `revamp_app`, never as root or an Atlas admin, and a MongoDB URI is logged only through `redactMongoUri` (`@revamp/db`);
+  * the shared `revamp-mongo` container serves other sessions: verify Mongo changes on a separate compose project, not on it;
+  * a new worktree copies `MONGODB_URI` and the `MONGO_*_PASSWORD` lines from the main checkout's `.env` (fresh passwords would not match the existing users).
 
 ### 3.2. Fundamental Engineering Constraints
 1. **Human-In-The-Loop (HITL):**
@@ -96,11 +98,12 @@ Revamp-dev/
 7. **One Schema per Collection (REV-48):**
    * Mongoose schemas are defined only in `packages/db` (`@revamp/db`). `apps/api/src/models` and `apps/workers/src/models` only re-export them; never add or change a schema inside an app.
    * Queue names come from `QUEUE_NAMES` in `@revamp/shared-types`.
-   * One `MvpProject` and one `EmailCampaign` per lead (unique `leadId`), every `Schema.Types.Mixed` field validated with its Zod schema, real-MongoDB tests in one file: [packages/db/AGENTS.md](packages/db/AGENTS.md).
+   * A lead has at most one `MvpProject` and one `EmailCampaign` (unique `leadId`, REV-201): write them with an upsert filtered on `{ leadId }` and keep `leadId` out of the update body. Every `Schema.Types.Mixed` field validated with its Zod schema, real-MongoDB tests in one file: [packages/db/AGENTS.md](packages/db/AGENTS.md).
 8. **One Lead State Machine (REV-62):**
    * `LEAD_STATUSES` (`@revamp/shared-types`) lists every lead status; `LEAD_TRANSITIONS`, `canTransition` and `leadStatusesInto` (`@revamp/validation`) define the allowed moves.
    * Every write of `Lead.status` checks the table, normally as an atomic filter (`Lead.findOneAndUpdate({ _id, status: { $in: leadStatusesInto(to) } }, …)`), so stale jobs and late tracking hits never move a lead backwards. Never keep a local list of statuses; add a status or an edge to the table (and its tests) instead.
-   * Adding a lead and approving outreach are transactions with an enqueue-or-revert step: [apps/api/AGENTS.md](apps/api/AGENTS.md). Stalled worker jobs: [apps/workers/AGENTS.md](apps/workers/AGENTS.md). Status columns and buckets: [apps/dashboard/AGENTS.md](apps/dashboard/AGENTS.md).
+   * Writers into `AUDIT_FAILED` filter on the one status they move from (`QUEUED` in the API, `AUDITING` in the workers), not on every source in the table, so a stale job never fails a retried lead.
+   * Adding a lead and approving outreach are transactions with an enqueue-or-revert step: [apps/api/AGENTS.md](apps/api/AGENTS.md). Stalled worker jobs: [apps/workers/AGENTS.md](apps/workers/AGENTS.md). A new status also needs a column, bucket, chip color and five labels ([apps/dashboard/AGENTS.md](apps/dashboard/AGENTS.md)) and a place in the demo dataset ([packages/db/AGENTS.md](packages/db/AGENTS.md)).
 9. **One API Error Format (REV-63):**
    * Every API error is `{ success: false, error: { code, message, details? } }`. Routes and services throw `AppError(statusCode, code, message, details?)`; only `errorHandler` writes error JSON. Never call `res.status(4xx/5xx).json(...)` in a route.
    * Codes come from `API_ERROR_CODES` in `@revamp/shared-types`; add a new code there (and to blueprint.md §5) instead of inventing a string. The dashboard reads only `error.code` / `error.message`, through `ApiError` in `apps/dashboard/src/api/client.ts`.
@@ -122,7 +125,7 @@ Each file below holds the detailed rules of its area. Read it before changing co
 
 Tasks are tracked in Linear: [Revamp (REV)](https://linear.app/revamp-proect/team/REV/overview), project **Revamp: Lead Generation SaaS (Diploma)**.
 
-**Before starting any ticket, read [docs/agents/ticket-pipeline.md](docs/agents/ticket-pipeline.md) in full**: ticket rules (`## Problem` / `## Expected` / `## Acceptance criteria`, label, the project documents to read first), PR format, merge, docs and close steps, and the pre-commit checklist (§5).
+**Before starting any ticket, read [docs/agents/ticket-pipeline.md](docs/agents/ticket-pipeline.md) in full**: ticket rules (`## Problem` / `## Expected` / `## Acceptance criteria`, label, the project documents to read first), PR format, merge, docs and close steps, and the pre-commit checklist (its §5).
 
 * Every bug fix and feature has its own ticket and goes **ticket → code → testing → PR → merge → docs → close ticket**; no code reaches `main` without a ticket.
 * Branch `ymorpheus/rev-<n>-<short-description>` from an up-to-date `main`; commits `fix(REV-<n>): …` / `feat(REV-<n>): …`.

@@ -12,8 +12,10 @@ export interface DocSection {
   end: number;
 }
 
-const HEADING = /^(#{2,3})\s+(.+?)\s*#*\s*$/;
-const FENCE = /^\s*(```|~~~)/;
+/** A closing run of # counts only after a space, so "Why F#" keeps its # */
+const HEADING = /^(#{2,3})\s+(.+?)(?:\s+#+)?\s*$/;
+/** An opening fence and its info string; a closing fence is bare and at least as long, with the same character */
+const FENCE = /^\s{0,3}(`{3,}|~{3,})(.*)$/;
 
 export function docSections(text: string): DocSection[] {
   const lines = text.split('\n');
@@ -23,15 +25,18 @@ export function docSections(text: string): DocSection[] {
   const found: { level: 2 | 3; title: string; start: number }[] = [];
   let fence: string | undefined;
   lines.forEach((line, i) => {
-    const marker = FENCE.exec(line)?.[1];
-    if (marker) {
-      if (!fence) fence = marker;
-      else if (marker === fence) fence = undefined;
+    const m = FENCE.exec(line);
+    if (fence) {
+      const closes = m && m[1]![0] === fence[0] && m[1]!.length >= fence.length && m[2]!.trim() === '';
+      if (closes) fence = undefined;
       return;
     }
-    if (fence) return;
-    const m = HEADING.exec(line);
-    if (m) found.push({ level: m[1]!.length as 2 | 3, title: m[2]!, start: i + 1 });
+    if (m) {
+      fence = m[1]!;
+      return;
+    }
+    const heading = HEADING.exec(line);
+    if (heading) found.push({ level: heading[1]!.length as 2 | 3, title: heading[2]!, start: i + 1 });
   });
 
   return found.map((section, i) => {

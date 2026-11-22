@@ -23,7 +23,7 @@ Set the issue to In Progress. `git switch -c ymorpheus/rev-<n>-<short-slug>`.
 Dispatch the `implementer` agent with: ticket key, title, description, acceptance criteria, branch name. Keep its agent id for the fix loop.
 
 ## 5. Verify (do not trust the report)
-**Quality.** Read `git diff main...HEAD` against the acceptance criteria, root `AGENTS.md` §3.2 and the area `AGENTS.md` (root §3.3) of each area the diff touches: no mock data in runtime code, Mongoose schemas only in `packages/db`, Zod at boundaries, new strings in all five locales, human-in-the-loop preserved, resources closed, no unrelated changes. Re-run `npm run lint`, `typecheck`, `npm test`, `npm run build` yourself.
+**Quality.** Read `git diff main...HEAD` against the acceptance criteria, root `AGENTS.md` §3.2 and the area `AGENTS.md` (root §3.3) of each area the diff touches: no mock data in runtime code, Mongoose schemas only in `packages/db`, Zod at boundaries, new strings in all five locales, human-in-the-loop preserved, resources closed, no unrelated changes. Re-run `npm run build:packages`, `lint`, `typecheck`, `npm test`, `npm run build` yourself.
 
 **E2E, only if `dashboardTouched` is true or the diff touches `apps/dashboard`.** Start `npm run dev` in the background, drive the changed flow with the Chrome DevTools MCP tools, screenshot each acceptance criterion, check console and network for errors, then stop the dev server. If the flow cannot be reached (Docker down, no data, auth), the verdict is `e2e not possible: <reason>` and you do **not** merge: **stop**.
 
@@ -35,7 +35,7 @@ On FAIL, `SendMessage` the findings to the same `implementer`, then repeat step 
 ## 7. Ship (PASS only)
 1. Push the branch; `gh pr create` with body starting `Fixes [REV-<n>](<ticket url>)` and sections `## Problem`, `## Changes`, `## Verification` (exact commands and results).
 2. Attach the PR link to the ticket; set it to In Review.
-3. `git merge origin/main` into the branch, re-run the four gates. Conflict or red gate → **stop** (ticket stays In Review).
+3. `git merge origin/main` into the branch, re-run the five gates. Conflict or red gate → **stop** (ticket stays In Review).
 4. `gh pr merge --merge`, `git switch main && git pull --ff-only`, `npm test`. Red → **stop**.
 
 ## 8. Docs

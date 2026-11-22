@@ -47,7 +47,7 @@ Every bug fix and every new feature MUST have its own Linear ticket and MUST go 
 6. **Docs.** After every implemented ticket, bring the documentation up to date so it matches the code on `main`. Check each place the change touches and update it in the same pass:
    * `README.md` in this repository (setup, scripts, environment variables, features, directory layout).
    * `AGENTS.md` in this repository (directory structure, gates, conventions) when the change affects how agents should work, and the area `AGENTS.md` (root §3.3) whose rules the change touches.
-   * After editing `../Revamp-docs`, run `npm run docs:index` so `INDEX.md` matches the headings.
+   * After editing `../Revamp-docs`, run `npm run docs:index` so `INDEX.md` matches the headings, and commit `INDEX.md` with the docs change.
    * The docs repository `../Revamp-docs` ([revamp-docs](https://github.com/yurykurouski/revamp-docs)): `spec.md` (statuses, endpoints, DTOs, validation rules), `blueprint.md` (queues, schemas, diagrams, storage), `milestones.md` (tick the DoD items the ticket completes), `AGENTS.md` (agent prompts and schemas), and `research.md` when a decision changed.
    * `.env.example` when environment variables were added, renamed, or removed.
    Changes inside this repository go in the ticket's PR. Changes to `../Revamp-docs` are committed there with the ticket key (`docs(REV-<n>): ...`) and pushed, and the commit link is added to the ticket. If nothing needed updating, say so in a ticket comment. A ticket is not done until its docs are current.
@@ -68,4 +68,4 @@ Report the ticket and PR links to the user at each hand-off point.
 * [ ] Heavy or asynchronous operations are dispatched through BullMQ queues.
 * [ ] External resources (Playwright browser contexts, Redis/Mongo connections) are cleanly closed and managed.
 * [ ] The Human-In-The-Loop constraint is strictly preserved.
-* [ ] **Docs up to date:** `README.md`, `AGENTS.md`, `.env.example`, and the relevant files in `../Revamp-docs` reflect the change (§4.3 step 6).
+* [ ] **Docs up to date:** `README.md`, the root and area `AGENTS.md` files, `.env.example`, `../Revamp-docs/INDEX.md` (`npm run docs:index`), and the relevant files in `../Revamp-docs` reflect the change (§4.3 step 6).

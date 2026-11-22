@@ -42,6 +42,17 @@ describe('docSections', () => {
     expect(docSections('~~~\n## no\n~~~\n## Yes ##\nz').map((s) => s.title)).toEqual(['Yes']);
   });
 
+  it('keeps a fence open across an inner fence with an info string or a shorter marker', () => {
+    const text = ['````', '```json', '## inside', '```', '````', '## After'].join('\n');
+    expect(docSections(text).map((s) => s.title)).toEqual(['After']);
+    expect(docSections(['```', '```json', '## inside?', '```', '## Out'].join('\n')).map((s) => s.title)).toEqual(['Out']);
+  });
+
+  it('keeps a trailing # that is part of the title', () => {
+    expect(docSections('## Why F#\nx').map((s) => s.title)).toEqual(['Why F#']);
+    expect(docSections('## Closed ##\nx').map((s) => s.title)).toEqual(['Closed']);
+  });
+
   it('returns nothing for a file without h2/h3 headings', () => {
     expect(docSections('# Only a title\ntext')).toEqual([]);
   });
