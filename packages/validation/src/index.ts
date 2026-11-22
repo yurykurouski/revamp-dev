@@ -27,6 +27,29 @@ import {
 export * from './lead-status.js';
 
 // ==============================================================================
+// Accounts and sign-in (REV-206)
+// ==============================================================================
+
+const emailField = z.string().trim().toLowerCase().email().max(254);
+
+/** `POST /auth/register`: a new user and the organization they own */
+export const RegisterSchema = z.object({
+  email: emailField,
+  // Not trimmed: spaces are part of a passphrase
+  password: z.string().min(10).max(128),
+  organizationName: z.string().trim().min(1).max(100),
+  name: z.string().trim().min(1).max(100).optional(),
+});
+export type RegisterDto = z.infer<typeof RegisterSchema>;
+
+/** `POST /auth/login`: the length rule applies to new passwords only, so an old short one still gets a clean 401 */
+export const LoginSchema = z.object({
+  email: emailField,
+  password: z.string().min(1).max(128),
+});
+export type LoginDto = z.infer<typeof LoginSchema>;
+
+// ==============================================================================
 // In-App Autonomous AI Agents Schemas (from AGENTS.md)
 // ==============================================================================
 
