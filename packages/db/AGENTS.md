@@ -28,3 +28,8 @@ The transactions `addLeadToBusiness` and `approveOutreachWithCampaign` live here
 * `findAuditForLead(lead, { completedOnly })` is the one way to read a lead's audit: its own newest, else the business's newest COMPLETED (only COMPLETED audits are shared, so another studio's retry or failure never changes what a lead shows); `auditBelongsToLead` checks an audit id from a request against the lead and its business.
 * `migrateBusinesses` / `checkBusinessLinks` (`business-migration.ts`) backfill and warn; the demo dataset has a business per demo lead and puts its leads in the demo studio.
 
+## Tenant ownership (REV-209)
+
+* `MvpProject`, `EmailCampaign` and `AnalyticsEvent` carry `tenantId` like `Lead` (the studio of their lead), with an index on it; `leads` has `{ tenantId, onePageBrochure, createdAt }` for the studio's list and `{ tenantId, status }` for its filters (checked with `explain` in `real-mongo.spec.ts`). Whatever writes one of the four copies the lead's `tenantId`: `approveOutreachWithCampaign` onto the campaign, the deploy worker onto the project, the audit worker onto its `token_usage` events, the demo seed onto all of them.
+* `migrateTenants` / `checkTenantLinks` (`tenant-migration.ts`, `npm run migrate:tenants --workspace=@revamp/api`) give leads without a studio to the named (default: oldest) organization and each child the studio of its lead; an event that names no lead stays in no studio. Dry run by default, idempotent, real-MongoDB tests.
+
