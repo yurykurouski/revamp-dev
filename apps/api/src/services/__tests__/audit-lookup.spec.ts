@@ -1,58 +1,79 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import mongoose from 'mongoose';
-import { Audit } from '../../models/Audit.model.js';
+import { Audit, findAuditForLead } from '../../models/Audit.model.js';
+import { Lead } from '../../models/Lead.model.js';
 import { findGenerationAudit } from '../audit-lookup.js';
 
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../models/Lead.model.js');
 
-describe('findGenerationAudit (REV-55)', () => {
+const exec = <T>(value: T) => ({ exec: vi.fn().mockResolvedValue(value) });
+
+describe('findGenerationAudit (REV-55, REV-208)', () => {
   const leadId = new mongoose.Types.ObjectId();
+  const businessId = new mongoose.Types.ObjectId();
+  const lead = { _id: leadId, businessId, status: 'AUDITED' };
   const auditId = new mongoose.Types.ObjectId().toString();
   const newestCompleted = { _id: 'newest', leadId, status: 'COMPLETED' };
-  let sort: ReturnType<typeof vi.fn>;
-
-  const mockAudits = (byId: unknown, fallback: unknown = newestCompleted) => {
-    vi.mocked(Audit.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(byId) } as any);
-    sort = vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue(fallback) });
-    vi.mocked(Audit.findOne).mockReturnValue({ sort } as any);
-  };
 
   beforeEach(() => {
     vi.mocked(Audit.findById).mockReset();
-    vi.mocked(Audit.findOne).mockReset();
+    vi.mocked(Lead.findById).mockReset();
+    vi.mocked(findAuditForLead).mockReset();
   });
 
-  it('uses the given audit when it is completed', async () => {
+  it('treats an id that is a lead as a lead: its own completed audit, else its business\'s, and returns that lead', async () => {
+    vi.mocked(Lead.findById).mockReturnValue(exec(lead) as never);
+    vi.mocked(findAuditForLead).mockResolvedValue(newestCompleted as never);
+    const found = await findGenerationAudit(leadId.toString());
+    expect(found).toEqual({ audit: newestCompleted, lead });
+    expect(findAuditForLead).toHaveBeenCalledWith(lead, { completedOnly: true });
+    expect(Audit.findById).not.toHaveBeenCalled();
+  });
+
+  it('returns the asking lead, not the lead that ran a shared audit', async () => {
+    const owner = { _id: new mongoose.Types.ObjectId(), businessId };
+    vi.mocked(Lead.findById).mockReturnValue(exec(lead) as never);
+    vi.mocked(findAuditForLead).mockResolvedValue({ _id: 'shared', leadId: owner._id, status: 'COMPLETED' } as never);
+    const found = await findGenerationAudit(leadId.toString());
+    expect(String(found!.lead._id)).toBe(String(leadId));
+    expect(String(found!.audit.leadId)).toBe(String(owner._id));
+  });
+
+  it('uses the given audit when it is completed, with the lead that ran it', async () => {
     const exact = { _id: auditId, leadId, status: 'COMPLETED' };
-    mockAudits(exact);
-
-    expect(await findGenerationAudit(auditId)).toBe(exact);
-    expect(Audit.findOne).not.toHaveBeenCalled();
+    vi.mocked(Lead.findById).mockReturnValueOnce(exec(null) as never).mockReturnValueOnce(exec(lead) as never);
+    vi.mocked(Audit.findById).mockReturnValue(exec(exact) as never);
+    expect(await findGenerationAudit(auditId)).toEqual({ audit: exact, lead });
+    expect(findAuditForLead).not.toHaveBeenCalled();
   });
 
-  it("takes the newest completed audit of a failed audit's lead", async () => {
-    mockAudits({ _id: auditId, leadId, status: 'FAILED' });
-
-    expect(await findGenerationAudit(auditId)).toBe(newestCompleted);
-    expect(Audit.findOne).toHaveBeenCalledWith({ leadId, status: 'COMPLETED' });
-    expect(sort).toHaveBeenCalledWith({ createdAt: -1 });
-  });
-
-  it('treats an id that is not an audit as a lead id', async () => {
-    const id = leadId.toString();
-    mockAudits(null);
-
-    expect(await findGenerationAudit(id)).toBe(newestCompleted);
-    expect(Audit.findOne).toHaveBeenCalledWith({ leadId: id, status: 'COMPLETED' });
+  it("takes the newest completed audit for a failed audit's lead", async () => {
+    vi.mocked(Lead.findById).mockReturnValueOnce(exec(null) as never).mockReturnValueOnce(exec(lead) as never);
+    vi.mocked(Audit.findById).mockReturnValue(exec({ _id: auditId, leadId, status: 'FAILED' }) as never);
+    vi.mocked(findAuditForLead).mockResolvedValue(newestCompleted as never);
+    expect(await findGenerationAudit(auditId)).toEqual({ audit: newestCompleted, lead });
+    expect(findAuditForLead).toHaveBeenCalledWith(lead, { completedOnly: true });
   });
 
   it('returns null for a non-ObjectId id without querying', async () => {
     expect(await findGenerationAudit('audit-abc')).toBeNull();
+    expect(Lead.findById).not.toHaveBeenCalled();
     expect(Audit.findById).not.toHaveBeenCalled();
   });
 
-  it('returns null when the lead has no completed audit', async () => {
-    mockAudits(null, null);
+  it('returns null when nothing matches: no lead, no audit, or no completed audit', async () => {
+    vi.mocked(Lead.findById).mockReturnValue(exec(null) as never);
+    vi.mocked(Audit.findById).mockReturnValue(exec(null) as never);
+    expect(await findGenerationAudit(auditId)).toBeNull();
+    vi.mocked(Lead.findById).mockReturnValue(exec(lead) as never);
+    vi.mocked(findAuditForLead).mockResolvedValue(null);
     expect(await findGenerationAudit(leadId.toString())).toBeNull();
+  });
+
+  it('returns null when the audit\'s lead is gone', async () => {
+    vi.mocked(Lead.findById).mockReturnValue(exec(null) as never);
+    vi.mocked(Audit.findById).mockReturnValue(exec({ _id: auditId, leadId, status: 'COMPLETED' }) as never);
+    expect(await findGenerationAudit(auditId)).toBeNull();
   });
 });

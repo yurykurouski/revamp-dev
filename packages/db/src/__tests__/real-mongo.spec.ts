@@ -25,6 +25,7 @@ import {
 import { Invitation } from '../models/Invitation.model.js';
 import { Business } from '../models/Business.model.js';
 import { LeadAlreadyExistsError, addLeadToBusiness } from '../add-lead-to-business.js';
+import { auditBelongsToLead, findAuditForLead } from '../audit-for-lead.js';
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
@@ -1036,6 +1037,87 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       });
       expect(result.lead.contactEmail).toBe('hello@harbor.example');
       expect(result.lead.tags).toEqual(['manual']);
+    });
+  });
+  describe('findAuditForLead (REV-208)', () => {
+    const studioA = new Types.ObjectId();
+    const studioB = new Types.ObjectId();
+    const domain = 'lookup.example';
+    const derive = () => ({ set: {}, clearsEmailGuess: false });
+    const add = (tenantId: Types.ObjectId) =>
+      addLeadToBusiness({ tenantId, lead: { businessName: 'Lookup', originalUrl: `https://${domain}`, domain, niche: 'dental', status: 'QUEUED' }, deriveFromAudit: derive as never });
+    const finish = (id: unknown, total: number) => Audit.updateOne({ _id: id }, { status: 'COMPLETED', 'scores.total': total });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-lookup-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({})]);
+    });
+
+    it("gives a lead its own newest audit, whatever its status, before the business's", async () => {
+      const a = await add(studioA);
+      expect(String((await findAuditForLead(a.lead))!._id)).toBe(String(a.audit!._id));
+      await finish(a.audit!._id, 70);
+      const retry = await Audit.create({ leadId: a.lead._id, businessId: a.business._id, status: 'FAILED' });
+      expect(String((await findAuditForLead(a.lead))!._id)).toBe(String(retry._id));
+    });
+
+    it('gives a lead that reused an audit the completed audit of its business', async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      expect(b.audit).toBeUndefined();
+      expect(String((await findAuditForLead(b.lead))!._id)).toBe(String(a.audit!._id));
+    });
+
+    it("does not let studio A's retry or failure change what studio B sees", async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      await Audit.create({ leadId: a.lead._id, businessId: a.business._id, status: 'FAILED' });
+      await Audit.create({ leadId: a.lead._id, businessId: a.business._id, status: 'PROCESSING' });
+      expect(String((await findAuditForLead(b.lead))!._id)).toBe(String(a.audit!._id));
+      expect((await findAuditForLead(b.lead, { completedOnly: true }))!.status).toBe('COMPLETED');
+    });
+
+    it('with completedOnly skips the lead own unfinished audits, then falls back to the business', async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      await Audit.create({ leadId: b.lead._id, businessId: b.business._id, status: 'QUEUED' });
+      expect(String((await findAuditForLead(b.lead, { completedOnly: true }))!._id)).toBe(String(a.audit!._id));
+      expect((await findAuditForLead(b.lead))!.status).toBe('QUEUED');
+    });
+
+    it('finds nothing for a lead with no audit and no completed one in its business', async () => {
+      const a = await add(studioA);
+      await Audit.deleteMany({});
+      expect(await findAuditForLead(a.lead)).toBeNull();
+    });
+
+    it('treats a lead made before the split (no business) as before: its own audits only', async () => {
+      const legacy = await Lead.create({ businessName: 'Old', originalUrl: 'https://old.example', domain: 'old.example', niche: 'dental' });
+      expect(await findAuditForLead(legacy)).toBeNull();
+      const own = await Audit.create({ leadId: legacy._id, status: 'COMPLETED' });
+      expect(String((await findAuditForLead(legacy, { completedOnly: true }))!._id)).toBe(String(own._id));
+      const other = await Audit.create({ leadId: new Types.ObjectId(), businessId: new Types.ObjectId(), status: 'COMPLETED' });
+      expect(String((await findAuditForLead(legacy, { completedOnly: true }))!._id)).not.toBe(String(other._id));
+    });
+
+    it('auditBelongsToLead: own audit and an audit of its business yes, another business no', async () => {
+      const a = await add(studioA);
+      await finish(a.audit!._id, 70);
+      const b = await add(studioB);
+      expect(await auditBelongsToLead(a.audit!._id, a.lead)).toBe(true);
+      expect(await auditBelongsToLead(a.audit!._id, b.lead)).toBe(true);
+      const stranger = await Audit.create({ leadId: new Types.ObjectId(), businessId: new Types.ObjectId(), status: 'COMPLETED' });
+      expect(await auditBelongsToLead(stranger._id, b.lead)).toBe(false);
+      expect(await auditBelongsToLead(new Types.ObjectId(), b.lead)).toBe(false);
     });
   });
 });

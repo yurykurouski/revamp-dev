@@ -7,7 +7,7 @@ import {
   summarizeCompletenessReport,
 } from '@revamp/validation';
 import { Lead, ILeadDocument, createLeadWithAudit } from '../models/Lead.model.js';
-import { Audit } from '../models/Audit.model.js';
+import { findAuditForLead } from '../models/Audit.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
 import { enqueueAuditOrFail } from './audit-enqueue.js';
 import { AppError } from '../middlewares/errorHandler.js';
@@ -185,7 +185,8 @@ export class LeadService {
       throw new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found');
     }
 
-    const audit = await Audit.findOne({ leadId: lead._id }).sort({ createdAt: -1 }).exec();
+    // The lead's own newest audit, else the completed audit of its business (REV-208)
+    const audit = await findAuditForLead(lead);
 
     return {
       lead,

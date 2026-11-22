@@ -44,16 +44,13 @@ router.post(
       }
 
       // A lead can have several audits (one per retry); never build from a failed or stale one (REV-55)
-      const audit = await findGenerationAudit(auditId);
+      // The lead comes with the audit (REV-208): a lead that took another studio's audit is not the audit's lead
+      const found = await findGenerationAudit(auditId);
 
-      if (!audit) {
+      if (!found) {
         throw new AppError(404, 'NO_COMPLETED_AUDIT', 'No completed audit found for this lead');
       }
-
-      const lead = await Lead.findById(audit.leadId).exec();
-      if (!lead) {
-        throw new AppError(404, 'LEAD_NOT_FOUND', 'Associated lead not found');
-      }
+      const { audit, lead } = found;
 
       // REV-31: generate once from AUDITED; regenerating needs forceRegenerate and is never
       // allowed once outreach is scheduled or dispatched (Human-In-The-Loop)

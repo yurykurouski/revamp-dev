@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { LeadService, LEAD_LIST_SORT } from '../lead.service.js';
 import { Lead, createLeadWithAudit } from '../../models/Lead.model.js';
-import { Audit } from '../../models/Audit.model.js';
+import { Audit, findAuditForLead } from '../../models/Audit.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import * as auditQueueModule from '../../queues/audit.queue.js';
 import { AppError } from '../../middlewares/errorHandler.js';
@@ -431,15 +431,14 @@ describe('LeadService', () => {
         exec: vi.fn().mockResolvedValue(mockLead),
       } as any);
 
-      vi.spyOn(Audit, 'findOne').mockReturnValue({
-        sort: vi.fn().mockReturnThis(),
-        exec: vi.fn().mockResolvedValue(mockAudit),
-      } as any);
+      vi.mocked(findAuditForLead).mockResolvedValue(mockAudit as never);
 
       const result = await LeadService.getLeadById('lead-1');
 
       expect(result.lead).toEqual(mockLead);
       expect(result.audit).toEqual(mockAudit);
+      // The lead's own newest audit, else the completed audit of its business (REV-208)
+      expect(findAuditForLead).toHaveBeenCalledWith(mockLead);
     });
 
     it('should throw 404 AppError if lead does not exist', async () => {
