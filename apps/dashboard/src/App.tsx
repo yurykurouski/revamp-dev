@@ -6,6 +6,7 @@ import { useThemeStore } from './store/useThemeStore.js';
 import { useLanguageStore } from './store/useLanguageStore.js';
 import { BrowserRouter } from 'react-router-dom';
 import { AppRoutes } from './routes/AppRoutes.js';
+import { useClearCacheOnSignOut } from './hooks/useClearCacheOnSignOut.js';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,6 +20,7 @@ const queryClient = new QueryClient({
 export const App: React.FC = () => {
   const { mode } = useThemeStore();
   const { language } = useLanguageStore();
+  useClearCacheOnSignOut(queryClient);
   const currentTheme = useMemo(() => getTheme(mode, language), [mode, language]);
 
   return (

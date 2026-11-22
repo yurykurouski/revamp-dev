@@ -12,6 +12,7 @@ import { en } from '../../i18n/locales/en.js';
 import { apiClient, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
+import { useAuthStore } from '../../store/useAuthStore.js';
 import { LEADS_QUERY_KEY } from '../../hooks/useLeads.js';
 import { AppRoutes } from '../../routes/AppRoutes.js';
 import type { ReviewDecision } from '../../components/leadReview/LeadReview.js';
@@ -77,6 +78,10 @@ describe('review queue home (REV-79)', () => {
   let queryClient: QueryClient;
 
   beforeEach(() => {
+    // The app is behind sign-in (REV-206)
+    useAuthStore.setState({
+      session: { token: 'tok', user: { id: 'u1', email: 'owner@studio.test' }, organization: { id: 'o1', name: 'Pixel Studio' }, role: 'owner' },
+    });
     vi.spyOn(apiClient, 'getLeads').mockResolvedValue({ leads: LEADS, total: LEADS.length });
     vi.spyOn(apiClient, 'getLeadStats').mockResolvedValue({
       total: 6,

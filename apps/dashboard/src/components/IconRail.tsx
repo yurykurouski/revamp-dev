@@ -7,6 +7,7 @@ import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import TuneIcon from '@mui/icons-material/Tune';
 import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
+import LogoutIcon from '@mui/icons-material/Logout';
 import { useTranslation } from 'react-i18next';
 import { ROUTES, RailPage } from '../routes/paths.js';
 import { ariaKeyShortcuts, getShortcut, type ShortcutId } from '../utils/shortcuts.js';
@@ -15,6 +16,13 @@ import { RevampLogo } from './RevampLogo.js';
 import type { DiscoveryIndicator } from '../hooks/useDiscovery.js';
 
 export const RAIL_WIDTH = 64;
+
+/** Two letters for the avatar: the first letters of the name's words, or of the email when there is no name */
+const initialsOf = (name: string | undefined, email: string): string => {
+  const words = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  const letters = words.length > 1 ? `${words[0]![0]}${words[1]![0]}` : (words[0] ?? email).slice(0, 2);
+  return letters.toUpperCase();
+};
 
 /** The shortcut that opens each rail page (REV-47), shown in its tooltip (REV-97) */
 const PAGE_SHORTCUT: Record<RailPage, ShortcutId> = { queue: 'goQueue', leads: 'goLeads', settings: 'goSettings' };
@@ -35,6 +43,10 @@ interface IconRailProps {
   onOpenDiscovery: () => void;
   /** Opens the keyboard shortcuts overlay (REV-47) */
   onOpenShortcuts: () => void;
+  /** Who is signed in (REV-206); the avatar shows their initials. Without it the rail shows the plain operator avatar */
+  account?: { name?: string; email: string; organization: string };
+  /** Ends the session; the sign-out button shows only with `account` */
+  onSignOut?: () => void;
 }
 
 const itemSx = (active: boolean): SxProps<Theme> => ({
@@ -49,7 +61,7 @@ const itemSx = (active: boolean): SxProps<Theme> => ({
 });
 
 /** 64px navigation rail of the review-queue layout (REV-76); replaces the collapsible sidebar */
-export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, discovery, onOpenDiscovery, onOpenShortcuts }) => {
+export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, discovery, onOpenDiscovery, onOpenShortcuts, account, onSignOut }) => {
   const { t } = useTranslation();
 
   const pageItem = (page: RailPage) => {
@@ -143,12 +155,26 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
           </ButtonBase>
         </Tooltip>
         {pageItem('settings')}
-        <Tooltip title={`${t('header.operator')} · ${t('header.operatorRole')}`} placement="right">
+        {account && onSignOut && (
+          <Tooltip title={t('auth.signOut')} placement="right">
+            <ButtonBase onClick={onSignOut} aria-label={t('auth.signOut')} data-rail="sign-out" sx={itemSx(false)}>
+              <LogoutIcon />
+            </ButtonBase>
+          </Tooltip>
+        )}
+        <Tooltip
+          title={
+            account
+              ? t('auth.signedInAs', { name: account.name ?? account.email, organization: account.organization })
+              : `${t('header.operator')} · ${t('header.operatorRole')}`
+          }
+          placement="right"
+        >
           <Avatar
             variant="rounded"
             sx={{ width: 32, height: 32, mt: 0.75, bgcolor: 'primary.soft', color: 'primary.main', fontSize: '0.75rem', fontWeight: 600 }}
           >
-            {t('header.operatorInitials')}
+            {account ? initialsOf(account.name, account.email) : t('header.operatorInitials')}
           </Avatar>
         </Tooltip>
       </Box>

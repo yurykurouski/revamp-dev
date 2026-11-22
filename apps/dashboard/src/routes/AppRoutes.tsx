@@ -6,6 +6,8 @@ import { AllLeadsPage } from '../pages/AllLeadsPage.js';
 import { LeadRoute } from '../pages/LeadRoute.js';
 import { SettingsPage } from '../pages/SettingsPage.js';
 import { MvpPreviewPage } from '../pages/MvpPreviewPage.js';
+import { AuthPage } from '../pages/AuthPage.js';
+import { RequireAuth } from './RequireAuth.js';
 import { ROUTES } from './paths.js';
 
 /**
@@ -13,16 +15,24 @@ import { ROUTES } from './paths.js';
  * full-window MVP preview (REV-91) sits outside the app shell.
  */
 export const APP_ROUTES: RouteObject[] = [
-  { path: ROUTES.leadPreview, element: <MvpPreviewPage /> },
+  { path: ROUTES.login, element: <AuthPage mode="login" /> },
+  { path: ROUTES.register, element: <AuthPage mode="register" /> },
   {
-    path: ROUTES.queue,
-    element: <Layout />,
+    // Everything else needs a session (REV-206)
+    element: <RequireAuth />,
     children: [
-      { index: true, element: <ReviewQueuePage /> },
-      { path: ROUTES.leads, element: <AllLeadsPage /> },
-      { path: ROUTES.lead, element: <LeadRoute /> },
-      { path: ROUTES.settings, element: <SettingsPage /> },
-      { path: '*', element: <Navigate to={ROUTES.queue} replace /> },
+      { path: ROUTES.leadPreview, element: <MvpPreviewPage /> },
+      {
+        path: ROUTES.queue,
+        element: <Layout />,
+        children: [
+          { index: true, element: <ReviewQueuePage /> },
+          { path: ROUTES.leads, element: <AllLeadsPage /> },
+          { path: ROUTES.lead, element: <LeadRoute /> },
+          { path: ROUTES.settings, element: <SettingsPage /> },
+          { path: '*', element: <Navigate to={ROUTES.queue} replace /> },
+        ],
+      },
     ],
   },
 ];
