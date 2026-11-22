@@ -103,8 +103,9 @@ export async function addLeadToBusiness(input: AddLeadInput): Promise<AddLeadRes
   }).catch(async (error) => {
     // The unique index refused a racing second lead of one studio: report it as the rule it enforces
     if ((error as { code?: unknown } | null)?.code === 11000 && input.tenantId) {
-      const existing = await Lead.findOne({ tenantId: input.tenantId, businessId: { $exists: true } }, { _id: 1, domain: 1 }).lean();
-      if (existing && existing['domain'] === domain) throw new LeadAlreadyExistsError(String(existing._id));
+      const business = await Business.findOne({ domain }, { _id: 1 }).lean();
+      const existing = business ? await Lead.findOne({ tenantId: input.tenantId, businessId: business._id }, { _id: 1 }).lean() : null;
+      if (existing) throw new LeadAlreadyExistsError(String(existing._id));
     }
     throw error;
   });

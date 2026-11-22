@@ -2,6 +2,7 @@ import type mongoose from 'mongoose';
 import { Audit } from './models/Audit.model.js';
 import { Business } from './models/Business.model.js';
 import { Lead } from './models/Lead.model.js';
+import { retryOnDuplicateKey } from './retry-duplicate-key.js';
 
 /**
  * REV-208: a lead made before the split has no `businessId`, and its audits none either. `migrateBusinesses` gives
@@ -42,18 +43,22 @@ export async function migrateBusinesses(options: { apply: boolean }): Promise<Bu
     if (!business) {
       report.businessesToCreate++;
       if (options.apply) {
-        business = await Business.findOneAndUpdate(
-          { domain },
-          {
-            $setOnInsert: {
-              originalUrl: first.originalUrl,
-              businessName: first.businessName,
-              niche: first.niche ?? 'other',
-              ...(first.city ? { city: first.city } : {}),
+        // A running API may create the same business meanwhile: the unique domain then fails one upsert, and a second
+        // try finds it
+        business = await retryOnDuplicateKey(() =>
+          Business.findOneAndUpdate(
+            { domain },
+            {
+              $setOnInsert: {
+                originalUrl: first.originalUrl,
+                businessName: first.businessName,
+                niche: first.niche ?? 'other',
+                ...(first.city ? { city: first.city } : {}),
+              },
             },
-          },
-          { upsert: true, new: true, setDefaultsOnInsert: true },
-        ).lean();
+            { upsert: true, new: true, setDefaultsOnInsert: true },
+          ).lean(),
+        );
       }
     }
     report.leadsToLink += leads.length;
@@ -65,15 +70,34 @@ export async function migrateBusinesses(options: { apply: boolean }): Promise<Bu
       await Audit.updateMany({ leadId: { $in: leadIds }, businessId: { $exists: false } }, { $set: { businessId: business._id } });
     }
   }
+  // Audits that still have no business although their lead is linked (an old API during a rolling deploy). The audits
+  // of unlinked leads were linked above when applying and are not matched here: their lead has no business yet
+  const orphaned = await Audit.find({ businessId: { $exists: false } }, { leadId: 1 }).lean();
+  if (orphaned.length > 0) {
+    const leadBusiness = new Map(
+      (await Lead.find({ _id: { $in: orphaned.map((a) => a.leadId) }, businessId: { $exists: true } }, { businessId: 1 }).lean()).map((l) => [String(l._id), l.businessId]),
+    );
+    const ops = orphaned.flatMap((audit) => {
+      const businessId = leadBusiness.get(String(audit.leadId));
+      return businessId ? [{ updateOne: { filter: { _id: audit._id, businessId: { $exists: false } }, update: { $set: { businessId } } } }] : [];
+    });
+    report.auditsToLink += ops.length;
+    if (options.apply && ops.length > 0) await Audit.bulkWrite(ops);
+  }
   return report;
 }
 
-/** Startup warning (API and workers): says so while any lead has no business, with the command that fixes it */
+/** Startup warning (API and workers): says so while any lead or audit has no business, with the command that fixes it */
 export async function checkBusinessLinks(connection: mongoose.Connection): Promise<string[]> {
-  const count = await connection.collection('leads').countDocuments(unlinked);
-  if (count === 0) return [];
+  const [leads, audits] = await Promise.all([
+    connection.collection('leads').countDocuments(unlinked),
+    // An audit of a lead that is not linked yet is covered by the lead; these are the ones the lead's link does not reach
+    connection.collection('audits').countDocuments({ businessId: { $exists: false } }),
+  ]);
+  if (leads === 0 && audits === 0) return [];
+  const what = [leads > 0 ? `${leads} lead(s)` : '', audits > 0 ? `${audits} audit(s)` : ''].filter(Boolean).join(' and ');
   return [
-    `${count} lead(s) have no shared business yet (REV-208): they keep working, but another studio adding the same site ` +
+    `${what} have no shared business yet (REV-208): they keep working, but another studio adding the same site ` +
       `would audit it again. Run \`${MIGRATE_BUSINESSES_COMMAND}\` (dry run), then \`-- --apply\`.`,
   ];
 }

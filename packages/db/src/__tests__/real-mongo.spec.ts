@@ -1217,8 +1217,125 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
     });
 
+    it('links an audit that has no business although its lead is linked (an old API during a rolling deploy)', async () => {
+      const business = await Business.create({ domain: 'a.example', originalUrl: 'https://a.example', businessName: 'A', niche: 'dental' });
+      const lead = await Lead.create({ ...legacyLead('a.example', '2026-01-01'), businessId: business._id });
+      await Audit.collection.insertOne({ leadId: lead._id, status: 'COMPLETED', createdAt: new Date(), updatedAt: new Date() });
+      const warnings = await checkBusinessLinks(mongoose.connection);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain('1 audit(s)');
+      const report = await migrateBusinesses({ apply: true });
+      expect(report).toMatchObject({ leadsToLink: 0, businessesToCreate: 0, auditsToLink: 1 });
+      expect(String((await Audit.findOne({ leadId: lead._id }).lean())!.businessId)).toBe(String(business._id));
+      expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
+    });
+
+    it('does not fail when the API creates the business of a domain while the backfill does', async () => {
+      await seedLegacy();
+      const original = Business.findOneAndUpdate.bind(Business);
+      let raced = false;
+      vi.spyOn(Business, 'findOneAndUpdate').mockImplementation(((...args: Parameters<typeof original>) => {
+        if (!raced) {
+          raced = true;
+          // Another process wins the unique domain between the lookup and the upsert
+          return { lean: () => Promise.reject(Object.assign(new Error('E11000 duplicate key'), { code: 11000 })) } as never;
+        }
+        return original(...args);
+      }) as never);
+      const report = await migrateBusinesses({ apply: true });
+      vi.restoreAllMocks();
+      expect(report.leadsToLink).toBe(3);
+      expect(await Lead.countDocuments({ businessId: { $exists: false } })).toBe(0);
+    });
+
     it('checkBusinessLinks is quiet on an empty database', async () => {
       expect(await checkBusinessLinks(mongoose.connection)).toEqual([]);
+    });
+  });
+  describe('review fixes (REV-208)', () => {
+    const studio = new Types.ObjectId();
+    const derive = () => ({ set: {}, clearsEmailGuess: false });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-review-fixes-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init(), Organization.init(), User.init(), Membership.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({}), Organization.deleteMany({}), User.deleteMany({}), Membership.deleteMany({})]);
+    });
+
+    it('audits are indexed by business, status and date: the lookups of a shared audit do not scan every completed audit', async () => {
+      const indexes = await Audit.collection.indexes();
+      expect(indexes.some((i) => JSON.stringify(i.key) === JSON.stringify({ businessId: 1, status: 1, createdAt: -1 }))).toBe(true);
+    });
+
+    it('a studio with other leads still gets LEAD_ALREADY_EXISTS (not a raw duplicate-key error) when its adds of one new site race', async () => {
+      // The studio already has leads of other sites: a fallback that picks "any lead of the studio" would pick one of those
+      for (const domain of ['one.example', 'two.example', 'three.example']) {
+        await addLeadToBusiness({ tenantId: studio, deriveFromAudit: derive as never, lead: { businessName: domain, originalUrl: `https://${domain}`, domain, niche: 'dental', status: 'QUEUED' } });
+      }
+      const results = await Promise.allSettled(
+        Array.from({ length: 12 }, () =>
+          addLeadToBusiness({ tenantId: studio, deriveFromAudit: derive as never, lead: { businessName: 'New', originalUrl: 'https://new.example', domain: 'new.example', niche: 'dental', status: 'QUEUED' } }),
+        ),
+      );
+      expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+      for (const r of results.filter((r) => r.status === 'rejected')) {
+        expect((r as PromiseRejectedResult).reason).toBeInstanceOf(LeadAlreadyExistsError);
+      }
+      expect(await Lead.countDocuments({ tenantId: studio, domain: 'new.example' })).toBe(1);
+    });
+
+    describe('seeding a database that was seeded before the split and then backfilled', () => {
+      const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
+
+      /** The state the README describes: seeded long ago, no businesses, then `migrate:businesses --apply` ran */
+      const preSplitThenBackfilled = async () => {
+        await seedDemoDataset(ds, { reset: false });
+        await Business.deleteMany({});
+        await Lead.updateMany({}, { $unset: { businessId: 1, tenantId: 1 } });
+        await Audit.updateMany({}, { $unset: { businessId: 1 } });
+        await migrateBusinesses({ apply: true });
+        expect(await Business.countDocuments({ _id: { $in: ds.businesses.map((b) => b._id) } })).toBe(0);
+      };
+
+      it('a plain run keeps the backfilled businesses, and a demo lead it has to insert points at them', async () => {
+        await preSplitThenBackfilled();
+        const gone = ds.leads[0]!;
+        await Lead.deleteOne({ _id: gone._id });
+        await Audit.deleteMany({ leadId: gone._id });
+        const report = await seedDemoDataset(ds, { reset: false });
+        expect(report.businesses).toEqual({ inserted: 0, kept: ds.businesses.length });
+        expect(await Business.countDocuments()).toBe(ds.leads.length);
+        const reinserted = await Lead.findById(gone._id).lean();
+        const business = await Business.findOne({ domain: gone.domain }).lean();
+        expect(String(reinserted!.businessId)).toBe(String(business!._id));
+        expect(String((await Audit.findOne({ leadId: gone._id }).lean())!.businessId)).toBe(String(business!._id));
+      });
+
+      it('a reset replaces the backfilled businesses of the demo domains with the seed ones, leaving none behind', async () => {
+        await preSplitThenBackfilled();
+        await seedDemoDataset(ds, { reset: true });
+        const seedIds = new Set(ds.businesses.map((b) => String(b._id)));
+        const businesses = await Business.find().lean();
+        expect(businesses).toHaveLength(ds.leads.length);
+        expect(businesses.every((b) => seedIds.has(String(b._id)))).toBe(true);
+        const leads = await Lead.find().lean();
+        expect(leads.every((l) => seedIds.has(String(l.businessId)))).toBe(true);
+      });
+
+      it('a reset leaves the business and the lead of a real studio alone', async () => {
+        await preSplitThenBackfilled();
+        const real = await Lead.create({ businessName: 'Real', originalUrl: 'https://real.example', domain: 'real.example', niche: 'dental' });
+        const realBusiness = await Business.create({ domain: 'real.example', originalUrl: 'https://real.example', businessName: 'Real', niche: 'dental' });
+        await Lead.updateOne({ _id: real._id }, { businessId: realBusiness._id });
+        await seedDemoDataset(ds, { reset: true });
+        expect(await Business.findById(realBusiness._id).lean()).not.toBeNull();
+        expect(await Lead.findById(real._id).lean()).not.toBeNull();
+      });
     });
   });
 });

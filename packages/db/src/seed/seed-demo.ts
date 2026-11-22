@@ -68,7 +68,24 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
 
   const report = {} as DemoSeedReport;
   await mongoose.connection.transaction(async (session) => {
-    for (const [name, model, docs] of steps) {
+    // A database seeded before the split and then backfilled (REV-208) has businesses of the demo domains under other
+    // ids, and `domain` is unique. A plain run keeps them and points the demo leads and audits it inserts at them; a
+    // reset replaces them with the seed ones, except a business a lead outside the seed still points at
+    const demoDomains = ds.businesses.map((b) => b.domain);
+    const remap = new Map<string, unknown>();
+    if (!opts.reset) {
+      const existing = await Business.find({ domain: { $in: demoDomains } }, { domain: 1 }, { session }).lean();
+      const idByDomain = new Map(existing.map((b) => [b.domain, b._id]));
+      for (const seed of ds.businesses) {
+        const found = idByDomain.get(seed.domain);
+        if (found && String(found) !== String(seed._id)) remap.set(String(seed._id), found);
+      }
+    }
+    const relink = (doc: { _id: unknown; businessId?: unknown }) =>
+      remap.has(String(doc.businessId)) ? { ...doc, businessId: remap.get(String(doc.businessId)) } : doc;
+
+    for (const [name, model, rawDocs] of steps) {
+      const docs = name === 'leads' || name === 'audits' ? rawDocs.map((doc) => relink(doc as { _id: unknown; businessId?: unknown })) : rawDocs;
       let missing = docs;
       if (opts.reset) {
         // A demo lead's children belong to the demo, whatever their id: a retried audit, a generated MVP or campaign,
@@ -77,13 +94,21 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
         if (['audits', 'mvpProjects', 'emailCampaigns', 'analyticsEvents'].includes(name)) owned.push({ leadId: { $in: ids.leads } });
         if (name === 'analyticsEvents') owned.push({ campaignId: { $in: ids.emailCampaigns } }, { mvpProjectId: { $in: ids.mvpProjects } });
         await model.deleteMany({ $or: owned }, { session });
+        if (name === 'businesses') {
+          // Businesses of the demo domains made by the backfill, unless a lead outside the seed points at them
+          const stale = await Business.find({ domain: { $in: demoDomains }, _id: { $nin: ids.businesses } }, { _id: 1 }, { session }).lean();
+          for (const business of stale) {
+            if (!(await Lead.exists({ businessId: business._id }).session(session))) await Business.deleteOne({ _id: business._id }, { session });
+          }
+        }
       } else {
         const existing = await model.find({ _id: { $in: ids[name] } }, { _id: 1 }, { session }).lean();
         const kept = new Set(existing.map((doc) => String((doc as { _id: unknown })._id)));
-        missing = docs.filter((doc) => !kept.has(String(doc._id)));
+        // A seed business whose domain a backfilled business already holds is kept as that one
+        missing = docs.filter((doc) => !kept.has(String(doc._id)) && !(name === 'businesses' && remap.has(String(doc._id))));
       }
       if (missing.length > 0) await model.insertMany(missing as Record<string, unknown>[], { session });
-      report[name] = { inserted: missing.length, kept: docs.length - missing.length };
+      report[name] = { inserted: missing.length, kept: rawDocs.length - missing.length };
     }
   });
   return report;
