@@ -114,6 +114,15 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     expect(filter).toMatchObject({ status: 'GENERATING' });
   });
 
+  it("never writes to the audit it built from: a shared audit is read-only once COMPLETED (REV-208 review)", async () => {
+    // The banner URL names this lead's MVP slug; written to an audit another studio's lead also reads, it would hand
+    // that studio this one's page. The banner lives on the lead and the MVP project
+    await capturedProcessor!(job());
+    expect(Audit.findByIdAndUpdate).not.toHaveBeenCalled();
+    expect(Audit.updateOne).not.toHaveBeenCalled();
+    expect(Audit.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
   it('checks the version entry before the public page is overwritten (REV-200 review)', async () => {
     const long = job({ generationSource: { provider: 'claude-cli', modelUsed: 'm'.repeat(150) } });
     await expect(capturedProcessor!(long)).rejects.toThrow();
