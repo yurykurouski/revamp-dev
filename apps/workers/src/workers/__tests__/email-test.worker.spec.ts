@@ -24,6 +24,7 @@ let capturedProcessor: ((job: any) => Promise<any>) | null = null;
 let capturedWorkerOpts: any = null;
 
 vi.mock('bullmq', () => ({
+  UnrecoverableError: class UnrecoverableError extends Error {},
   Worker: vi.fn().mockImplementation(function (queueName: string, processor: any, opts: any) {
     capturedQueueName = queueName;
     capturedProcessor = processor;
