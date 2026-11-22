@@ -8,6 +8,7 @@ import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { mxValidator } from '../services/mx.validator.js';
 import { emailService } from '../services/email.service.js';
+import { assertJobTenant, withTenant } from '../tenant.js';
 
 export interface IEmailWorkerResult {
   success: boolean;
@@ -27,12 +28,13 @@ const SENDABLE_CAMPAIGN_STATUSES = ['SCHEDULED', 'APPROVED'];
 
 /** Finishes the lead update for a campaign that was already delivered, without sending anything */
 const markLeadSent = async (
+  tenant: Types.ObjectId,
   leadId: Types.ObjectId | string,
   campaign: { _id: Types.ObjectId | string; sentAt?: Date },
   reason: string,
 ): Promise<IEmailWorkerResult> => {
   console.warn(`[EmailWorker] ${reason}`);
-  await Lead.findOneAndUpdate({ _id: leadId, status: { $in: leadStatusesInto('SENT') } }, { status: 'SENT' }).exec();
+  await Lead.findOneAndUpdate(withTenant(tenant, { _id: leadId, status: { $in: leadStatusesInto('SENT') } }), { status: 'SENT' }).exec();
   return {
     success: true,
     alreadySent: true,
@@ -55,6 +57,8 @@ export const createEmailWorker = (): Worker => {
       if (!lead) {
         throw new Error(`Lead ${leadId} not found`);
       }
+      // The job's studio must be the lead's, before anything is written (REV-210)
+      const tenant = assertJobTenant(job.data.tenantId, lead);
 
       // 2. Strict Human-In-The-Loop (HITL) Gate Enforcement
       // Only a lead the operator approved (SCHEDULED, the one status that can move to SENT) is emailed
@@ -71,9 +75,9 @@ export const createEmailWorker = (): Worker => {
 
       // 3. Load the approved campaign. Only the text the operator approved is ever sent: a missing
       // campaign or empty content fails the job instead of sending default copy (REV-61)
-      const campaign = await EmailCampaign.findOne({
+      const campaign = await EmailCampaign.findOne(withTenant(tenant, {
         $or: [{ _id: campaignId }, { leadId: lead._id }],
-      }).exec();
+      })).exec();
 
       if (!campaign) {
         throw new UnrecoverableError(`No approved EmailCampaign for lead ${leadId}; nothing was sent`);
@@ -86,7 +90,7 @@ export const createEmailWorker = (): Worker => {
 
       // A retry after the provider accepted the email must not send it again (REV-61)
       if (campaign.status === 'DELIVERED') {
-        return markLeadSent(lead._id, campaign, 'The email was already sent; finishing the lead update only.');
+        return markLeadSent(tenant, lead._id, campaign, 'The email was already sent; finishing the lead update only.');
       }
 
       const recipientEmail = campaign.recipientEmail || lead.contactEmail;
@@ -110,7 +114,7 @@ export const createEmailWorker = (): Worker => {
 
         // Update Lead status to REJECTED and tag with bounce metadata, unless it opted out meanwhile
         await Lead.findOneAndUpdate(
-          { _id: lead._id, status: { $in: leadStatusesInto('REJECTED') } },
+          withTenant(tenant, { _id: lead._id, status: { $in: leadStatusesInto('REJECTED') } }),
           { status: 'REJECTED', $addToSet: { tags: 'mx_bounced' } },
         ).exec();
 
@@ -135,7 +139,7 @@ export const createEmailWorker = (): Worker => {
       if (!claimed) {
         const current = await EmailCampaign.findById(campaign._id).exec();
         if (current?.status === 'DELIVERED') {
-          return markLeadSent(lead._id, current, 'The email was already sent; finishing the lead update only.');
+          return markLeadSent(tenant, lead._id, current, 'The email was already sent; finishing the lead update only.');
         }
         // SENDING: an earlier attempt claimed it and may have handed it to the provider already
         const reason = `EmailCampaign ${campaign._id.toString()} is ${current?.status ?? 'gone'}, not ${SENDABLE_CAMPAIGN_STATUSES.join('/')}. Not sending it again.`;
@@ -177,7 +181,7 @@ export const createEmailWorker = (): Worker => {
 
       // 8. Update Lead status to SENT, unless it opted out while the email was being sent
       await Lead.findOneAndUpdate(
-        { _id: lead._id, status: { $in: leadStatusesInto('SENT') } },
+        withTenant(tenant, { _id: lead._id, status: { $in: leadStatusesInto('SENT') } }),
         { status: 'SENT', updatedAt: now },
       ).exec();
 

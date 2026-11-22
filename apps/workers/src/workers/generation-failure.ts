@@ -20,11 +20,14 @@ export function statusAfterFailedGeneration(previousStatus: LeadStatus | undefin
  * operator can retry. Never throws.
  */
 export async function handleGenerationFailure(
-  job: Job<{ leadId: string; previousStatus?: LeadStatus }> | undefined,
+  job: Job<{ leadId: string; tenantId?: string; previousStatus?: LeadStatus }> | undefined,
   err: Error,
   stage: 'content' | 'deploy',
 ): Promise<void> {
   if (!job?.data?.leadId) return;
+  // Only the job's own studio's lead is reset; a job without a valid studio changes nothing (REV-210)
+  const tenantId = job.data.tenantId;
+  if (typeof tenantId !== 'string' || !/^[0-9a-f]{24}$/i.test(tenantId)) return;
 
   const attempts = job.opts?.attempts ?? 1;
   // BullMQ retries it, unless the error is final (a render a model could not make, REV-132)
@@ -46,7 +49,7 @@ export async function handleGenerationFailure(
   try {
     // Only a lead still marked GENERATING by this run is reset; never overwrite a newer state
     await Lead.findOneAndUpdate(
-      { _id: job.data.leadId, status: 'GENERATING' },
+      { _id: job.data.leadId, status: 'GENERATING', tenantId },
       { $set: { status, generationError, ...(generationFailure ? { generationFailure } : {}) } },
     ).exec();
     console.warn(`[GenerationFailure] Lead ${job.data.leadId} reset to ${status}: ${generationError}`);

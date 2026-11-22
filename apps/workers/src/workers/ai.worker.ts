@@ -13,6 +13,7 @@ import { MvpPageGenerator, defaultPageGenerator } from '../services/mvp-page-gen
 import { addDeployJob } from '../queues/deploy.queue.js';
 import { desktopCapture } from '../services/desktop-capture.js';
 import { handleGenerationFailure } from './generation-failure.js';
+import { assertJobTenant, withTenant } from '../tenant.js';
 
 /** A page the model could not make (REV-138): final, so BullMQ does not retry; the code and reason go on the lead */
 export class MvpPageUnavailableError extends UnrecoverableError {
@@ -36,6 +37,8 @@ export const createAiWorker = (): Worker => {
       if (!lead) {
         throw new Error(`Lead ${leadId} not found`);
       }
+      // The job's studio must be the lead's, before anything is written (REV-210)
+      const tenant = assertJobTenant(job.data.tenantId, lead);
 
       // The job's audit, else the lead's newest completed one; never a failed or stale audit (REV-55)
       const audit = await findGenerationAudit(leadId, auditId);
@@ -46,7 +49,7 @@ export const createAiWorker = (): Worker => {
       // 1. Transition Lead status to GENERATING (the API usually did already). A lead that was
       // rejected or moved on since the job was queued is not generated for (REV-62)
       const generating = await Lead.findOneAndUpdate(
-        { _id: leadId, status: { $in: leadStatusesInto('GENERATING', { includeSelf: true }) } },
+        withTenant(tenant, { _id: leadId, status: { $in: leadStatusesInto('GENERATING', { includeSelf: true }) } }),
         { $set: { status: 'GENERATING' } },
       ).exec();
       if (!generating) {
@@ -83,6 +86,7 @@ export const createAiWorker = (): Worker => {
       // (Human-In-The-Loop gate). A failed dispatch fails the job, so BullMQ retries it instead of leaving the lead stuck.
       await addDeployJob({
         leadId,
+        tenantId: job.data.tenantId,
         auditId: String(audit._id),
         forceRegenerate,
         previousStatus,

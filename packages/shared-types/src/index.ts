@@ -741,6 +741,8 @@ export const QUEUE_NAMES = {
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 export interface IAuditJobData {
+  /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
+  tenantId: string;
   leadId: string;
   url: string;
   niche: NicheType;
@@ -975,6 +977,8 @@ export interface IDiscoveryJobStatus {
 }
 
 export interface IAiGenerationJobData {
+  /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
+  tenantId: string;
   leadId: string;
   auditId: string;
   forceRegenerate?: boolean;
@@ -996,6 +1000,8 @@ export interface IMvpGenerationSource {
 }
 
 export interface IDeployJobData {
+  /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
+  tenantId: string;
   leadId: string;
   auditId: string;
   mvpProjectId?: string;
@@ -1018,6 +1024,8 @@ export interface IMvpControlsUpdate {
 
 /** A job of the mvp-page queue (REV-139); the API waits for its result */
 export interface IMvpPageJobData {
+  /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
+  tenantId: string;
   mvpProjectId: string;
   action: MvpPageAction;
   /** The operator's words (`change`) */
@@ -1044,6 +1052,8 @@ export type IMvpPageJobResult =
   | { applied: false; reason: MvpPageRefusal; message: string; problems?: IMvpPageProblem[] };
 
 export interface IEmailDispatchJobData {
+  /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
+  tenantId: string;
   campaignId: string;
   leadId: string;
 }
@@ -1053,6 +1063,8 @@ export interface IEmailDispatchJobData {
  * lead, so it skips the HITL gate, carries no open tracking and never changes the lead or campaign.
  */
 export interface IEmailTestJobData {
+  /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
+  tenantId: string;
   leadId: string;
   to: string;
   subject: string;

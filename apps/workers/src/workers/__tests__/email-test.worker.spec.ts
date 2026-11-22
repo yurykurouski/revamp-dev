@@ -35,6 +35,7 @@ vi.mock('bullmq', () => ({
 describe('EmailTestWorker (REV-60)', () => {
   const data = {
     leadId: '64f8a1234567890123456789',
+    tenantId: '5eed00000000000000000009',
     to: 'operator@revamp.io',
     subject: 'A new mobile website for Dr Smile',
     preheader: 'An interactive prototype',
@@ -46,6 +47,14 @@ describe('EmailTestWorker (REV-60)', () => {
     capturedQueueName = null;
     capturedProcessor = null;
     capturedWorkerOpts = null;
+  });
+
+  it('refuses a job without a valid tenantId before sending anything (REV-210)', async () => {
+    createEmailTestWorker();
+    for (const tenantId of [undefined, 'nope']) {
+      await expect(capturedProcessor!({ id: 'j', data: { ...data, tenantId } })).rejects.toThrow(/no valid tenantId/);
+    }
+    expect(emailService.sendEmail).not.toHaveBeenCalled();
   });
 
   it('listens on its own queue, without the outreach rate limit', () => {

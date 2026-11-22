@@ -18,12 +18,14 @@ export function isFinalAuditAttempt(job: Pick<Job, 'attemptsMade' | 'opts'>, per
  * and offers a retry (REV-44). Never throws.
  */
 export async function markLeadAuditFailed(job: Job<IAuditJobData>, auditError: string): Promise<void> {
-  const { leadId } = job.data;
+  const { leadId, tenantId } = job.data;
+  // A job without a valid studio changes nothing (REV-210)
+  if (typeof tenantId !== 'string' || !/^[0-9a-f]{24}$/i.test(tenantId)) return;
   try {
     // Only a lead still marked AUDITING by this run is changed; never overwrite a newer state. Not every
     // source of AUDIT_FAILED: a QUEUED lead was retried meanwhile, and its new job must not be failed (REV-202)
     await Lead.findOneAndUpdate(
-      { _id: leadId, status: 'AUDITING' },
+      { _id: leadId, status: 'AUDITING', tenantId },
       { $set: { status: 'AUDIT_FAILED', auditError } },
     ).exec();
     console.warn(`[AuditFailure] Lead ${leadId} marked AUDIT_FAILED: ${auditError}`);
@@ -46,7 +48,10 @@ export const STALLED_AUDIT_MESSAGE =
  */
 export async function handleAuditJobFailed(job: Job<IAuditJobData> | undefined, error: Error): Promise<void> {
   if (!job || !STALLED_JOB_ERROR.test(error.message)) return;
+  // The audit is shared with other studios' leads: it is closed only for a lead of the job's studio
+  if (typeof job.data.tenantId !== 'string') return;
   try {
+    if (!(await Lead.exists({ _id: job.data.leadId, tenantId: job.data.tenantId }))) return;
     // Only an audit still running is closed; a finished one is never overwritten
     await Audit.findOneAndUpdate(
       { leadId: job.data.leadId, status: { $in: ['QUEUED', 'PROCESSING'] } },

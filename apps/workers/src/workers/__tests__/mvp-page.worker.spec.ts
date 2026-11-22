@@ -31,7 +31,8 @@ const NEW_PAGE = VALID.replace('</h1>', ' – nowocześnie</h1>');
 const NOW = 1_800_000_000_000;
 const DEADLINE = NOW + 400_000;
 
-const lead = { _id: LEAD_ID, businessName: 'Falco-Dent', domain: 'falco-dent.pl', niche: 'dental', status: 'NEEDS_APPROVAL', originalUrl: 'https://falco-dent.pl', toObject: () => lead };
+const TENANT = '5eed00000000000000000009';
+const lead = { _id: LEAD_ID, tenantId: TENANT, businessName: 'Falco-Dent', domain: 'falco-dent.pl', niche: 'dental', status: 'NEEDS_APPROVAL', originalUrl: 'https://falco-dent.pl', toObject: () => lead };
 const audit = {
   _id: AUDIT_ID,
   extractedContacts: { phone: '+48 600 100 200', address: 'ul. Długa 5, Kraków', socialLinks: [] },
@@ -45,15 +46,16 @@ const version = (n: number, extra: Record<string, unknown> = {}) => ({ n, kind: 
 
 let project: Record<string, any>;
 const change = vi.fn();
-const job = (data: Record<string, unknown>) => ({ mvpProjectId: 'mvp-1', deadline: DEADLINE, ...data }) as any;
+const job = (data: Record<string, unknown>) => ({ mvpProjectId: 'mvp-1', tenantId: TENANT, deadline: DEADLINE, ...data }) as any;
 const run = (data: Record<string, unknown>, now: () => number = () => NOW) => processMvpPageJob(job(data), { generator: { change }, now });
-const update = () => vi.mocked(MvpProject.findByIdAndUpdate).mock.calls[0]?.[1] as Record<string, any>;
+const update = () => vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]?.[1] as Record<string, any>;
 const published = () => vi.mocked(storageService.uploadHtml).mock.calls[0]?.[1] as string;
 
 beforeEach(() => {
   vi.clearAllMocks();
   project = {
     _id: 'mvp-1',
+    tenantId: TENANT,
     leadId: LEAD_ID,
     auditId: AUDIT_ID,
     previewSlug: SLUG,
@@ -63,7 +65,7 @@ beforeEach(() => {
     versions: [version(1), version(2, { kind: 'change', instruction: 'ciemniej' })],
   };
   vi.mocked(MvpProject.findById).mockImplementation((() => ({ exec: vi.fn().mockResolvedValue({ ...project, toObject: () => project }) })) as any);
-  vi.mocked(MvpProject.findByIdAndUpdate).mockImplementation(((_id: unknown, u: Record<string, any>) => {
+  vi.mocked(MvpProject.findOneAndUpdate).mockImplementation(((_filter: unknown, u: Record<string, any>) => {
     const pushed = u.$push?.versions;
     const versions = pushed ? [...project.versions, ...pushed.$each].slice(pushed.$slice) : project.versions;
     return { exec: vi.fn().mockResolvedValue({ ...project, versions }) };
@@ -87,7 +89,7 @@ beforeEach(() => {
 const nothingPublished = () => {
   expect(storageService.uploadPageVersion).not.toHaveBeenCalled();
   expect(storageService.uploadHtml).not.toHaveBeenCalled();
-  expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
+  expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
 };
 
 describe('a free-text change (REV-139)', () => {

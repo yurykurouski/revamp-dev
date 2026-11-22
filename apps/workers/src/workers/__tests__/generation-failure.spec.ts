@@ -4,6 +4,8 @@ import { canTransition } from '@revamp/validation';
 import { Lead } from '../../models/Lead.model.js';
 import { MvpPageUnavailableError } from '../ai.worker.js';
 
+const TENANT = '5eed00000000000000000009';
+
 vi.mock('../../models/Lead.model.js');
 
 describe('MVP generation failure handling (REV-31)', () => {
@@ -18,7 +20,7 @@ describe('MVP generation failure handling (REV-31)', () => {
   });
 
   const job = (data: Record<string, unknown>, attemptsMade: number, attempts = 3) =>
-    ({ id: 'job-1', data, attemptsMade, opts: { attempts } }) as any;
+    ({ id: 'job-1', data: { tenantId: TENANT, ...data }, attemptsMade, opts: { attempts } }) as any;
 
   it('sends a first-time generation back to AUDITED and a regeneration back to review', () => {
     expect(statusAfterFailedGeneration(undefined)).toBe('AUDITED');
@@ -45,7 +47,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     );
 
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-1', status: 'GENERATING' },
+      { _id: 'lead-1', status: 'GENERATING', tenantId: TENANT },
       { $set: { status: 'NEEDS_APPROVAL', generationError: 'MVP deploy failed: S3 upload refused' } },
     );
   });
@@ -58,7 +60,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     });
     await handleGenerationFailure(job({ leadId: 'lead-1' }, 1), err, 'deploy');
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-1', status: 'GENERATING' },
+      { _id: 'lead-1', status: 'GENERATING', tenantId: TENANT },
       { $set: { status: 'AUDITED', generationError: 'MVP deploy failed: MVP_MODERNIZE_UNAVAILABLE: not_configured' } },
     );
     expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('generationFailure left out'));
@@ -70,7 +72,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     const err = Object.assign(new Error('rejected twice'), { name: 'UnrecoverableError', failure });
     await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 3), err, 'content');
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-1', status: 'GENERATING' },
+      { _id: 'lead-1', status: 'GENERATING', tenantId: TENANT },
       { $set: { status: 'AUDITED', generationError: 'MVP content failed: rejected twice', generationFailure: failure } },
     );
   });
@@ -80,7 +82,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     // The real bullmq class: its constructor names the error after the subclass
     await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 1), new MvpPageUnavailableError(failure), 'content');
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-1', status: 'GENERATING' },
+      { _id: 'lead-1', status: 'GENERATING', tenantId: TENANT },
       { $set: { status: 'AUDITED', generationError: 'MVP content failed: rejected twice', generationFailure: failure } },
     );
   });
@@ -89,7 +91,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     const err = Object.assign(new Error('boom'), { name: 'UnrecoverableError' });
     await handleGenerationFailure(job({ leadId: 'lead-1' }, 1), err, 'deploy');
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-1', status: 'GENERATING' },
+      { _id: 'lead-1', status: 'GENERATING', tenantId: TENANT },
       { $set: { status: 'AUDITED', generationError: 'MVP deploy failed: boom' } },
     );
   });
@@ -98,7 +100,7 @@ describe('MVP generation failure handling (REV-31)', () => {
     await handleGenerationFailure(job({ leadId: 'lead-1', previousStatus: 'AUDITED' }, 1, 1), new Error('boom'), 'content');
 
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-1', status: 'GENERATING' },
+      { _id: 'lead-1', status: 'GENERATING', tenantId: TENANT },
       { $set: { status: 'AUDITED', generationError: 'MVP content failed: boom' } },
     );
   });
@@ -113,5 +115,13 @@ describe('MVP generation failure handling (REV-31)', () => {
     await expect(handleGenerationFailure(undefined, new Error('x'), 'content')).resolves.toBeUndefined();
     exec.mockRejectedValueOnce(new Error('Mongo down'));
     await expect(handleGenerationFailure(job({ leadId: 'lead-1' }, 3), new Error('x'), 'deploy')).resolves.toBeUndefined();
+  });
+  it('resets only a lead of the job\'s own studio, and nothing for a job without a valid studio (REV-210)', async () => {
+    const bare = (tenantId?: string) => ({ id: 'job-1', data: { leadId: 'lead-1', ...(tenantId ? { tenantId } : {}) }, attemptsMade: 3, opts: { attempts: 3 } }) as any;
+    await handleGenerationFailure(bare(), new Error('boom'), 'deploy');
+    await handleGenerationFailure(bare('not-an-id'), new Error('boom'), 'deploy');
+    expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    await handleGenerationFailure(bare(TENANT), new Error('boom'), 'deploy');
+    expect(vi.mocked(Lead.findOneAndUpdate).mock.calls[0]![0]).toMatchObject({ tenantId: TENANT });
   });
 });

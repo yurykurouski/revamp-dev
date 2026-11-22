@@ -391,6 +391,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       );
       expect(auditQueue.addAuditJob).toHaveBeenCalledWith({
         leadId: mockLead._id.toString(),
+        tenantId: '5eed00000000000000000002',
         url: 'https://ekomyj.com',
         niche: 'dental',
       });
@@ -833,6 +834,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.data).toEqual({ to: 'operator@revamp.io', messageId: 'msg-1', provider: 'smtp', sentAt });
       expect(sendTestEmailJob).toHaveBeenCalledWith({
         leadId,
+        tenantId: '5eed00000000000000000002',
         to: 'operator@revamp.io',
         subject: draft.subject,
         preheader: draft.preheader,
@@ -979,6 +981,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       );
       expect(addAiGenerationJob).toHaveBeenCalledWith({
         leadId,
+        tenantId: '5eed00000000000000000002',
         auditId,
         forceRegenerate: false,
         previousStatus: 'AUDITED',
@@ -997,6 +1000,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         expect(res.status).toBe(202);
         expect(addAiGenerationJob).toHaveBeenCalledWith({
           leadId,
+          tenantId: '5eed00000000000000000002',
           auditId,
           forceRegenerate: true,
           previousStatus: status,
@@ -1148,6 +1152,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.status).toBe(202);
       expect(addAiGenerationJob).toHaveBeenCalledWith({
         leadId,
+        tenantId: '5eed00000000000000000002',
         auditId,
         forceRegenerate: false,
         previousStatus: 'AUDITED',
@@ -1422,7 +1427,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
         const res = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Krótszy nagłówek', operatorLocale: 'pl' });
         expect(res.status).toBe(200);
-        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'change', instruction: 'Krótszy nagłówek', operatorLocale: 'pl' }, 420_000);
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, tenantId: '5eed00000000000000000002', action: 'change', instruction: 'Krótszy nagłówek', operatorLocale: 'pl' }, 420_000);
 
         const bad = await request(app).post(`/api/v1/mvp/${projectId}/edit`).send({ instruction: 'Krótszy nagłówek', operatorLocale: 'de' });
         expect(bad.status).toBe(400);
@@ -1438,7 +1443,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.data).toEqual({ applied: true, version: 3, mvp: saved });
-        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'change', instruction: 'Krótszy nagłówek' }, 420_000);
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, tenantId: '5eed00000000000000000002', action: 'change', instruction: 'Krótszy nagłówek' }, 420_000);
         expect(addAiGenerationJob).not.toHaveBeenCalled();
         expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
       });
@@ -1507,7 +1512,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
         expect(res.status).toBe(200);
         expect(res.body.data).toEqual({ applied: true, mvp: saved });
-        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'controls', controls: { colors, fonts: null } }, 120_000);
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, tenantId: '5eed00000000000000000002', action: 'controls', controls: { colors, fonts: null } }, 120_000);
         expect(MvpProject.findByIdAndUpdate).not.toHaveBeenCalled();
       });
 
@@ -1539,7 +1544,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
         const res = await restore(1);
         expect(res.status).toBe(200);
         expect(res.body.data).toEqual({ applied: true, version: 3, mvp: saved });
-        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, action: 'restore', version: 1 }, 120_000);
+        expect(runMvpPageJob).toHaveBeenCalledWith({ mvpProjectId: projectId, tenantId: '5eed00000000000000000002', action: 'restore', version: 1 }, 120_000);
       });
 
       it.each(['0', 'x', '1.5'])('answers 400 for version %s', async (n) => {

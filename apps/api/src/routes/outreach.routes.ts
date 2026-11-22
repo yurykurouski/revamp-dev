@@ -17,6 +17,7 @@ import { calculateDispatchDelay } from '../queues/email.queue.js';
 import { enqueueEmailOrRevert } from '../services/email-enqueue.js';
 import { sendTestEmailJob } from '../queues/email-test.queue.js';
 import { env } from '../config/env.js';
+import { tenantIdOf } from '../data/tenant-scope.js';
 
 const router = Router();
 
@@ -112,7 +113,7 @@ router.post(
 
       // 4. Queue the send; a queue that fails or does not answer returns the lead to review with 503 (REV-203)
       const campaignIdStr = campaign._id.toString();
-      const { jobId } = await enqueueEmailOrRevert({ campaignId: campaignIdStr, leadId: lead._id.toString() }, delayMs);
+      const { jobId } = await enqueueEmailOrRevert({ campaignId: campaignIdStr, leadId: lead._id.toString(), tenantId: tenantIdOf(req.tenant!) }, delayMs);
 
       res.status(200).json({
         success: true,
@@ -201,7 +202,7 @@ router.post(
       if (!env.EMAIL_PROVIDER) throw providerMissing();
 
       const { testEmail, subject, preheader, body } = req.body;
-      const outcome = await sendTestEmailJob({ leadId: id, to: testEmail, subject, preheader, body });
+      const outcome = await sendTestEmailJob({ leadId: id, tenantId: tenantIdOf(req.tenant!), to: testEmail, subject, preheader, body });
 
       if (outcome.status === 'timeout') {
         throw new AppError(

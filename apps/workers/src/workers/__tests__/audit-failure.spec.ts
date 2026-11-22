@@ -3,21 +3,25 @@ import { STALLED_AUDIT_MESSAGE, handleAuditJobFailed, isFinalAuditAttempt, markL
 import { Audit } from '../../models/Audit.model.js';
 import { Lead } from '../../models/Lead.model.js';
 
+const TENANT = '5eed00000000000000000009';
+
 vi.mock('../../models/Audit.model.js', () => ({
   Audit: { findOneAndUpdate: vi.fn() },
 }));
 vi.mock('../../models/Lead.model.js', () => ({
-  Lead: { findOneAndUpdate: vi.fn() },
+  Lead: { findOneAndUpdate: vi.fn(), exists: vi.fn() },
 }));
 
 const job = (attemptsMade: number, attempts?: number) =>
-  ({ data: { leadId: 'lead-1', url: 'https://a.example', niche: 'dental' }, attemptsMade, opts: { attempts } }) as any;
+  ({ data: { leadId: 'lead-1', tenantId: TENANT, url: 'https://a.example', niche: 'dental' }, attemptsMade, opts: { attempts } }) as any;
 
 describe('audit failure handling (REV-44)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
     vi.mocked(Audit.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
+    // The job's studio owns the lead (REV-210)
+    vi.mocked(Lead.exists).mockResolvedValue({ _id: 'lead-1' } as any);
   });
 
   describe('isFinalAuditAttempt', () => {
@@ -43,7 +47,7 @@ describe('audit failure handling (REV-44)', () => {
     it('moves only a lead still in AUDITING to AUDIT_FAILED', async () => {
       await markLeadAuditFailed(job(2, 3), 'net::ERR_CERT_DATE_INVALID');
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-1', status: 'AUDITING' },
+        { _id: 'lead-1', status: 'AUDITING', tenantId: TENANT },
         { $set: { status: 'AUDIT_FAILED', auditError: 'net::ERR_CERT_DATE_INVALID' } },
       );
     });
@@ -65,7 +69,7 @@ describe('audit failure handling (REV-44)', () => {
         { sort: { createdAt: -1 } },
       );
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-1', status: 'AUDITING' },
+        { _id: 'lead-1', status: 'AUDITING', tenantId: TENANT },
         { $set: { status: 'AUDIT_FAILED', auditError: STALLED_AUDIT_MESSAGE } },
       );
     });
@@ -85,6 +89,16 @@ describe('audit failure handling (REV-44)', () => {
       vi.mocked(Audit.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockRejectedValue(new Error('mongo down')) } as any);
       await expect(handleAuditJobFailed(job(0, 3), stalled)).resolves.toBeUndefined();
       expect(Lead.findOneAndUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("never closes an audit or a lead for a job without a studio, or for a lead of another studio (REV-210)", async () => {
+      const noTenant = { ...job(0, 3), data: { leadId: 'lead-1', url: 'https://a.example', niche: 'dental' } } as any;
+      await handleAuditJobFailed(noTenant, stalled);
+      await markLeadAuditFailed(noTenant, 'boom');
+      vi.mocked(Lead.exists).mockResolvedValue(null as any);
+      await handleAuditJobFailed(job(0, 3), stalled);
+      expect(Audit.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.every(([filter]) => (filter as any).tenantId === TENANT)).toBe(true);
     });
   });
 });

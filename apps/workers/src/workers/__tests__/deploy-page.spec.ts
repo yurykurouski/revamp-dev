@@ -45,7 +45,8 @@ const SLUG = 'falco-dent-456789';
 const THEME = { primary: '#0a5c8a', accent: '#f2a900', bg: '#ffffff', surface: '#f5f7fa', text: '#111111', fontHeading: 'serif', fontBody: 'sans-serif' };
 const GROUNDING = [{ kind: 'number', text: '15', context: 'Ponad 15 lat' }];
 
-const lead = { _id: LEAD_ID, businessName: 'Falco-Dent', domain: 'falco-dent.pl', niche: 'dental', status: 'GENERATING', originalUrl: 'https://falco-dent.pl', toObject: () => lead };
+const TENANT = '5eed00000000000000000009';
+const lead = { _id: LEAD_ID, tenantId: TENANT, businessName: 'Falco-Dent', domain: 'falco-dent.pl', niche: 'dental', status: 'GENERATING', originalUrl: 'https://falco-dent.pl', toObject: () => lead };
 const audit = {
   _id: AUDIT_ID,
   extractedContacts: { phone: '+48 600 100 200', address: 'ul. Długa 5, Kraków', socialLinks: [] },
@@ -62,6 +63,7 @@ const job = (data: Record<string, unknown> = {}) => ({
   id: 'job-1',
   data: {
     leadId: LEAD_ID,
+    tenantId: TENANT,
     auditId: AUDIT_ID,
     page: { id: 'page-a', html: VALID, theme: THEME, grounding: GROUNDING, kind: 'generate' },
     generationSource: { provider: 'claude-cli', modelUsed: 'claude-cli:sonnet' },
@@ -113,13 +115,32 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     const studio = new Types.ObjectId();
     const owned = { ...lead, tenantId: studio, toObject: () => owned };
     vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(owned) } as any);
-    await capturedProcessor!(job());
+    await capturedProcessor!(job({ tenantId: String(studio) }));
     expect(projectUpdate().$set).toMatchObject({ tenantId: studio });
   });
 
-  it('leaves the studio off the MVP project of a lead that has none yet (before the migration)', async () => {
-    await capturedProcessor!(job());
-    expect(projectUpdate().$set).not.toHaveProperty('tenantId');
+  describe("the job's studio (REV-210)", () => {
+    const refused = async (data: Record<string, unknown>, lead: Record<string, unknown> = {}) => {
+      const target = { ...leadFixture(), ...lead };
+      vi.mocked(Lead.findById).mockReturnValue({ exec: vi.fn().mockResolvedValue(target) } as any);
+      await expect(capturedProcessor!(job(data))).rejects.toThrow(/nothing was written/);
+      expect(MvpProject.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(storageService.uploadHtml).not.toHaveBeenCalled();
+    };
+    const leadFixture = () => {
+      const copy: Record<string, unknown> = { ...lead };
+      copy['toObject'] = () => copy;
+      return copy;
+    };
+
+    it('refuses a job without a tenantId', () => refused({ tenantId: undefined }));
+    it("refuses a job whose lead belongs to another studio", () => refused({}, { tenantId: '5eed0000000000000000000a' }));
+    it('refuses a lead that has no studio yet (before the migration)', () => refused({}, { tenantId: undefined }));
+    it("filters the lead's move to review by the job's studio", async () => {
+      await capturedProcessor!(job());
+      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.at(-1)![0]).toMatchObject({ tenantId: expect.anything() });
+    });
   });
 
   it('moves only a GENERATING lead to review after publishing (REV-203)', async () => {
@@ -185,7 +206,7 @@ describe('DeployWorker publishes the model-designed page (REV-138)', () => {
     expect(vi.mocked(MvpProject.findOneAndUpdate).mock.calls[0]![2]).toEqual(expect.objectContaining({ strict: false }));
 
     const [filter, leadSet] = leadUpdate.mock.calls[0]!;
-    expect(filter).toEqual({ _id: LEAD_ID, status: 'GENERATING' });
+    expect(filter).toEqual({ _id: LEAD_ID, status: 'GENERATING', tenantId: new Types.ObjectId(TENANT) });
     expect(leadSet).toMatchObject({ $set: { status: 'NEEDS_APPROVAL' }, $unset: { generationError: '', generationFailure: '' } });
     expect(result).toMatchObject({ success: true, version: 1 });
   });
@@ -260,7 +281,7 @@ describe('only model-designed pages are deployed (REV-141)', () => {
   });
 
   it('refuses a job without a page for good', async () => {
-    const error = await capturedProcessor!({ id: 'job-old', data: { leadId: LEAD_ID, auditId: AUDIT_ID } }).catch((e: unknown) => e);
+    const error = await capturedProcessor!({ id: 'job-old', data: { leadId: LEAD_ID, tenantId: TENANT, auditId: AUDIT_ID } }).catch((e: unknown) => e);
     expect(error).toBeInstanceOf(UnrecoverableError);
     expect((error as Error).message).toContain('without a page');
     expect(storageService.uploadHtml).not.toHaveBeenCalled();

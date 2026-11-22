@@ -9,6 +9,10 @@ import { storageService } from '../../services/storage.service.js';
 import { designCritiqueService } from '../../services/design-critique.service.js';
 import { UnrecoverableError } from 'bullmq';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
+import { Types } from 'mongoose';
+
+const TENANT = '5eed00000000000000000009';
+const TENANT_ID = new Types.ObjectId(TENANT);
 
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
@@ -52,6 +56,8 @@ describe('AuditWorker (@revamp/workers)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     capturedProcessor = null;
+    // No lead of another studio holds the id, unless a test says so (REV-210)
+    vi.mocked(Lead.exists).mockResolvedValue(null as any);
   });
 
   it('should hand a stalled-out job to the failure handler (REV-145)', async () => {
@@ -60,13 +66,39 @@ describe('AuditWorker (@revamp/workers)', () => {
     expect(failedHandler).toBeTypeOf('function');
     vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
     vi.mocked(Audit.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
-    failedHandler({ id: 'j1', data: { leadId: 'lead-9', url: 'https://a.example', niche: 'other' } }, new Error('job stalled more than allowable limit'));
+    vi.mocked(Lead.exists).mockResolvedValue({ _id: 'lead-9' } as any);
+    failedHandler({ id: 'j1', data: { tenantId: TENANT, leadId: 'lead-9', url: 'https://a.example', niche: 'other' } }, new Error('job stalled more than allowable limit'));
     await vi.waitFor(() =>
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-9', status: 'AUDITING' },
+        { _id: 'lead-9', status: 'AUDITING', tenantId: TENANT },
         expect.objectContaining({ $set: expect.objectContaining({ status: 'AUDIT_FAILED' }) }),
       ),
     );
+  });
+
+  describe('the job\'s studio (REV-210)', () => {
+    const run = (data: Record<string, unknown>) => {
+      createAuditWorker();
+      return capturedProcessor!({ id: 'job-t', data: { leadId: 'lead-t', url: 'https://t.example', niche: 'dental', ...data } });
+    };
+
+    it.each([[undefined], ['not-an-id']])('refuses a job whose tenantId is %j before touching any record', async (tenantId) => {
+      await expect(run({ tenantId })).rejects.toThrow(/no valid tenantId/);
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Audit.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(browserService.captureFullAudit).not.toHaveBeenCalled();
+    });
+
+    it("refuses a lead of another studio without failing its audit or changing its status", async () => {
+      vi.mocked(Lead.findOneAndUpdate).mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      vi.mocked(Lead.exists).mockResolvedValue({ _id: 'lead-t' } as any);
+      await expect(run({ tenantId: TENANT })).rejects.toThrow(/does not belong to the job's studio/);
+      expect(Audit.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(browserService.captureFullAudit).not.toHaveBeenCalled();
+      // The only write tried was the studio-filtered claim, which matched nothing
+      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls).toHaveLength(1);
+      expect(vi.mocked(Lead.findOneAndUpdate).mock.calls[0]![0]).toMatchObject({ tenantId: TENANT_ID });
+    });
   });
 
   it('should initialize worker for AUDIT queue', () => {
@@ -82,7 +114,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     const mockJob = {
       id: 'job-456',
       data: {
-        leadId: 'lead-123',
+        tenantId: TENANT, leadId: 'lead-123',
         url: 'https://test-dental.com',
         niche: 'dental',
       },
@@ -200,7 +232,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     );
     // Only a queued lead (or this job's earlier attempt) is audited (REV-62)
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-123', status: { $in: ['QUEUED', 'AUDITING'] } },
+      { _id: 'lead-123', status: { $in: ['QUEUED', 'AUDITING'] }, tenantId: TENANT_ID },
       { $set: { status: 'AUDITING' }, $unset: { auditError: '' } },
       { new: true },
     );
@@ -313,7 +345,7 @@ describe('AuditWorker (@revamp/workers)', () => {
 
     // Lead score and status update
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-123', status: 'AUDITING' },
+      { _id: 'lead-123', status: 'AUDITING', tenantId: TENANT_ID },
       expect.objectContaining({ status: 'AUDITED',
         totalScore: 85,
         contactPhone: '+1 555-1234',
@@ -325,6 +357,9 @@ describe('AuditWorker (@revamp/workers)', () => {
     expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['city'])).toBe(false);
     // A lead with an operator-supplied email keeps it (REV-26)
     expect(vi.mocked(Lead.findOneAndUpdate).mock.calls.some((c) => (c[1] as Record<string, unknown>)?.['contactEmail'])).toBe(false);
+
+    // The AI generation job carries the job's studio on (REV-210)
+    expect(addAiGenerationJob).toHaveBeenCalledWith(expect.objectContaining({ leadId: 'lead-123', tenantId: TENANT }));
 
     // Analytics token usage event logging
     expect(AnalyticsEvent.create).toHaveBeenCalledWith(
@@ -405,7 +440,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       attempts: 1,
     } as any);
 
-    const result = await capturedProcessor!({ id: 'job-partial', data: { leadId: 'lead-partial', url: 'https://broken.lt', niche: 'other' } });
+    const result = await capturedProcessor!({ id: 'job-partial', data: { tenantId: TENANT, leadId: 'lead-partial', url: 'https://broken.lt', niche: 'other' } });
 
     // The design critique gets no stand-in metrics either
     expect(designCritiqueService.analyzeDesign).toHaveBeenCalledWith(
@@ -443,7 +478,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     ]);
 
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-partial', status: 'AUDITING' },
+      { _id: 'lead-partial', status: 'AUDITING', tenantId: TENANT_ID },
       expect.objectContaining({ status: 'AUDITED', totalScore: 65 }),
     );
     expect(result).toEqual(expect.objectContaining({ success: true, totalScore: 65, a11yScore: undefined, lcp: undefined }));
@@ -508,7 +543,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.spyOn(console, 'warn').mockImplementation(() => {});
       mockCapture(true);
 
-      const result = await capturedProcessor!({ id: 'job-fb', data: { leadId: 'lead-fb', url: 'https://fb.lt', niche: 'dental' } });
+      const result = await capturedProcessor!({ id: 'job-fb', data: { tenantId: TENANT, leadId: 'lead-fb', url: 'https://fb.lt', niche: 'dental' } });
 
       const completed = vi
         .mocked(Audit.findOneAndUpdate)
@@ -523,7 +558,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       expect(completed.designCritique.criticalFlaws).toHaveLength(3);
       expect(completed.aiFallbackUsed).toBe(true);
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fb', status: 'AUDITING' },
+        { _id: 'lead-fb', status: 'AUDITING', tenantId: TENANT_ID },
         expect.objectContaining({ status: 'AUDITED', totalScore: 65 }),
       );
       expect(result).toEqual(expect.objectContaining({ totalScore: 65 }));
@@ -536,7 +571,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       mockCapture(false);
 
       await expect(
-        capturedProcessor!({ id: 'job-none', data: { leadId: 'lead-none', url: 'https://none.lt', niche: 'other' } }),
+        capturedProcessor!({ id: 'job-none', data: { tenantId: TENANT, leadId: 'lead-none', url: 'https://none.lt', niche: 'other' } }),
       ).rejects.toThrow('No part of the audit could be measured');
 
       const updates = vi.mocked(Audit.findOneAndUpdate).mock.calls.map((call) => call[1] as Record<string, any>);
@@ -610,10 +645,10 @@ describe('AuditWorker (@revamp/workers)', () => {
       attempts: 1,
     } as any);
 
-    await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
+    await capturedProcessor!({ id: 'job-disc', data: { tenantId: TENANT, leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
 
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-disc', status: 'AUDITING' },
+      { _id: 'lead-disc', status: 'AUDITING', tenantId: TENANT_ID },
       expect.objectContaining({ status: 'AUDITED',
         contactEmail: 'reception@found-clinic.lt',
         $pull: { tags: 'email-guessed' },
@@ -681,10 +716,10 @@ describe('AuditWorker (@revamp/workers)', () => {
       attempts: 1,
     } as any);
 
-    await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
+    await capturedProcessor!({ id: 'job-disc', data: { tenantId: TENANT, leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
 
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-disc', status: 'AUDITING' },
+      { _id: 'lead-disc', status: 'AUDITING', tenantId: TENANT_ID },
       expect.objectContaining({ status: 'AUDITED', contactEmail: 'reception@found-clinic.lt' }),
     );
     const audited = vi.mocked(Lead.findOneAndUpdate).mock.calls.find(
@@ -763,7 +798,7 @@ describe('AuditWorker (@revamp/workers)', () => {
 
     const result = await capturedProcessor!({
       id: 'job-brochure',
-      data: { leadId: 'lead-brochure', url: 'https://brochure-dental.pl', niche: 'dental' },
+      data: { tenantId: TENANT, leadId: 'lead-brochure', url: 'https://brochure-dental.pl', niche: 'dental' },
     });
 
     expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
@@ -778,7 +813,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       { new: true, sort: { createdAt: -1 } },
     );
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: 'lead-brochure', status: 'AUDITING' },
+      { _id: 'lead-brochure', status: 'AUDITING', tenantId: TENANT_ID },
       expect.objectContaining({ status: 'AUDITED',
         siteComplexity: 'ONE_PAGE_BROCHURE',
         onePageBrochure: true,
@@ -794,7 +829,7 @@ describe('AuditWorker (@revamp/workers)', () => {
     const mockJob = {
       id: 'job-err',
       data: {
-        leadId: 'lead-err',
+        tenantId: TENANT, leadId: 'lead-err',
         url: 'https://invalid-site.xyz',
         niche: 'other',
       },
@@ -838,7 +873,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.mocked(browserService.captureFullAudit).mockRejectedValue(error);
       return {
         id: 'job-fail',
-        data: { leadId: 'lead-fail', url: 'https://broken.example', niche: 'dental' },
+        data: { tenantId: TENANT, leadId: 'lead-fail', url: 'https://broken.example', niche: 'dental' },
         attemptsMade,
         opts: { attempts },
       };
@@ -872,7 +907,7 @@ describe('AuditWorker (@revamp/workers)', () => {
 
       const reason = 'browserContext.close: Target page, context or browser has been closed';
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fail', status: 'AUDITING' },
+        { _id: 'lead-fail', status: 'AUDITING', tenantId: TENANT },
         { $set: { status: 'AUDIT_FAILED', auditError: reason } },
       );
       expect(Audit.findOneAndUpdate).toHaveBeenCalledWith(
@@ -894,7 +929,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       expect(error).toBeInstanceOf(UnrecoverableError);
       expect((error as Error).message).toBe(reason);
       expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-        { _id: 'lead-fail', status: 'AUDITING' },
+        { _id: 'lead-fail', status: 'AUDITING', tenantId: TENANT },
         { $set: { status: 'AUDIT_FAILED', auditError: reason } },
       );
     });
@@ -906,7 +941,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
       vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
 
-      const result = await capturedProcessor!({ id: 'job-x', data: { leadId: 'lead-x', url: 'https://x.example', niche: 'dental' } });
+      const result = await capturedProcessor!({ id: 'job-x', data: { tenantId: TENANT, leadId: 'lead-x', url: 'https://x.example', niche: 'dental' } });
 
       expect(result).toMatchObject({ success: false, skipped: true, leadId: 'lead-x' });
       expect(browserService.captureFullAudit).not.toHaveBeenCalled();
@@ -923,7 +958,7 @@ describe('AuditWorker (@revamp/workers)', () => {
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
       vi.spyOn(Audit, 'findOneAndUpdate').mockReturnValue({ exec: vi.fn().mockResolvedValue({}) } as any);
 
-      const result = await capturedProcessor!({ id: 'job-late', data: { leadId: 'lead-late', url: 'https://x.example', niche: 'dental' } });
+      const result = await capturedProcessor!({ id: 'job-late', data: { tenantId: TENANT, leadId: 'lead-late', url: 'https://x.example', niche: 'dental' } });
 
       expect(result).toMatchObject({ success: false, skipped: true });
       const filter = vi.mocked(Lead.findOneAndUpdate).mock.calls[0]![0] as { status: { $in: string[] } };
@@ -988,11 +1023,11 @@ describe('AuditWorker (@revamp/workers)', () => {
       } as any);
 
 
-      const result = await capturedProcessor!({ id: 'job-disc', data: { leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
+      const result = await capturedProcessor!({ id: 'job-disc', data: { tenantId: TENANT, leadId: 'lead-disc', url: 'https://found-clinic.lt', niche: 'dental' } });
 
       expect(result.success).toBe(true);
       expect(Lead.findOneAndUpdate).toHaveBeenLastCalledWith(
-        { _id: 'lead-disc', status: 'AUDITING' },
+        { _id: 'lead-disc', status: 'AUDITING', tenantId: TENANT_ID },
         expect.objectContaining({ status: 'AUDITED' }),
       );
       expect(addAiGenerationJob).not.toHaveBeenCalled();
@@ -1026,7 +1061,7 @@ describe('AuditWorker (@revamp/workers)', () => {
         modelUsed: 'test-model',
         attempts: 1,
       } as any);
-      await capturedProcessor!({ id: 'job-era', data: { leadId: 'lead-era', url: 'https://example.com', niche: 'dental' } });
+      await capturedProcessor!({ id: 'job-era', data: { tenantId: TENANT, leadId: 'lead-era', url: 'https://example.com', niche: 'dental' } });
       return vi
         .mocked(Audit.findOneAndUpdate)
         .mock.calls.map((call) => call[1] as Record<string, any>)

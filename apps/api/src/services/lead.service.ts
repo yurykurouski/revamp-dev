@@ -8,7 +8,7 @@ import {
   summarizeCompletenessReport,
 } from '@revamp/validation';
 import { ILeadDocument, addLeadToBusiness } from '../models/Lead.model.js';
-import { scopeFor, type TenantScope } from '../data/tenant-scope.js';
+import { scopeFor, tenantIdOf, type TenantScope } from '../data/tenant-scope.js';
 import type { DeriveFromAudit } from '@revamp/db';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { findAuditForLead } from '../models/Audit.model.js';
@@ -55,7 +55,7 @@ export class LeadService {
    */
   static async createLead(
     dto: CreateLeadDto,
-    options: { tags?: string[]; source?: LeadSource; externalId?: string; tenantId?: string } = {},
+    options: { tags?: string[]; source?: LeadSource; externalId?: string; tenantId: string },
   ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string; reused?: boolean }> {
     let domain: string | undefined;
     try {
@@ -71,7 +71,7 @@ export class LeadService {
     let created;
     try {
       created = await addLeadToBusiness({
-        ...(options.tenantId ? { tenantId: options.tenantId } : {}),
+        tenantId: options.tenantId,
         deriveFromAudit: leadFieldsFromAudit as DeriveFromAudit,
         lead: {
           businessName: dto.businessName,
@@ -108,7 +108,7 @@ export class LeadService {
       let jobId: string | undefined;
       try {
         // The Redis connection retries forever, so the call needs the same limit as the audit job (REV-202)
-        jobId = (await withTimeout(addAiGenerationJob({ leadId: lead._id.toString(), auditId }), AUDIT_ENQUEUE_TIMEOUT_MS, 'AI generation queue')).id;
+        jobId = (await withTimeout(addAiGenerationJob({ leadId: lead._id.toString(), tenantId: tenantIdOf(scopeFor(options.tenantId)), auditId }), AUDIT_ENQUEUE_TIMEOUT_MS, 'AI generation queue')).id;
       } catch (error) {
         console.error(`[LeadService] Could not queue the MVP generation for lead ${lead._id}:`, error);
       }

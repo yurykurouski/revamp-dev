@@ -4,6 +4,10 @@ import { Lead } from '../../models/Lead.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import { mxValidator } from '../../services/mx.validator.js';
 import { emailService } from '../../services/email.service.js';
+import { Types } from 'mongoose';
+
+const TENANT = '5eed00000000000000000009';
+const TENANT_ID = new Types.ObjectId(TENANT);
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
@@ -69,6 +73,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     const mockLead = {
       _id: mockLeadId,
+      tenantId: TENANT,
       businessName: 'Listonosz Courier & Logistics',
       domain: 'listonosz.site',
       contactEmail: 'director@listonosz.site',
@@ -123,7 +128,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     const result = await capturedProcessor!({
       id: 'job-email-1',
       data: {
-        campaignId: mockCampaignId,
+        tenantId: TENANT, campaignId: mockCampaignId,
         leadId: mockLeadId,
       },
     });
@@ -155,7 +160,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     // Verify Lead status was updated to SENT
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: mockLeadId, status: { $in: ['SCHEDULED'] } },
+      { _id: mockLeadId, status: { $in: ['SCHEDULED'] }, tenantId: TENANT_ID },
       expect.objectContaining({
         status: 'SENT',
       }),
@@ -176,6 +181,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     const mockLeadId = 'lead-unapproved';
     const mockLead = {
       _id: mockLeadId,
+      tenantId: TENANT,
       businessName: 'Unapproved Business',
       status: 'NEEDS_APPROVAL', // Operator has NOT approved
       contactEmail: 'unapproved@business.com',
@@ -188,7 +194,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     const result = await capturedProcessor!({
       id: 'job-unapproved',
       data: {
-        campaignId: 'camp-1',
+        tenantId: TENANT, campaignId: 'camp-1',
         leadId: mockLeadId,
       },
     });
@@ -206,6 +212,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     (Lead.findById as any).mockReturnValue({
       exec: vi.fn().mockResolvedValue({
         _id: 'lead-unsubscribed',
+        tenantId: TENANT,
         businessName: 'Opted Out Business',
         status: 'UNSUBSCRIBED',
         contactEmail: 'owner@optedout.com',
@@ -214,7 +221,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     const result = await capturedProcessor!({
       id: 'job-unsubscribed',
-      data: { campaignId: 'camp-1', leadId: 'lead-unsubscribed' },
+      data: { tenantId: TENANT, campaignId: 'camp-1', leadId: 'lead-unsubscribed' },
     });
 
     expect(result.success).toBe(false);
@@ -233,6 +240,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     const mockLead = {
       _id: mockLeadId,
+      tenantId: TENANT,
       businessName: 'Non Existent Company',
       contactEmail: 'info@non-existent-fake-domain-xyz.com',
       status: 'SCHEDULED',
@@ -272,7 +280,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     const result = await capturedProcessor!({
       id: 'job-bad-mx',
       data: {
-        campaignId: mockCampaignId,
+        tenantId: TENANT, campaignId: mockCampaignId,
         leadId: mockLeadId,
       },
     });
@@ -295,7 +303,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     // Verified: Lead marked REJECTED with mx_bounced tag
     expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(
-      { _id: mockLeadId, status: { $in: expect.arrayContaining(['SCHEDULED']) } },
+      { _id: mockLeadId, status: { $in: expect.arrayContaining(['SCHEDULED']) }, tenantId: TENANT_ID },
       expect.objectContaining({
         status: 'REJECTED',
         $addToSet: { tags: 'mx_bounced' },
@@ -314,7 +322,7 @@ describe('EmailWorker (@revamp/workers)', () => {
       capturedProcessor!({
         id: 'job-missing-lead',
         data: {
-          campaignId: 'camp-1',
+          tenantId: TENANT, campaignId: 'camp-1',
           leadId: 'missing-lead',
         },
       }),
@@ -327,11 +335,11 @@ describe('EmailWorker (@revamp/workers)', () => {
     let campaign: Record<string, any>;
     let lead: Record<string, any>;
 
-    const job = (id: string) => ({ id, data: { campaignId, leadId } });
+    const job = (id: string) => ({ id, data: { tenantId: TENANT, campaignId, leadId } });
 
     // A campaign and lead whose fake queries behave like MongoDB's, so retries see earlier writes
     beforeEach(() => {
-      lead = { _id: leadId, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
+      lead = { _id: leadId, tenantId: TENANT, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
       campaign = {
         _id: campaignId,
         leadId,
@@ -466,6 +474,32 @@ describe('EmailWorker (@revamp/workers)', () => {
       await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('no approved subject or body');
       expect(emailService.sendEmail).not.toHaveBeenCalled();
       expect(campaign['status']).toBe('SCHEDULED');
+    });
+  });
+  describe("the job's studio (REV-210)", () => {
+    const attempt = async (data: Record<string, unknown>, lead: Record<string, unknown> | null) => {
+      createEmailWorker();
+      (Lead.findById as any).mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) });
+      return capturedProcessor!({ id: 'job-tenant', data: { campaignId: 'camp-1', leadId: 'lead-1', ...data } });
+    };
+    const scheduled = { _id: 'lead-1', businessName: 'Biz', status: 'SCHEDULED', contactEmail: 'owner@biz.com' };
+
+    it.each([
+      ['has no tenantId', {}, scheduled, /no valid tenantId/],
+      ["belongs to another studio than its lead", { tenantId: TENANT }, { ...scheduled, tenantId: '5eed0000000000000000000a' }, /another studio/],
+      ['has a lead with no studio yet', { tenantId: TENANT }, scheduled, /migrate:tenants/],
+    ])('refuses a job that %s: nothing is sent or written', async (_name, data, lead, message) => {
+      await expect(attempt(data, lead)).rejects.toThrow(message);
+      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(EmailCampaign.findOne).not.toHaveBeenCalled();
+      expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it("looks up the campaign only among the studio's own", async () => {
+      await attempt({ tenantId: TENANT }, { ...scheduled, tenantId: TENANT }).catch(() => undefined);
+      expect(vi.mocked(EmailCampaign.findOne).mock.calls[0]![0]).toMatchObject({ tenantId: TENANT_ID });
     });
   });
 });
