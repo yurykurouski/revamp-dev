@@ -55,6 +55,7 @@ Revamp-dev/
 ├── .github/workflows/   # ci.yml: gates on every PR, deploy from main (REV-177)
 ├── scripts/             # setup.mjs / dev.mjs (REV-95, plain Node, no deps), maintenance and live-crawl scripts
 ├── docker-compose.yml   # Containerized services: MongoDB 7.0, Redis 7.0, MinIO + minio-init
+├── docker-compose.full.yml # REV-218: the whole system in containers (`npm run stack:up`), own project `revamp-stack`
 ├── package.json         # Root npm workspace configuration
 ├── AGENTS.md            # This instruction file
 ├── .env.example         # Environment variables template
@@ -66,7 +67,7 @@ Revamp-dev/
 * `npm run dev` starts the infrastructure, rebuilds stale packages, then runs API, workers and dashboard in one terminal with prefixed output; it refuses to start while port 4000 or 5173 is taken. Ctrl+C stops the apps, not the containers. Use `dev:api` / `dev:workers` / `dev:dashboard` to run one app.
 * `scripts/setup.mjs` and `scripts/dev.mjs` run before `npm install`, so they stay plain Node with no dependencies; their logic lives in `scripts/lib/dev-stack.mjs` and is tested in `scripts/__tests__/dev-stack.spec.ts`.
 * MongoDB runs with access control as replica set `rs0` under least-privilege users, and `npm run db:seed` loads demo data; read [packages/db/AGENTS.md](packages/db/AGENTS.md) before touching MongoDB users, connection strings, seed data or dumps. Always, in every area:
-  * start infrastructure only through setup, dev or `npm run docker:up`, never plain `docker compose up`;
+  * start infrastructure only through setup, dev or `npm run docker:up`, never plain `docker compose up`; the containerized stack (`docker-compose.full.yml`, REV-218) starts through `npm run stack:up`, is its own project and never shares `revamp-mongo`;
   * the app runs as `revamp_app`, never as root or an Atlas admin, and a MongoDB URI is logged only through `redactMongoUri` (`@revamp/db`);
   * the shared `revamp-mongo` container serves other sessions: verify Mongo changes on a separate compose project, not on it;
   * the workers' startup recovery never queues a lead tagged `demo-seed` (`stalledAuditedLeadFilter`, REV-204), so a seeded database starts no paid model calls; a new automatic job over existing leads must skip the tag the same way;

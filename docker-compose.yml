@@ -52,8 +52,10 @@ services:
       - "9000:9000"
       - "9001:9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      # REV-218: the root credentials are the S3_ACCESS_KEY / S3_SECRET_KEY the apps use (.env); the fallback
+      # is for local development only. docker-compose.full.yml has no fallback.
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
     command: server /data --console-address ":9001"
     volumes:
       - minio_data:/data
@@ -71,9 +73,12 @@ services:
     depends_on:
       minio:
         condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-minioadmin}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-minioadmin}
     entrypoint: >
       /bin/sh -c "
-      /usr/bin/mc alias set myminio http://minio:9000 minioadmin minioadmin;
+      /usr/bin/mc alias set myminio http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY;
       /usr/bin/mc mb --ignore-existing myminio/revamp-assets;
       /usr/bin/mc mb --ignore-existing myminio/revamp-demos;
       /usr/bin/mc anonymous set download myminio/revamp-assets;

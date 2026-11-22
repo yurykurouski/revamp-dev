@@ -431,3 +431,55 @@ describe('ensureJwtSecret (REV-206)', () => {
     expect(stack.parseEnv(fs.readFileSync(envFile(), 'utf8')).JWT_SECRET.length).toBeGreaterThanOrEqual(32);
   });
 });
+
+describe('ensureStackSecrets (REV-218)', () => {
+  let root: string;
+  const envFile = () => path.join(root, '.env');
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'rev218-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('fills the empty lines copied from .env.example, without a second line', () => {
+    fs.writeFileSync(envFile(), 'STACK_S3_ACCESS_KEY=\nSTACK_S3_SECRET_KEY=\nPORT=4000\n');
+    let n = 0;
+    expect(stack.ensureStackSecrets(root, () => `v${++n}`)).toEqual(['STACK_S3_ACCESS_KEY', 'STACK_S3_SECRET_KEY']);
+    const text = fs.readFileSync(envFile(), 'utf8');
+    expect(text.match(/^STACK_S3_ACCESS_KEY=/gm)).toHaveLength(1);
+    expect(stack.parseEnv(text)).toMatchObject({ STACK_S3_ACCESS_KEY: 'v1', STACK_S3_SECRET_KEY: 'v2', PORT: '4000' });
+  });
+
+  it('appends the values when .env has no such lines', () => {
+    fs.writeFileSync(envFile(), 'PORT=4000\n');
+    stack.ensureStackSecrets(root, () => 'x'.repeat(24));
+    const env = stack.parseEnv(fs.readFileSync(envFile(), 'utf8'));
+    expect(env.STACK_S3_ACCESS_KEY).toBe('x'.repeat(24));
+    expect(env.STACK_S3_SECRET_KEY).toBe('x'.repeat(24));
+  });
+
+  it('keeps existing values and leaves the file untouched', () => {
+    fs.writeFileSync(envFile(), 'STACK_S3_ACCESS_KEY=keep1\nSTACK_S3_SECRET_KEY=keep2\n');
+    const before = fs.readFileSync(envFile(), 'utf8');
+    expect(stack.ensureStackSecrets(root, () => 'never')).toEqual([]);
+    expect(fs.readFileSync(envFile(), 'utf8')).toBe(before);
+  });
+
+  it('never touches the S3_* values the dev MinIO and the dev apps use', () => {
+    fs.writeFileSync(envFile(), 'S3_ACCESS_KEY=minioadmin\nS3_SECRET_KEY=minioadmin\n');
+    stack.ensureStackSecrets(root, () => 'generated');
+    const env = stack.parseEnv(fs.readFileSync(envFile(), 'utf8'));
+    expect(env.S3_ACCESS_KEY).toBe('minioadmin');
+    expect(env.S3_SECRET_KEY).toBe('minioadmin');
+  });
+
+  it('generates different, non-default values on its own', () => {
+    fs.writeFileSync(envFile(), '');
+    stack.ensureStackSecrets(root);
+    const env = stack.parseEnv(fs.readFileSync(envFile(), 'utf8'));
+    expect(env.STACK_S3_SECRET_KEY?.length).toBeGreaterThanOrEqual(20);
+    expect(env.STACK_S3_ACCESS_KEY).not.toBe(env.STACK_S3_SECRET_KEY);
+    expect(env.STACK_S3_SECRET_KEY).not.toBe('minioadmin');
+  });
+});
