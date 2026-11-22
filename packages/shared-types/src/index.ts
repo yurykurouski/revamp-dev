@@ -1126,6 +1126,14 @@ export const API_ERROR_CODES = [
   'UNAUTHENTICATED',
   'INVALID_CREDENTIALS',
   'EMAIL_TAKEN',
+  // Roles, members and invitations (REV-207)
+  'FORBIDDEN',
+  'ALREADY_MEMBER',
+  'LAST_OWNER',
+  'MEMBER_NOT_FOUND',
+  'INVITATION_NOT_FOUND',
+  'INVITATION_EXPIRED',
+  'INVITATION_EMAIL_MISMATCH',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1304,9 +1312,15 @@ export interface IMvpDesignChange {
 }
 
 // 10. Organizations and sign-in (REV-206)
-/** What a member may do in an organization; `operator` and `viewer` join with invitations (REV-207) */
-export const ORGANIZATION_ROLES = ['owner'] as const;
+/** What a member may do in an organization (REV-207): owners also manage members, operators write, viewers read */
+export const ORGANIZATION_ROLES = ['owner', 'operator', 'viewer'] as const;
 export type OrganizationRole = (typeof ORGANIZATION_ROLES)[number];
+
+/** May change data: add leads, run audits and discovery, generate and edit MVPs, approve, reject and send test email */
+export const canWrite = (role: OrganizationRole | null | undefined): boolean => role === 'owner' || role === 'operator';
+
+/** May invite, remove and change the role of members */
+export const canManageMembers = (role: OrganizationRole | null | undefined): boolean => role === 'owner';
 
 export interface IAuthUser {
   id: string;
@@ -1329,4 +1343,42 @@ export interface IAuthContext {
 /** Response of `POST /auth/register` and `POST /auth/login`; `GET /auth/me` returns the context without the token */
 export interface IAuthSession extends IAuthContext {
   token: string;
+}
+
+/** A member of the organization, as the Team screen lists them (REV-207) */
+export interface IOrganizationMember {
+  userId: string;
+  email: string;
+  name?: string;
+  role: OrganizationRole;
+  joinedAt: string;
+}
+
+/** An invitation that has not been used, revoked or expired yet; the token itself is shown only once, at creation */
+export interface IInvitation {
+  id: string;
+  email: string;
+  role: OrganizationRole;
+  expiresAt: string;
+  createdAt: string;
+}
+
+/** `GET /organization/members` */
+export interface IOrganizationMembers {
+  members: IOrganizationMember[];
+  invitations: IInvitation[];
+}
+
+/** `POST /organization/invitations`: the invitation and the one-time token to build the link from */
+export interface ICreatedInvitation {
+  invitation: IInvitation;
+  token: string;
+}
+
+/** `GET /invitations/:token` (public): what the join page shows before the invitee signs in or registers */
+export interface IInvitationPreview {
+  organizationName: string;
+  email: string;
+  role: OrganizationRole;
+  expiresAt: string;
 }
