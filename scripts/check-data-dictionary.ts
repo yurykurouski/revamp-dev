@@ -5,7 +5,7 @@
  *   npm run docs:check-dictionary -- path/to/file.md
  *
  * A field counts as documented when its path, or its last name for a nested field, is in backticks in the section whose
- * heading names its collection (`leads`, `audits`, `mvpprojects`, `emailcampaigns`, `analyticsevents`). Exits 1 when
+ * heading names its collection (`leads`, `audits`, `mvpprojects`, `emailcampaigns`, `analyticsevents`, `organizations`, `users`, `memberships`). Exits 1 when
  * any field is missing. The dictionary lives in the docs repository, so CI does not run this; run it with schema changes.
  */
 import fs from 'node:fs';
