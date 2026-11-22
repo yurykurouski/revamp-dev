@@ -14,6 +14,7 @@ import {
 import ReplayIcon from '@mui/icons-material/Replay';
 import BlockIcon from '@mui/icons-material/Block';
 import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../hooks/usePermissions.js';
 import { ILeadItem } from '../api/client.js';
 import { useRejectLeadMutation, useRetryAuditMutation } from '../hooks/useLeads.js';
 import { auditFailureRejectReason } from '../utils/auditFailure.js';
@@ -28,6 +29,7 @@ interface AuditFailedActionsProps {
  */
 export const AuditFailedActions: React.FC<AuditFailedActionsProps> = ({ lead }) => {
   const { t } = useTranslation();
+  const { canWrite } = usePermissions();
   const retryAuditMutation = useRetryAuditMutation();
   const rejectLeadMutation = useRejectLeadMutation();
   const [confirmRejectOpen, setConfirmRejectOpen] = useState(false);
@@ -37,6 +39,9 @@ export const AuditFailedActions: React.FC<AuditFailedActionsProps> = ({ lead }) 
     (retryAuditMutation.isPending && retryAuditMutation.variables?.leadId === lead.id) ||
     (rejectLeadMutation.isPending && rejectLeadMutation.variables?.leadId === lead.id);
   const onError = (err: unknown) => setError(err instanceof Error ? err.message : String(err));
+
+  // A viewer cannot change data (REV-207); the API would answer 403
+  if (!canWrite) return null;
 
   return (
     <>

@@ -6,6 +6,7 @@ import InboxOutlinedIcon from '@mui/icons-material/InboxOutlined';
 import ViewListOutlinedIcon from '@mui/icons-material/ViewListOutlined';
 import TravelExploreIcon from '@mui/icons-material/TravelExplore';
 import TuneIcon from '@mui/icons-material/Tune';
+import GroupOutlinedIcon from '@mui/icons-material/GroupOutlined';
 import KeyboardOutlinedIcon from '@mui/icons-material/KeyboardOutlined';
 import LogoutIcon from '@mui/icons-material/Logout';
 import { useTranslation } from 'react-i18next';
@@ -25,7 +26,7 @@ const initialsOf = (name: string | undefined, email: string): string => {
 };
 
 /** The shortcut that opens each rail page (REV-47), shown in its tooltip (REV-97) */
-const PAGE_SHORTCUT: Record<RailPage, ShortcutId> = { queue: 'goQueue', leads: 'goLeads', settings: 'goSettings' };
+const PAGE_SHORTCUT: Partial<Record<RailPage, ShortcutId>> = { queue: 'goQueue', leads: 'goLeads', settings: 'goSettings' };
 
 /** The rail's page entries, top to bottom; Settings sits at the bottom, above the operator */
 export const RAIL_PAGES: ReadonlyArray<{ page: RailPage; to: string; icon: React.ReactNode }> = [
@@ -33,6 +34,9 @@ export const RAIL_PAGES: ReadonlyArray<{ page: RailPage; to: string; icon: React
   { page: 'leads', to: ROUTES.leads, icon: <ViewListOutlinedIcon /> },
   { page: 'settings', to: ROUTES.settings, icon: <TuneIcon /> },
 ];
+
+/** Only for roles that manage members (REV-207); drawn next to Settings, not one of the always-present pages */
+const TEAM_ENTRY = { page: 'team' as const, to: ROUTES.team, icon: <GroupOutlinedIcon /> };
 
 interface IconRailProps {
   /** The rail entry for the current page, if any */
@@ -47,6 +51,10 @@ interface IconRailProps {
   account?: { name?: string; email: string; organization: string };
   /** Ends the session; the sign-out button shows only with `account` */
   onSignOut?: () => void;
+  /** The role may change data (REV-207); Find businesses is hidden without it. Defaults to true */
+  canWrite?: boolean;
+  /** The role manages members (REV-207): Team shows only with it. Defaults to false */
+  canManageMembers?: boolean;
 }
 
 const itemSx = (active: boolean): SxProps<Theme> => ({
@@ -61,11 +69,11 @@ const itemSx = (active: boolean): SxProps<Theme> => ({
 });
 
 /** 64px navigation rail of the review-queue layout (REV-76); replaces the collapsible sidebar */
-export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, discovery, onOpenDiscovery, onOpenShortcuts, account, onSignOut }) => {
+export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, discovery, onOpenDiscovery, onOpenShortcuts, account, onSignOut, canWrite = true, canManageMembers = false }) => {
   const { t } = useTranslation();
 
   const pageItem = (page: RailPage) => {
-    const item = RAIL_PAGES.find((p) => p.page === page)!;
+    const item = [...RAIL_PAGES, TEAM_ENTRY].find((p) => p.page === page)!;
     const active = page === activePage;
     const label = t(`rail.${page}`);
     const icon =
@@ -77,13 +85,13 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
         item.icon
       );
     return (
-      <Tooltip key={page} title={<ShortcutTitle label={label} shortcut={PAGE_SHORTCUT[page]} />} placement="right">
+      <Tooltip key={page} title={PAGE_SHORTCUT[page] ? <ShortcutTitle label={label} shortcut={PAGE_SHORTCUT[page]!} /> : label} placement="right">
         <ButtonBase
           component={RouterLink}
           to={item.to}
           aria-label={page === 'queue' && needsYouCount > 0 ? t('rail.queueWithCount', { count: needsYouCount }) : label}
           aria-current={active ? 'page' : undefined}
-          aria-keyshortcuts={ariaKeyShortcuts(getShortcut(PAGE_SHORTCUT[page]))}
+          aria-keyshortcuts={PAGE_SHORTCUT[page] ? ariaKeyShortcuts(getShortcut(PAGE_SHORTCUT[page]!)) : undefined}
           data-rail={page}
           sx={itemSx(active)}
         >
@@ -127,20 +135,22 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
       {pageItem('queue')}
       {pageItem('leads')}
 
-      <Tooltip title={<ShortcutTitle label={discoveryLabel} shortcut="openDiscovery" />} placement="right">
-        <ButtonBase
-          onClick={onOpenDiscovery}
-          aria-label={discoveryLabel}
-          aria-keyshortcuts={ariaKeyShortcuts(getShortcut('openDiscovery'))} data-rail="discovery" data-indicator={discovery} sx={itemSx(false)}>
-          {discovery === 'running' ? (
-            <CircularProgress size={18} color="inherit" />
-          ) : (
-            <Badge color={discovery === 'failed' ? 'error' : 'success'} variant="dot" invisible={discovery === 'idle'}>
-              <TravelExploreIcon />
-            </Badge>
-          )}
-        </ButtonBase>
-      </Tooltip>
+      {canWrite && (
+        <Tooltip title={<ShortcutTitle label={discoveryLabel} shortcut="openDiscovery" />} placement="right">
+          <ButtonBase
+            onClick={onOpenDiscovery}
+            aria-label={discoveryLabel}
+            aria-keyshortcuts={ariaKeyShortcuts(getShortcut('openDiscovery'))} data-rail="discovery" data-indicator={discovery} sx={itemSx(false)}>
+            {discovery === 'running' ? (
+              <CircularProgress size={18} color="inherit" />
+            ) : (
+              <Badge color={discovery === 'failed' ? 'error' : 'success'} variant="dot" invisible={discovery === 'idle'}>
+                <TravelExploreIcon />
+              </Badge>
+            )}
+          </ButtonBase>
+        </Tooltip>
+      )}
 
       <Box sx={{ mt: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0.75 }}>
         <Tooltip title={<ShortcutTitle label={t('shortcuts.title')} shortcut="showHelp" />} placement="right">
@@ -154,6 +164,7 @@ export const IconRail: React.FC<IconRailProps> = ({ activePage, needsYouCount, d
             <KeyboardOutlinedIcon />
           </ButtonBase>
         </Tooltip>
+        {canManageMembers && pageItem('team')}
         {pageItem('settings')}
         {account && onSignOut && (
           <Tooltip title={t('auth.signOut')} placement="right">

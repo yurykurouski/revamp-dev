@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { refreshSessionContext } from '../api/client.js';
 import { useAuthStore } from '../store/useAuthStore.js';
 import { ROUTES, type LeadLocationState } from './paths.js';
 
@@ -9,6 +10,11 @@ import { ROUTES, type LeadLocationState } from './paths.js';
  */
 export const RequireAuth: React.FC = () => {
   const session = useAuthStore((s) => s.session);
+  const token = session?.token;
+  // The stored role can be out of date (REV-207): a role changed, or the member was removed. Ask once per sign-in
+  useEffect(() => {
+    if (token) void refreshSessionContext();
+  }, [token]);
   const { pathname, search } = useLocation();
   if (!session) {
     const state: LeadLocationState = { from: `${pathname}${search}` };

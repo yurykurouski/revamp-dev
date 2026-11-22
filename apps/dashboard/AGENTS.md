@@ -24,3 +24,10 @@ Read this when you change the operator dashboard (React, MUI, Zustand, React Que
 * Call the API through `authFetch` (`api/client.ts`), never plain `fetch`: it sends the bearer token and signs out on a 401. Only `authApi.register` / `login` use plain `fetch`, because a 401 there is a wrong password. A `src` or `href` the browser loads itself (an iframe, an image) cannot send the header, so its route must be public on the API side, and that is decided in `apps/api/src/routes/index.ts`.
 * Labels of the sign-in pages are the `auth` block of all five locales.
 
+## Roles, Team and invitations (REV-207)
+
+* What a role may do comes from `usePermissions()` (`canWrite`, `canManageMembers`); a new write action (a button, a menu entry, a shortcut) checks `canWrite`, and the API stays the gate (403 FORBIDDEN). A viewer sees the review and the preview with the write actions hidden or disabled and a read-only notice.
+* The stored role can be stale: `RequireAuth` asks `GET /auth/me` once per sign-in and `authFetch` refreshes after any 403 (`refreshSessionContext`); a removed member's 401 signs them out.
+* `/team` (owners only, `RequireOwner`) lists members, changes roles, removes members and creates invitations; the one-time link is shown once, built from the token (`invitePath`). `/invite/:token` is public (`InvitePage`): the invited address is fixed; register, or join with the password of the existing account (`invitationApi.join`, one call, so it works after a removal too), or, signed in with that address, accept.
+* Dashboard tests start as a signed-in owner (`vitest.setup.ts`); a test about roles or sign-in sets its own session in its own `beforeEach` or test.
+

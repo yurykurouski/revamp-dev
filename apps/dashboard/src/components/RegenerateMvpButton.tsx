@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Alert, Button, IconButton, Snackbar, Tooltip } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useTranslation } from 'react-i18next';
+import { usePermissions } from '../hooks/usePermissions.js';
 import { ILeadItem } from '../api/client.js';
 import { canRegenerateMvp, useGenerateMvpMutation } from '../hooks/useLeads.js';
 import { MvpGenerationChoice, MvpGenerationDialog } from './MvpGenerationDialog.js';
@@ -19,6 +20,7 @@ interface RegenerateMvpButtonProps {
  */
 export const RegenerateMvpButton: React.FC<RegenerateMvpButtonProps> = ({ lead, variant = 'icon' }) => {
   const { t } = useTranslation();
+  const { canWrite } = usePermissions();
   const generateMvpMutation = useGenerateMvpMutation();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,9 @@ export const RegenerateMvpButton: React.FC<RegenerateMvpButtonProps> = ({ lead, 
     event.stopPropagation();
     setConfirmOpen(true);
   };
+
+  // A viewer cannot change data (REV-207); the API would answer 403
+  if (!canWrite) return null;
 
   return (
     <>

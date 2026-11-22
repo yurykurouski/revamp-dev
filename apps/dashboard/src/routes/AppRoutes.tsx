@@ -7,6 +7,9 @@ import { LeadRoute } from '../pages/LeadRoute.js';
 import { SettingsPage } from '../pages/SettingsPage.js';
 import { MvpPreviewPage } from '../pages/MvpPreviewPage.js';
 import { AuthPage } from '../pages/AuthPage.js';
+import { InvitePage } from '../pages/InvitePage.js';
+import { TeamPage } from '../pages/TeamPage.js';
+import { RequireOwner } from './RequireOwner.js';
 import { RequireAuth } from './RequireAuth.js';
 import { ROUTES } from './paths.js';
 
@@ -17,6 +20,8 @@ import { ROUTES } from './paths.js';
 export const APP_ROUTES: RouteObject[] = [
   { path: ROUTES.login, element: <AuthPage mode="login" /> },
   { path: ROUTES.register, element: <AuthPage mode="register" /> },
+  // The join page of an invitation link is public, and also open to a signed-in user (REV-207)
+  { path: ROUTES.invite, element: <InvitePage /> },
   {
     // Everything else needs a session (REV-206)
     element: <RequireAuth />,
@@ -30,6 +35,8 @@ export const APP_ROUTES: RouteObject[] = [
           { path: ROUTES.leads, element: <AllLeadsPage /> },
           { path: ROUTES.lead, element: <LeadRoute /> },
           { path: ROUTES.settings, element: <SettingsPage /> },
+          // Members and invitations are for owners (REV-207)
+          { element: <RequireOwner />, children: [{ path: ROUTES.team, element: <TeamPage /> }] },
           { path: '*', element: <Navigate to={ROUTES.queue} replace /> },
         ],
       },

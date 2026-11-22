@@ -22,6 +22,7 @@ import {
   MVP_MIN_CONTRAST,
   MVP_PLACEHOLDERS,
   OPERATOR_LOCALES,
+  ORGANIZATION_ROLES,
 } from '@revamp/shared-types';
 
 export * from './lead-status.js';
@@ -32,14 +33,26 @@ export * from './lead-status.js';
 
 const emailField = z.string().trim().toLowerCase().email().max(254);
 
-/** `POST /auth/register`: a new user and the organization they own */
-export const RegisterSchema = z.object({
-  email: emailField,
-  // Not trimmed: spaces are part of a passphrase
-  password: z.string().min(10).max(128),
-  organizationName: z.string().trim().min(1).max(100),
-  name: z.string().trim().min(1).max(100).optional(),
-});
+/** The token of an invitation: URL-safe characters only, bounded */
+const invitationTokenField = z.string().regex(/^[A-Za-z0-9_-]{1,128}$/);
+
+/**
+ * `POST /auth/register`: a new user and the organization they own, or (with `invitationToken`) a new user who joins
+ * the invited organization with the invited role (REV-207); the studio name is then not needed
+ */
+export const RegisterSchema = z
+  .object({
+    email: emailField,
+    // Not trimmed: spaces are part of a passphrase
+    password: z.string().min(10).max(128),
+    organizationName: z.string().trim().min(1).max(100).optional(),
+    name: z.string().trim().min(1).max(100).optional(),
+    invitationToken: invitationTokenField.optional(),
+  })
+  .refine((body) => body.invitationToken !== undefined || body.organizationName !== undefined, {
+    message: 'organizationName is required',
+    path: ['organizationName'],
+  });
 export type RegisterDto = z.infer<typeof RegisterSchema>;
 
 /** `POST /auth/login`: the length rule applies to new passwords only, so an old short one still gets a clean 401 */
@@ -48,6 +61,24 @@ export const LoginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 export type LoginDto = z.infer<typeof LoginSchema>;
+
+/** `POST /organization/invitations` (owners) */
+export const CreateInvitationSchema = z.object({
+  email: emailField,
+  role: z.enum(ORGANIZATION_ROLES),
+});
+export type CreateInvitationDto = z.infer<typeof CreateInvitationSchema>;
+
+/**
+ * `POST /invitations/:token/join` (public): the password of the account that owns the invited address. The length
+ * rule of registration does not apply, so an old short password still gets a clean 401
+ */
+export const JoinInvitationSchema = z.object({ password: z.string().min(1).max(128) });
+export type JoinInvitationDto = z.infer<typeof JoinInvitationSchema>;
+
+/** `PATCH /organization/members/:userId` (owners) */
+export const ChangeMemberRoleSchema = z.object({ role: z.enum(ORGANIZATION_ROLES) });
+export type ChangeMemberRoleDto = z.infer<typeof ChangeMemberRoleSchema>;
 
 // ==============================================================================
 // In-App Autonomous AI Agents Schemas (from AGENTS.md)

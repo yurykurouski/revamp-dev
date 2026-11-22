@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
+import { usePermissions } from '../hooks/usePermissions.js';
 import { DiscoveryButton } from './DiscoveryButton.js';
 import { DiscoveryIndicator } from '../hooks/useDiscovery.js';
 import { activeRailPage, ROUTES } from '../routes/paths.js';
@@ -25,6 +26,7 @@ interface TopBarProps {
  */
 export const TopBar: React.FC<TopBarProps> = ({ discovery, discoveryNewCount, searchRef }) => {
   const { t } = useTranslation();
+  const { canWrite } = usePermissions();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const searchQuery = useLeadFilterStore((s) => s.searchQuery);
@@ -70,20 +72,25 @@ export const TopBar: React.FC<TopBarProps> = ({ discovery, discoveryNewCount, se
         />
 
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
-          {/* Local business discovery (REV-27) with background search progress (REV-40) */}
-          <DiscoveryButton indicator={discovery} newCount={discoveryNewCount} onClick={openDiscovery} />
-          <Tooltip title={<ShortcutTitle label={t('topBar.addLead')} shortcut="addLead" />}>
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<AddIcon />}
-              onClick={openAddModal}
-              aria-keyshortcuts={ariaKeyShortcuts(getShortcut('addLead'))}
-              sx={{ whiteSpace: 'nowrap' }}
-            >
-              {t('topBar.addLead')}
-            </Button>
-          </Tooltip>
+          {/* A viewer reads only (REV-207): discovery and adding leads are for owners and operators */}
+          {canWrite && (
+            <>
+            {/* Local business discovery (REV-27) with background search progress (REV-40) */}
+            <DiscoveryButton indicator={discovery} newCount={discoveryNewCount} onClick={openDiscovery} />
+            <Tooltip title={<ShortcutTitle label={t('topBar.addLead')} shortcut="addLead" />}>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<AddIcon />}
+                onClick={openAddModal}
+                aria-keyshortcuts={ariaKeyShortcuts(getShortcut('addLead'))}
+                sx={{ whiteSpace: 'nowrap' }}
+              >
+                {t('topBar.addLead')}
+              </Button>
+            </Tooltip>
+            </>
+          )}
         </Box>
       </Toolbar>
     </AppBar>
