@@ -935,7 +935,6 @@ describe('real MongoDB (mongodb-memory-server)', () => {
     });
     const add = (domain: string, tenantId: Types.ObjectId | undefined, extra: Record<string, unknown> = {}) =>
       addLeadToBusiness({ tenantId, lead: leadOf(domain, extra), deriveFromAudit: derive as never });
-    const code = (promise: Promise<unknown>) => promise.then(() => undefined, (e: { code?: unknown }) => e.code);
 
     beforeAll(async () => {
       await mongoose.connect(mongo.uri, { dbName: 'revamp-addlead-test' });
