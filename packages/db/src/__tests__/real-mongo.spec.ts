@@ -12,6 +12,17 @@ import { buildDemoDataset } from '../seed/demo-dataset.js';
 import { seedDemoDataset } from '../seed/seed-demo.js';
 import { approveOutreachWithCampaign, revertOutreachApproval } from '../approve-outreach.js';
 import { createOrganizationWithOwner } from '../create-organization-with-owner.js';
+import {
+  acceptInvitationAsMember,
+  changeMemberRole,
+  createInvitation,
+  findInvitation,
+  hashInvitationToken,
+  listOrganizationMembers,
+  registerWithInvitation,
+  removeMember,
+} from '../organization-members.js';
+import { Invitation } from '../models/Invitation.model.js';
 import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
@@ -602,6 +613,215 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       await expect(
         Membership.create({ userId: first.user._id, organizationId: other._id, role: 'owner' }),
       ).rejects.toMatchObject({ code: 11000 });
+    });
+  });
+  // REV-207: invitations and members, on a real MongoDB (transactions, unique indexes, write conflicts)
+  describe('invitations and members (REV-207)', () => {
+    const NOW = new Date('2026-11-22T12:00:00.000Z');
+    const owner = (n: number) => ({
+      email: `owner${n}@studio.test`,
+      passwordHash: 'scrypt$salt$hash',
+      organizationName: `Studio ${n}`,
+    });
+    const newUser = (email: string) => User.create({ email, passwordHash: 'scrypt$salt$hash' });
+    const roleOf = async (userId: unknown, organizationId: unknown) =>
+      (await Membership.findOne({ userId, organizationId }).lean())?.role;
+    const code = (promise: Promise<unknown>) => promise.then(() => undefined, (e: { code?: unknown }) => e.code);
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-invitation-test' });
+      await Promise.all([Organization.init(), User.init(), Membership.init(), Invitation.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Organization.deleteMany({}), User.deleteMany({}), Membership.deleteMany({}), Invitation.deleteMany({})]);
+    });
+
+    describe('createInvitation', () => {
+      it('returns a one-time token and stores only its hash', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(1));
+        const { invitation, token } = await createInvitation({ organizationId: organization._id, email: 'Ann@Studio.Test', role: 'operator', invitedBy: user._id, now: NOW });
+        expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+        const stored = await Invitation.findById(invitation.id).lean();
+        expect(stored?.tokenHash).toBe(hashInvitationToken(token));
+        expect(JSON.stringify(stored)).not.toContain(token);
+        expect(stored).toMatchObject({ email: 'ann@studio.test', role: 'operator' });
+        expect(stored!.expiresAt.getTime()).toBe(NOW.getTime() + 7 * 86_400_000);
+      });
+
+      it('replaces the pending invitation for the same email: the older token stops working', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(2));
+        const first = await createInvitation({ organizationId: organization._id, email: 'a@b.co', role: 'viewer', invitedBy: user._id, now: NOW });
+        const second = await createInvitation({ organizationId: organization._id, email: 'a@b.co', role: 'operator', invitedBy: user._id, now: NOW });
+        expect(await code(findInvitation(first.token, NOW))).toBe('INVITATION_EXPIRED');
+        expect((await findInvitation(second.token, NOW)).role).toBe('operator');
+        expect(await Invitation.countDocuments({ revokedAt: null })).toBe(1);
+      });
+
+      it('refuses an email that already belongs to a member with ALREADY_MEMBER', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(3));
+        expect(await code(createInvitation({ organizationId: organization._id, email: 'OWNER3@studio.test', role: 'viewer', invitedBy: user._id, now: NOW }))).toBe('ALREADY_MEMBER');
+        expect(await Invitation.countDocuments()).toBe(0);
+      });
+    });
+
+    describe('findInvitation', () => {
+      it('is INVITATION_NOT_FOUND for an unknown token, and INVITATION_EXPIRED for an expired, used or revoked one', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(4));
+        expect(await code(findInvitation('nope', NOW))).toBe('INVITATION_NOT_FOUND');
+        const { invitation, token } = await createInvitation({ organizationId: organization._id, email: 'a@b.co', role: 'viewer', invitedBy: user._id, now: NOW });
+        expect((await findInvitation(token, NOW)).organizationName).toBe('Studio 4');
+        expect(await code(findInvitation(token, new Date(NOW.getTime() + 7 * 86_400_000)))).toBe('INVITATION_EXPIRED');
+        await Invitation.updateOne({ _id: invitation.id }, { acceptedAt: NOW });
+        expect(await code(findInvitation(token, NOW))).toBe('INVITATION_EXPIRED');
+        await Invitation.updateOne({ _id: invitation.id }, { acceptedAt: null, revokedAt: NOW });
+        expect(await code(findInvitation(token, NOW))).toBe('INVITATION_EXPIRED');
+      });
+    });
+
+    describe('acceptInvitationAsMember', () => {
+      it('adds a membership with the invited role and uses the invitation up', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(5));
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'operator', invitedBy: user._id, now: NOW });
+        const ann = await newUser('ann@studio.test');
+        const result = await acceptInvitationAsMember({ token, userId: ann._id, userEmail: ann.email, now: NOW });
+        expect(result.membership.role).toBe('operator');
+        expect(String(result.organization._id)).toBe(String(organization._id));
+        expect(await code(acceptInvitationAsMember({ token, userId: ann._id, userEmail: ann.email, now: NOW }))).toBe('INVITATION_EXPIRED');
+        expect(await Membership.countDocuments({ organizationId: organization._id })).toBe(2);
+      });
+
+      it('refuses another email with INVITATION_EMAIL_MISMATCH and leaves the invitation usable', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(6));
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        const bob = await newUser('bob@studio.test');
+        expect(await code(acceptInvitationAsMember({ token, userId: bob._id, userEmail: bob.email, now: NOW }))).toBe('INVITATION_EMAIL_MISMATCH');
+        expect((await findInvitation(token, NOW)).email).toBe('ann@studio.test');
+        expect(await Membership.countDocuments({ organizationId: organization._id })).toBe(1);
+      });
+
+      it('rolls the acceptance back when the user is already a member (ALREADY_MEMBER), keeping the invitation usable', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(7));
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        const ann = await newUser('ann@studio.test');
+        await Membership.create({ userId: ann._id, organizationId: organization._id, role: 'owner' });
+        expect(await code(acceptInvitationAsMember({ token, userId: ann._id, userEmail: ann.email, now: NOW }))).toBe('ALREADY_MEMBER');
+        expect(await Invitation.countDocuments({ acceptedAt: { $ne: null } })).toBe(0);
+        expect(await roleOf(ann._id, organization._id)).toBe('owner');
+      });
+
+      it('lets exactly one of 20 racing accepts through', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(8));
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        const ann = await newUser('ann@studio.test');
+        const results = await Promise.allSettled(Array.from({ length: 20 }, () => acceptInvitationAsMember({ token, userId: ann._id, userEmail: ann.email, now: NOW })));
+        expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+        expect(await Membership.countDocuments({ userId: ann._id })).toBe(1);
+      });
+    });
+
+    describe('registerWithInvitation', () => {
+      it('creates the user and the membership with the invited role in one go, and uses the invitation up', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(9));
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        const result = await registerWithInvitation({ token, email: 'ann@studio.test', passwordHash: 'scrypt$s$h', name: 'Ann', now: NOW });
+        expect(result.membership.role).toBe('viewer');
+        expect(result.user.name).toBe('Ann');
+        expect(await code(registerWithInvitation({ token, email: 'ann@studio.test', passwordHash: 'scrypt$s$h', now: NOW }))).toBe('INVITATION_EXPIRED');
+        expect(await User.countDocuments({ email: 'ann@studio.test' })).toBe(1);
+      });
+
+      it('refuses another email, and leaves no user and a usable invitation when the email is taken', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(10));
+        const { token } = await createInvitation({ organizationId: organization._id, email: 'ann@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        expect(await code(registerWithInvitation({ token, email: 'bob@studio.test', passwordHash: 'x', now: NOW }))).toBe('INVITATION_EMAIL_MISMATCH');
+        await newUser('ann@studio.test');
+        expect(await code(registerWithInvitation({ token, email: 'ann@studio.test', passwordHash: 'x', now: NOW }))).toBe(11000);
+        expect(await Invitation.countDocuments({ acceptedAt: { $ne: null } })).toBe(0);
+        expect(await Membership.countDocuments({ organizationId: organization._id })).toBe(1);
+      });
+    });
+
+    describe('changeMemberRole and removeMember', () => {
+      const withTwoOwners = async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(20));
+        const second = await newUser('second@studio.test');
+        await Membership.create({ userId: second._id, organizationId: organization._id, role: 'owner' });
+        return { organization, first: user, second };
+      };
+
+      it('changes a role and reports a missing member as MEMBER_NOT_FOUND', async () => {
+        const { organization, first, second } = await withTwoOwners();
+        await changeMemberRole({ organizationId: organization._id, userId: second._id, role: 'viewer' });
+        expect(await roleOf(second._id, organization._id)).toBe('viewer');
+        expect(await roleOf(first._id, organization._id)).toBe('owner');
+        expect(await code(changeMemberRole({ organizationId: organization._id, userId: new Types.ObjectId(), role: 'viewer' }))).toBe('MEMBER_NOT_FOUND');
+      });
+
+      it('refuses to demote or remove the last owner with LAST_OWNER', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(21));
+        expect(await code(changeMemberRole({ organizationId: organization._id, userId: user._id, role: 'operator' }))).toBe('LAST_OWNER');
+        expect(await code(removeMember({ organizationId: organization._id, userId: user._id }))).toBe('LAST_OWNER');
+        expect(await roleOf(user._id, organization._id)).toBe('owner');
+      });
+
+      it('lets an owner be demoted or removed while another owner exists, and keeps the user account', async () => {
+        const { organization, first, second } = await withTwoOwners();
+        await removeMember({ organizationId: organization._id, userId: second._id });
+        expect(await roleOf(second._id, organization._id)).toBeUndefined();
+        expect(await User.findById(second._id).lean()).not.toBeNull();
+        expect(await code(removeMember({ organizationId: organization._id, userId: first._id }))).toBe('LAST_OWNER');
+      });
+
+      it('never leaves an organization without an owner when two owners demote each other at once', async () => {
+        for (let round = 0; round < 5; round++) {
+          const { organization, user: a } = await createOrganizationWithOwner(owner(30 + round));
+          const b = await newUser(`b${round}@studio.test`);
+          await Membership.create({ userId: b._id, organizationId: organization._id, role: 'owner' });
+          await Promise.allSettled([
+            changeMemberRole({ organizationId: organization._id, userId: a._id, role: 'viewer' }),
+            changeMemberRole({ organizationId: organization._id, userId: b._id, role: 'viewer' }),
+          ]);
+          expect(await Membership.countDocuments({ organizationId: organization._id, role: 'owner' })).toBe(1);
+        }
+      });
+
+      it('never leaves an organization without an owner when two owners remove each other at once', async () => {
+        const { organization, user: a } = await createOrganizationWithOwner(owner(40));
+        const b = await newUser('b40@studio.test');
+        await Membership.create({ userId: b._id, organizationId: organization._id, role: 'owner' });
+        await Promise.allSettled([
+          removeMember({ organizationId: organization._id, userId: a._id }),
+          removeMember({ organizationId: organization._id, userId: b._id }),
+        ]);
+        expect(await Membership.countDocuments({ organizationId: organization._id, role: 'owner' })).toBe(1);
+      });
+
+      it('does not touch another organization with the same user', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(41));
+        const other = await createOrganizationWithOwner({ ...owner(42), email: 'other42@studio.test' });
+        await Membership.create({ userId: user._id, organizationId: other.organization._id, role: 'viewer' });
+        await removeMember({ organizationId: other.organization._id, userId: user._id }).catch(() => undefined);
+        expect(await roleOf(user._id, organization._id)).toBe('owner');
+      });
+    });
+
+    describe('listOrganizationMembers', () => {
+      it('lists members with their user and only pending invitations', async () => {
+        const { organization, user } = await createOrganizationWithOwner(owner(50));
+        const pending = await createInvitation({ organizationId: organization._id, email: 'p@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        const used = await createInvitation({ organizationId: organization._id, email: 'u@studio.test', role: 'viewer', invitedBy: user._id, now: NOW });
+        await Invitation.updateOne({ _id: used.invitation.id }, { acceptedAt: NOW });
+        const expired = await createInvitation({ organizationId: organization._id, email: 'e@studio.test', role: 'viewer', invitedBy: user._id, now: new Date(NOW.getTime() - 8 * 86_400_000) });
+        const list = await listOrganizationMembers(organization._id, NOW);
+        expect(list.members).toEqual([expect.objectContaining({ email: 'owner50@studio.test', role: 'owner' })]);
+        expect(list.invitations.map((i) => i.email)).toEqual(['p@studio.test']);
+        expect(JSON.stringify(list)).not.toContain('passwordHash');
+        expect(JSON.stringify(list)).not.toContain(pending.token);
+        expect(expired.invitation).toBeDefined();
+      });
     });
   });
 });
