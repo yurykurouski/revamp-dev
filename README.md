@@ -174,6 +174,7 @@ Generated MVPs are served from the `revamp-demos` bucket, not the API, so the pa
 | `npm run db:seed` | REV-199: loads the demo dataset (see [Demo data](#demo-data-and-database-export)) into the local database and its MVP pages into MinIO. `-- --reset` puts the demo documents back to their seeded state |
 | `npm run db:dump` / `db:restore -- <file> [--drop]` | REV-199: exports the database to `backups/<db>-<time>.archive.gz` (gitignored) and imports an archive, through `mongodump` / `mongorestore` in the `revamp-mongo` container |
 | `npm run docs:check-dictionary [-- <file>]` | REV-200: lists every `@revamp/db` model field (nested ones too) that the data dictionary (`../Revamp-docs/database-expertise.md` by default) does not name in its collection's section; exits 1 when any is missing. Run it with a schema change (CI does not, the dictionary is in the docs repository) |
+| `npm run docs:index [-- <dir>]` / `docs:check-index` | REV-205: writes (or checks) `../Revamp-docs/INDEX.md`, every h2/h3 heading of the large docs with its line range, so agents read one section instead of a whole document. Run it after editing the docs (CI does not) |
 | `npx tsx scripts/generate_mvp_page.ts [--self-review] [--record <dir>] [--provider <id>] [--model <id>] [--operator-locale <en\|ru\|be\|pl\|lt>] <out-dir> <url...>` | Dev tool (REV-137): audits each URL read-only, asks the model for a page, checks and finishes it, and writes `<host>.raw.html`, `<host>.html` and the grounding flags; no database, storage or queue writes. `--record` saves the brief and answers for the recorded-answer tests; `--self-review` adds the REV-143 revision pass and prints standards, axe violations and horizontal scroll at 360 px for the first and the kept page; `--operator-locale` asks for the model's design changes in that language and prints them with the page's `lang` (REV-162) |
 | `npm run verify:env` | Checks production dependencies (MongoDB, Redis, S3, API keys) |
 | `npm run backfill:stuck-audits --workspace=@revamp/api` | One-off: moves leads left in `AUDITING` after a failed audit to `AUDIT_FAILED` (`-- --dry-run` to preview) |
@@ -238,7 +239,7 @@ The deploy reads its credentials from the GitHub environment **production** (Set
 
 ## Contributing
 
-Work is tracked in the [Linear REV team](https://linear.app/revamp-proect/team/REV/overview). Every bug fix and feature follows the same pipeline: ticket → branch → tests and local gates → PR → merge → close ticket. See [AGENTS.md](./AGENTS.md) for branch and commit conventions and the full checklist.
+Work is tracked in the [Linear REV team](https://linear.app/revamp-proect/team/REV/overview). Every bug fix and feature follows the same pipeline: ticket → branch → tests and local gates → PR → merge → close ticket. See [AGENTS.md](./AGENTS.md) for the engineering rules (area rules live in `apps/*/AGENTS.md` and `packages/db/AGENTS.md`) and [docs/agents/ticket-pipeline.md](./docs/agents/ticket-pipeline.md) for branch and commit conventions and the full checklist.
 
 ## Documentation
 
