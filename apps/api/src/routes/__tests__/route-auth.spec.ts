@@ -9,6 +9,8 @@ import { closeServer, listenOnLoopback } from './loopback-server.js';
 // Loading the routes imports the queues; none of them may connect to Redis or Mongo here
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/lead.service.js');
+// The owner-only routes run their handlers in the role table below; none of them may reach a database
+vi.mock('../../services/organization.service.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
@@ -142,15 +144,21 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
     // /auth/me and accepting an invitation answer every signed-in role about themselves; the rest of both is public
     const own = (route: string) => /^(GET|POST) \/(auth|invitations)\//.test(route);
     const rolePath = (route: string) => `${env.API_PREFIX}${route.split(' ')[1]!.replace(/:\w+/g, 'x1')}`;
-    const call = async (route: string) => {
+    /**
+     * A guard answers 403 or 401 itself, fast, before any handler: those calls wait for the answer (no timeout, so
+     * load cannot turn a guard answer into a pass or a failure). A call that is expected to get through the guard may
+     * run a handler that never answers (the models are mocked), so it only waits a moment.
+     */
+    const call = async (route: string, expectGuardAnswer = false) => {
       const method = route.split(' ')[0]!.toLowerCase() as 'get' | 'post' | 'put' | 'patch' | 'delete';
-      // A handler may answer anything or still be running when the wait ends; only 403 is the guard's answer
-      return authedRequest(server)
-        [method](rolePath(route))
-        .send({})
+      const pending = authedRequest(server)[method](rolePath(route)).send({});
+      if (expectGuardAnswer) return pending.catch((error: { status?: number }) => ({ status: error.status ?? 0, body: {} }));
+      return pending
         .timeout({ response: 400, deadline: 400 })
         .catch((error: { status?: number }) => ({ status: error.status ?? 0, body: {} }));
     };
+    /** Not refused by the guard: neither 401 nor 403 (a timeout, 0, means a handler is running, which is a pass) */
+    const gotThrough = (status: number) => status !== 401 && status !== 403;
     const roleRoutes = () => routes.filter((r) => !PUBLIC_ROUTES.includes(r) && !own(r));
     const writeRoutes = () => roleRoutes().filter((r) => !READ.has(r.split(' ')[0]!) && !r.includes(' /organization/'));
     const readRoutes = () => roleRoutes().filter((r) => READ.has(r.split(' ')[0]!) && !r.includes(' /organization/'));
@@ -170,7 +178,7 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
       setMemberRole('viewer');
       const failures: string[] = [];
       for (const route of writeRoutes()) {
-        const res = await call(route);
+        const res = await call(route, true);
         if (res.status !== 403 || res.body?.error?.code !== 'FORBIDDEN') failures.push(`${route} -> ${res.status}`);
       }
       expect(failures).toEqual([]);
@@ -180,7 +188,7 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
       setMemberRole('viewer');
       const failures: string[] = [];
       for (const route of readRoutes()) {
-        if ((await call(route)).status === 403) failures.push(route);
+        if (!gotThrough((await call(route)).status)) failures.push(route);
       }
       expect(failures).toEqual([]);
     });
@@ -189,7 +197,7 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
       setMemberRole(role);
       const failures: string[] = [];
       for (const route of writeRoutes()) {
-        if ((await call(route)).status === 403) failures.push(route);
+        if (!gotThrough((await call(route)).status)) failures.push(route);
       }
       expect(failures).toEqual([]);
     });
@@ -200,19 +208,19 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
         setMemberRole(role);
         const failures: string[] = [];
         for (const route of ownerRoutes()) {
-          const res = await call(route);
+          const res = await call(route, true);
           if (res.status !== 403 || res.body?.error?.code !== 'FORBIDDEN') failures.push(`${role} ${route} -> ${res.status}`);
         }
         expect(failures).toEqual([]);
       }
       setMemberRole('owner');
-      for (const route of ownerRoutes()) expect((await call(route)).status, route).not.toBe(403);
+      for (const route of ownerRoutes()) expect(gotThrough((await call(route)).status), route).toBe(true);
     });
 
     it('answers 401 when the membership is gone, on a read and on a write route', async () => {
       setMemberRole(null);
-      expect((await call('GET /leads')).status).toBe(401);
-      expect((await call('POST /leads')).status).toBe(401);
+      expect((await call('GET /leads', true)).status).toBe(401);
+      expect((await call('POST /leads', true)).status).toBe(401);
     });
   });
 });

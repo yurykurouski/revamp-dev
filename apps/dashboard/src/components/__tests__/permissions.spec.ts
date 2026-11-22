@@ -16,6 +16,7 @@ import { useAuthStore } from '../../store/useAuthStore.js';
 import { AuditFailedActions } from '../AuditFailedActions.js';
 import { GenerateMvpButton } from '../GenerateMvpButton.js';
 import { RegenerateMvpButton } from '../RegenerateMvpButton.js';
+import { MvpGenerationFailure } from '../leadReview/MvpGenerationFailure.js';
 import { TopBar } from '../TopBar.js';
 import { APPROVE_ARM_DELAY_MS, ReviewActionBar } from '../leadReview/ReviewActionBar.js';
 
@@ -110,6 +111,23 @@ describe('write actions by role (REV-207)', () => {
       as('viewer');
       await mount(element());
       expect(container.querySelector(selector)).toBeNull();
+    });
+  });
+
+  describe('MVP generation failure (REV-207 review)', () => {
+    const failed = { ...lead, status: 'AUDITED' as const, generationFailure: { code: 'MVP_PAGE_UNAVAILABLE', reason: 'invalid_page', message: 'rejected twice', at: '2026-10-10T12:00:00.000Z' } };
+
+    it('offers Try again to an operator', async () => {
+      as('operator');
+      await mount(React.createElement(MvpGenerationFailure, { lead: failed as never }));
+      expect(buttonByText(en.mvpFailure.tryAgain)).toBeDefined();
+    });
+
+    it('explains the failure to a viewer without the Try again button', async () => {
+      as('viewer');
+      await mount(React.createElement(MvpGenerationFailure, { lead: failed as never }));
+      expect(container.querySelector('[data-testid="mvp-generation-failure"]')).not.toBeNull();
+      expect(buttonByText(en.mvpFailure.tryAgain)).toBeUndefined();
     });
   });
 

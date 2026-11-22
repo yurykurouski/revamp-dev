@@ -147,6 +147,16 @@ describe('InvitePage (REV-207)', () => {
       expect(register).toHaveBeenCalledWith({ email: 'ann@studio.test', password: 'correct horse battery', invitationToken: 'abc_DEF-1' });
     });
 
+    it('says something went wrong, not "password too short", when the name is what is invalid', async () => {
+      const register = vi.spyOn(authApi, 'register');
+      await mount();
+      await type('name', 'x'.repeat(101));
+      await type('password', 'correct horse battery');
+      await submit();
+      expect(register).not.toHaveBeenCalled();
+      expect(alert()).toBe(en.invite.errors.generic);
+    });
+
     it('points an owner of an existing account to "I already have an account" (EMAIL_TAKEN)', async () => {
       vi.spyOn(authApi, 'register').mockRejectedValue(new ApiError('x', 409, 'EMAIL_TAKEN'));
       await mount();

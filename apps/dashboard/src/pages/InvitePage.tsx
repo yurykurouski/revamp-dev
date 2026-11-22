@@ -89,7 +89,7 @@ export const InvitePage: React.FC = () => {
         ...(name.trim() ? { name } : {}),
       });
       if (!parsed.success) {
-        setError(t('invite.errors.passwordShort'));
+        setError(parsed.error.issues[0]?.path[0] === 'password' ? t('invite.errors.passwordShort') : t('invite.errors.generic'));
         return;
       }
       void run(async () => {

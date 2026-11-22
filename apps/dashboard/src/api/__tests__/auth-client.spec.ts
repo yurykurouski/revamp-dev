@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { IAuthSession } from '@revamp/shared-types';
-import { ApiError, apiClient, authApi, authFetch, invitationApi, organizationApi } from '../client.js';
+import { ApiError, apiClient, authApi, authFetch, invitationApi, organizationApi, refreshSessionContext } from '../client.js';
 import { useAuthStore } from '../../store/useAuthStore.js';
 
 const session: IAuthSession = {
@@ -247,5 +247,23 @@ describe('session refresh and member calls (REV-207)', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'INVALID_CREDENTIALS', message: 'no' } }, 401)));
     await expect(invitationApi.join('abc', 'bad')).rejects.toMatchObject({ status: 401, code: 'INVALID_CREDENTIALS' });
     expect(useAuthStore.getState().session).toEqual(session);
+  });
+  it('ignores an answer for a session that was replaced while the refresh ran, and still refreshes the new one', async () => {
+    let answerOld: (res: Response) => void = () => undefined;
+    const other = { ...session, token: 'new.tok.en', organization: { id: 'o2', name: 'Second Studio' }, role: 'viewer' as const };
+    const fetchMock = vi
+      .fn()
+      .mockReturnValueOnce(new Promise<Response>((resolve) => (answerOld = resolve)))
+      .mockResolvedValueOnce(jsonRes({ success: true, data: { user: other.user, organization: other.organization, role: 'viewer' } }));
+    vi.stubGlobal('fetch', fetchMock);
+    const first = refreshSessionContext();
+    useAuthStore.getState().signIn(other);
+    await refreshSessionContext();
+    await vi.waitFor(() => expect(useAuthStore.getState().session?.role).toBe('viewer'));
+    answerOld(jsonRes({ success: true, data: { user: session.user, organization: session.organization, role: 'owner' } }));
+    await first;
+    // The old answer (owner of the first studio) did not land on the new session
+    expect(useAuthStore.getState().session).toEqual(other);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });

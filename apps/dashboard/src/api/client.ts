@@ -104,18 +104,24 @@ export async function authFetch(input: string, init: RequestInit = {}): Promise<
   return res;
 }
 
-let refreshing = false;
+let refreshingToken: string | null = null;
 
-/** Asks the server who the user is now and updates the session; one at a time, and a failure changes nothing */
+/**
+ * Asks the server who the user is now and updates the session; one at a time per token, and a failure changes
+ * nothing. An answer for a session that was replaced meanwhile (an invitation switched the studio) is dropped, so it
+ * never lands on the new session's token.
+ */
 export async function refreshSessionContext(): Promise<void> {
-  if (refreshing) return;
-  refreshing = true;
+  const token = getAuthToken();
+  if (!token || refreshingToken === token) return;
+  refreshingToken = token;
   try {
-    useAuthStore.getState().updateSession(await authApi.me());
+    const context = await authApi.me();
+    if (getAuthToken() === token) useAuthStore.getState().updateSession(context);
   } catch {
     // A 401 already signed out; anything else leaves the stored session as it is
   } finally {
-    refreshing = false;
+    if (refreshingToken === token) refreshingToken = null;
   }
 }
 

@@ -4,6 +4,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import { useTranslation } from 'react-i18next';
 import type { ILeadItem } from '../../api/client.js';
 import { useGenerateMvpMutation, useIsMvpGenerationPending } from '../../hooks/useLeads.js';
+import { usePermissions } from '../../hooks/usePermissions.js';
 import { generationFailureText } from '../../utils/mvpPage.js';
 
 interface MvpGenerationFailureProps {
@@ -22,6 +23,7 @@ export const hasGenerationFailure = (
  */
 export const MvpGenerationFailure: React.FC<MvpGenerationFailureProps> = ({ lead }) => {
   const { t } = useTranslation();
+  const { canWrite } = usePermissions();
   const generate = useGenerateMvpMutation();
   const isPending = useIsMvpGenerationPending(lead.id);
   const failure = lead.generationFailure;
@@ -38,34 +40,37 @@ export const MvpGenerationFailure: React.FC<MvpGenerationFailureProps> = ({ lead
       >
         <AlertTitle sx={{ fontWeight: 700 }}>{t('mvpFailure.title')}</AlertTitle>
         <Typography variant="body2">{String(t(text.key as never, text.values as never))}</Typography>
-        <Box
-          sx={{
-            mt: 1.5,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            gap: 0.5,
-          }}
-        >
-          <Button
-            size="small"
-            variant="outlined"
-            color="inherit"
-            startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
-            disabled={isPending}
-            onClick={() =>
-              generate.mutate({
-                auditId: lead.auditId || lead.id,
-                leadId: lead.id,
-                // A lead with an MVP regenerates over it; a first generation does not
-                forceRegenerate: lead.status !== 'AUDITED',
-              })
-            }
-            sx={{ fontWeight: 600 }}
+        {/* A viewer reads the reason but cannot regenerate (REV-207) */}
+        {canWrite && (
+          <Box
+            sx={{
+              mt: 1.5,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+              gap: 0.5,
+            }}
           >
-            {t('mvpFailure.tryAgain')}
-          </Button>
-        </Box>
+            <Button
+              size="small"
+              variant="outlined"
+              color="inherit"
+              startIcon={<RefreshIcon sx={{ fontSize: 16 }} />}
+              disabled={isPending}
+              onClick={() =>
+                generate.mutate({
+                  auditId: lead.auditId || lead.id,
+                  leadId: lead.id,
+                  // A lead with an MVP regenerates over it; a first generation does not
+                  forceRegenerate: lead.status !== 'AUDITED',
+                })
+              }
+              sx={{ fontWeight: 600 }}
+            >
+              {t('mvpFailure.tryAgain')}
+            </Button>
+          </Box>
+        )}
       </Alert>
     </Box>
   );
