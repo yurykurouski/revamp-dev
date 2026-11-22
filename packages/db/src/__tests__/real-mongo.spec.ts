@@ -486,9 +486,12 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       const tagged = await Lead.create(audited('Tagged Customer', ['vip']));
       await Lead.create(audited('Mixed Demo', ['vip', 'demo-seed']));
       await Lead.create({ ...audited('Queued Customer', []), status: 'QUEUED' });
+      // a lead written without the field at all (before it had a default, or raw) is still recovered
+      const { insertedId: untagged } = await Lead.collection.insertOne({ ...audited('Untagged Customer', []), tags: undefined });
+      await Lead.collection.updateOne({ _id: untagged }, { $unset: { tags: '' } });
 
       const found = await Lead.find(stalledAuditedLeadFilter()).lean();
-      expect(found.map((l) => String(l._id)).sort()).toEqual([String(plain._id), String(tagged._id)].sort());
+      expect(found.map((l) => String(l._id)).sort()).toEqual([String(plain._id), String(tagged._id), String(untagged)].sort());
       const seededAudited = ds.leads.filter((l) => l.status === 'AUDITED').length;
       expect(await Lead.countDocuments(skippedDemoLeadFilter())).toBe(seededAudited + 1);
     });

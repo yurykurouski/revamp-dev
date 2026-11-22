@@ -1,6 +1,6 @@
 import type { FilterQuery } from 'mongoose';
 import type { ILeadDocument } from './models/Lead.model.js';
-import { DEMO_SEED_TAG } from './seed/demo-dataset.js';
+import { DEMO_SEED_TAG } from './demo-tag.js';
 
 // The leads the workers' startup recovery queues for MVP generation (REV-204): every AUDITED lead except
 // the seeded demo leads (`npm run db:seed`, REV-199), which stay AUDITED on purpose and would otherwise cost

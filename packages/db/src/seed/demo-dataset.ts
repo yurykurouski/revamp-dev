@@ -15,12 +15,13 @@ import {
   STANDARDS_POINTS,
 } from '@revamp/shared-types';
 import { hashPasswordWithSalt } from '../password.js';
+import { DEMO_SEED_TAG } from '../demo-tag.js';
 
 // REV-199: the fixed demo dataset `npm run db:seed` loads. Test data that lives in a script, never read at runtime
 // (REV-45): every domain and email is a reserved `.test` name, which never resolves, so the email worker's MX
 // pre-flight bounces any send. Ids are fixed, so seeding is idempotent and only ever touches these documents.
 
-export const DEMO_SEED_TAG = 'demo-seed';
+export { DEMO_SEED_TAG };
 
 type Extra = { [key: string]: unknown };
 
