@@ -16,7 +16,7 @@ const { skippedDemoLeadFilter, stalledAuditedLeadFilter } = await import('@revam
 
 const exec = <T>(value: T) => ({ exec: () => Promise.resolve(value) });
 const TENANT = '5eed00000000000000000001';
-const lead = (id: string, businessName = `Lead ${id}`, tenantId: string | undefined = TENANT) => ({
+const lead = (id: string, businessName = `Lead ${id}`, tenantId: string | null = TENANT) => ({
   _id: { toString: () => id },
   businessName,
   ...(tenantId ? { tenantId: { toString: () => tenantId } } : {}),
@@ -48,7 +48,7 @@ describe('recoverStalledAuditedLeads (REV-204, REV-210)', () => {
   });
 
   it("queues each lead with its own studio and leaves a lead with no studio for the migration", async () => {
-    leadFind.mockReturnValue(exec([lead('l1'), lead('l2', 'No studio', undefined)]));
+    leadFind.mockReturnValue(exec([lead('l1'), lead('l2', 'No studio', null)]));
     findAuditForLead.mockResolvedValue({ _id: { toString: () => 'audit-1' } });
     expect(await recoverStalledAuditedLeads()).toBe(1);
     expect(addAiGenerationJob).toHaveBeenCalledTimes(1);
