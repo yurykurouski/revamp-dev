@@ -188,7 +188,7 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
   });
 
   describe('Image versions (REV-217)', () => {
-    it.each(['docker-compose.yml', 'docker-compose.prod.yml'])('%s uses no `latest` image tag', (file) => {
+    it.each(['docker-compose.yml', 'docker-compose.prod.yml', 'docker-compose.full.yml'])('%s uses no `latest` image tag', (file) => {
       const content = fs.readFileSync(path.join(rootDir, file), 'utf-8');
       expect(content).not.toMatch(/image:\s*\S+:latest/);
       // An image without a tag or digest is `latest` too
@@ -202,6 +202,87 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
         expect(compose).toContain(`image: revamp-${name}:` + '${IMAGE_TAG:-local}');
       }
       expect(fs.readFileSync(path.join(rootDir, 'deploy/deploy.sh'), 'utf-8')).toContain('export IMAGE_TAG=');
+    });
+  });
+
+  describe('Container stack (docker-compose.full.yml, REV-218)', () => {
+    const content = fs.readFileSync(path.join(rootDir, 'docker-compose.full.yml'), 'utf-8');
+    const dev = fs.readFileSync(path.join(rootDir, 'docker-compose.yml'), 'utf-8');
+    /** The text of one top-level service: from its `  name:` line to the next service */
+    const service = (name: string): string => {
+      const start = content.indexOf(`\n  ${name}:\n`);
+      expect(start, `service ${name}`).toBeGreaterThan(-1);
+      const rest = content.slice(start + 1);
+      const next = rest.slice(1).search(/\n {2}[a-z][\w-]*:\n|\n[a-z#]/);
+      return next === -1 ? rest : rest.slice(0, next + 1);
+    };
+
+    it('defines the data services, the one-shot initialisers and the three apps', () => {
+      for (const name of ['mongo', 'mongo-init', 'redis', 'minio', 'minio-init', 'api', 'workers', 'dashboard']) {
+        expect(() => service(name)).not.toThrow();
+      }
+      expect(content).toContain('name: revamp-stack');
+    });
+
+    it('publishes only the API and the dashboard, and only on 127.0.0.1', () => {
+      for (const name of ['mongo', 'mongo-init', 'redis', 'minio', 'minio-init', 'workers']) {
+        expect(service(name), `${name} publishes no port`).not.toMatch(/^\s+ports:/m);
+      }
+      const published = [...content.matchAll(/^\s+- "([^"]*:\d+)"$/gm)].map((match) => match[1] ?? '');
+      expect(published).toHaveLength(2);
+      for (const port of published) expect(port).toMatch(/^127\.0\.0\.1:/);
+    });
+
+    it('uses a frontend and a backend network: the data services are backend only', () => {
+      expect(content).toMatch(/^networks:\n {2}frontend:\n {2}backend:/m);
+      for (const name of ['mongo', 'redis', 'minio', 'workers']) {
+        expect(service(name)).toContain('networks: [backend]');
+        expect(service(name)).not.toContain('frontend');
+      }
+      expect(service('api')).toContain('networks: [frontend, backend]');
+      expect(service('dashboard')).toContain('networks: [frontend]');
+    });
+
+    it('starts in dependency order: users and buckets exist before the API, the API is healthy before the rest', () => {
+      const api = service('api');
+      expect(api).toMatch(/mongo-init:\n\s+condition: service_completed_successfully/);
+      expect(api).toMatch(/minio-init:\n\s+condition: service_completed_successfully/);
+      expect(api).toMatch(/redis:\n\s+condition: service_healthy/);
+      for (const name of ['workers', 'dashboard']) {
+        expect(service(name)).toMatch(/api:\n\s+condition: service_healthy/);
+      }
+      expect(service('mongo-init')).toContain('network_mode: "service:mongo"');
+    });
+
+    it('limits memory and CPU of every long-running service and restarts them on failure', () => {
+      for (const name of ['mongo', 'redis', 'minio', 'api', 'workers', 'dashboard']) {
+        expect(service(name), `${name} limits`).toMatch(/limits: \{ cpus: "[\d.]+", memory: \w+ \}/);
+        expect(service(name), `${name} restart`).toContain('restart: unless-stopped');
+      }
+    });
+
+    it('takes every secret from .env and writes no credential or default password in the file', () => {
+      expect(content).not.toContain('minioadmin');
+      expect(content).toContain('${STACK_S3_SECRET_KEY:?');
+      expect(content).toContain('${MONGO_ROOT_PASSWORD:?');
+      expect(content).toContain('${JWT_SECRET:?');
+      expect(content).not.toMatch(/password:?\s*["']?[^$\s"'][\w-]{5,}/i);
+    });
+
+    it('keeps the dev infrastructure file from hardcoding the MinIO root credentials (REV-218)', () => {
+      expect(dev).toContain('MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}');
+      expect(dev).toContain('MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}');
+      expect(dev).not.toMatch(/MINIO_ROOT_(USER|PASSWORD): minioadmin/);
+    });
+
+    it('has stack npm scripts and sample variables', () => {
+      const pkg = JSON.parse(fs.readFileSync(path.join(rootDir, 'package.json'), 'utf-8')) as { scripts: Record<string, string> };
+      expect(pkg.scripts['stack:up']).toBe('node scripts/stack-up.mjs');
+      expect(pkg.scripts['stack:down']).toContain('docker-compose.full.yml');
+      const env = fs.readFileSync(path.join(rootDir, '.env.example'), 'utf-8');
+      for (const name of ['STACK_S3_ACCESS_KEY=', 'STACK_S3_SECRET_KEY=', 'STACK_API_PORT=', 'STACK_DASHBOARD_PORT=']) {
+        expect(env).toContain(name);
+      }
     });
   });
 

@@ -1,0 +1,212 @@
+# REV-218: the whole system in containers, started with one command (`npm run stack:up`, which
+# prepares .env first, or `docker compose -f docker-compose.full.yml up -d --build` once .env is ready).
+#
+#   dashboard  http://localhost:8080        (STACK_DASHBOARD_PORT)
+#   api        http://localhost:4000/api/v1 (STACK_API_PORT)
+#
+# It is a separate project (`revamp-stack`) with its own containers and volumes, so it never touches the
+# dev infrastructure in docker-compose.yml (`npm run dev`) or the shared revamp-mongo container.
+# MongoDB, Redis and MinIO publish no host ports; only the dashboard and the API do, on 127.0.0.1.
+name: revamp-stack
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "20m"
+    max-file: "5"
+
+# Settings the apps need inside this stack. They override the localhost values the root .env holds for
+# `npm run dev`; every other setting (LLM keys, email provider, discovery) still comes from .env.
+x-app-environment: &app-environment
+  NODE_ENV: production
+  MONGODB_URI: mongodb://revamp_app:${MONGO_APP_PASSWORD:?Run `npm run stack:up`, or set MONGO_APP_PASSWORD in .env}@mongo:27017/revamp?authSource=admin&replicaSet=rs0&directConnection=true
+  JWT_SECRET: ${JWT_SECRET:?Run `npm run stack:up`, or set JWT_SECRET in .env}
+  REDIS_HOST: redis
+  REDIS_PORT: "6379"
+  REDIS_URL: ""
+  S3_ENDPOINT: http://minio:9000
+  S3_ACCESS_KEY: ${STACK_S3_ACCESS_KEY:?Run `npm run stack:up`, or set STACK_S3_ACCESS_KEY in .env}
+  S3_SECRET_KEY: ${STACK_S3_SECRET_KEY:?Run `npm run stack:up`, or set STACK_S3_SECRET_KEY in .env}
+  CORS_ORIGIN: http://localhost:${STACK_DASHBOARD_PORT:-8080}
+  PUBLIC_API_URL: http://localhost:${STACK_API_PORT:-4000}/api/v1
+
+services:
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    # Same start-up as docker-compose.yml (REV-198): access control, single-node replica set rs0, keyFile in a
+    # named volume. mongo-init creates the users and initiates the replica set.
+    command:
+      - bash
+      - -c
+      - |
+        if [ ! -s /data/configdb/keyfile ]; then head -c 756 /dev/urandom | base64 > /data/configdb/keyfile; fi
+        chmod 400 /data/configdb/keyfile && chown 999:999 /data/configdb/keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --keyFile /data/configdb/keyfile --bind_ip_all
+    volumes:
+      - mongo_data:/data/db
+      - mongo_config:/data/configdb
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+    logging: *logging
+
+  # One-shot: runs scripts/mongo/ensure-ready.js in the network namespace of `mongo`, so the "localhost
+  # exception" of a fresh MongoDB applies. Idempotent; exits 0 when the users and rs0 are ready.
+  mongo-init:
+    image: mongo:7.0
+    network_mode: "service:mongo"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    restart: "no"
+    environment:
+      MONGO_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?Run `npm run stack:up`, or set MONGO_ROOT_PASSWORD in .env}
+      MONGO_APP_PASSWORD: ${MONGO_APP_PASSWORD:?Run `npm run stack:up`, or set MONGO_APP_PASSWORD in .env}
+      MONGO_READ_PASSWORD: ${MONGO_READ_PASSWORD:?Run `npm run stack:up`, or set MONGO_READ_PASSWORD in .env}
+      MONGO_ADMIN_PASSWORD: ${MONGO_ADMIN_PASSWORD:?Run `npm run stack:up`, or set MONGO_ADMIN_PASSWORD in .env}
+    volumes:
+      - ./scripts/mongo:/revamp-scripts:ro
+    entrypoint: ["mongosh", "--quiet", "--norc", "/revamp-scripts/ensure-ready.js"]
+
+  redis:
+    image: redis:7.0-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 2s
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m }
+    logging: *logging
+
+  minio:
+    # Pinned by digest (release RELEASE.2025-09-07T16-13-09Z), like docker-compose.yml
+    image: quay.io/minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${STACK_S3_ACCESS_KEY:?Run `npm run stack:up`, or set STACK_S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${STACK_S3_SECRET_KEY:?Run `npm run stack:up`, or set STACK_S3_SECRET_KEY in .env}
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    networks: [backend]
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 512m }
+    logging: *logging
+
+  minio-init:
+    image: quay.io/minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
+    restart: "no"
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${STACK_S3_ACCESS_KEY:?Run `npm run stack:up`, or set STACK_S3_ACCESS_KEY in .env}
+      S3_SECRET_KEY: ${STACK_S3_SECRET_KEY:?Run `npm run stack:up`, or set STACK_S3_SECRET_KEY in .env}
+    networks: [backend]
+    entrypoint: >
+      /bin/sh -c "
+      /usr/bin/mc alias set myminio http://minio:9000 $$S3_ACCESS_KEY $$S3_SECRET_KEY &&
+      /usr/bin/mc mb --ignore-existing myminio/revamp-assets &&
+      /usr/bin/mc mb --ignore-existing myminio/revamp-demos &&
+      /usr/bin/mc anonymous set download myminio/revamp-assets &&
+      /usr/bin/mc anonymous set download myminio/revamp-demos
+      "
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    image: revamp-api:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      <<: *app-environment
+      PORT: "4000"
+    ports:
+      - "127.0.0.1:${STACK_API_PORT:-4000}:4000"
+    networks: [frontend, backend]
+    depends_on:
+      mongo-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    # The HEALTHCHECK comes from apps/api/Dockerfile (GET /api/v1/health, 503 while MongoDB or Redis is down)
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 512m }
+    logging: *logging
+
+  workers:
+    build:
+      context: .
+      dockerfile: apps/workers/Dockerfile
+    image: revamp-workers:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    env_file: .env
+    environment: *app-environment
+    networks: [backend]
+    depends_on:
+      api:
+        condition: service_healthy
+    # The HEALTHCHECK comes from apps/workers/Dockerfile (heartbeat file)
+    deploy:
+      resources:
+        limits: { cpus: "2.0", memory: 2g }
+    logging: *logging
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+      args:
+        # The browser calls the API on its published host port
+        VITE_API_URL: http://localhost:${STACK_API_PORT:-4000}/api/v1
+    image: revamp-dashboard:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${STACK_DASHBOARD_PORT:-8080}:8080"
+    networks: [frontend]
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 128m }
+    logging: *logging
+
+# `frontend` joins the dashboard and the API; `backend` joins the API, workers and the data services.
+# Neither publishes anything: only the ports above reach the host.
+networks:
+  frontend:
+  backend:
+
+volumes:
+  mongo_data:
+  mongo_config:
+  redis_data:
+  minio_data:
