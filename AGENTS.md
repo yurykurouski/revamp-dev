@@ -109,7 +109,7 @@ Revamp-dev/
    * Codes come from `API_ERROR_CODES` in `@revamp/shared-types`; add a new code there (and to blueprint.md §5) instead of inventing a string. The dashboard reads only `error.code` / `error.message`, through `ApiError` in `apps/dashboard/src/api/client.ts`.
 
 10. **Tenant Isolation (REV-209):**
-   * Leads, MVPs, campaigns and events belong to a studio (`tenantId`). The API reaches them only through `req.tenant` / `scopeFor()` (`apps/api/src/data/tenant-scope.ts`); `tenant-guard.spec.ts` fails on a direct query of those models elsewhere in the API. Another studio's record answers the same 404 as a missing one; public links take the studio from their secret. Details and the checklist for a new route: [apps/api/AGENTS.md](apps/api/AGENTS.md). Records made before the studios need `npm run migrate:tenants --workspace=@revamp/api -- --apply` once.
+   * Leads, MVPs, campaigns and events belong to a studio (`tenantId`). The API reaches them only through `req.tenant` / `scopeFor()` (`apps/api/src/data/tenant-scope.ts`); `tenant-guard.spec.ts` fails on a direct query of those models elsewhere in the API. Another studio's record answers the same 404 as a missing one; public links take the studio from their secret. Details and the checklist for a new route: [apps/api/AGENTS.md](apps/api/AGENTS.md). Queue jobs carry `tenantId` and workers refuse a mismatched one ([apps/workers/AGENTS.md](apps/workers/AGENTS.md)). Records made before the studios need `npm run migrate:tenants --workspace=@revamp/api -- --apply` once.
 
 ### 3.3. Area Rules
 
