@@ -13,6 +13,7 @@ import { browserService } from './services/browser.service.js';
 import { recoverStalledAuditedLeads } from './services/stalled-lead-recovery.js';
 import { startLlmCapabilitiesReporter } from './services/llm-capabilities.js';
 import { providerConfigWarnings } from './services/provider-config.js';
+import { startHeartbeat } from './services/heartbeat.js';
 
 async function startWorkers(): Promise<void> {
   try {
@@ -50,9 +51,15 @@ async function startWorkers(): Promise<void> {
     // Auto-advance any leads that completed audit before auto-chaining was active
     await recoverStalledAuditedLeads();
 
+    // REV-217: the container HEALTHCHECK reads this file; it goes stale when MongoDB or Redis is lost
+    const stopHeartbeat = startHeartbeat({
+      isHealthy: () => mongoose.connection.readyState === 1 && redisConnection.status === 'ready',
+    });
+
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
       console.log(`[Workers] Received ${signal}. Closing workers gracefully...`);
+      stopHeartbeat();
       stopLlmCapabilitiesReporter();
       await Promise.all([
         auditWorker.close(),

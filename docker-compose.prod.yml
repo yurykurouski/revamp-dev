@@ -3,6 +3,8 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
+    # REV-217: images carry a version (the commit deploy.sh builds from), never `latest`
+    image: revamp-api:${IMAGE_TAG:-local}
     container_name: revamp-prod-api
     restart: always
     env_file:
@@ -17,7 +19,7 @@ services:
         max-size: "20m"
         max-file: "5"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4000/api/v1/health"]
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -27,6 +29,7 @@ services:
     build:
       context: .
       dockerfile: apps/workers/Dockerfile
+    image: revamp-workers:${IMAGE_TAG:-local}
     container_name: revamp-prod-workers
     restart: always
     env_file:
@@ -52,10 +55,11 @@ services:
       dockerfile: apps/dashboard/Dockerfile
       args:
         VITE_API_URL: /api/v1
+    image: revamp-dashboard:${IMAGE_TAG:-local}
     container_name: revamp-prod-dashboard
     restart: always
     expose:
-      - "80"
+      - "8080"
     networks:
       - revamp-prod-net
     logging:
@@ -88,7 +92,7 @@ services:
         max-file: "5"
 
   certbot:
-    image: certbot/certbot:latest
+    image: certbot/certbot:v5.10.0
     container_name: revamp-prod-certbot
     restart: "no"
     volumes:
