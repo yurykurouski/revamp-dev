@@ -7,11 +7,11 @@ import {
   normalizePhone,
   summarizeCompletenessReport,
 } from '@revamp/validation';
-import { Lead, ILeadDocument, addLeadToBusiness } from '../models/Lead.model.js';
+import { ILeadDocument, addLeadToBusiness } from '../models/Lead.model.js';
+import { scopeFor, type TenantScope } from '../data/tenant-scope.js';
 import type { DeriveFromAudit } from '@revamp/db';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { findAuditForLead } from '../models/Audit.model.js';
-import { MvpProject } from '../models/MvpProject.model.js';
 import { AUDIT_ENQUEUE_TIMEOUT_MS, enqueueAuditOrFail } from './audit-enqueue.js';
 import { withTimeout } from './with-timeout.js';
 import { AppError } from '../middlewares/errorHandler.js';
@@ -34,8 +34,8 @@ export class LeadService {
   /**
    * Counts every lead by status, regardless of list filters, for the dashboard KPI cards (REV-43)
    */
-  static async getLeadStats(): Promise<ILeadStats> {
-    const rows: Array<{ _id: string | null; count: number }> = await Lead.aggregate([
+  static async getLeadStats(scope: TenantScope): Promise<ILeadStats> {
+    const rows: Array<{ _id: string | null; count: number }> = await scope.leads.aggregate<{ _id: string | null; count: number }>([
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]).exec();
 
@@ -116,7 +116,7 @@ export class LeadService {
     }
 
     // 2b. Queue the audit; if that fails the lead becomes AUDIT_FAILED and a 503 is thrown (REV-202)
-    const { jobId } = await enqueueAuditOrFail({
+    const { jobId } = await enqueueAuditOrFail(scopeFor(options.tenantId), {
       leadId: lead._id.toString(),
       auditId: created.audit!._id.toString(),
       url: lead.originalUrl,
@@ -133,7 +133,7 @@ export class LeadService {
   /**
    * Retrieves a paginated list of leads with optional filtering
    */
-  static async getLeads(query: GetLeadsQuery) {
+  static async getLeads(scope: TenantScope, query: GetLeadsQuery) {
     const page = Math.max(1, Number(query.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const skip = (page - 1) * limit;
@@ -166,8 +166,8 @@ export class LeadService {
     }
 
     const [leads, total] = await Promise.all([
-      Lead.find(filter).sort(LEAD_LIST_SORT).skip(skip).limit(limit).exec(),
-      Lead.countDocuments(filter).exec(),
+      scope.leads.find(filter).sort(LEAD_LIST_SORT).skip(skip).limit(limit).exec(),
+      scope.leads.countDocuments(filter).exec(),
     ]);
 
     let mvpMap = new Map<
@@ -176,7 +176,7 @@ export class LeadService {
     >();
     const leadIds = leads.map((l: any) => l._id || l.id).filter(Boolean);
     if (leadIds.length > 0) {
-      const mvps = await MvpProject.find({ leadId: { $in: leadIds } }).lean().exec();
+      const mvps = await scope.mvps.find({ leadId: { $in: leadIds } }).lean().exec();
       mvpMap = new Map(mvps.map((m: any) => [m.leadId?.toString(), m]));
     }
 
@@ -214,8 +214,8 @@ export class LeadService {
   /**
    * Retrieves a single lead with its latest audit details
    */
-  static async getLeadById(id: string) {
-    const lead = await Lead.findById(id).exec();
+  static async getLeadById(scope: TenantScope, id: string) {
+    const lead = await scope.leads.findById(id).exec();
     if (!lead) {
       throw new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found');
     }

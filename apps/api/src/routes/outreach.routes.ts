@@ -12,8 +12,7 @@ import {
 import { EMAIL_PROVIDER_NOT_CONFIGURED, LeadStatus, draftToHtml } from '@revamp/shared-types';
 import { validateBody } from '../middlewares/validate.js';
 import { AppError } from '../middlewares/errorHandler.js';
-import { Lead } from '../models/Lead.model.js';
-import { EmailCampaign, approveOutreachWithCampaign } from '../models/EmailCampaign.model.js';
+import { approveOutreachWithCampaign } from '../models/EmailCampaign.model.js';
 import { calculateDispatchDelay } from '../queues/email.queue.js';
 import { enqueueEmailOrRevert } from '../services/email-enqueue.js';
 import { sendTestEmailJob } from '../queues/email-test.queue.js';
@@ -43,9 +42,9 @@ const invalidId = (): AppError =>
 const providerMissing = (): AppError => new AppError(503, 'EMAIL_PROVIDER_NOT_CONFIGURED', EMAIL_PROVIDER_NOT_CONFIGURED);
 
 // GET /outreach/pending - Pending approval drafts
-router.get('/pending', async (_req: Request, res: Response, next: NextFunction) => {
+router.get('/pending', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const pendingLeads = await Lead.find({
+    const pendingLeads = await req.tenant!.leads.find({
       status: { $in: OUTREACH_APPROVABLE_STATUSES },
     })
       .sort({ updatedAt: -1 })
@@ -73,7 +72,7 @@ router.post(
         throw invalidId();
       }
 
-      const existing = await Lead.findById(id).exec();
+      const existing = await req.tenant!.leads.findById(id).exec();
       if (!existing) throw leadNotFound(id);
 
       // Outreach is approved only from the review state (REV-59)
@@ -148,18 +147,18 @@ router.post(
       }
 
       // Reject only before outreach is approved; the status filter makes check and update atomic (REV-59)
-      const lead = await Lead.findOneAndUpdate(
+      const lead = await req.tenant!.leads.findOneAndUpdate(
         { _id: id, status: { $in: OUTREACH_REJECTABLE_STATUSES } },
         { $set: { status: 'REJECTED' } },
         { new: true },
       ).exec();
 
       if (!lead) {
-        const existing = await Lead.findById(id).exec();
+        const existing = await req.tenant!.leads.findById(id).exec();
         throw existing ? notRejectable(existing.status) : leadNotFound(id);
       }
 
-      await EmailCampaign.findOneAndUpdate(
+      await req.tenant!.campaigns.findOneAndUpdate(
         { leadId: lead._id },
         {
           status: 'REJECTED',
@@ -195,7 +194,7 @@ router.post(
         throw invalidId();
       }
 
-      const lead = await Lead.findById(id).exec();
+      const lead = await req.tenant!.leads.findById(id).exec();
       if (!lead) throw leadNotFound(id);
 
       // Say so up front instead of reporting a send that cannot happen (REV-45)

@@ -12,6 +12,7 @@ vi.mock('../../services/lead.service.js');
 // The owner-only routes run their handlers in the role table below; none of them may reach a database
 vi.mock('../../services/organization.service.js');
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../models/EmailCampaign.model.js');

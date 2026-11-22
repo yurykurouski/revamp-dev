@@ -4,7 +4,7 @@ import { DiscoveryService } from '../services/discovery.service.js';
 
 export const startDiscovery = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await DiscoveryService.startDiscovery(req.body);
+    const result = await DiscoveryService.startDiscovery(req.tenant!, req.body);
     res.status(202).json({
       success: true,
       message: 'Discovery job queued successfully',
@@ -17,7 +17,7 @@ export const startDiscovery = async (req: Request, res: Response, next: NextFunc
 
 export const getDiscoveryStatus = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await DiscoveryService.getDiscoveryStatus(req.params['jobId'] as string);
+    const result = await DiscoveryService.getDiscoveryStatus(req.tenant!, req.params['jobId'] as string);
     res.status(200).json({
       success: true,
       data: result,
@@ -42,10 +42,10 @@ export const reverseGeocode = async (req: Request, res: Response, next: NextFunc
 export const importDiscoveryCandidates = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const result = await DiscoveryService.importCandidates(
+      // The job and the imported leads belong to the caller's studio (REV-208, REV-209)
+      req.tenant!,
       req.params['jobId'] as string,
       req.body as ImportDiscoveryDto,
-      // The imported leads belong to the caller's studio (REV-208)
-      req.auth!.organizationId,
     );
     res.status(200).json({
       success: true,

@@ -7,7 +7,9 @@ import * as auditQueueModule from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { AUDIT_ENQUEUE_TIMEOUT_MS } from '../audit-enqueue.js';
 import { AppError } from '../../middlewares/errorHandler.js';
+import { scopeFor } from '../../data/tenant-scope.js';
 
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/MvpProject.model.js');
@@ -17,6 +19,8 @@ vi.mock('../../queues/connection.js', () => ({ redisConnection: { status: 'ready
 
 /** An MvpProject.find query resolving to the given projects */
 const mvpQuery = (result: Promise<unknown[]>) => ({ lean: () => ({ exec: () => result }) }) as any;
+
+const scope = scopeFor('5eed00000000000000000001');
 
 describe('LeadService', () => {
   beforeEach(() => {
@@ -270,7 +274,7 @@ describe('LeadService', () => {
       vi.spyOn(Lead, 'find').mockReturnValue(mockFind as any);
       vi.spyOn(Lead, 'countDocuments').mockReturnValue(mockCount as any);
 
-      const result = await LeadService.getLeads({ page: 2, limit: 10, status: 'QUEUED', niche: 'dental' });
+      const result = await LeadService.getLeads(scope, { page: 2, limit: 10, status: 'QUEUED', niche: 'dental' });
 
       expect(Lead.find).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -303,12 +307,12 @@ describe('LeadService', () => {
       mockLeadPage([{ _id: 'lead-1', businessName: 'Clinic 1' }]);
       vi.mocked(MvpProject.find).mockReturnValue(mvpQuery(Promise.reject(new Error('mvpprojects unavailable'))));
 
-      await expect(LeadService.getLeads({})).rejects.toThrow('mvpprojects unavailable');
+      await expect(LeadService.getLeads(scope, {})).rejects.toThrow('mvpprojects unavailable');
     });
 
     it('should not query MVPs for an empty page', async () => {
       mockLeadPage([]);
-      const result = await LeadService.getLeads({});
+      const result = await LeadService.getLeads(scope, {});
       expect(result.leads).toEqual([]);
       expect(MvpProject.find).not.toHaveBeenCalled();
     });
@@ -327,7 +331,7 @@ describe('LeadService', () => {
       vi.spyOn(Lead, 'find').mockReturnValue(mockFind as any);
       vi.spyOn(Lead, 'countDocuments').mockReturnValue(mockCount as any);
 
-      await LeadService.getLeads({ search: 'dental' });
+      await LeadService.getLeads(scope, { search: 'dental' });
 
       expect(Lead.find).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -350,7 +354,7 @@ describe('LeadService', () => {
       } as any);
       vi.spyOn(Lead, 'countDocuments').mockReturnValue({ exec: vi.fn().mockResolvedValue(0) } as any);
 
-      await expect(LeadService.getLeads({ search: 'Dr. Smile (Main+)' })).resolves.toBeDefined();
+      await expect(LeadService.getLeads(scope, { search: 'Dr. Smile (Main+)' })).resolves.toBeDefined();
 
       const filter = vi.mocked(Lead.find).mock.calls[0]?.[0] as { $or: Array<{ businessName?: RegExp }> };
       const regex = filter.$or.find((clause) => clause.businessName)!.businessName!;
@@ -370,7 +374,7 @@ describe('LeadService', () => {
         ]),
       } as any);
 
-      const stats = await LeadService.getLeadStats();
+      const stats = await LeadService.getLeadStats(scope);
 
       expect(Lead.aggregate).toHaveBeenCalledWith([{ $group: { _id: '$status', count: { $sum: 1 } } }]);
       expect(stats).toEqual({ total: 41, byStatus: { QUEUED: 30, NEEDS_APPROVAL: 8, SENT: 3 } });
@@ -381,13 +385,13 @@ describe('LeadService', () => {
         exec: vi.fn().mockResolvedValue([{ _id: null, count: 2 }, { _id: 'QUEUED', count: 1 }]),
       } as any);
 
-      expect(await LeadService.getLeadStats()).toEqual({ total: 3, byStatus: { QUEUED: 1 } });
+      expect(await LeadService.getLeadStats(scope)).toEqual({ total: 3, byStatus: { QUEUED: 1 } });
     });
 
     it('should return zero for an empty pipeline', async () => {
       vi.spyOn(Lead, 'aggregate').mockReturnValue({ exec: vi.fn().mockResolvedValue([]) } as any);
 
-      expect(await LeadService.getLeadStats()).toEqual({ total: 0, byStatus: {} });
+      expect(await LeadService.getLeadStats(scope)).toEqual({ total: 0, byStatus: {} });
     });
   });
 
@@ -406,26 +410,26 @@ describe('LeadService', () => {
 
     it('sorts one-page brochure sites first, newest first within each group', async () => {
       const mockFind = mockList();
-      await LeadService.getLeads({});
+      await LeadService.getLeads(scope, {});
       expect(mockFind.sort).toHaveBeenCalledWith({ onePageBrochure: -1, createdAt: -1 });
       expect(LEAD_LIST_SORT).toEqual({ onePageBrochure: -1, createdAt: -1 });
     });
 
     it('filters on the complexity class', async () => {
       mockList();
-      await LeadService.getLeads({ complexity: 'ONE_PAGE_BROCHURE' });
+      await LeadService.getLeads(scope, { complexity: 'ONE_PAGE_BROCHURE' });
       expect(Lead.find).toHaveBeenCalledWith({ siteComplexity: 'ONE_PAGE_BROCHURE' });
     });
 
     it('matches leads audited before REV-38 when filtering on UNKNOWN', async () => {
       mockList();
-      await LeadService.getLeads({ complexity: 'UNKNOWN' });
+      await LeadService.getLeads(scope, { complexity: 'UNKNOWN' });
       expect(Lead.find).toHaveBeenCalledWith({ siteComplexity: { $in: [null, 'UNKNOWN'] } });
     });
 
     it('does not filter on complexity when none is given', async () => {
       mockList();
-      await LeadService.getLeads({ niche: 'dental' });
+      await LeadService.getLeads(scope, { niche: 'dental' });
       expect(Lead.find).toHaveBeenCalledWith({ niche: 'dental' });
     });
   });
@@ -475,7 +479,7 @@ describe('LeadService', () => {
         },
       ]);
 
-      const { leads } = await LeadService.getLeads({});
+      const { leads } = await LeadService.getLeads(scope, {});
 
       expect(leads[0].completeness).toEqual({
         status: 'verified',
@@ -497,7 +501,7 @@ describe('LeadService', () => {
       mockLeadQuery([{ _id: 'lead-1', businessName: 'Clinic 1' }]);
       mockMvps([{ leadId: 'lead-1', fullPreviewUrl: 'http://minio/v/1/index.html' }]);
 
-      const { leads } = await LeadService.getLeads({});
+      const { leads } = await LeadService.getLeads(scope, {});
 
       expect(leads[0].completeness).toBeUndefined();
       expect(leads[0].previewUrl).toBe('http://minio/v/1/index.html');
@@ -515,7 +519,7 @@ describe('LeadService', () => {
 
       vi.mocked(findAuditForLead).mockResolvedValue(mockAudit as never);
 
-      const result = await LeadService.getLeadById('lead-1');
+      const result = await LeadService.getLeadById(scope, 'lead-1');
 
       expect(result.lead).toEqual(mockLead);
       expect(result.audit).toEqual(mockAudit);
@@ -528,7 +532,7 @@ describe('LeadService', () => {
         exec: vi.fn().mockResolvedValue(null),
       } as any);
 
-      await expect(LeadService.getLeadById('non-existent')).rejects.toMatchObject({
+      await expect(LeadService.getLeadById(scope, 'non-existent')).rejects.toMatchObject({
         statusCode: 404,
         code: 'LEAD_NOT_FOUND',
         message: 'Lead not found',

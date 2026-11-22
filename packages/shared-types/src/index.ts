@@ -764,6 +764,8 @@ export interface IDiscoveryJobData {
    * them out and looks further for `limit` new ones
    */
   excludeDomains?: string[];
+  /** The studio that started the search (REV-209); its status and import answer only to that studio */
+  tenantId?: string;
 }
 
 /** Most checked domains a search can carry forward (REV-107); the oldest drop out first */

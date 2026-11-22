@@ -6,6 +6,7 @@ import { createApp } from '../../app.js';
 import { trackingService } from '../../services/tracking.service.js';
 import { env } from '../../config/env.js';
 
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../services/tracking.service.js', () => ({
   trackingService: {
     recordEmailOpen: vi.fn().mockResolvedValue({ success: true, leadId: 'lead-1' }),

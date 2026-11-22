@@ -6,10 +6,12 @@ import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
 import { AnalyticsEvent } from '../../models/AnalyticsEvent.model.js';
 
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../models/AnalyticsEvent.model.js');
+
 
 describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
   let service: TrackingService;

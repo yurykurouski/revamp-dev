@@ -1,4 +1,4 @@
-import { Types, type Aggregate, type Document, type Model } from 'mongoose';
+import { Types, type Aggregate, type Query, type Document, type Model } from 'mongoose';
 import { AnalyticsEvent, type IAnalyticsEventDocument } from '../models/AnalyticsEvent.model.js';
 import { EmailCampaign, type IEmailCampaignDocument } from '../models/EmailCampaign.model.js';
 import { Lead, type ILeadDocument } from '../models/Lead.model.js';
@@ -89,15 +89,15 @@ type Filter = Plain;
 
 /** One tenant-owned collection as the API sees it: every operation behind the studio, no way to name the studio */
 export interface Repository<D extends Document> {
-  findById(id: unknown, projection?: Plain | string, options?: Plain): ReturnType<Model<D>['findOne']>;
-  findOne(filter: Filter, projection?: Plain | string, options?: Plain): ReturnType<Model<D>['findOne']>;
-  find(filter?: Filter, projection?: Plain | string, options?: Plain): ReturnType<Model<D>['find']>;
+  findById(id: unknown, projection?: Plain | string, options?: Plain): Query<D | null, D, {}, D, 'findOne'>;
+  findOne(filter: Filter, projection?: Plain | string, options?: Plain): Query<D | null, D, {}, D, 'findOne'>;
+  find(filter?: Filter, projection?: Plain | string, options?: Plain): Query<D[], D, {}, D, 'find'>;
   countDocuments(filter?: Filter): ReturnType<Model<D>['countDocuments']>;
   exists(filter: Filter): ReturnType<Model<D>['exists']>;
   aggregate<R = unknown>(pipeline: Plain[]): Aggregate<R[]>;
   updateOne(filter: Filter, update: Plain, options?: { upsert?: boolean } & Plain): ReturnType<Model<D>['updateOne']>;
   updateMany(filter: Filter, update: Plain, options?: Plain): ReturnType<Model<D>['updateMany']>;
-  findOneAndUpdate(filter: Filter, update: Plain, options?: { upsert?: boolean } & Plain): ReturnType<Model<D>['findOneAndUpdate']>;
+  findOneAndUpdate(filter: Filter, update: Plain, options?: { upsert?: boolean } & Plain): Query<D | null, D, {}, D, 'findOneAndUpdate'>;
   deleteOne(filter: Filter): ReturnType<Model<D>['deleteOne']>;
   create(doc: Plain): Promise<D>;
 }
@@ -105,11 +105,11 @@ export interface Repository<D extends Document> {
 function repository<D extends Document>(model: Model<D>, tenantId: TenantId): Repository<D> {
   return {
     findById: (id: unknown, projection?: Plain | string, options?: Plain) =>
-      model.findOne(scopedFilter(tenantId, { _id: id }) as never, projection as never, options as never),
+      model.findOne(scopedFilter(tenantId, { _id: id }) as never, projection as never, options as never) as never,
     findOne: (filter: Filter, projection?: Plain | string, options?: Plain) =>
       model.findOne(scopedFilter(tenantId, filter) as never, projection as never, options as never) as never,
     find: (filter: Filter = {}, projection?: Plain | string, options?: Plain) =>
-      model.find(scopedFilter(tenantId, filter) as never, projection as never, options as never),
+      model.find(scopedFilter(tenantId, filter) as never, projection as never, options as never) as never,
     countDocuments: (filter: Filter = {}) => model.countDocuments(scopedFilter(tenantId, filter) as never),
     exists: (filter: Filter) => model.exists(scopedFilter(tenantId, filter) as never),
     aggregate: <R = unknown>(pipeline: Plain[]) => model.aggregate<R>(scopedPipeline(tenantId, pipeline) as never),
@@ -118,7 +118,7 @@ function repository<D extends Document>(model: Model<D>, tenantId: TenantId): Re
     updateMany: (filter: Filter, update: Plain, options: Plain = {}) =>
       model.updateMany(scopedFilter(tenantId, filter) as never, scopedUpdate(tenantId, update) as never, options as never),
     findOneAndUpdate: (filter: Filter, update: Plain, options: { upsert?: boolean } & Plain = {}) =>
-      model.findOneAndUpdate(scopedFilter(tenantId, filter) as never, scopedUpdate(tenantId, update, options) as never, options as never),
+      model.findOneAndUpdate(scopedFilter(tenantId, filter) as never, scopedUpdate(tenantId, update, options) as never, options as never) as never,
     deleteOne: (filter: Filter) => model.deleteOne(scopedFilter(tenantId, filter) as never),
     create: (doc: Plain) => model.create(stampTenant(tenantId, doc) as never) as unknown as Promise<D>,
   };
@@ -144,3 +144,14 @@ export function scopeFor(tenantId: TenantId): TenantScope {
     events: repository(AnalyticsEvent, tenant),
   };
 }
+
+/**
+ * The few lookups that start from a secret the caller holds instead of a studio: the tracking token of a campaign and
+ * the preview slug or id of an MVP. They are the only unscoped reads of tenant-owned data in the API; what they find
+ * names the studio (`scopeFor(record.tenantId)`), and everything after is scoped to it.
+ */
+export const bySecret = {
+  campaignByToken: (token: string) => EmailCampaign.findOne({ trackingToken: token }),
+  mvpBySlug: (slug: string) => MvpProject.findOne({ previewSlug: slug }),
+  mvpById: (id: string) => MvpProject.findById(id),
+};

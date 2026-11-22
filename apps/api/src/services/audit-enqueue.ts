@@ -1,5 +1,5 @@
 import type { IAuditJobData } from '@revamp/shared-types';
-import { Lead } from '../models/Lead.model.js';
+import type { TenantScope } from '../data/tenant-scope.js';
 import { Audit } from '../models/Audit.model.js';
 import { addAuditJob } from '../queues/audit.queue.js';
 import { redisConnection } from '../queues/connection.js';
@@ -22,6 +22,7 @@ export const AUDIT_QUEUE_ERROR = 'The audit queue was unavailable when the audit
  * a worker already took the lead, its audit is left running.
  */
 export async function enqueueAuditOrFail(
+  scope: TenantScope,
   params: IAuditJobData & { auditId: string },
   timeoutMs: number = AUDIT_ENQUEUE_TIMEOUT_MS,
 ): Promise<{ jobId?: string }> {
@@ -35,7 +36,7 @@ export async function enqueueAuditOrFail(
   } catch (queueError) {
     console.error(`[AuditQueue] Could not queue the audit of lead ${leadId}:`, queueError);
     try {
-      await Lead.findOneAndUpdate(
+      await scope.leads.findOneAndUpdate(
         { _id: leadId, status: 'QUEUED' },
         { $set: { status: 'AUDIT_FAILED', auditError: AUDIT_QUEUE_ERROR } },
       ).exec();

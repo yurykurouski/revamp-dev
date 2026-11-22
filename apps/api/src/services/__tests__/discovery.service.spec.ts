@@ -4,7 +4,9 @@ import { addDiscoveryJob, getDiscoveryJob } from '../../queues/discovery.queue.j
 import { AppError } from '../../middlewares/errorHandler.js';
 import { Lead } from '../../models/Lead.model.js';
 import { LeadService } from '../lead.service.js';
+import { scopeFor } from '../../data/tenant-scope.js';
 
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../queues/discovery.queue.js', () => ({
   addDiscoveryJob: vi.fn(),
   getDiscoveryJob: vi.fn(),
@@ -33,7 +35,7 @@ const candidate = (id: string, extra: Record<string, unknown> = {}) => ({
 
 const completedJob = (candidates: unknown[], state = 'completed') => ({
   id: 'disc-9',
-  data: { provider: 'osm', niche: 'dental', location: 'Vilnius, Lithuania', limit: 10 },
+  data: { provider: 'osm', niche: 'dental', location: 'Vilnius, Lithuania', limit: 10, tenantId: TENANT },
   returnvalue: { found: candidates.length, candidates },
   attemptsMade: 1,
   timestamp: Date.UTC(2026, 8, 26),
@@ -43,33 +45,36 @@ const completedJob = (candidates: unknown[], state = 'completed') => ({
 
 const params = { provider: 'google' as const, niche: 'legal' as const, location: 'Warsaw', keyword: 'notary', limit: 15 };
 
+const TENANT = '5eed00000000000000000001';
+const scope = scopeFor(TENANT);
+
 describe('DiscoveryService (API)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   it('startDiscovery should enqueue a job with only the known fields', async () => {
-    vi.mocked(addDiscoveryJob).mockResolvedValue({ id: 'disc-9', data: params } as any);
+    vi.mocked(addDiscoveryJob).mockResolvedValue({ id: 'disc-9', data: { ...params, tenantId: TENANT } } as any);
 
-    const result = await DiscoveryService.startDiscovery({ ...params, extra: 'ignored' } as any);
+    const result = await DiscoveryService.startDiscovery(scope, { ...params, extra: 'ignored' } as any);
 
-    expect(addDiscoveryJob).toHaveBeenCalledWith(params);
+    expect(addDiscoveryJob).toHaveBeenCalledWith({ ...params, tenantId: TENANT });
     expect(result).toEqual({ jobId: 'disc-9', params });
   });
 
   it('startDiscovery should pass the domains to skip, and leave out an empty list (REV-107)', async () => {
-    vi.mocked(addDiscoveryJob).mockResolvedValue({ id: 'disc-10', data: params } as any);
+    vi.mocked(addDiscoveryJob).mockResolvedValue({ id: 'disc-10', data: { ...params, tenantId: TENANT } } as any);
 
-    await DiscoveryService.startDiscovery({ ...params, excludeDomains: ['a.lt'] } as any);
-    expect(addDiscoveryJob).toHaveBeenLastCalledWith({ ...params, excludeDomains: ['a.lt'] });
+    await DiscoveryService.startDiscovery(scope, { ...params, excludeDomains: ['a.lt'] } as any);
+    expect(addDiscoveryJob).toHaveBeenLastCalledWith({ ...params, tenantId: TENANT, excludeDomains: ['a.lt'] });
 
-    await DiscoveryService.startDiscovery({ ...params, excludeDomains: [] } as any);
-    expect(addDiscoveryJob).toHaveBeenLastCalledWith(params);
+    await DiscoveryService.startDiscovery(scope, { ...params, excludeDomains: [] } as any);
+    expect(addDiscoveryJob).toHaveBeenLastCalledWith({ ...params, tenantId: TENANT });
   });
 
   it('getDiscoveryStatus should throw 404 when the job does not exist', async () => {
     vi.mocked(getDiscoveryJob).mockResolvedValue(undefined);
-    const error = await DiscoveryService.getDiscoveryStatus('nope').catch((e) => e);
+    const error = await DiscoveryService.getDiscoveryStatus(scope, 'nope').catch((e) => e);
     expect(error).toBeInstanceOf(AppError);
     expect(error.statusCode).toBe(404);
     expect(error.code).toBe('DISCOVERY_JOB_NOT_FOUND');
@@ -80,7 +85,7 @@ describe('DiscoveryService (API)', () => {
     const summary = { found: 1, candidates: [candidate('1')] };
     vi.mocked(getDiscoveryJob).mockResolvedValue({
       id: 'disc-9',
-      data: params,
+      data: { ...params, tenantId: TENANT },
       returnvalue: summary,
       failedReason: undefined,
       attemptsMade: 1,
@@ -89,7 +94,7 @@ describe('DiscoveryService (API)', () => {
       getState: vi.fn().mockResolvedValue('completed'),
     } as any);
 
-    expect(await DiscoveryService.getDiscoveryStatus('disc-9')).toEqual({
+    expect(await DiscoveryService.getDiscoveryStatus(scope, 'disc-9')).toEqual({
       jobId: 'disc-9',
       state: 'completed',
       params,
@@ -104,7 +109,7 @@ describe('DiscoveryService (API)', () => {
   it('getDiscoveryStatus should report pending and failed jobs', async () => {
     const job = {
       id: 'disc-10',
-      data: params,
+      data: { ...params, tenantId: TENANT },
       returnvalue: null,
       failedReason: 'GOOGLE_PLACES_API_KEY is not configured',
       attemptsMade: 1,
@@ -114,11 +119,11 @@ describe('DiscoveryService (API)', () => {
     };
     vi.mocked(getDiscoveryJob).mockResolvedValue(job as any);
 
-    const waiting = await DiscoveryService.getDiscoveryStatus('disc-10');
+    const waiting = await DiscoveryService.getDiscoveryStatus(scope, 'disc-10');
     expect(waiting).toMatchObject({ state: 'waiting', result: null, error: null, finishedAt: null });
 
     job.getState.mockResolvedValue('failed');
-    const failed = await DiscoveryService.getDiscoveryStatus('disc-10');
+    const failed = await DiscoveryService.getDiscoveryStatus(scope, 'disc-10');
     expect(failed).toMatchObject({ state: 'failed', error: 'GOOGLE_PLACES_API_KEY is not configured' });
   });
 
@@ -202,7 +207,7 @@ describe('DiscoveryService (API)', () => {
         completedJob([candidate('1'), candidate('2'), candidate('3', { status: 'no_website', website: undefined, domain: undefined })]) as any,
       );
 
-      const { result } = await DiscoveryService.getDiscoveryStatus('disc-9');
+      const { result } = await DiscoveryService.getDiscoveryStatus(scope, 'disc-9');
 
       expect(Lead.find).toHaveBeenCalledWith(
         {
@@ -230,7 +235,7 @@ describe('DiscoveryService (API)', () => {
       job.returnvalue = { ...job.returnvalue, counts, requests: 1, exhausted: true } as any;
       vi.mocked(getDiscoveryJob).mockResolvedValue(job as any);
 
-      const { result } = await DiscoveryService.getDiscoveryStatus('disc-9');
+      const { result } = await DiscoveryService.getDiscoveryStatus(scope, 'disc-9');
 
       expect(result?.candidates.map((c) => [c.externalId, c.status, c.leadId])).toEqual([
         ['node/1', 'existing_lead', 'by-id'],
@@ -264,7 +269,7 @@ describe('DiscoveryService (API)', () => {
         ]) as any,
       );
 
-      const { result } = await DiscoveryService.getDiscoveryStatus('disc-9');
+      const { result } = await DiscoveryService.getDiscoveryStatus(scope, 'disc-9');
 
       expect(result?.candidates.map((c) => [c.externalId, c.status, c.assessment])).toEqual([
         ['node/1', 'new', good],
@@ -277,12 +282,12 @@ describe('DiscoveryService (API)', () => {
 
     it('should skip the lead lookup when nothing is new, and pass legacy results through', async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1', { status: 'duplicate' })]) as any);
-      await DiscoveryService.getDiscoveryStatus('disc-9');
+      await DiscoveryService.getDiscoveryStatus(scope, 'disc-9');
       expect(Lead.find).not.toHaveBeenCalled();
 
       const legacy = { found: 1, created: 1, leadIds: ['x'] };
-      expect(await DiscoveryService.withCurrentLeads(legacy as any)).toBe(legacy);
-      expect(await DiscoveryService.withCurrentLeads(null)).toBeNull();
+      expect(await DiscoveryService.withCurrentLeads(scope, legacy as any)).toBe(legacy);
+      expect(await DiscoveryService.withCurrentLeads(scope, null)).toBeNull();
     });
   });
 
@@ -298,7 +303,7 @@ describe('DiscoveryService (API)', () => {
 
     it("should give every imported lead the operator's locale (REV-162)", async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2')]) as any);
-      await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2'], operatorLocale: 'ru' });
+      await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2'], operatorLocale: 'ru' });
       for (const call of vi.mocked(LeadService.createLead).mock.calls) expect(call[0]).toMatchObject({ operatorLocale: 'ru' });
       expect(LeadService.createLead).toHaveBeenCalledTimes(2);
     });
@@ -308,8 +313,8 @@ describe('DiscoveryService (API)', () => {
       vi.mocked(LeadService.createLead)
         .mockRejectedValueOnce(new AppError(409, 'LEAD_ALREADY_EXISTS', 'exists', { leadId: 'old-lead' }))
         .mockResolvedValueOnce({ lead: { _id: { toString: () => 'new-lead' } }, auditId: 'a', jobId: 'j' } as any);
-      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2'] }, 'studio-1');
-      for (const call of vi.mocked(LeadService.createLead).mock.calls) expect(call[1]).toMatchObject({ tenantId: 'studio-1' });
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2'] });
+      for (const call of vi.mocked(LeadService.createLead).mock.calls) expect(call[1]).toMatchObject({ tenantId: TENANT });
       expect(result.results).toEqual([
         { externalId: 'node/1', outcome: 'existing_lead', leadId: 'old-lead' },
         { externalId: 'node/2', outcome: 'imported', leadId: 'new-lead' },
@@ -324,7 +329,7 @@ describe('DiscoveryService (API)', () => {
         ]) as any,
       );
 
-      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2'] });
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2'] });
 
       expect(LeadService.createLead).toHaveBeenNthCalledWith(
         1,
@@ -336,13 +341,13 @@ describe('DiscoveryService (API)', () => {
           city: 'Vilnius',
           contactPhone: '+370 600',
         },
-        { tags: ['discovered', 'source:osm'], source: 'osm', externalId: 'osm:node/1' },
+        { tags: ['discovered', 'source:osm'], source: 'osm', externalId: 'osm:node/1', tenantId: TENANT },
       );
       // No listed email: guessed address, tagged for replacement after the audit; job location as city
       expect(LeadService.createLead).toHaveBeenNthCalledWith(
         2,
         expect.objectContaining({ contactEmail: 'info@clinic-2.lt', city: 'Vilnius, Lithuania' }),
-        { tags: ['discovered', 'source:osm', 'email-guessed'], source: 'osm', externalId: 'osm:node/2' },
+        { tags: ['discovered', 'source:osm', 'email-guessed'], source: 'osm', externalId: 'osm:node/2', tenantId: TENANT },
       );
       expect(result).toEqual({
         imported: 2,
@@ -363,7 +368,7 @@ describe('DiscoveryService (API)', () => {
         ]) as any,
       );
 
-      const result = await DiscoveryService.importCandidates('disc-9', {
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', {
         externalIds: ['node/404', 'node/2', 'node/3', 'node/4'],
       });
 
@@ -388,7 +393,7 @@ describe('DiscoveryService (API)', () => {
         completedJob([candidate('5'), candidate('6', { phone: '00370 600 00006' }), candidate('7')]) as any,
       );
 
-      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/5', 'node/6', 'node/7'] });
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/5', 'node/6', 'node/7'] });
 
       expect(LeadService.createLead).toHaveBeenCalledTimes(1);
       expect(result.results).toEqual([
@@ -403,7 +408,7 @@ describe('DiscoveryService (API)', () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2')]) as any);
       vi.mocked(LeadService.createLead).mockRejectedValueOnce(new Error('validation failed'));
 
-      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2'] });
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2'] });
 
       expect(result.imported).toBe(1);
       expect(result.results.map((r) => r.outcome)).toEqual(['failed', 'imported']);
@@ -416,7 +421,7 @@ describe('DiscoveryService (API)', () => {
         .mockResolvedValueOnce({ lead: { _id: { toString: () => 'L1' } }, auditId: 'a', jobId: 'j' } as any)
         .mockRejectedValueOnce(new AppError(503, 'AUDIT_QUEUE_UNAVAILABLE', 'queue down', { leadId: 'L2' }));
 
-      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2', 'node/3'] });
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2', 'node/3'] });
 
       expect(result.imported).toBe(1);
       expect(result.results).toEqual([
@@ -429,13 +434,13 @@ describe('DiscoveryService (API)', () => {
 
     it('should throw 404 for an unknown job and 409 for an unfinished one', async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(undefined);
-      const missing = await DiscoveryService.importCandidates('x', { externalIds: ['node/1'] }).catch((e) => e);
+      const missing = await DiscoveryService.importCandidates(scope, 'x', { externalIds: ['node/1'] }).catch((e) => e);
       expect(missing).toBeInstanceOf(AppError);
       expect(missing.statusCode).toBe(404);
       expect(missing.code).toBe('DISCOVERY_JOB_NOT_FOUND');
 
       vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1')], 'active') as any);
-      const running = await DiscoveryService.importCandidates('x', { externalIds: ['node/1'] }).catch((e) => e);
+      const running = await DiscoveryService.importCandidates(scope, 'x', { externalIds: ['node/1'] }).catch((e) => e);
       expect(running.statusCode).toBe(409);
       expect(running.code).toBe('DISCOVERY_JOB_NOT_COMPLETED');
       expect(LeadService.createLead).not.toHaveBeenCalled();
@@ -446,7 +451,7 @@ describe('DiscoveryService (API)', () => {
         ...completedJob([]),
         returnvalue: { found: 1, created: 1, leadIds: ['x'] },
       } as any);
-      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1'] });
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1'] });
       expect(result).toEqual({ imported: 0, results: [{ externalId: 'node/1', outcome: 'not_found' }] });
     });
   });

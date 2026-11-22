@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 import { Audit, IAuditDocument, auditBelongsToLead, findAuditForLead } from '../models/Audit.model.js';
-import { Lead, ILeadDocument } from '../models/Lead.model.js';
+import type { ILeadDocument } from '../models/Lead.model.js';
+import type { TenantScope } from '../data/tenant-scope.js';
 
 /**
  * The audit to generate an MVP from (REV-55) and the lead it is for. The dashboard sends an audit id or, when it
@@ -13,6 +14,7 @@ import { Lead, ILeadDocument } from '../models/Lead.model.js';
  * several leads read the audit.
  */
 export async function findGenerationAudit(
+  scope: TenantScope,
   auditOrLeadId: string,
   leadId?: string,
 ): Promise<{ audit: IAuditDocument; lead: ILeadDocument } | null> {
@@ -22,7 +24,7 @@ export async function findGenerationAudit(
   // of its business, else the lead's own or its business's completed audit (REV-208)
   if (leadId) {
     if (!mongoose.isValidObjectId(leadId)) return null;
-    const named = await Lead.findById(leadId).exec();
+    const named = await scope.leads.findById(leadId).exec();
     if (!named) return null;
     if (auditOrLeadId !== leadId) {
       const given = await Audit.findById(auditOrLeadId).exec();
@@ -32,7 +34,7 @@ export async function findGenerationAudit(
     return audit ? { audit, lead: named } : null;
   }
 
-  const asLead = await Lead.findById(auditOrLeadId).exec();
+  const asLead = await scope.leads.findById(auditOrLeadId).exec();
   if (asLead) {
     const audit = await findAuditForLead(asLead, { completedOnly: true });
     return audit ? { audit, lead: asLead } : null;
@@ -40,11 +42,15 @@ export async function findGenerationAudit(
 
   const exact = await Audit.findById(auditOrLeadId).exec();
   if (!exact) return null;
-  // An audit that more than one lead reads says nothing about whose lead is meant: another studio's lead could be
-  // generated over. A request must name its lead then (the dashboard always does)
-  if (exact.businessId && (await Lead.countDocuments({ businessId: exact.businessId }).exec()) > 1) return null;
-  const lead = await Lead.findById(exact.leadId).exec();
-  if (!lead) return null;
+  // An audit that more than one lead of the studio reads says nothing about whose lead is meant: the request must name
+  // its lead then (the dashboard always does). Audits are shared, so the lead is looked up in the studio only: an
+  // audit no lead of the studio reads answers like a missing one (REV-209)
+  const readers = await scope.leads
+    .find({ $or: [{ _id: exact.leadId }, ...(exact.businessId ? [{ businessId: exact.businessId }] : [])] })
+    .limit(2)
+    .exec();
+  if (readers.length !== 1) return null;
+  const lead = readers[0]!;
   if (exact.status === 'COMPLETED') return { audit: exact, lead };
   const audit = await findAuditForLead(lead, { completedOnly: true });
   return audit ? { audit, lead } : null;

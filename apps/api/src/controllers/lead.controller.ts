@@ -24,7 +24,7 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
 
 export const getLeads = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await LeadService.getLeads(req.query as GetLeadsQuery);
+    const result = await LeadService.getLeads(req.tenant!, req.query as GetLeadsQuery);
     res.status(200).json({
       success: true,
       data: result.leads,
@@ -35,9 +35,9 @@ export const getLeads = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
-export const getLeadStats = async (_req: Request, res: Response, next: NextFunction) => {
+export const getLeadStats = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const stats = await LeadService.getLeadStats();
+    const stats = await LeadService.getLeadStats(req.tenant!);
     res.status(200).json({ success: true, data: stats });
   } catch (error) {
     next(error);
@@ -46,7 +46,7 @@ export const getLeadStats = async (_req: Request, res: Response, next: NextFunct
 
 export const getLeadById = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await LeadService.getLeadById(req.params['id'] as string);
+    const result = await LeadService.getLeadById(req.tenant!, req.params['id'] as string);
     res.status(200).json({
       success: true,
       data: result,

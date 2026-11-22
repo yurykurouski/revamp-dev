@@ -13,6 +13,7 @@ import {
   EMAIL_GUESSED_TAG,
   DiscoveryJobState,
   IDiscoveryCandidate,
+  IDiscoveryJobData,
   IDiscoveryImportResult,
   IDiscoveryJobResult,
   IDiscoveryJobStatus,
@@ -21,20 +22,21 @@ import {
 import { env } from '../config/env.js';
 import { addDiscoveryJob, getDiscoveryJob } from '../queues/discovery.queue.js';
 import { AppError } from '../middlewares/errorHandler.js';
-import { Lead } from '../models/Lead.model.js';
+import type { TenantScope } from '../data/tenant-scope.js';
 import { LeadService } from './lead.service.js';
 
 
 /**
  * Finds which candidates are already leads, matching on the provider id, domain and phone.
- * Returns the matching lead id per candidate externalId.
+ * Returns the matching lead id per candidate externalId. Only the studio's own leads count (REV-209): a site another
+ * studio has is still new here.
  */
-async function findExistingLeadIds(candidates: IDiscoveryCandidate[]): Promise<Map<string, string>> {
+async function findExistingLeadIds(scope: TenantScope, candidates: IDiscoveryCandidate[]): Promise<Map<string, string>> {
   const keyed = candidates.map((c) => ({ externalId: c.externalId, keys: leadMatchKeys(c) }));
   const filter = leadMatchFilter(keyed.map((k) => k.keys));
   if (!filter) return new Map();
 
-  const leads = (await Lead.find(filter, LEAD_IDENTITY_PROJECTION).lean().exec()) as LeadIdentity[];
+  const leads = (await scope.leads.find(filter, LEAD_IDENTITY_PROJECTION).lean().exec()) as LeadIdentity[];
   const match = createLeadMatcher(leads);
   const result = new Map<string, string>();
   for (const { externalId, keys } of keyed) {
@@ -43,6 +45,19 @@ async function findExistingLeadIds(candidates: IDiscoveryCandidate[]): Promise<M
   }
   return result;
 }
+
+/** A search belongs to the studio that started it; another studio's job answers like a missing one (REV-209) */
+async function getOwnedJob(scope: TenantScope, jobId: string) {
+  const job = await getDiscoveryJob(jobId);
+  const owner = job?.data.tenantId;
+  if (!job || !owner || !scope.tenantId || owner !== scope.tenantId.toString()) {
+    throw new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found');
+  }
+  return job;
+}
+
+/** The search parameters without the studio, which the caller already knows */
+const publicParams = ({ tenantId: _tenantId, ...params }: IDiscoveryJobData): IDiscoveryJobData => params;
 
 interface NominatimReverseResponse {
   error?: string;
@@ -56,8 +71,9 @@ export class DiscoveryService {
   /**
    * Enqueues a maps-provider search; the operator reviews its results before importing any
    */
-  static async startDiscovery(dto: StartDiscoveryDto) {
+  static async startDiscovery(scope: TenantScope, dto: StartDiscoveryDto) {
     const job = await addDiscoveryJob({
+      ...(scope.tenantId ? { tenantId: scope.tenantId.toString() } : {}),
       provider: dto.provider,
       niche: dto.niche,
       location: dto.location,
@@ -65,24 +81,21 @@ export class DiscoveryService {
       limit: dto.limit,
       ...(dto.excludeDomains?.length ? { excludeDomains: dto.excludeDomains } : {}),
     });
-    return { jobId: job.id as string, params: job.data };
+    return { jobId: job.id as string, params: publicParams(job.data) };
   }
 
   /**
    * Returns the state of a discovery job and, once finished, its import summary
    */
-  static async getDiscoveryStatus(jobId: string): Promise<IDiscoveryJobStatus> {
-    const job = await getDiscoveryJob(jobId);
-    if (!job) {
-      throw new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found');
-    }
+  static async getDiscoveryStatus(scope: TenantScope, jobId: string): Promise<IDiscoveryJobStatus> {
+    const job = await getOwnedJob(scope, jobId);
 
     const state = (await job.getState()) as DiscoveryJobState;
     return {
       jobId: job.id as string,
       state,
-      params: job.data,
-      result: await DiscoveryService.withCurrentLeads(job.returnvalue ?? null),
+      params: publicParams(job.data),
+      result: await DiscoveryService.withCurrentLeads(scope, job.returnvalue ?? null),
       error: state === 'failed' ? job.failedReason ?? 'Unknown error' : null,
       attemptsMade: job.attemptsMade,
       createdAt: new Date(job.timestamp).toISOString(),
@@ -94,11 +107,11 @@ export class DiscoveryService {
    * Re-checks `new` candidates against current leads, so imported ones (or leads added since the
    * search) show as existing_lead
    */
-  static async withCurrentLeads(result: IDiscoveryJobResult | null): Promise<IDiscoveryJobResult | null> {
+  static async withCurrentLeads(scope: TenantScope, result: IDiscoveryJobResult | null): Promise<IDiscoveryJobResult | null> {
     // Jobs from before REV-29 have no candidate list
     if (!result || !Array.isArray(result.candidates)) return result;
 
-    const leadIds = await findExistingLeadIds(result.candidates.filter((c) => c.status === 'new'));
+    const leadIds = await findExistingLeadIds(scope, result.candidates.filter((c) => c.status === 'new'));
     const candidates = result.candidates.map((c): IDiscoveryCandidate => {
       const leadId = c.status === 'new' ? leadIds.get(c.externalId) : undefined;
       return leadId ? { ...c, status: 'existing_lead', leadId } : c;
@@ -111,11 +124,8 @@ export class DiscoveryService {
    * Imports the operator's selection from a finished discovery job as QUEUED leads with audits.
    * Candidate data always comes from the job's stored result, never from the request.
    */
-  static async importCandidates(jobId: string, dto: ImportDiscoveryDto, tenantId?: string): Promise<IDiscoveryImportResult> {
-    const job = await getDiscoveryJob(jobId);
-    if (!job) {
-      throw new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found');
-    }
+  static async importCandidates(scope: TenantScope, jobId: string, dto: ImportDiscoveryDto): Promise<IDiscoveryImportResult> {
+    const job = await getOwnedJob(scope, jobId);
     if ((await job.getState()) !== 'completed') {
       throw new AppError(409, 'DISCOVERY_JOB_NOT_COMPLETED', 'Discovery job has not completed yet');
     }
@@ -124,6 +134,7 @@ export class DiscoveryService {
     const selected = dto.externalIds.map((id) => byId.get(id));
     // Re-check at import time: a lead may have been added since the search
     const leadIds = await findExistingLeadIds(
+      scope,
       selected.filter((c): c is IDiscoveryCandidate => c?.status === 'new'),
     );
 
@@ -168,7 +179,7 @@ export class DiscoveryService {
             tags,
             source: candidate.provider,
             externalId: leadExternalId(candidate.provider, candidate.externalId),
-            ...(tenantId ? { tenantId } : {}),
+            ...(scope.tenantId ? { tenantId: scope.tenantId.toString() } : {}),
           },
         );
         results.push({ externalId, outcome: 'imported', leadId: lead._id.toString() });

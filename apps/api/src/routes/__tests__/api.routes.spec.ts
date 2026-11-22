@@ -22,6 +22,7 @@ import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY, draftToHtml 
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
+vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
@@ -227,7 +228,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).get('/api/v1/leads?complexity=ONE_PAGE_BROCHURE&page=2&status=');
 
       expect(res.status).toBe(200);
-      expect(spy).toHaveBeenCalledWith({ complexity: 'ONE_PAGE_BROCHURE', page: 2 });
+      expect(spy).toHaveBeenCalledWith(expect.anything(), { complexity: 'ONE_PAGE_BROCHURE', page: 2 });
     });
 
     it('should return 400 for an unknown complexity class (REV-38)', async () => {
@@ -274,7 +275,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const res = await request(app).get('/api/v1/leads?search=dental&page=2&limit=100');
 
       expect(res.status).toBe(200);
-      expect(spy).toHaveBeenCalledWith({ search: 'dental', page: 2, limit: 100 });
+      expect(spy).toHaveBeenCalledWith(expect.anything(), { search: 'dental', page: 2, limit: 100 });
     });
 
     it('should reject a page size above 100', async () => {
@@ -470,6 +471,11 @@ describe('API Routes Integration Tests (Supertest)', () => {
         designCritique: { visualHierarchyRating: 80, criticalFlaws: [], quickWins: [] },
       };
 
+      // The id is no lead of the studio; a lead of the studio reads this audit (REV-209)
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      vi.spyOn(Lead, 'find').mockReturnValue({
+        limit: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue([{ _id: 'lead-1' }]) }),
+      } as any);
       vi.spyOn(Audit, 'findById').mockReturnValue({
         exec: vi.fn().mockResolvedValue(mockAudit),
       } as any);
@@ -482,6 +488,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
     it('should return 404 when audit is not found', async () => {
       const auditId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
       vi.spyOn(Audit, 'findById').mockReturnValue({
         exec: vi.fn().mockResolvedValue(null),
       } as any);
@@ -938,6 +945,12 @@ describe('API Routes Integration Tests (Supertest)', () => {
         .mockReset()
         .mockReturnValueOnce({ exec: vi.fn().mockResolvedValue(null) } as any)
         .mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: leadId, businessName: 'Dr. Smile Clinic', status }) } as any);
+      // The studio's leads that read the audit: the audit's own lead (REV-209)
+      vi.spyOn(Lead, 'find').mockReturnValue({
+        limit: vi.fn().mockReturnValue({
+          exec: vi.fn().mockResolvedValue([{ _id: leadId, businessName: 'Dr. Smile Clinic', status }]),
+        }),
+      } as any);
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue({
         exec: vi.fn().mockResolvedValue({ _id: leadId, status: 'GENERATING' }),
       } as any);
@@ -1236,6 +1249,8 @@ describe('API Routes Integration Tests (Supertest)', () => {
         exec: vi.fn().mockResolvedValue({ _id: auditId, leadId, status: 'COMPLETED' }),
       } as any);
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      // No lead of the studio reads the audit (its lead is gone or another studio's) (REV-209)
+      vi.spyOn(Lead, 'find').mockReturnValue({ limit: vi.fn().mockReturnValue({ exec: vi.fn().mockResolvedValue([]) }) } as any);
 
       const res = await request(app).post('/api/v1/mvp/generate').send({ auditId, forceRegenerate: true });
       expect(res.status).toBe(404);

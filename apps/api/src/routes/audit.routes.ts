@@ -3,7 +3,6 @@ import mongoose from 'mongoose';
 import { TriggerAuditSchema, canTransition, leadStatusesInto } from '@revamp/validation';
 import { validateBody } from '../middlewares/validate.js';
 import { Audit, findAuditForLead } from '../models/Audit.model.js';
-import { Lead } from '../models/Lead.model.js';
 import { enqueueAuditOrFail } from '../services/audit-enqueue.js';
 import { AppError } from '../middlewares/errorHandler.js';
 
@@ -16,7 +15,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { leadId } = req.body;
-      const lead = await Lead.findById(leadId).exec();
+      const lead = await req.tenant!.leads.findById(leadId).exec();
       if (!lead) {
         throw new AppError(404, 'LEAD_NOT_FOUND', 'Lead not found');
       }
@@ -31,7 +30,7 @@ router.post(
 
       // REV-44: retrying a failed audit clears the error and puts the lead back in the queue
       if (lead.status !== 'QUEUED' || lead.auditError) {
-        const requeued = await Lead.findOneAndUpdate(
+        const requeued = await req.tenant!.leads.findOneAndUpdate(
           { _id: lead._id, status: { $in: leadStatusesInto('QUEUED', { includeSelf: true }) } },
           { $set: { status: 'QUEUED' }, $unset: { auditError: '' } },
         ).exec();
@@ -47,7 +46,7 @@ router.post(
       });
 
       // REV-202: a queue that fails or does not answer puts the lead back in AUDIT_FAILED with a 503
-      const { jobId } = await enqueueAuditOrFail({
+      const { jobId } = await enqueueAuditOrFail(req.tenant!, {
         leadId: lead._id.toString(),
         auditId: audit._id.toString(),
         url: lead.originalUrl,
@@ -77,11 +76,20 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
     let audit = null;
 
     if (id && mongoose.Types.ObjectId.isValid(id)) {
-      audit = await Audit.findById(id).exec();
-      if (!audit) {
-        // A lead id: its own newest audit, else the completed audit of its business (REV-208)
-        const lead = await Lead.findById(id).exec();
-        audit = lead ? await findAuditForLead(lead) : null;
+      // Audits are shared between studios, so one is reached only through a lead of the caller's studio (REV-209):
+      // the id is a lead's, or an audit that a lead of the studio reads (its own, or one of its business)
+      const lead = await req.tenant!.leads.findById(id).exec();
+      if (lead) {
+        audit = await findAuditForLead(lead);
+      } else {
+        const found = await Audit.findById(id).exec();
+        if (found) {
+          const readers = await req.tenant!.leads
+            .find({ $or: [{ _id: found.leadId }, ...(found.businessId ? [{ businessId: found.businessId }] : [])] })
+            .limit(1)
+            .exec();
+          audit = readers.length > 0 ? found : null;
+        }
       }
     }
 

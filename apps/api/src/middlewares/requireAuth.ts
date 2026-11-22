@@ -2,6 +2,7 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { canManageMembers, canWrite } from '@revamp/shared-types';
 import { AppError } from './errorHandler.js';
 import { findMembershipRole } from '../services/membership.service.js';
+import { scopeFor, type TenantScope } from '../data/tenant-scope.js';
 import { verifySessionToken, type SessionClaims } from '../services/token.js';
 
 declare global {
@@ -9,6 +10,8 @@ declare global {
     interface Request {
       /** Who sent the request, for which organization and with which role; set by `requireAuth` (REV-206) */
       auth?: SessionClaims;
+      /** The caller's studio data: every read and write behind its `tenantId`; set by `requireAuth` (REV-209) */
+      tenant?: TenantScope;
     }
   }
 }
@@ -34,6 +37,7 @@ export const requireAuth: RequestHandler = (req: Request, _res: Response, next: 
         return;
       }
       req.auth = { ...claims, role };
+      req.tenant = scopeFor(claims.organizationId);
       next();
     },
     (error: unknown) => next(error),
