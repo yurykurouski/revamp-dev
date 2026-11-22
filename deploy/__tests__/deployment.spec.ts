@@ -176,6 +176,15 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
   });
 
   describe('Deployment Automation Script (deploy/deploy.sh)', () => {
+
+    it('refuses to deploy without a JWT_SECRET of 32+ characters, before it builds or replaces containers (REV-206)', () => {
+      const script = fs.readFileSync(path.join(rootDir, 'deploy/deploy.sh'), 'utf-8');
+      const check = script.indexOf('JWT_SECRET');
+      expect(check, 'deploy.sh checks JWT_SECRET').toBeGreaterThan(-1);
+      expect(check).toBeLessThan(script.indexOf('docker compose -f docker-compose.prod.yml build'));
+      expect(check).toBeLessThan(script.indexOf('up -d'));
+      expect(script).toMatch(/JWT_SECRET[\s\S]{0,400}exit 1/);
+    });
     it('should have bash strict mode and executable preflight and healthcheck loop', () => {
       const filePath = path.join(rootDir, 'deploy/deploy.sh');
       expect(fs.existsSync(filePath)).toBe(true);

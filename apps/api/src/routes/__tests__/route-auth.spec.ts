@@ -93,6 +93,23 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
     expect(missing).toEqual([]);
   });
 
+  it('lets every public route through without a token: none answers 401', async () => {
+    // A public handler may answer anything (the models and queues are mocked) or still be running when the wait ends;
+    // only the guard's 401 UNAUTHENTICATED is a failure
+    const failures: string[] = [];
+    for (const route of PUBLIC_ROUTES) {
+      const [method, path] = route.split(' ') as [string, string];
+      const url = `${env.API_PREFIX}${path.replace(/:\w+/g, 'x1')}`;
+      const res = await (request(server) as any)
+        [method.toLowerCase()](url)
+        .send({})
+        .timeout({ response: 1500, deadline: 1500 })
+        .catch((error: { status?: number }) => ({ status: error.status ?? 0, body: {} }));
+      if (res.status === 401 && res.body?.error?.code === 'UNAUTHENTICATED') failures.push(route);
+    }
+    expect(failures).toEqual([]);
+  });
+
   it('answers 401 UNAUTHENTICATED to every other route without a token', async () => {
     const guarded = routes.filter((route) => !PUBLIC_ROUTES.includes(route));
     expect(guarded.length).toBeGreaterThan(15);
