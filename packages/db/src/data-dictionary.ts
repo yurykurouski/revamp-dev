@@ -4,6 +4,9 @@ import { Audit } from './models/Audit.model.js';
 import { EmailCampaign } from './models/EmailCampaign.model.js';
 import { Lead } from './models/Lead.model.js';
 import { MvpProject } from './models/MvpProject.model.js';
+import { Membership } from './models/Membership.model.js';
+import { Organization } from './models/Organization.model.js';
+import { User } from './models/User.model.js';
 
 // REV-200: keeps the data dictionary (revamp-docs `database-expertise.md`) in step with the models. Dev tooling for
 // `npm run docs:check-dictionary`; not exported from the package, so no app loads it.
@@ -23,10 +26,10 @@ function schemaPaths(schema: Schema, prefix = ''): string[] {
   return paths;
 }
 
-/** Every field path of the five models, per MongoDB collection, without ids, the version key and timestamps */
+/** Every field path of the eight models, per MongoDB collection, without ids, the version key and timestamps */
 export function modelFieldPaths(): Record<string, string[]> {
   return Object.fromEntries(
-    [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent].map((model) => [model.collection.collectionName, schemaPaths(model.schema)]),
+    [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership].map((model) => [model.collection.collectionName, schemaPaths(model.schema)]),
   );
 }
 
