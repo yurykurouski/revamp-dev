@@ -36,6 +36,8 @@ export interface AddLeadResult {
   business: IBusinessDocument;
   /** The lead's own QUEUED audit; absent when it reuses a completed one */
   audit?: IAuditDocument;
+  /** The completed audit the lead took, when it did (`reused`) */
+  sourceAudit?: IAuditDocument;
   /** The lead took a completed audit of the business and starts as AUDITED: no audit job is needed */
   reused: boolean;
 }
@@ -89,7 +91,7 @@ export async function addLeadToBusiness(input: AddLeadInput): Promise<AddLeadRes
         });
         const tags = (input.lead['tags'] as string[] | undefined)?.filter((tag) => !(clearsEmailGuess && tag === EMAIL_GUESSED_TAG));
         const [lead] = await Lead.create([{ ...base, ...set, ...(tags ? { tags } : {}), status: 'AUDITED' }], { session });
-        result = { lead: lead!, business, reused: true };
+        result = { lead: lead!, business, sourceAudit: completed, reused: true };
         return;
       }
 
