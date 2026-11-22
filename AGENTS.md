@@ -69,6 +69,7 @@ Revamp-dev/
   * start infrastructure only through setup, dev or `npm run docker:up`, never plain `docker compose up`;
   * the app runs as `revamp_app`, never as root or an Atlas admin, and a MongoDB URI is logged only through `redactMongoUri` (`@revamp/db`);
   * the shared `revamp-mongo` container serves other sessions: verify Mongo changes on a separate compose project, not on it;
+  * the workers' startup recovery never queues a lead tagged `demo-seed` (`stalledAuditedLeadFilter`, REV-204), so a seeded database starts no paid model calls; a new automatic job over existing leads must skip the tag the same way;
   * a new worktree copies `MONGODB_URI`, the `MONGO_*_PASSWORD` lines and `JWT_SECRET` from the main checkout's `.env` (fresh passwords would not match the existing users; a fresh secret would reject the main checkout's sign-in tokens).
 
 ### 3.2. Fundamental Engineering Constraints

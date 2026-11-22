@@ -20,5 +20,6 @@ export * from './audit-for-lead.js';
 export * from './create-organization-with-owner.js';
 export * from './organization-members.js';
 export * from './approve-outreach.js';
+export * from './stalled-lead-recovery.js';
 export * from './seed/demo-dataset.js';
 export * from './seed/seed-demo.js';
