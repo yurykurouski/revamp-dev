@@ -37,7 +37,7 @@ function namesTenant(value: unknown): boolean {
   return Object.entries(value).some(([key, inner]) => key === 'tenantId' || namesTenant(inner));
 }
 
-const matchOf = (tenant: Types.ObjectId | undefined): Plain => (tenant ? { tenantId: tenant } : { tenantId: { $exists: false } });
+const matchOf = (tenant: Types.ObjectId | undefined): Plain => (tenant ? { tenantId: tenant } : { tenantId: null });
 
 /** `filter` restricted to the studio's records (or, with no studio, to the records that have none) */
 export function scopedFilter(tenantId: TenantId, filter?: Plain): Plain {

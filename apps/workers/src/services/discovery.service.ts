@@ -164,11 +164,14 @@ function classify(businesses: IDiscoveredBusiness[], seenDomains: Set<string>): 
   return candidates;
 }
 
-/** Marks `new` candidates that are already leads, matching on provider id, then domain, then phone */
-async function markExistingLeads(candidates: IDiscoveryCandidate[]): Promise<void> {
+/** Marks `new` candidates that are already leads of the studio, matching on provider id, then domain, then phone */
+async function markExistingLeads(candidates: IDiscoveryCandidate[], tenantId?: string): Promise<void> {
   const fresh = candidates.filter((c) => c.status === 'new').map((c) => ({ candidate: c, keys: leadMatchKeys(c) }));
-  const filter = leadMatchFilter(fresh.map((f) => f.keys));
-  if (!filter) return;
+  const match0 = leadMatchFilter(fresh.map((f) => f.keys));
+  if (!match0) return;
+  // Only the studio's own leads count (REV-209): a site another studio has is still new here, and its lead id is never
+  // shown. A search with no studio matches the leads that have none
+  const filter = { $and: [{ tenantId: tenantId ?? null }, match0] };
 
   const leads = (await Lead.find(filter, LEAD_IDENTITY_PROJECTION).lean().exec()) as LeadIdentity[];
   const match = createLeadMatcher(leads);
@@ -224,7 +227,7 @@ export async function runDiscovery(
     const classified = classify(fresh, seenDomains);
     const pageCandidates = classified.filter((c) => !(c.domain && excludedDomains.has(c.domain)));
     skippedChecked += classified.length - pageCandidates.length;
-    await markExistingLeads(pageCandidates);
+    await markExistingLeads(pageCandidates, data.tenantId);
     candidates.push(...pageCandidates);
     newCount += pageCandidates.filter((c) => c.status === 'new').length;
   } while (cursor && newCount < data.limit && requests < options.maxRequests);

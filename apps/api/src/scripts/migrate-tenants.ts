@@ -27,6 +27,10 @@ async function main() {
     `[Migrate] organization ${report.organizationId}: ${report.leadsToAssign} lead(s) ${verb}; ` +
       `${report.mvpsToAssign} MVP(s), ${report.campaignsToAssign} campaign(s) and ${report.eventsToAssign} event(s) ${verb} to the studio of their lead`,
   );
+  for (const c of report.conflicts) {
+    console.warn(`[Migrate] business ${c.businessId} has ${c.leadIds.length} leads that would belong to one studio: ${c.leadIds.join(', ')}`);
+  }
+  if (report.conflicts.length > 0 && !apply) console.warn('[Migrate] --apply refuses until these duplicates are resolved');
 }
 
 main()

@@ -28,8 +28,8 @@ describe('scopedFilter (REV-209)', () => {
   });
 
   it('the legacy bucket (no studio) matches only records that have none', () => {
-    expect(scopedFilter(undefined, { a: 1 })).toEqual({ $and: [{ tenantId: { $exists: false } }, { a: 1 }] });
-    expect(scopedFilter(null, {})).toEqual({ tenantId: { $exists: false } });
+    expect(scopedFilter(undefined, { a: 1 })).toEqual({ $and: [{ tenantId: null }, { a: 1 }] });
+    expect(scopedFilter(null, {})).toEqual({ tenantId: null });
   });
 
   it.each([
@@ -37,7 +37,7 @@ describe('scopedFilter (REV-209)', () => {
     ['a tenantId inside $or', { $or: [{ status: 'x' }, { tenantId: studioB }] }],
     ['a tenantId inside $and', { $and: [{ status: 'x' }, { tenantId: { $ne: studioA } }] }],
     ['a tenantId inside $nor', { $nor: [{ tenantId: studioA }] }],
-    ['a deeply nested tenantId', { $or: [{ $and: [{ $or: [{ tenantId: { $exists: false } }] }] }] }],
+    ['a deeply nested tenantId', { $or: [{ $and: [{ $or: [{ tenantId: null }] }] }] }],
   ])('refuses %s: a request value must never widen the scope', (_label, filter) => {
     expect(() => scopedFilter(studioA, filter)).toThrow(TenantScopeError);
   });

@@ -1451,7 +1451,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
     it('a dry run reports what it would do and writes nothing', async () => {
       await seedLegacy();
       const report = await migrateTenants({ apply: false });
-      expect(report).toMatchObject({ applied: false, organizationId: String(older), leadsToAssign: 2, mvpsToAssign: 2, campaignsToAssign: 1, eventsToAssign: 1 });
+      expect(report).toMatchObject({ applied: false, conflicts: [], organizationId: String(older), leadsToAssign: 2, mvpsToAssign: 2, campaignsToAssign: 1, eventsToAssign: 1 });
       expect(await Promise.all([Lead, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => m.countDocuments({ tenantId: { $exists: true } })))).toEqual([0, 0, 0, 0]);
     });
 
@@ -1490,6 +1490,25 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       const report = await migrateTenants({ apply: true });
       expect(report).toMatchObject({ leadsToAssign: 0, mvpsToAssign: 0, campaignsToAssign: 0, eventsToAssign: 0 });
       expect(await Promise.all([Lead, MvpProject, EmailCampaign, AnalyticsEvent].map((m) => m.find().lean()))).toEqual(before);
+    });
+
+    it('reports two leads on one business as a conflict and refuses to apply, writing nothing (the unique { tenantId, businessId } index)', async () => {
+      const business = new Types.ObjectId();
+      const [x, y] = Object.values((await Lead.collection.insertMany([leadDoc('dup.example', { businessId: business }), leadDoc('dup.example', { businessId: business })])).insertedIds);
+      const report = await migrateTenants({ apply: false });
+      expect(report.conflicts).toEqual([{ businessId: String(business), leadIds: [String(x), String(y)] }]);
+      await expect(migrateTenants({ apply: true })).rejects.toBeInstanceOf(TenantMigrationError);
+      expect(await Lead.countDocuments({ tenantId: { $exists: true } })).toBe(0);
+    });
+
+    it('also finds a conflict with a lead the target organization already has', async () => {
+      const business = new Types.ObjectId();
+      await Lead.collection.insertOne(leadDoc('own.example', { businessId: business, tenantId: older }));
+      await Lead.collection.insertOne(leadDoc('own.example', { businessId: business }));
+      const report = await migrateTenants({ apply: false });
+      expect(report.conflicts).toHaveLength(1);
+      // Another organization as the target has no conflict
+      expect((await migrateTenants({ apply: false, organizationId: String(newer) })).conflicts).toEqual([]);
     });
 
     it('refuses an unknown organization, an invalid id, and a database with no organization, writing nothing', async () => {

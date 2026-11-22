@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { isValidObjectId } from 'mongoose';
 import { MvpTrackEventDto, canTransition, leadStatusesInto } from '@revamp/validation';
 import { bySecret, scopeFor, type TenantScope } from '../data/tenant-scope.js';
 
@@ -243,7 +244,7 @@ export class TrackingService {
     const campaign = token ? await bySecret.campaignByToken(token).exec() : null;
     // Without a campaign the event may still carry an MVP id; either names the studio. A lead id in the request is
     // never trusted: the lead is the campaign's or the MVP's own (REV-209)
-    const project = campaign || !eventData.mvpProjectId ? null : await bySecret.mvpById(eventData.mvpProjectId).exec();
+    const project = campaign || !eventData.mvpProjectId || !isValidObjectId(eventData.mvpProjectId) ? null : await bySecret.mvpById(eventData.mvpProjectId).exec();
     const scope = scopeOf(campaign ?? project);
 
     const leadId = campaign?.leadId?.toString() ?? project?.leadId?.toString();

@@ -16,7 +16,7 @@ export const MIGRATE_TENANTS_COMMAND = 'npm run migrate:tenants --workspace=@rev
 
 /** The named organization does not exist, or there is none to give the records to */
 export class TenantMigrationError extends Error {
-  constructor(message: string) {
+  constructor(message: string, readonly conflicts: TenantMigrationReport['conflicts'] = []) {
     super(message);
     this.name = 'TenantMigrationError';
   }
@@ -31,6 +31,8 @@ export interface TenantMigrationReport {
   mvpsToAssign: number;
   campaignsToAssign: number;
   eventsToAssign: number;
+  /** Businesses that two leads of the same studio would end up with: the unique `{ tenantId, businessId }` index refuses it */
+  conflicts: Array<{ businessId: string; leadIds: string[] }>;
 }
 
 const missing = { $or: [{ tenantId: { $exists: false } }, { tenantId: null }] };
@@ -49,6 +51,16 @@ async function pickOrganization(organizationId?: string): Promise<Types.ObjectId
   return oldest._id;
 }
 
+/** Leads without a studio that share a business with each other, or with a lead the target organization already has */
+async function findConflicts(organization: Types.ObjectId): Promise<TenantMigrationReport['conflicts']> {
+  const legacy = await Lead.find({ ...missing, businessId: { $exists: true, $ne: null } }, { businessId: 1 }).lean();
+  const byBusiness = new Map<string, string[]>();
+  for (const lead of legacy) byBusiness.set(String(lead.businessId), [...(byBusiness.get(String(lead.businessId)) ?? []), String(lead._id)]);
+  const owned = await Lead.find({ tenantId: organization, businessId: { $in: [...byBusiness.keys()].map((id) => new Types.ObjectId(id)) } }, { businessId: 1 }).lean();
+  for (const lead of owned) byBusiness.set(String(lead.businessId), [...(byBusiness.get(String(lead.businessId)) ?? []), String(lead._id)]);
+  return [...byBusiness].filter(([, ids]) => ids.length > 1).map(([businessId, leadIds]) => ({ businessId, leadIds }));
+}
+
 /** Plans and, with `apply`, runs the migration. Idempotent: a second run finds nothing to do */
 export async function migrateTenants(options: { apply: boolean; organizationId?: string }): Promise<TenantMigrationReport> {
   const organization = await pickOrganization(options.organizationId);
@@ -65,9 +77,18 @@ export async function migrateTenants(options: { apply: boolean; organizationId?:
     mvpsToAssign: 0,
     campaignsToAssign: 0,
     eventsToAssign: 0,
+    conflicts: await findConflicts(organization),
   };
   for (const [key, model, filter] of children) report[key] = await model.countDocuments(filter);
   if (!options.apply) return report;
+  if (report.conflicts.length > 0) {
+    // Writing would stop halfway on the unique index: nothing is written until the duplicates are resolved
+    throw new TenantMigrationError(
+      `${report.conflicts.length} business(es) would get two leads of one studio; resolve them first (delete or merge the duplicate lead): ` +
+        report.conflicts.map((c) => `${c.businessId} -> ${c.leadIds.join(', ')}`).join('; '),
+      report.conflicts,
+    );
+  }
 
   await Lead.updateMany(missing, { $set: { tenantId: organization } });
   // A child takes the studio of its lead (the leads of every studio, not only the one just assigned)
