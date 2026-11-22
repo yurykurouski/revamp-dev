@@ -128,6 +128,20 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.error.details.issues.length).toBeGreaterThan(0);
     });
 
+    it("creates the lead for the caller's studio, and says 409 LEAD_ALREADY_EXISTS when the studio has one for the site (REV-208)", async () => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j' } as any);
+      const body = { businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' };
+      expect((await request(app).post('/api/v1/leads').send(body)).status).toBe(201);
+      // The studio is the organization of the token (see authed-request.ts)
+      expect(spy.mock.calls[0]?.[1]).toEqual({ tenantId: '5eed00000000000000000002' });
+
+      spy.mockRejectedValueOnce(new AppError(409, 'LEAD_ALREADY_EXISTS', 'Your studio already has a lead for this site', { leadId: 'old' }));
+      const again = await request(app).post('/api/v1/leads').send(body);
+      expect(again.status).toBe(409);
+      expect(again.body.error).toEqual({ code: 'LEAD_ALREADY_EXISTS', message: 'Your studio already has a lead for this site', details: { leadId: 'old' } });
+      spy.mockRestore();
+    });
+
     it("should pass the operator's locale to the service, and refuse an unknown one (REV-162)", async () => {
       const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j' } as any);
       const body = { businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' };

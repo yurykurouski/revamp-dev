@@ -303,6 +303,19 @@ describe('DiscoveryService (API)', () => {
       expect(LeadService.createLead).toHaveBeenCalledTimes(2);
     });
 
+    it("should add the leads to the caller's studio, and report a site the studio already has as existing (REV-208)", async () => {
+      vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2')]) as any);
+      vi.mocked(LeadService.createLead)
+        .mockRejectedValueOnce(new AppError(409, 'LEAD_ALREADY_EXISTS', 'exists', { leadId: 'old-lead' }))
+        .mockResolvedValueOnce({ lead: { _id: { toString: () => 'new-lead' } }, auditId: 'a', jobId: 'j' } as any);
+      const result = await DiscoveryService.importCandidates('disc-9', { externalIds: ['node/1', 'node/2'] }, 'studio-1');
+      for (const call of vi.mocked(LeadService.createLead).mock.calls) expect(call[1]).toMatchObject({ tenantId: 'studio-1' });
+      expect(result.results).toEqual([
+        { externalId: 'node/1', outcome: 'existing_lead', leadId: 'old-lead' },
+        { externalId: 'node/2', outcome: 'imported', leadId: 'new-lead' },
+      ]);
+    });
+
     it('should create leads from the stored candidates with discovery tags', async () => {
       vi.mocked(getDiscoveryJob).mockResolvedValue(
         completedJob([

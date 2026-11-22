@@ -111,7 +111,7 @@ export class DiscoveryService {
    * Imports the operator's selection from a finished discovery job as QUEUED leads with audits.
    * Candidate data always comes from the job's stored result, never from the request.
    */
-  static async importCandidates(jobId: string, dto: ImportDiscoveryDto): Promise<IDiscoveryImportResult> {
+  static async importCandidates(jobId: string, dto: ImportDiscoveryDto, tenantId?: string): Promise<IDiscoveryImportResult> {
     const job = await getDiscoveryJob(jobId);
     if (!job) {
       throw new AppError(404, 'DISCOVERY_JOB_NOT_FOUND', 'Discovery job not found');
@@ -164,10 +164,21 @@ export class DiscoveryService {
             contactPhone: candidate.phone,
             ...(dto.operatorLocale ? { operatorLocale: dto.operatorLocale } : {}),
           },
-          { tags, source: candidate.provider, externalId: leadExternalId(candidate.provider, candidate.externalId) },
+          {
+            tags,
+            source: candidate.provider,
+            externalId: leadExternalId(candidate.provider, candidate.externalId),
+            ...(tenantId ? { tenantId } : {}),
+          },
         );
         results.push({ externalId, outcome: 'imported', leadId: lead._id.toString() });
       } catch (error) {
+        // This studio already has a lead for the site (REV-208): not a failure, the same as a known site
+        if (error instanceof AppError && error.code === 'LEAD_ALREADY_EXISTS') {
+          const leadId = (error.details as { leadId?: string } | undefined)?.leadId;
+          results.push({ externalId, outcome: 'existing_lead', ...(leadId ? { leadId } : {}) });
+          continue;
+        }
         console.error(`[Discovery] Failed to import ${candidate.name} (${candidate.domain}):`, error);
         if (error instanceof AppError && error.code === 'AUDIT_QUEUE_UNAVAILABLE') {
           // The lead was saved and is AUDIT_FAILED, so the operator can retry its audit

@@ -3,7 +3,8 @@ import { LeadService, GetLeadsQuery } from '../services/lead.service.js';
 
 export const createLead = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const result = await LeadService.createLead(req.body);
+    // The lead belongs to the caller's studio (REV-208)
+    const result = await LeadService.createLead(req.body, { tenantId: req.auth!.organizationId });
     res.status(201).json({
       success: true,
       message: 'Lead created and audit queued successfully',

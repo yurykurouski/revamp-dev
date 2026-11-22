@@ -11,7 +11,7 @@ import { createMvpPageWorker } from './workers/mvp-page.worker.js';
 import { redisConnection } from './queues/connection.js';
 import { browserService } from './services/browser.service.js';
 import { Lead } from './models/Lead.model.js';
-import { Audit } from './models/Audit.model.js';
+import { findAuditForLead } from './models/Audit.model.js';
 import { addAiGenerationJob } from './queues/ai.queue.js';
 import { startLlmCapabilitiesReporter } from './services/llm-capabilities.js';
 import { providerConfigWarnings } from './services/provider-config.js';
@@ -25,12 +25,8 @@ export async function recoverStalledAuditedLeads(): Promise<number> {
     let enqueuedCount = 0;
 
     for (const lead of stalledLeads) {
-      const audit = await Audit.findOne({
-        leadId: lead._id,
-        status: 'COMPLETED',
-      })
-        .sort({ createdAt: -1 })
-        .exec();
+      // The lead's own completed audit, else the one of its business (REV-208)
+      const audit = await findAuditForLead(lead, { completedOnly: true });
 
       if (audit) {
         await addAiGenerationJob({
