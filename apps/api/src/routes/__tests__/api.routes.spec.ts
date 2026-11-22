@@ -128,6 +128,14 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.body.error.details.issues.length).toBeGreaterThan(0);
     });
 
+    it('says the audit of the site was reused when the lead took one (REV-208 review)', async () => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'shared', jobId: 'ai-1', reused: true } as any);
+      const res = await request(app).post('/api/v1/leads').send({ businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' });
+      expect(res.status).toBe(201);
+      expect(res.body.message).toBe('Lead created with the audit of this site; MVP generation queued');
+      spy.mockRestore();
+    });
+
     it("creates the lead for the caller's studio, and says 409 LEAD_ALREADY_EXISTS when the studio has one for the site (REV-208)", async () => {
       const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j' } as any);
       const body = { businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' };
@@ -1181,6 +1189,13 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(vi.mocked(addAiGenerationJob).mock.calls.at(-1)![0]).not.toHaveProperty('layout');
     });
 
+    it("GET /mvp/:id never matches an audit id: several studios' MVPs can be built from one shared audit (REV-208 review)", async () => {
+      const id = new mongoose.Types.ObjectId().toString();
+      const find = vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: id, leadId, fullPreviewUrl: 'http://s3/v/a/index.html' }) } as any);
+      expect((await request(app).get(`/api/v1/mvp/${id}`)).status).toBe(200);
+      expect(find).toHaveBeenCalledWith({ $or: [{ _id: id }, { leadId: id }] });
+    });
+
     it('GET /mvp/:id still answers an MVP stored with the previous generator\'s fields (REV-141)', async () => {
       const id = new mongoose.Types.ObjectId().toString();
       vi.spyOn(MvpProject, 'findOne').mockReturnValue({
@@ -1293,7 +1308,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
   });
 
   describe('GET /api/v1/mvp/:id', () => {
-    it('should return the MVP project looked up by id, lead or audit', async () => {
+    it('should return the MVP project looked up by id or lead (never by audit, REV-208)', async () => {
       const leadId = new mongoose.Types.ObjectId().toString();
       const project = { leadId, fullPreviewUrl: 'http://minio/revamp-demos/v/smile/index.html' };
       const findOne = vi.spyOn(MvpProject, 'findOne').mockReturnValue({ exec: vi.fn().mockResolvedValue(project) } as any);
@@ -1302,7 +1317,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.data).toEqual(project);
-      expect(findOne).toHaveBeenCalledWith({ $or: [{ _id: leadId }, { leadId }, { auditId: leadId }] });
+      expect(findOne).toHaveBeenCalledWith({ $or: [{ _id: leadId }, { leadId }] });
     });
 
     it('should look up a slug by previewSlug', async () => {

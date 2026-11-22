@@ -7,7 +7,9 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
     const result = await LeadService.createLead(req.body, { tenantId: req.auth!.organizationId });
     res.status(201).json({
       success: true,
-      message: 'Lead created and audit queued successfully',
+      message: result.reused
+        ? 'Lead created with the audit of this site; MVP generation queued'
+        : 'Lead created and audit queued successfully',
       data: {
         id: result.lead.id,
         lead: result.lead,

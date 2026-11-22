@@ -24,3 +24,8 @@ Read this when you change the workers: audit, site assessment, content and brand
 
 * An audit job that BullMQ fails as stalled (its worker kept dying) never reaches the processor's `catch`, so the audit worker's `failed` handler closes it through `handleAuditJobFailed` (`apps/workers/src/workers/audit-failure.ts`, REV-145): the audit becomes `FAILED` and the lead `AUDIT_FAILED` with a readable `auditError`, so the operator can retry. Any other worker that moves a lead into a working status needs the same handling for stalled jobs.
 * The deploy worker publishes only over a `GENERATING` lead, because the `SCHEDULED → NEEDS_APPROVAL` edge widens `leadStatusesInto('NEEDS_APPROVAL')` (approval transaction: [apps/api/AGENTS.md](../api/AGENTS.md)).
+
+## Shared audits (REV-208)
+
+* An audit is computed once per business and read by every studio's lead of it. Read a lead's audit with `findAuditForLead` / `findGenerationAudit` (own newest audit, else the business's COMPLETED one), never `Audit.findOne({ leadId })` for a lead that may have taken another studio's audit, and never take the lead from the audit (`audit.leadId` is the lead that ran it). A COMPLETED audit is **read-only**: write nothing derived from one MVP or lead onto it (the comparison banner lives on the lead and the MVP project, because its URL names that MVP's slug). Only the audit worker writes an audit, and only its own lead's.
+

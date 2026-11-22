@@ -56,7 +56,7 @@ export class LeadService {
   static async createLead(
     dto: CreateLeadDto,
     options: { tags?: string[]; source?: LeadSource; externalId?: string; tenantId?: string } = {},
-  ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string }> {
+  ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string; reused?: boolean }> {
     let domain: string | undefined;
     try {
       domain = normalizeDomain(new URL(dto.originalUrl).hostname);
@@ -112,7 +112,7 @@ export class LeadService {
       } catch (error) {
         console.error(`[LeadService] Could not queue the MVP generation for lead ${lead._id}:`, error);
       }
-      return { lead, auditId, jobId };
+      return { lead, auditId, jobId, reused: true };
     }
 
     // 2b. Queue the audit; if that fails the lead becomes AUDIT_FAILED and a 503 is thrown (REV-202)

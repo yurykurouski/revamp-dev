@@ -101,7 +101,8 @@ router.post(
   },
 );
 
-// GET /mvp/:id (lookup by ID, leadId, or slug)
+// GET /mvp/:id (lookup by ID, leadId, or slug). Never by audit id: several studios' MVPs can be built from one shared
+// audit (REV-208)
 router.get('/:id', async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const id = req.params['id'] || '';
@@ -109,7 +110,7 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction): Prom
 
     if (id && mongoose.Types.ObjectId.isValid(id)) {
       project = await MvpProject.findOne({
-        $or: [{ _id: id }, { leadId: id }, { auditId: id }],
+        $or: [{ _id: id }, { leadId: id }],
       }).exec();
     } else if (id) {
       project = await MvpProject.findOne({ previewSlug: id }).exec();

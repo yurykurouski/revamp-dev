@@ -1006,8 +1006,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await Promise.all([Lead.countDocuments(), Audit.countDocuments()])).toEqual([1, 1]);
     });
 
-    it('treats a site with and without www as one business', async () => {
-      // The caller normalizes the domain (`normalizeDomain`); the business is looked up by it
+    it('looks the business up by the domain in any letter case (the caller normalizes www and ports with `normalizeDomain`)', async () => {
       const first = await add('harbor.example', studioA);
       const again = await add('HARBOR.example', studioB);
       expect(String(again.business._id)).toBe(String(first.business._id));

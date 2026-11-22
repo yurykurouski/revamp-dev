@@ -4,6 +4,7 @@ import { redisConnection } from '../apps/workers/src/queues/connection.js';
 import { QUEUE_NAMES } from '../apps/workers/src/queues/queue.constants.js';
 import { createAuditWorker } from '../apps/workers/src/workers/audit.worker.js';
 import { addLeadToBusiness } from '@revamp/db';
+import { normalizeDomain } from '@revamp/validation';
 import { Lead } from '../apps/workers/src/models/Lead.model.js';
 import { Audit } from '../apps/workers/src/models/Audit.model.js';
 import { env } from '../apps/workers/src/config/env.js';
@@ -33,12 +34,15 @@ async function testBullMQWorker() {
     lead: {
       businessName: `${domain} (REV-9 Demo)`,
       originalUrl: targetUrl,
-      domain: domain.toLowerCase(),
+      domain: normalizeDomain(domain) ?? domain.toLowerCase(),
       niche: 'other',
       contactEmail: `contact@${domain}`,
       status: 'QUEUED',
     },
   });
+  if (added.reused) {
+    throw new Error(`${domain} already has a completed audit (REV-208): use another URL`);
+  }
   const lead = added.lead;
   const audit = added.audit!;
 
