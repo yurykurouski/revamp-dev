@@ -6,6 +6,7 @@ import { createApp } from '../../app.js';
 import { DiscoveryService } from '../../services/discovery.service.js';
 import { AppError } from '../../middlewares/errorHandler.js';
 
+vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/discovery.service.js');
 
 describe('Discovery Routes Integration Tests (REV-26)', () => {

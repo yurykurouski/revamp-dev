@@ -7,7 +7,7 @@ import mvpRoutes from './mvp.routes.js';
 import outreachRoutes from './outreach.routes.js';
 import trackRoutes from './track.routes.js';
 import discoveryRoutes from './discovery.routes.js';
-import { requireAuth, requireAuthUnless } from '../middlewares/requireAuth.js';
+import { requireAuth, requireAuthUnless, requireWriter } from '../middlewares/requireAuth.js';
 
 const router = Router();
 
@@ -21,14 +21,16 @@ router.use('/auth', authRoutes);
 // Public: called by email recipients and by the generated MVP pages, which carry a campaign token
 router.use('/track', trackRoutes);
 
-router.use('/leads', requireAuth, leadRoutes);
-router.use('/audits', requireAuth, auditRoutes);
-router.use('/outreach', requireAuth, outreachRoutes);
-router.use('/discovery', requireAuth, discoveryRoutes);
+// REV-207: every non-GET request on these mounts needs the owner or operator role (`requireWriter`); a viewer reads
+router.use('/leads', requireAuth, requireWriter, leadRoutes);
+router.use('/audits', requireAuth, requireWriter, auditRoutes);
+router.use('/outreach', requireAuth, requireWriter, outreachRoutes);
+router.use('/discovery', requireAuth, requireWriter, discoveryRoutes);
 // Public: GET /mvp/preview/:slug is loaded in an iframe, which cannot send a header; the rest of /mvp is guarded
 router.use(
   '/mvp',
   requireAuthUnless((req) => req.method === 'GET' && /^\/preview\/[^/]+$/.test(req.path)),
+  requireWriter,
   mvpRoutes,
 );
 

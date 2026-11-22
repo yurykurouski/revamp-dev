@@ -19,6 +19,7 @@ import { env } from '../../config/env.js';
 import { redisConnection } from '../../queues/connection.js';
 import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
 
+vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/lead.service.js');
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../models/Lead.model.js');

@@ -9,6 +9,7 @@ import * as authService from '../../services/auth.service.js';
 import authRoutes from '../auth.routes.js';
 import { closeServer, listenOnLoopback } from './loopback-server.js';
 
+vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/auth.service.js');
 
 const claims = { userId: '5eed00000000000000000001', organizationId: '5eed00000000000000000002', role: 'owner' as const };
