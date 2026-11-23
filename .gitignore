@@ -46,3 +46,10 @@ Thumbs.db
 
 # REV-199: npm run db:dump output
 backups/
+
+# REV-220: Docker secret files written by npm run stack:up
+.stack-secrets/
+
+# REV-220: Docker secret files and the env file without secrets that deploy.sh writes on the server
+.secrets/
+.env.production.runtime

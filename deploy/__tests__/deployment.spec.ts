@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import {
@@ -224,12 +226,13 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(content).toContain('name: revamp-stack');
     });
 
-    it('publishes only the API and the dashboard, and only on 127.0.0.1', () => {
+    it('publishes only the API, the dashboard and Prometheus, and only on 127.0.0.1', () => {
       for (const name of ['mongo', 'mongo-init', 'redis', 'minio', 'minio-init', 'workers']) {
         expect(service(name), `${name} publishes no port`).not.toMatch(/^\s+ports:/m);
       }
       const published = [...content.matchAll(/^\s+- "([^"]*:\d+)"$/gm)].map((match) => match[1] ?? '');
-      expect(published).toHaveLength(2);
+      // The API, the dashboard and, in the optional `monitoring` profile, Prometheus (REV-220)
+      expect(published).toHaveLength(3);
       for (const port of published) expect(port).toMatch(/^127\.0\.0\.1:/);
     });
 
@@ -265,7 +268,9 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(content).not.toContain('minioadmin');
       expect(content).toContain('${STACK_S3_SECRET_KEY:?');
       expect(content).toContain('${MONGO_ROOT_PASSWORD:?');
-      expect(content).toContain('${JWT_SECRET:?');
+      // The JWT secret, the MongoDB URI and the S3 secret are Docker secret files, not environment values (REV-220)
+      expect(content).not.toContain('${JWT_SECRET');
+      expect(content).toContain('JWT_SECRET_FILE: /run/secrets/jwt_secret');
       expect(content).not.toMatch(/password:?\s*["']?[^$\s"'][\w-]{5,}/i);
     });
 
@@ -283,6 +288,111 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       for (const name of ['STACK_S3_ACCESS_KEY=', 'STACK_S3_SECRET_KEY=', 'STACK_API_PORT=', 'STACK_DASHBOARD_PORT=']) {
         expect(env).toContain(name);
       }
+    });
+  });
+
+  describe('Maximum level: logs, metrics, secrets, overrides, debug (REV-220)', () => {
+    const read = (file: string): string => fs.readFileSync(path.join(rootDir, file), 'utf-8');
+
+    it('builds every image with a BuildKit cache mount for npm ci', () => {
+      for (const app of ['api', 'workers', 'dashboard']) {
+        const content = read(`apps/${app}/Dockerfile`);
+        expect(content.startsWith('# syntax=docker/dockerfile:1')).toBe(true);
+        expect(content).toContain('RUN --mount=type=cache,target=/root/.npm npm ci');
+      }
+    });
+
+    it('mounts the JWT secret, the MongoDB URI and the S3 secret into the API and the workers of the full stack as files', () => {
+      const compose = read('docker-compose.full.yml');
+      expect(compose).toMatch(/secrets:\n {2}jwt_secret:\n {4}file: \.\/\.stack-secrets\/jwt_secret/);
+      for (const name of ['jwt_secret', 'mongodb_uri', 's3_secret_key']) expect(compose).toContain(`file: ./.stack-secrets/${name}`);
+      expect(compose.match(/secrets: \[jwt_secret, mongodb_uri, s3_secret_key\]/g)).toHaveLength(2);
+      for (const name of ['JWT_SECRET', 'MONGODB_URI', 'S3_SECRET_KEY']) {
+        // The root .env value is hidden by an empty one, and the file fills it
+        expect(compose).toContain(`${name}: ""`);
+        expect(compose).toContain(`${name}_FILE: /run/secrets/`);
+      }
+      // The passwords of the data services sit in the same .env: the apps get them blanked
+      for (const name of ['MONGO_ROOT_PASSWORD', 'MONGO_APP_PASSWORD', 'MONGO_READ_PASSWORD', 'MONGO_ADMIN_PASSWORD', 'STACK_S3_SECRET_KEY']) {
+        expect(compose).toContain(`  ${name}: ""`);
+      }
+      expect(read('.gitignore')).toContain('.stack-secrets/');
+    });
+
+    it('offers Prometheus as an optional profile that scrapes the API and the workers', () => {
+      const compose = read('docker-compose.full.yml');
+      expect(compose).toMatch(/prometheus:\n\s+profiles: \[monitoring\]\n\s+image: prom\/prometheus:v\d+\.\d+\.\d+/);
+      expect(compose).toContain('127.0.0.1:${STACK_PROMETHEUS_PORT:-9090}:9090');
+      const config = read('deploy/prometheus/prometheus.yml');
+      expect(config).toContain('api:4000');
+      expect(config).toContain('workers:9101');
+      expect(config.match(/metrics_path: \/metrics/g)).toHaveLength(2);
+    });
+
+    it('has a debug override that opens the inspector and the data ports on 127.0.0.1 only', () => {
+      const debug = read('docker-compose.debug.yml');
+      expect(debug).toContain('--inspect=0.0.0.0:9229');
+      const published = [...debug.matchAll(/^\s+- "([^"]*:\d+)"$/gm)].map((match) => match[1] ?? '');
+      expect(published.length).toBeGreaterThanOrEqual(5);
+      for (const port of published) expect(port).toMatch(/^127\.0\.0\.1:/);
+      expect(debug).toContain('LOG_FORMAT: text');
+    });
+
+    it('gives the production API and workers the same secrets as files and keeps the file mounts out of the environment', () => {
+      const compose = read('docker-compose.prod.yml');
+      for (const name of ['jwt_secret', 'mongodb_uri', 's3_secret_key', 'redis_url', 'redis_password']) {
+        expect(compose).toContain(`file: ` + '${SECRETS_DIR:-./.secrets}/' + name);
+        expect(compose).toContain(`${name.toUpperCase()}_FILE: /run/secrets/${name}`);
+      }
+      expect(compose.match(/secrets: \[jwt_secret, mongodb_uri, s3_secret_key, redis_url, redis_password\]/g)).toHaveLength(2);
+    });
+
+    it('prepares the secrets in deploy.sh before it builds or replaces anything, and hands compose the env file without them', () => {
+      const script = read('deploy/deploy.sh');
+      const prepare = script.indexOf('prepare-secrets.sh');
+      expect(prepare).toBeGreaterThan(-1);
+      expect(prepare).toBeGreaterThan(script.indexOf('JWT_SECRET'));
+      expect(prepare).toBeLessThan(script.indexOf('docker compose -f docker-compose.prod.yml build'));
+      expect(prepare).toBeLessThan(script.indexOf('up -d'));
+      expect(script).toContain('export ENV_FILE="${PROJECT_ROOT}/.env.production.runtime"');
+      expect(read('.gitignore')).toContain('.secrets/');
+      expect(read('.gitignore')).toContain('.env.production.runtime');
+    });
+
+    describe('deploy/prepare-secrets.sh', () => {
+      const run = (envText: string) => {
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rev220-'));
+        const envFile = path.join(dir, 'env');
+        fs.writeFileSync(envFile, envText);
+        const result = spawnSync('bash', [path.join(rootDir, 'deploy/prepare-secrets.sh'), envFile, path.join(dir, 'secrets'), path.join(dir, 'runtime')], { encoding: 'utf-8' });
+        const secret = (name: string): string => fs.readFileSync(path.join(dir, 'secrets', name), 'utf-8');
+        return { dir, result, secret, runtime: fs.existsSync(path.join(dir, 'runtime')) ? fs.readFileSync(path.join(dir, 'runtime'), 'utf-8') : '' };
+      };
+
+      it('writes one file per secret (last assignment wins, quotes removed) and an env file without them', () => {
+        const { dir, result, secret, runtime } = run(
+          ['PORT=4000', 'JWT_SECRET="first"', 'export MONGODB_URI=mongodb+srv://u:p%40@x/db?a=b', 'S3_SECRET_KEY=s3', 'REDIS_URL=', 'CORS_ORIGIN=https://a', "JWT_SECRET='final secret'", ''].join('\n'),
+        );
+        try {
+          expect(result.status, result.stderr).toBe(0);
+          expect(secret('jwt_secret')).toBe('final secret\n');
+          expect(secret('mongodb_uri')).toBe('mongodb+srv://u:p%40@x/db?a=b\n');
+          expect(secret('s3_secret_key')).toBe('s3\n');
+          // An unset secret is an empty file, which the apps read as "not set"
+          expect(secret('redis_url')).toBe('\n');
+          expect(secret('redis_password')).toBe('\n');
+          expect(runtime).toBe('PORT=4000\nCORS_ORIGIN=https://a\n');
+          expect(fs.statSync(path.join(dir, 'secrets')).mode & 0o777).toBe(0o700);
+        } finally {
+          fs.rmSync(dir, { recursive: true, force: true });
+        }
+      });
+
+      it('fails when the env file does not exist', () => {
+        const result = spawnSync('bash', [path.join(rootDir, 'deploy/prepare-secrets.sh'), '/nonexistent/env', os.tmpdir(), os.tmpdir()], { encoding: 'utf-8' });
+        expect(result.status).toBe(1);
+        expect(result.stderr).toContain('env file not found');
+      });
     });
   });
 

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==========================================
 # 1. Base Builder
 # ==========================================
@@ -17,7 +18,8 @@ COPY apps/api/package*.json ./apps/api/
 COPY apps/api/tsconfig.json ./apps/api/
 
 # Install full dependencies for building
-RUN npm ci
+# REV-220: BuildKit keeps npm's download cache between builds, so a changed lockfile re-downloads only what changed
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy source code
 COPY packages/shared-types ./packages/shared-types
@@ -63,7 +65,8 @@ COPY --chown=node:node --from=builder /app/apps/api/src/public ./apps/api/dist/p
 EXPOSE 4000
 
 # REV-217: Node itself probes /health, so the image needs no extra HTTP client
-HEALTHCHECK --interval=15s --timeout=5s --start-period=10s --retries=3 \
+# The Node probe takes about 2 s on a busy machine, so the timeout leaves room for it
+HEALTHCHECK --interval=15s --timeout=10s --start-period=20s --retries=3 \
   CMD ["node", "-e", "fetch('http://localhost:4000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
 
 CMD ["node", "apps/api/dist/index.js"]

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { env } from './config/env.js';
-import { checkBusinessLinks, checkTenantLinks, checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
+import { checkBusinessLinks, checkTenantLinks, checkLeadChildIndexes, configureLogging, redactMongoUri } from '@revamp/db';
 import { createAuditWorker } from './workers/audit.worker.js';
 import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
@@ -14,6 +14,10 @@ import { recoverStalledAuditedLeads } from './services/stalled-lead-recovery.js'
 import { startLlmCapabilitiesReporter } from './services/llm-capabilities.js';
 import { providerConfigWarnings } from './services/provider-config.js';
 import { startHeartbeat } from './services/heartbeat.js';
+import { createWorkerMetrics, startMetricsServer } from './services/metrics.js';
+
+// REV-220: every console call of this process becomes one JSON line in production (LOG_FORMAT=json|text)
+configureLogging('workers');
 
 async function startWorkers(): Promise<void> {
   try {
@@ -42,6 +46,11 @@ async function startWorkers(): Promise<void> {
     const discoveryWorker = createDiscoveryWorker();
     const mvpPageWorker = createMvpPageWorker();
 
+    // REV-220: job counters and durations for Prometheus, on their own port
+    const { registry, track } = createWorkerMetrics();
+    for (const worker of [auditWorker, aiWorker, deployWorker, emailWorker, emailTestWorker, discoveryWorker, mvpPageWorker]) track(worker);
+    const metricsServer = await startMetricsServer(registry, env.METRICS_PORT);
+
     console.log('[Workers] All background workers are active and listening.');
     for (const warning of providerConfigWarnings()) console.warn(`[Workers] ${warning}`);
 
@@ -60,6 +69,7 @@ async function startWorkers(): Promise<void> {
     const shutdown = async (signal: string) => {
       console.log(`[Workers] Received ${signal}. Closing workers gracefully...`);
       stopHeartbeat();
+      metricsServer?.close();
       stopLlmCapabilitiesReporter();
       await Promise.all([
         auditWorker.close(),

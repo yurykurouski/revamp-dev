@@ -1,0 +1,16 @@
+# REV-220: scrape configuration of the optional `monitoring` profile in docker-compose.full.yml
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+  - job_name: revamp-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:4000"]
+        labels: { service: api }
+
+  - job_name: revamp-workers
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["workers:9101"]
+        labels: { service: workers }

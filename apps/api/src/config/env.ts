@@ -1,10 +1,13 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
+import { loadFileSecrets } from '@revamp/db';
 
 // Load .env from root or local directory
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// REV-220: JWT_SECRET_FILE, MONGODB_URI_FILE, S3_SECRET_KEY_FILE ... (Docker secrets) fill the variable they name
+loadFileSecrets();
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().default(4000),

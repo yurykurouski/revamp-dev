@@ -219,6 +219,37 @@ export function ensureStackSecrets(root, randomValue = () => crypto.randomBytes(
   return added;
 }
 
+/** Where `npm run stack:up` writes the Docker secret files of the container stack (REV-220); git-ignored */
+export const STACK_SECRETS_DIR = '.stack-secrets';
+
+/**
+ * Writes the three Docker secret files docker-compose.full.yml mounts into the API and the workers: the JWT secret, the
+ * MongoDB URI of the `revamp_app` user (it holds the password) and the stack's S3 secret key. The directory is private
+ * to the owner; the files are world-readable because the containers run as another user and Docker bind-mounts them
+ * as they are. Returns the file names it wrote.
+ */
+export function writeStackSecretFiles(root, env) {
+  const needed = { jwt_secret: env.JWT_SECRET, mongodb_uri: env.MONGO_APP_PASSWORD, s3_secret_key: env.STACK_S3_SECRET_KEY };
+  for (const [name, value] of Object.entries(needed)) {
+    if (!value) throw new SetupError(`Cannot write the ${name} secret.`, 'A value is missing in .env; run `npm run stack:up` again after `npm run setup`.');
+  }
+  const dir = path.join(root, STACK_SECRETS_DIR);
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  fs.chmodSync(dir, 0o700);
+  const contents = {
+    jwt_secret: env.JWT_SECRET,
+    mongodb_uri: `mongodb://revamp_app:${encodeURIComponent(env.MONGO_APP_PASSWORD)}@mongo:27017/revamp?authSource=admin&replicaSet=rs0&directConnection=true`,
+    s3_secret_key: env.STACK_S3_SECRET_KEY,
+  };
+  for (const [name, value] of Object.entries(contents)) {
+    const file = path.join(dir, name);
+    fs.rmSync(file, { force: true });
+    fs.writeFileSync(file, `${value}\n`, { mode: 0o444 });
+    fs.chmodSync(file, 0o444);
+  }
+  return Object.keys(contents);
+}
+
 /** Minimal dotenv parser: KEY=value lines, optional quotes, `#` comments. */
 export function parseEnv(text) {
   const env = {};

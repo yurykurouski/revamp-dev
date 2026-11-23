@@ -80,6 +80,14 @@ fi
 
 log_success "Prerequisites verified."
 
+# REV-220: the secrets of .env.production become Docker secret files, and compose gets an env file without them
+log_info "Preparing Docker secrets..."
+SECRETS_DIR="${PROJECT_ROOT}/.secrets"
+export SECRETS_DIR
+export ENV_FILE="${PROJECT_ROOT}/.env.production.runtime"
+"${SCRIPT_DIR}/prepare-secrets.sh" .env.production "${SECRETS_DIR}" "${ENV_FILE}"
+log_success "Secrets written to .secrets/ (mode 700), runtime env file written without them."
+
 # ------------------------------------------------------------------------------
 # 2. Git Synchronization (optional via flag)
 # ------------------------------------------------------------------------------

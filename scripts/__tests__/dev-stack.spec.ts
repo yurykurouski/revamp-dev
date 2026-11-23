@@ -483,3 +483,35 @@ describe('ensureStackSecrets (REV-218)', () => {
     expect(env.STACK_S3_SECRET_KEY).not.toBe('minioadmin');
   });
 });
+
+describe('writeStackSecretFiles (REV-220)', () => {
+  let root: string;
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), 'rev220-'));
+  });
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+  const env = { JWT_SECRET: 'j'.repeat(40), MONGO_APP_PASSWORD: 'p@ss/word+1', STACK_S3_SECRET_KEY: 's3-secret' };
+
+  it('writes the three secret files with the values the containers expect', () => {
+    expect(stack.writeStackSecretFiles(root, env)).toEqual(['jwt_secret', 'mongodb_uri', 's3_secret_key']);
+    const read = (name: string) => fs.readFileSync(path.join(root, '.stack-secrets', name), 'utf8');
+    expect(read('jwt_secret')).toBe(`${'j'.repeat(40)}\n`);
+    expect(read('s3_secret_key')).toBe('s3-secret\n');
+    // The password is URL-encoded and the URI points at the mongo container with the replica set options
+    expect(read('mongodb_uri')).toBe('mongodb://revamp_app:p%40ss%2Fword%2B1@mongo:27017/revamp?authSource=admin&replicaSet=rs0&directConnection=true\n');
+  });
+
+  it('keeps the directory private to the owner and rewrites the files on every run', () => {
+    stack.writeStackSecretFiles(root, env);
+    stack.writeStackSecretFiles(root, { ...env, STACK_S3_SECRET_KEY: 'rotated' });
+    expect(fs.statSync(path.join(root, '.stack-secrets')).mode & 0o777).toBe(0o700);
+    expect(fs.readFileSync(path.join(root, '.stack-secrets', 's3_secret_key'), 'utf8')).toBe('rotated\n');
+  });
+
+  it('refuses to write a file for a missing value', () => {
+    expect(() => stack.writeStackSecretFiles(root, { ...env, JWT_SECRET: '' })).toThrow('Cannot write the jwt_secret secret.');
+    expect(fs.existsSync(path.join(root, '.stack-secrets'))).toBe(false);
+  });
+});
