@@ -23,3 +23,8 @@ export * from './approve-outreach.js';
 export * from './stalled-lead-recovery.js';
 export * from './seed/demo-dataset.js';
 export * from './seed/seed-demo.js';
+
+// REV-220: structured logging, Prometheus metrics and Docker secret files for the API and the workers
+export * from './observability/logging.js';
+export * from './observability/metrics.js';
+export * from './observability/secrets.js';

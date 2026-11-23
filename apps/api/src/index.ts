@@ -1,11 +1,23 @@
 import mongoose from 'mongoose';
 import { createApp } from './app.js';
 import { env } from './config/env.js';
-import { checkBusinessLinks, checkTenantLinks, checkLeadChildIndexes, redactMongoUri } from '@revamp/db';
+import {
+  checkBusinessLinks,
+  checkTenantLinks,
+  checkLeadChildIndexes,
+  configureLogging,
+  redactMongoUri,
+  type MetricsRegistry,
+} from '@revamp/db';
 import { closeQueues, redisConnection } from './queues/index.js';
 import { createShutdown } from './shutdown.js';
+import { registerQueueMetrics } from './queues/metrics.js';
+
+// REV-220: every console call of this process becomes one JSON line in production (LOG_FORMAT=json|text)
+configureLogging('api');
 
 const app = createApp();
+registerQueueMetrics(app.locals.metricsRegistry as MetricsRegistry);
 
 async function startServer(): Promise<void> {
   try {

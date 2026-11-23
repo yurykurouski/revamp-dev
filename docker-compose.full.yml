@@ -19,14 +19,27 @@ x-logging: &logging
 # `npm run dev`; every other setting (LLM keys, email provider, discovery) still comes from .env.
 x-app-environment: &app-environment
   NODE_ENV: production
-  MONGODB_URI: mongodb://revamp_app:${MONGO_APP_PASSWORD:?Run `npm run stack:up`, or set MONGO_APP_PASSWORD in .env}@mongo:27017/revamp?authSource=admin&replicaSet=rs0&directConnection=true
-  JWT_SECRET: ${JWT_SECRET:?Run `npm run stack:up`, or set JWT_SECRET in .env}
+  LOG_FORMAT: json
+  # REV-220: the JWT secret, the MongoDB URI (it holds the password) and the S3 secret reach the apps as Docker
+  # secret files. The empty values hide whatever the root .env holds; `*_FILE` fills them from /run/secrets.
+  # `npm run stack:up` writes the files to .stack-secrets/ from .env.
+  JWT_SECRET: ""
+  JWT_SECRET_FILE: /run/secrets/jwt_secret
+  MONGODB_URI: ""
+  MONGODB_URI_FILE: /run/secrets/mongodb_uri
+  S3_SECRET_KEY: ""
+  S3_SECRET_KEY_FILE: /run/secrets/s3_secret_key
+  # The root .env also holds the passwords of the data services; the apps never need them, so they are blanked
+  MONGO_ROOT_PASSWORD: ""
+  MONGO_APP_PASSWORD: ""
+  MONGO_READ_PASSWORD: ""
+  MONGO_ADMIN_PASSWORD: ""
+  STACK_S3_SECRET_KEY: ""
   REDIS_HOST: redis
   REDIS_PORT: "6379"
   REDIS_URL: ""
   S3_ENDPOINT: http://minio:9000
   S3_ACCESS_KEY: ${STACK_S3_ACCESS_KEY:?Run `npm run stack:up`, or set STACK_S3_ACCESS_KEY in .env}
-  S3_SECRET_KEY: ${STACK_S3_SECRET_KEY:?Run `npm run stack:up`, or set STACK_S3_SECRET_KEY in .env}
   CORS_ORIGIN: http://localhost:${STACK_DASHBOARD_PORT:-8080}
   PUBLIC_API_URL: http://localhost:${STACK_API_PORT:-4000}/api/v1
 
@@ -48,11 +61,12 @@ services:
       - mongo_config:/data/configdb
     networks: [backend]
     healthcheck:
-      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
-      interval: 5s
-      timeout: 5s
+      # mongosh needs a few seconds to start; on a busy machine 5 s is not enough, so the timeout is generous
+      test: ["CMD", "mongosh", "--quiet", "--norc", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 20s
       retries: 10
-      start_period: 5s
+      start_period: 20s
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 1g }
@@ -142,6 +156,7 @@ services:
     image: revamp-api:${IMAGE_TAG:-local}
     restart: unless-stopped
     env_file: .env
+    secrets: [jwt_secret, mongodb_uri, s3_secret_key]
     environment:
       <<: *app-environment
       PORT: "4000"
@@ -156,6 +171,9 @@ services:
       minio-init:
         condition: service_completed_successfully
     # The HEALTHCHECK comes from apps/api/Dockerfile (GET /api/v1/health, 503 while MongoDB or Redis is down)
+    healthcheck:
+      timeout: 10s
+      start_period: 20s
     deploy:
       resources:
         limits: { cpus: "1.0", memory: 512m }
@@ -168,7 +186,10 @@ services:
     image: revamp-workers:${IMAGE_TAG:-local}
     restart: unless-stopped
     env_file: .env
-    environment: *app-environment
+    secrets: [jwt_secret, mongodb_uri, s3_secret_key]
+    environment:
+      <<: *app-environment
+      METRICS_PORT: "9101"
     networks: [backend]
     depends_on:
       api:
@@ -199,6 +220,36 @@ services:
         limits: { cpus: "0.5", memory: 128m }
     logging: *logging
 
+  # REV-220: optional metrics server, `docker compose -f docker-compose.full.yml --profile monitoring up -d`
+  # (or `npm run stack:up -- --monitoring`). It scrapes GET /metrics of the API and the workers every 15 s.
+  prometheus:
+    profiles: [monitoring]
+    image: prom/prometheus:v3.16.0
+    restart: unless-stopped
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "127.0.0.1:${STACK_PROMETHEUS_PORT:-9090}:9090"
+    networks: [backend]
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m }
+    logging: *logging
+
+# Docker secrets: files that `npm run stack:up` writes (mode 600, git-ignored) and Docker mounts read-only
+# under /run/secrets in the containers that list them
+secrets:
+  jwt_secret:
+    file: ./.stack-secrets/jwt_secret
+  mongodb_uri:
+    file: ./.stack-secrets/mongodb_uri
+  s3_secret_key:
+    file: ./.stack-secrets/s3_secret_key
+
 # `frontend` joins the dashboard and the API; `backend` joins the API, workers and the data services.
 # Neither publishes anything: only the ports above reach the host.
 networks:
@@ -210,3 +261,4 @@ volumes:
   mongo_config:
   redis_data:
   minio_data:
+  prometheus_data:

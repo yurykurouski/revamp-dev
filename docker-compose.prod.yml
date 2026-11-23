@@ -9,6 +9,14 @@ services:
     restart: always
     env_file:
       - ${ENV_FILE:-.env.production}
+    secrets: [jwt_secret, mongodb_uri, s3_secret_key, redis_url, redis_password]
+    environment:
+      # REV-220: these reach the app as Docker secret files (deploy.sh writes them from .env.production)
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      MONGODB_URI_FILE: /run/secrets/mongodb_uri
+      S3_SECRET_KEY_FILE: /run/secrets/s3_secret_key
+      REDIS_URL_FILE: /run/secrets/redis_url
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
     expose:
       - "4000"
     networks:
@@ -21,9 +29,9 @@ services:
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://localhost:4000/api/v1/health').then((r) => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
       interval: 15s
-      timeout: 5s
+      timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 20s
 
   workers:
     build:
@@ -34,6 +42,14 @@ services:
     restart: always
     env_file:
       - ${ENV_FILE:-.env.production}
+    secrets: [jwt_secret, mongodb_uri, s3_secret_key, redis_url, redis_password]
+    environment:
+      # REV-220: these reach the app as Docker secret files (deploy.sh writes them from .env.production)
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      MONGODB_URI_FILE: /run/secrets/mongodb_uri
+      S3_SECRET_KEY_FILE: /run/secrets/s3_secret_key
+      REDIS_URL_FILE: /run/secrets/redis_url
+      REDIS_PASSWORD_FILE: /run/secrets/redis_password
     networks:
       - revamp-prod-net
     deploy:
@@ -99,6 +115,21 @@ services:
       - certs:/etc/letsencrypt
       - certbot-challenge:/var/www/certbot
     entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+# REV-220: Docker secrets. deploy/prepare-secrets.sh writes the files into $SECRETS_DIR (default ./.secrets) from
+# .env.production and passes compose an env file without those lines (ENV_FILE), so no secret sits in the
+# container environment. Run the stack through deploy.sh, not with a bare `docker compose up`.
+secrets:
+  jwt_secret:
+    file: ${SECRETS_DIR:-./.secrets}/jwt_secret
+  mongodb_uri:
+    file: ${SECRETS_DIR:-./.secrets}/mongodb_uri
+  s3_secret_key:
+    file: ${SECRETS_DIR:-./.secrets}/s3_secret_key
+  redis_url:
+    file: ${SECRETS_DIR:-./.secrets}/redis_url
+  redis_password:
+    file: ${SECRETS_DIR:-./.secrets}/redis_password
 
 networks:
   revamp-prod-net:

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==========================================
 # 1. Base Builder
 # ==========================================
@@ -17,7 +18,8 @@ COPY apps/workers/package*.json ./apps/workers/
 COPY apps/workers/tsconfig.json ./apps/workers/
 
 # Install full dependencies for compilation
-RUN npm ci
+# REV-220: BuildKit keeps npm's download cache between builds, so a changed lockfile re-downloads only what changed
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy source code
 COPY packages/shared-types ./packages/shared-types

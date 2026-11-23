@@ -28,7 +28,7 @@
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f",
     "stack:up": "node scripts/stack-up.mjs",
-    "stack:down": "docker compose -f docker-compose.full.yml down",
+    "stack:down": "docker compose -f docker-compose.full.yml -f docker-compose.debug.yml --profile monitoring down",
     "docker:prune": "docker image prune -f && docker builder prune -f --filter until=168h",
     "stack:logs": "docker compose -f docker-compose.full.yml logs -f",
     "db:check-roles": "tsx scripts/check-mongo-roles.ts",

@@ -1,0 +1,36 @@
+# REV-220: debug override for the container stack. Use it on top of docker-compose.full.yml:
+#
+#   docker compose -f docker-compose.full.yml -f docker-compose.debug.yml up -d
+#
+# - the API and the workers start with the Node inspector (attach from VS Code, Chrome DevTools or `node inspect`):
+#     api      127.0.0.1:9229
+#     workers  127.0.0.1:9230
+# - logs are readable text instead of JSON
+# - MongoDB, Redis and MinIO are published on 127.0.0.1 for a GUI client (ports 27018, 6380, 9100)
+# Everything binds to 127.0.0.1: nothing is reachable from another machine. Do not use it in production.
+services:
+  api:
+    command: ["node", "--inspect=0.0.0.0:9229", "apps/api/dist/index.js"]
+    environment:
+      LOG_FORMAT: text
+    ports:
+      - "127.0.0.1:${STACK_DEBUG_API_PORT:-9229}:9229"
+
+  workers:
+    command: ["node", "--inspect=0.0.0.0:9229", "apps/workers/dist/index.js"]
+    environment:
+      LOG_FORMAT: text
+    ports:
+      - "127.0.0.1:${STACK_DEBUG_WORKERS_PORT:-9230}:9229"
+
+  mongo:
+    ports:
+      - "127.0.0.1:${STACK_DEBUG_MONGO_PORT:-27018}:27017"
+
+  redis:
+    ports:
+      - "127.0.0.1:${STACK_DEBUG_REDIS_PORT:-6380}:6379"
+
+  minio:
+    ports:
+      - "127.0.0.1:${STACK_DEBUG_MINIO_PORT:-9100}:9000"

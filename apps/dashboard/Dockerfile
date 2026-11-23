@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # ==========================================
 # 1. Base Builder
 # ==========================================
@@ -19,7 +20,8 @@ COPY apps/dashboard/tsconfig.json ./apps/dashboard/
 COPY apps/dashboard/vite.config.ts ./apps/dashboard/
 
 # Install full dependencies for building
-RUN npm ci
+# REV-220: BuildKit keeps npm's download cache between builds, so a changed lockfile re-downloads only what changed
+RUN --mount=type=cache,target=/root/.npm npm ci
 
 # Copy source code
 COPY packages/shared-types ./packages/shared-types

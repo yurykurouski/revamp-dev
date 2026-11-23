@@ -1,9 +1,12 @@
 import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
+import { loadFileSecrets } from '@revamp/db';
 
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// REV-220: JWT_SECRET_FILE, MONGODB_URI_FILE, S3_SECRET_KEY_FILE ... (Docker secrets) fill the variable they name
+loadFileSecrets();
 
 /** An on/off variable: "false", "0", "no", "off" and empty are off (z.coerce.boolean would read "false" as true) */
 const envFlag = (defaultValue: boolean) =>
@@ -18,6 +21,8 @@ export const EnvSchema = z.object({
   REDIS_HOST: z.string().default('localhost'),
   REDIS_PORT: z.coerce.number().default(6379),
   REDIS_PASSWORD: z.string().optional(),
+  // REV-220: port of `GET /metrics` (Prometheus); 0 switches the endpoint off
+  METRICS_PORT: z.coerce.number().int().min(0).max(65535).default(9101),
   REDIS_URL: z.string().optional(),
   REDIS_TLS: z.coerce.boolean().default(false),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
