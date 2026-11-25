@@ -15,12 +15,13 @@ import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { sendTestEmailJob } from '../../queues/email-test.queue.js';
 import { runMvpPageJob } from '../../queues/mvp-page.queue.js';
-import { env } from '../../config/env.js';
+import { readSender, requireSender } from '../../services/sender.service.js';
 import { redisConnection } from '../../queues/connection.js';
-import { EMAIL_PROVIDER_NOT_CONFIGURED, LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
+import { LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
 
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/lead.service.js');
+vi.mock('../../services/sender.service.js', () => ({ readSender: vi.fn(), saveSender: vi.fn(), requireSender: vi.fn() }));
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
@@ -524,8 +525,13 @@ describe('API Routes Integration Tests (Supertest)', () => {
       (redisConnection as any).status = originalRedisStatus;
     });
 
+    const studioSender = { name: 'Studio A', address: 'a@studio-a.test' };
+    const senderMissing = () =>
+      new AppError(409, 'SENDER_NOT_CONFIGURED', 'This studio has no sender yet.');
+
     beforeEach(() => {
       (redisConnection as any).status = 'ready';
+      vi.mocked(requireSender).mockReset().mockResolvedValue(studioSender);
       vi.mocked(approveOutreachWithCampaign).mockReset();
       vi.mocked(revertOutreachApproval).mockReset().mockResolvedValue(true);
     });
@@ -558,6 +564,33 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(campaignWritten()).not.toHaveProperty('leadId');
       expect(addEmailDispatchJob).toHaveBeenCalledTimes(1);
       expect(revertOutreachApproval).not.toHaveBeenCalled();
+    });
+
+    it('stores the studio sender on the campaign (REV-221)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      mockApproval(leadId);
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+
+      expect(res.status).toBe(200);
+      expect(requireSender).toHaveBeenCalledWith('5eed00000000000000000002');
+      expect(campaignWritten()).toMatchObject({ senderEmail: 'a@studio-a.test', senderName: 'Studio A' });
+    });
+
+    it('returns 409 SENDER_NOT_CONFIGURED, writes nothing and queues no job for a studio without a sender (REV-221)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      vi.mocked(requireSender).mockRejectedValue(senderMissing());
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+
+      expect(res.status).toBe(409);
+      expect(res.body.success).toBe(false);
+      expect(res.body.error.code).toBe('SENDER_NOT_CONFIGURED');
+      expect(approveOutreachWithCampaign).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
     it('returns 503 EMAIL_QUEUE_UNAVAILABLE and sends the lead back to review when Redis is down (REV-203)', async () => {
@@ -798,8 +831,6 @@ describe('API Routes Integration Tests (Supertest)', () => {
       preheader: 'An interactive prototype',
       body: 'Hello,\n\nSee https://demo.example/dr-smile',
     };
-    const originalProvider = env.EMAIL_PROVIDER;
-
     const mockLead = (lead: Record<string, unknown> | null) =>
       vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
 
@@ -811,27 +842,22 @@ describe('API Routes Integration Tests (Supertest)', () => {
     };
 
     beforeEach(() => {
-      env.EMAIL_PROVIDER = 'smtp';
+      vi.mocked(requireSender).mockReset().mockResolvedValue({ name: 'Studio A', address: 'a@studio-a.test' });
       mockLead({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
     });
 
-    afterEach(() => {
-      env.EMAIL_PROVIDER = originalProvider;
-    });
-
-    it('sends the draft to the operator through the workers and returns 200 with the provider result', async () => {
-      const sentAt = new Date().toISOString();
-      vi.mocked(sendTestEmailJob).mockResolvedValue({
-        status: 'sent',
-        result: { messageId: 'msg-1', provider: 'smtp', sentAt },
-      });
+    it('simulates the draft to the operator through the workers and returns 200 with simulated: true', async () => {
+      const result = { to: 'operator@revamp.io', from: '"Studio A" <a@studio-a.test>', subject: '[Test] ' + draft.subject, simulated: true as const };
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'sent', result });
 
       const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
 
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.message).toContain('operator@revamp.io');
-      expect(res.body.data).toEqual({ to: 'operator@revamp.io', messageId: 'msg-1', provider: 'smtp', sentAt });
+      expect(res.body.message).toBe('Test email simulated for operator@revamp.io');
+      expect(res.body.data).toEqual(result);
+      expect(requireSender).toHaveBeenCalledWith('5eed00000000000000000002');
       expect(sendTestEmailJob).toHaveBeenCalledWith({
         leadId,
         tenantId: '5eed00000000000000000002',
@@ -847,7 +873,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       mockLead({ _id: leadId, status });
       vi.mocked(sendTestEmailJob).mockResolvedValue({
         status: 'sent',
-        result: { provider: 'smtp', sentAt: new Date().toISOString() },
+        result: { to: 'operator@revamp.io', from: 'f', subject: 's', simulated: true },
       });
 
       const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
@@ -856,36 +882,36 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expectNothingChanged();
     });
 
-    it('returns 503 EMAIL_PROVIDER_NOT_CONFIGURED and queues nothing when no provider is set', async () => {
-      env.EMAIL_PROVIDER = undefined;
+    it('returns 409 SENDER_NOT_CONFIGURED and queues nothing when the studio has no sender (REV-221)', async () => {
+      vi.mocked(requireSender).mockRejectedValue(new AppError(409, 'SENDER_NOT_CONFIGURED', 'This studio has no sender yet.'));
 
       const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
 
-      expect(res.status).toBe(503);
+      expect(res.status).toBe(409);
       expect(res.body.success).toBe(false);
-      expect(res.body.error.code).toBe('EMAIL_PROVIDER_NOT_CONFIGURED');
+      expect(res.body.error.code).toBe('SENDER_NOT_CONFIGURED');
       expect(sendTestEmailJob).not.toHaveBeenCalled();
       expectNothingChanged();
     });
 
-    it('returns 503 when the workers report that they have no provider', async () => {
-      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'failed', reason: EMAIL_PROVIDER_NOT_CONFIGURED });
+    it('returns 409 when the worker reports that the sender went away in the meantime', async () => {
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'failed', reason: 'SENDER_NOT_CONFIGURED: this studio has no sender' });
 
       const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
 
-      expect(res.status).toBe(503);
-      expect(res.body.error.code).toBe('EMAIL_PROVIDER_NOT_CONFIGURED');
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('SENDER_NOT_CONFIGURED');
     });
 
     it('returns 502 EMAIL_SEND_FAILED with the provider error when the send fails', async () => {
-      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'failed', reason: 'Resend API error (403): forbidden' });
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'failed', reason: 'render exploded' });
 
       const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
 
       expect(res.status).toBe(502);
       expect(res.body.success).toBe(false);
       expect(res.body.error.code).toBe('EMAIL_SEND_FAILED');
-      expect(res.body.error.message).toContain('Resend API error (403)');
+      expect(res.body.error.message).toContain('render exploded');
       expectNothingChanged();
     });
 
@@ -931,6 +957,81 @@ describe('API Routes Integration Tests (Supertest)', () => {
 
       expect(res.status).toBe(400);
       expect(sendTestEmailJob).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /api/v1/outreach/sender and /:id/outbox (REV-221)', () => {
+    const leadId = new mongoose.Types.ObjectId().toString();
+    const sentAt = new Date('2026-11-25T10:00:00.000Z');
+    const mockLead = (lead: Record<string, unknown> | null) =>
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(lead) } as any);
+    const mockCampaign = (campaign: Record<string, unknown> | null) =>
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue({ lean: () => ({ exec: vi.fn().mockResolvedValue(campaign) }) } as any);
+    const outbox = {
+      from: '"Studio A" <a@studio-a.test>',
+      to: 'owner@business.com',
+      subject: 'Hello',
+      headers: new Map([['List-Unsubscribe-Post', 'List-Unsubscribe=One-Click']]),
+      html: '<p>Hi</p>',
+      text: 'Hi',
+    };
+
+    it('GET /sender answers the caller studio sender', async () => {
+      vi.mocked(readSender).mockResolvedValue({ configured: true, name: 'Studio A', address: 'a@studio-a.test' });
+      const res = await request(app).get('/api/v1/outreach/sender');
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ success: true, data: { configured: true, name: 'Studio A', address: 'a@studio-a.test' } });
+      expect(readSender).toHaveBeenCalledWith('5eed00000000000000000002');
+    });
+
+    it('returns the stored message, simulated, with the headers as a plain object', async () => {
+      mockLead({ _id: leadId });
+      mockCampaign({ leadId, outbox, deliveryMode: 'SIMULATED', sentAt, updatedAt: sentAt });
+      const res = await request(app).get(`/api/v1/outreach/${leadId}/outbox`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual({
+        from: outbox.from,
+        to: outbox.to,
+        subject: 'Hello',
+        headers: { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+        html: '<p>Hi</p>',
+        text: 'Hi',
+        deliveryMode: 'SIMULATED',
+        sentAt: sentAt.toISOString(),
+      });
+    });
+
+    it('returns 404 OUTBOX_NOT_FOUND for a campaign without an outbox and for a lead without a campaign', async () => {
+      mockLead({ _id: leadId });
+      mockCampaign({ leadId, updatedAt: sentAt });
+      const noOutbox = await request(app).get(`/api/v1/outreach/${leadId}/outbox`);
+      expect(noOutbox.status).toBe(404);
+      expect(noOutbox.body.error.code).toBe('OUTBOX_NOT_FOUND');
+      mockCampaign(null);
+      const noCampaign = await request(app).get(`/api/v1/outreach/${leadId}/outbox`);
+      expect(noCampaign.status).toBe(404);
+      expect(noCampaign.body.error.code).toBe('OUTBOX_NOT_FOUND');
+    });
+
+    it('returns 404 LEAD_NOT_FOUND for an unknown lead and 400 INVALID_ID for a bad id', async () => {
+      mockLead(null);
+      const missing = await request(app).get(`/api/v1/outreach/${leadId}/outbox`);
+      expect(missing.status).toBe(404);
+      expect(missing.body.error.code).toBe('LEAD_NOT_FOUND');
+      const bad = await request(app).get('/api/v1/outreach/lead-123/outbox');
+      expect(bad.status).toBe(400);
+      expect(bad.body.error.code).toBe('INVALID_ID');
+    });
+
+    it('GET outbox writes nothing', async () => {
+      mockLead({ _id: leadId });
+      mockCampaign({ leadId, outbox, deliveryMode: 'SIMULATED', sentAt, updatedAt: sentAt });
+      await request(app).get(`/api/v1/outreach/${leadId}/outbox`);
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.updateOne).not.toHaveBeenCalled();
+      expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(EmailCampaign.updateOne).not.toHaveBeenCalled();
     });
   });
 

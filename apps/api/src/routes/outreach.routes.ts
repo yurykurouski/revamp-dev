@@ -9,14 +9,15 @@ import {
   TestEmailOutreachSchema,
   canApproveOutreach,
 } from '@revamp/validation';
-import { EMAIL_PROVIDER_NOT_CONFIGURED, LeadStatus, draftToHtml } from '@revamp/shared-types';
+import type { IOutboxView } from '@revamp/shared-types';
+import { LeadStatus, draftToHtml } from '@revamp/shared-types';
 import { validateBody } from '../middlewares/validate.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { approveOutreachWithCampaign } from '../models/EmailCampaign.model.js';
 import { calculateDispatchDelay } from '../queues/email.queue.js';
 import { enqueueEmailOrRevert } from '../services/email-enqueue.js';
 import { sendTestEmailJob } from '../queues/email-test.queue.js';
-import { env } from '../config/env.js';
+import { readSender, requireSender } from '../services/sender.service.js';
 import { tenantIdOf } from '../data/tenant-scope.js';
 
 const router = Router();
@@ -40,7 +41,51 @@ const leadNotFound = (id: string): AppError => new AppError(404, 'LEAD_NOT_FOUND
 const invalidId = (): AppError =>
   new AppError(400, 'INVALID_ID', 'A valid 24-character hexadecimal ObjectId is required');
 
-const providerMissing = (): AppError => new AppError(503, 'EMAIL_PROVIDER_NOT_CONFIGURED', EMAIL_PROVIDER_NOT_CONFIGURED);
+// A worker's failure reason that names the missing sender (REV-221); the API checks first, the sender may be gone by the time the job runs
+const SENDER_NOT_CONFIGURED_REASON = 'SENDER_NOT_CONFIGURED';
+
+// GET /outreach/sender - The caller's studio sender, for every role (REV-221). Reads the caller's own organization only
+router.get('/sender', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    res.status(200).json({ success: true, data: await readSender(req.auth!.organizationId) });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// GET /outreach/:id/outbox - The simulated email recorded for the lead (REV-221). Writes nothing: viewing it is not an
+// open or a click, and nothing in it is loaded from the network by the dashboard
+router.get('/:id/outbox', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params['id'] || '';
+    if (!mongoose.Types.ObjectId.isValid(id)) throw invalidId();
+
+    const lead = await req.tenant!.leads.findById(id).exec();
+    if (!lead) throw leadNotFound(id);
+
+    const campaign = await req.tenant!.campaigns.findOne({ leadId: lead._id }).lean().exec();
+    const outbox = campaign?.outbox;
+    if (!campaign || !outbox) {
+      throw new AppError(404, 'OUTBOX_NOT_FOUND', 'No email has been recorded in the outbox for this lead.');
+    }
+
+    const rawHeaders = outbox.headers as unknown;
+    const headers = rawHeaders instanceof Map ? Object.fromEntries(rawHeaders) : { ...(rawHeaders as Record<string, string> | undefined) };
+    const data: IOutboxView = {
+      from: outbox.from,
+      to: outbox.to,
+      subject: outbox.subject,
+      headers,
+      html: outbox.html,
+      text: outbox.text,
+      deliveryMode: campaign.deliveryMode ?? 'SIMULATED',
+      sentAt: new Date(campaign.sentAt ?? campaign.updatedAt).toISOString(),
+    };
+    res.status(200).json({ success: true, data });
+  } catch (error) {
+    next(error);
+  }
+});
 
 // GET /outreach/pending - Pending approval drafts
 router.get('/pending', async (req: Request, res: Response, next: NextFunction) => {
@@ -84,6 +129,9 @@ router.post(
         throw new AppError(409, 'NO_CONTACT_EMAIL', 'This lead has no contact email. Add one before approving outreach.');
       }
 
+      // The studio sends under its own sender (REV-221); without one nothing is written and nothing is queued
+      const sender = await requireSender(req.auth!.organizationId);
+
       // 1. Store the draft exactly as the operator approved it; there is no default copy (REV-61). It is sent as
       // escaped HTML with its line breaks, plus the same text as the plain-text part, exactly like the test send (REV-72)
       const trackingToken = crypto.randomUUID().replace(/-/g, '');
@@ -93,7 +141,8 @@ router.post(
       // awaiting approval, so two approvals at once can't both queue an email (REV-59, REV-203)
       const written = await approveOutreachWithCampaign(id, {
         status: 'SCHEDULED',
-        senderEmail: env.EMAIL_FROM,
+        senderEmail: sender.address,
+        senderName: sender.name,
         recipientEmail: existing.contactEmail,
         subject,
         ...(preheader ? { previewText: preheader } : {}),
@@ -183,8 +232,8 @@ router.post(
   },
 );
 
-// POST /outreach/:id/test - Send the current draft to the operator (REV-60). It goes to the operator,
-// not the lead, so it is not HITL-gated, and it never changes the lead or its campaign.
+// POST /outreach/:id/test - Simulate sending the current draft to the operator (REV-60, REV-221). It goes to the operator,
+// not the lead, so it is not HITL-gated, it never changes the lead or its campaign, and nothing is delivered.
 router.post(
   '/:id/test',
   validateBody(TestEmailOutreachSchema),
@@ -198,8 +247,8 @@ router.post(
       const lead = await req.tenant!.leads.findById(id).exec();
       if (!lead) throw leadNotFound(id);
 
-      // Say so up front instead of reporting a send that cannot happen (REV-45)
-      if (!env.EMAIL_PROVIDER) throw providerMissing();
+      // Say so up front instead of queuing a test that cannot be rendered (REV-221)
+      await requireSender(req.auth!.organizationId);
 
       const { testEmail, subject, preheader, body } = req.body;
       const outcome = await sendTestEmailJob({ leadId: id, tenantId: tenantIdOf(req.tenant!), to: testEmail, subject, preheader, body });
@@ -213,15 +262,17 @@ router.post(
       }
 
       if (outcome.status === 'failed') {
-        // The workers may be configured differently from the API
-        if (outcome.reason === EMAIL_PROVIDER_NOT_CONFIGURED) throw providerMissing();
-        throw new AppError(502, 'EMAIL_SEND_FAILED', `The test email was not sent: ${outcome.reason}`);
+        // The sender may have gone between the check above and the job
+        if (outcome.reason.startsWith(SENDER_NOT_CONFIGURED_REASON)) {
+          throw new AppError(409, 'SENDER_NOT_CONFIGURED', 'This studio has no sender yet. The studio owner sets it in Settings.');
+        }
+        throw new AppError(502, 'EMAIL_SEND_FAILED', `The test email was not simulated: ${outcome.reason}`);
       }
 
       res.status(200).json({
         success: true,
-        message: `Test email sent to ${testEmail}`,
-        data: { to: testEmail, ...outcome.result },
+        message: `Test email simulated for ${testEmail}`,
+        data: outcome.result,
       });
     } catch (error) {
       next(error);

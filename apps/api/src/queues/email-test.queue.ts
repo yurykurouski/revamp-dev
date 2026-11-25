@@ -36,7 +36,7 @@ export type EmailTestOutcome =
 
 /**
  * Queues a test send and waits for the worker's real result (REV-60), so the operator is told
- * "sent" only when the provider accepted the email.
+ * "simulated" only when the worker rendered the message (REV-221: nothing is delivered).
  */
 export async function sendTestEmailJob(
   data: IEmailTestJobData,
