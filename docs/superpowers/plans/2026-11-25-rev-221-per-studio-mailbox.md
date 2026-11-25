@@ -1,379 +1,246 @@
-# REV-221 Per-Studio Mailbox Implementation Plan
+# REV-221 Studio Sender and Simulated Outbox Implementation Plan
 
 > **For agentic workers:** executed by the `implementer` agent (`.claude/agents/implementer.md`) as one run, task by task, TDD. Steps use checkbox (`- [ ]`) syntax. Report every deviation from this plan under `Plan deviations`.
 
-**Goal:** Every approved outreach email (and every test send) goes out through the mailbox the lead's studio connected (Gmail through Google OAuth, or SMTP). The platform-wide provider is removed.
+**Goal:** Every studio sets its own sender (name and address). Approved outreach and test sends are rendered exactly as they would be sent, From that studio, and recorded in the campaign's outbox as **simulated**. No email leaves the platform. The platform-wide provider (Resend, SendGrid, SMTP, `EMAIL_FROM`) is removed.
 
-**Architecture:** A new `Mailbox` collection in `@revamp/db` holds one mailbox per studio, with its secret (SMTP password or Gmail refresh token) encrypted with AES-256-GCM. The API connects, verifies and disconnects it under `/organization/mailbox` (owner only). Any member reads its public view at `GET /outreach/sender`. Approve and test send refuse a studio without a usable mailbox. The email workers load the lead's studio mailbox, apply its rolling 24-hour limit by delaying the job, and send through a `MailboxTransport` (SMTP through Nodemailer, or the Gmail REST API with a raw MIME message built by Nodemailer). An auth failure marks the mailbox `NEEDS_RECONNECT` and returns the lead to review with a readable `outreachError`.
+**Architecture:** `Organization` gains a `sender` subdocument that the owner edits under `/organization/sender`. Every member reads it at `GET /outreach/sender`. Approve and test send refuse a studio without a sender (`409 SENDER_NOT_CONFIGURED`). The email worker keeps every gate it has today: HITL, tenant check, campaign claim, MX pre-check, and the compliance headers, footer and pixel. Instead of handing the message to a provider, it writes the rendered message to `EmailCampaign.outbox` with `deliveryMode: 'SIMULATED'`, marks the campaign DELIVERED and the lead SENT. The dashboard labels every such email "Simulated – not delivered" and shows it at `GET /outreach/:id/outbox` in a frame that loads nothing, so viewing it never counts as an open or a click.
 
-**Tech Stack:** Node 20, TypeScript, Express, Mongoose, BullMQ 5.81 (`DelayedError`, `job.moveToDelayed`), Nodemailer 10 (`streamTransport` with `buffer: true` builds the MIME), Node `crypto` (AES-256-GCM, HMAC), Zod, React 18 + MUI v6 + React Query, Vitest.
+**Tech Stack:** Node 20, TypeScript, Express, Mongoose, BullMQ, Zod, React 18 + MUI v6 + React Query, Vitest.
 
-**Spec:** Linear REV-221 (problem, expected, acceptance criteria) and BA US18 (`../Revamp-docs/ba-expertise.md:254`). Read root `AGENTS.md`, `apps/api/AGENTS.md`, `apps/workers/AGENTS.md`, `apps/dashboard/AGENTS.md` and `packages/db/AGENTS.md` before starting.
+**Spec:** Linear REV-221, rescoped on 2026-11-25 by the user: an in-app simulated outbox; the lead goes to SENT with the campaign marked simulated; outbox only; each studio has its own sender. Gmail OAuth, SMTP credentials, encryption and daily limits are out. BA US18 (`../Revamp-docs/ba-expertise.md:254`) still holds for the sender identity. Read root `AGENTS.md`, `apps/api/AGENTS.md`, `apps/workers/AGENTS.md`, `apps/dashboard/AGENTS.md` and `packages/db/AGENTS.md` first.
 
-## Rulings made in this plan (the ticket left them open)
+## Rulings
 
-1. **The platform-wide provider is removed entirely, not kept for notifications.** The platform sends no notification email today: invitations are a link the owner copies (REV-207), and sign-in sends nothing. `EMAIL_PROVIDER`, `RESEND_API_KEY`, `SENDGRID_API_KEY`, `EMAIL_FROM`, `SMTP_HOST/PORT/USER/PASS`, `ResendEmailProvider`, `SendGridEmailProvider`, `createEmailProvider` and `EMAIL_PROVIDER_NOT_CONFIGURED` (constant and error code) are deleted.
-2. **Gmail scopes:** `openid email https://www.googleapis.com/auth/gmail.send`. `gmail.send` alone cannot read the account's address, so the `email` claim of the ID token gives it. Sending goes through the Gmail REST API (`users/me/messages/send`), because SMTP XOAUTH2 needs the full `https://mail.google.com/` scope.
-3. **Gmail is optional per deployment.** Without `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET`, the start endpoint answers `503 GMAIL_OAUTH_NOT_CONFIGURED` and the dashboard shows the Gmail option as unavailable. SMTP always works.
-4. **Daily limit window:** a rolling 24 hours (Gmail counts that way). Count = the studio's campaigns `DELIVERED` with `sentAt` in the last 24 h and `senderEmail` equal to the mailbox address. Default `dailyLimit` is 500 for both kinds. The owner may set 1–2000. Test sends are not counted.
-5. **When a mailbox is gone or rejected at send time, the lead goes back to review.** The worker returns the lead `SCHEDULED → NEEDS_APPROVAL` (existing edge), unstamps the campaign (existing `revertOutreachApproval`), and sets `Lead.outreachError = { code, message, at }`. The operator sees the reason, the owner reconnects, and the operator approves again. Transient errors (network, 5xx, timeouts) keep today's retry with the claim released. `outreachError` is cleared by the next successful approval.
-6. **The OAuth callback is a public route** (`GET /oauth/google/callback`). The studio comes from a signed `state` (HMAC-SHA256 with `JWT_SECRET`, purpose `gmail-mailbox`, organization id, user id, nonce, 10-minute expiry). On callback the user must still be an owner of that studio. The browser is then redirected to `${DASHBOARD_URL}/settings?mailbox=connected` or `?mailbox=error&reason=<code>`.
-7. **SMTP credentials are verified on connect from the API** (`transporter.verify()`, 10 s timeout, with `nodemailer` added to `apps/api`). A failure answers `422 MAILBOX_VERIFY_FAILED` with the server's reply, after any echo of the password is removed.
-8. **The From header** is `"<displayName>" <address>`, where `displayName` defaults to the studio name at connect time. The owner can change it with PATCH.
-9. **Unchanged:** the global worker limiter of one email per 180 s (shared by all studios). It is noted under "Deferred" in the report, not changed here.
-10. **No mailbox in the demo seed:** credentials are never seeded. Approving in the demo studio shows the "connect a mailbox" message.
-11. **Gmail end to end is not possible without a real Google client.** It is covered with tests that mock `fetch`. The e2e run uses SMTP against the local sink, and in Chrome checks the Gmail button's "not configured" state.
+1. **A written exception to REV-45** (root `AGENTS.md` §3.2.2): email delivery is simulated. It is the one allowed stand-in, it is always labelled (`deliveryMode: 'SIMULATED'` on the record, "Simulated – not delivered" in the UI), and no text may present it as delivered. Every other REV-45 rule is unchanged: no made-up leads, metrics or contacts.
+2. **What a simulated send is:** all the checks of a real send run, then the final message is stored: `from` header, `to`, `subject`, compliance `headers`, final `html` (with the unsubscribe footer and the open pixel) and final `text`. Campaign → `DELIVERED` with `sentAt`, `senderEmail` and `senderName` from the studio sender **at send time**. Lead → `SENT`. The MX pre-check stays: it is a real DNS lookup and still bounces dead domains.
+3. **Opens and clicks are never invented.** The outbox view loads the html with `sandbox=""`, a CSP `<meta>` (`default-src 'none'; style-src 'unsafe-inline'; img-src data:`) and `<base target="_blank">`, so the pixel does not load and links cannot open: the sandbox blocks popups. Engagement statuses (`OPENED` and beyond) are reached only through the real `/track/*` routes, as today.
+4. **Test send:** the same queue and worker render the message with the `[Test] ` prefix, without the pixel, and store nothing. The API answers `{ to, from, subject, simulated: true }`. The dashboard says "Test email simulated – not delivered".
+5. **The sender cannot be removed, only changed** (`PUT` only, no `DELETE`). A campaign queued before this ships, whose studio has no sender, is returned to review by the worker through the existing `revertOutreachApproval`. The dashboard then shows the "set a sender" warning.
+6. **The sender address is not verified.** Without delivery there is nothing to verify it with. It must be a valid email.
+7. **Removed:** `ResendEmailProvider`, `SendGridEmailProvider`, `SmtpEmailProvider`, `createEmailProvider`, `IEmailProvider`, the `nodemailer` and `@types/nodemailer` dependencies of the workers, the env keys `EMAIL_PROVIDER`, `RESEND_API_KEY`, `SENDGRID_API_KEY`, `EMAIL_FROM` and `SMTP_HOST/PORT/USER/PASS`, the constant and error code `EMAIL_PROVIDER_NOT_CONFIGURED`, and the startup email warning.
+8. **Unchanged:** the throttle (15–45 s jitter, one email per 180 s), approval transaction, revert, `EmailCampaign` statuses and the lead state machine.
+9. **Demo seed:** `Demo Studio` gets the sender `Demo Studio <hello@demo-studio.test>`. Its DELIVERED campaigns get `deliveryMode: 'SIMULATED'` and an outbox built by the same render function (Task 1 `renderOutreachMessage`), so the seed matches runtime.
 
 ## Global Constraints
 
-- HITL unchanged: only a `SCHEDULED` lead is emailed (NFR7). The new code adds refusals, never a send path.
-- Every API error goes through `AppError` with codes from `API_ERROR_CODES`. New codes: `MAILBOX_NOT_CONNECTED` (409), `MAILBOX_NEEDS_RECONNECT` (409), `MAILBOX_VERIFY_FAILED` (422), `GMAIL_OAUTH_NOT_CONFIGURED` (503), `MAILBOX_OAUTH_FAILED` (400, used only as the redirect `reason`). Removed code: `EMAIL_PROVIDER_NOT_CONFIGURED`.
-- Schemas only in `packages/db`. Every request body is validated with a Zod schema from `@revamp/validation`, and Google's token response with `GoogleTokenResponseSchema` before use.
-- No secret ever appears in an API response, a log line, an error message or a queue payload. Queue payloads stay `{ campaignId, leadId, tenantId }` and the test payload stays as it is. The worker reads the secret from Mongo.
-- Tenant isolation: the API reaches `Mailbox` only through `req.tenant.mailboxes` / `scopeFor()`. `'Mailbox'` joins `GUARDED` in `tenant-guard.ts`. Workers read it with `withTenant(tenant, …)` after `assertJobTenant`.
-- `MAILBOX_ENCRYPTION_KEY`: 32 bytes as base64 (44 chars). Required by the API and the workers (startup fails without it). `npm run setup` generates it. In the container stack and in prod it is a Docker secret (`MAILBOX_ENCRYPTION_KEY_FILE`), and so is `GOOGLE_OAUTH_CLIENT_SECRET`.
+- HITL unchanged: only a `SCHEDULED` lead is processed into SENT (NFR7).
+- Errors through `AppError` with codes from `API_ERROR_CODES`. Add `SENDER_NOT_CONFIGURED` (409) and `OUTBOX_NOT_FOUND` (404). Remove `EMAIL_PROVIDER_NOT_CONFIGURED`.
+- Schemas only in `packages/db`; request bodies validated with `@revamp/validation`. No `Schema.Types.Mixed`: `outbox.headers` is a `Map` of `String`.
+- Tenant isolation: the outbox route reads the campaign through `req.tenant.campaigns` (another studio's lead → `404 LEAD_NOT_FOUND`, the usual answer). Sender routes act on `req.auth.organizationId` only, never on an id from the request. The worker reads the studio's `Organization` by the job's checked tenant.
 - New dashboard strings in all five locales (`en`, `ru`, `be`, `pl`, `lt`). Theme tokens only.
-- Tests are `.spec.ts` only (`.spec.tsx` is skipped). Run vitest from the repo root. Real-MongoDB tests go in `packages/db/src/__tests__/real-mongo.spec.ts`.
+- Tests are `.spec.ts`, run from the repo root. Real-MongoDB tests go only in `packages/db/src/__tests__/real-mongo.spec.ts`.
 
 ## Review Focus
 
-1. **An owner disconnects or reconnects the mailbox while an approved email is waiting in the delayed queue.** The worker must read the mailbox at send time, not at approval: disconnected means the lead goes back to review with `MAILBOX_NOT_CONNECTED`, and reconnected to another address means it sends from the new address and records it. Covered by `email.worker.spec.ts › returns the lead to review when the mailbox was disconnected after approval` and `› sends from the mailbox address current at send time` (Task 5).
-2. **The SMTP server echoes the password in its error reply** (some do on AUTH failures), or Nodemailer puts the auth object in the error. The text must be redacted before it reaches the 422 body, `Mailbox.lastError`, `Lead.outreachError` or a log. Covered by `redactSecret` tests (Task 2) and `mailbox.routes.spec.ts › MAILBOX_VERIFY_FAILED never echoes the password` (Task 3).
-3. **A studio at its limit with many approved emails.** Each must be delayed to when the window frees up, not failed and not retried in a hot loop (attempts must not be consumed). Covered by `email.worker.spec.ts › delays the job to the end of the window when the mailbox is at its daily limit` (asserts `moveToDelayed` with the oldest `sentAt + 24h`, and `DelayedError`) (Task 5).
-4. **Callback replay or a forged state:** an expired, tampered or other-purpose state, or a user who is no longer an owner. The callback must write nothing and redirect with `reason=MAILBOX_OAUTH_FAILED`. Covered by `oauth.routes.spec.ts` cases (Task 4).
-5. **Google returns no refresh token** (the user had granted access before, so no `prompt=consent`), or `email_verified` is false. Connecting must fail visibly instead of storing a mailbox that can never send. Covered by `gmail-oauth.spec.ts › refuses a token response without refresh_token` / `› refuses an unverified email` (Task 4). The auth URL always sends `access_type=offline&prompt=consent`.
+1. **The owner changes the sender after approval, before the job runs.** The email must carry the sender current at send time, and the campaign must record that one. Test: `email.worker.spec.ts › uses the studio sender current at send time` (Task 4).
+2. **Opening the outbox in the dashboard must not move the lead to OPENED or CLICKED.** Test: `OutboxDialog.spec.ts › frame is sandboxed with no permissions and the srcdoc carries the CSP meta and base target` (Task 5). The API side has no route that writes on read, asserted in `api.routes.spec.ts › GET outbox writes nothing` (Task 3: the campaign's `updatedAt` and the lead status are unchanged).
+3. **A sender name containing quotes, commas or non-ASCII** (`Studio "Kraków", Ltd`) must produce a valid From header. Test: `outreach-message.spec.ts › formats a From header with quotes and non-ASCII` (Task 1). Expected: `"Studio \"Kraków\", Ltd" <a@b.test>`, with the name quoted and inner quotes escaped.
+4. **A retried job after the outbox write** must not write twice or change `sentAt`. The existing DELIVERED short-circuit covers it. Test: `email.worker.spec.ts › a retry of a delivered campaign leaves the outbox and sentAt as they were` (Task 4).
+5. **A viewer or operator tries to change the sender.** They get 403 and nothing is written. Test: `route-auth.spec.ts` walk (owner-only `/organization/*`) plus `sender.routes.spec.ts › operator gets 403` (Task 3).
 
 ---
 
-## File Structure
-
-| File | Responsibility |
-|---|---|
-| `packages/shared-types/src/index.ts` | `MAILBOX_KINDS`, `MailboxKind`, `MAILBOX_STATUSES`, `IMailboxView`, `MAILBOX_DEFAULT_DAILY_LIMIT = 500`, `MAILBOX_MAX_DAILY_LIMIT = 2000`, `ILeadOutreachError`, `OUTREACH_ERROR_CODES`, the new error codes. `EMAIL_PROVIDER_NOT_CONFIGURED` removed |
-| `packages/validation/src/mailbox.ts` (new, exported from the index) | `ConnectSmtpMailboxSchema`, `UpdateMailboxSchema`, `GoogleTokenResponseSchema`, `GoogleIdTokenClaimsSchema`, `LeadOutreachErrorSchema` |
-| `packages/db/src/models/Mailbox.model.ts` (new) | `Mailbox` model, unique `tenantId`, `secret` with `select: false`, `toJSON` without the secret |
-| `packages/db/src/mailbox-secret.ts` (new) | `encryptSecret`, `decryptSecret`, `parseEncryptionKey`, `redactSecret` |
-| `packages/db/src/approve-outreach.ts` | `revertOutreachApproval(leadId, options?)` gains `outreachError`, and `approveOutreachWithCampaign` clears `Lead.outreachError` |
-| `packages/db/src/models/Lead.model.ts` | `outreachError` subdocument |
-| `apps/api/src/data/tenant-scope.ts` | `mailboxes` repository |
-| `apps/api/src/services/mailbox.service.ts` (new) | `mailboxView`, `connectSmtpMailbox`, `verifySmtp`, `requireUsableMailbox` |
-| `apps/api/src/services/gmail-oauth.ts` (new) | `signOAuthState`, `readOAuthState`, `gmailAuthUrl`, `exchangeGmailCode` |
-| `apps/api/src/routes/mailbox.routes.ts` (new, mounted at `/organization/mailbox`) | owner writes |
-| `apps/api/src/routes/oauth.routes.ts` (new, mounted public at `/oauth`) | Google callback |
-| `apps/api/src/routes/outreach.routes.ts` | `GET /sender`, and the mailbox checks on approve and test |
-| `apps/workers/src/services/mailbox-transport.ts` (new) | `MailboxTransport`, `SmtpTransport`, `GmailTransport`, `MailboxAuthError`, `loadStudioMailbox` |
-| `apps/workers/src/services/email.service.ts` | compliance wrapping only; it takes a transport and a from |
-| `apps/workers/src/workers/email.worker.ts`, `email-test.worker.ts` | studio mailbox, daily limit, auth failure handling |
-| `apps/dashboard/src/api/client.ts`, `hooks/useMailbox.ts` (new), `components/settings/MailboxSection.tsx` (new), `pages/SettingsPage.tsx`, `components/leadReview/ReviewActionBar.tsx`, locales | UI |
-| env/config: `apps/*/src/config/env.ts`, `.env.example`, `.env.production.example`, `scripts/lib/dev-stack.mjs`, `docker-compose.full.yml`, `docker-compose.prod.yml`, `deploy/prepare-secrets.sh`, `scripts/verify-production-env.ts` | keys and secrets |
-
----
-
-### Task 1: Shared types, validation schemas, Mailbox model, secret crypto
+### Task 1: Types, schemas, models, the message renderer, seed
 
 **Files:**
-- Modify: `packages/shared-types/src/index.ts`
-- Create: `packages/validation/src/mailbox.ts` and its export in `packages/validation/src/index.ts`
-- Create: `packages/db/src/models/Mailbox.model.ts` and `packages/db/src/mailbox-secret.ts`, with exports in `packages/db/src/index.ts`
-- Modify: `packages/db/src/models/Lead.model.ts`, `packages/db/src/approve-outreach.ts`
-- Test: `packages/validation/src/__tests__/mailbox.spec.ts` (follow the existing test folder of the package), `packages/db/__tests__/mailbox-secret.spec.ts`, `packages/db/__tests__/models.spec.ts`, `packages/db/src/__tests__/real-mongo.spec.ts`
+- Modify: `packages/shared-types/src/index.ts`, `packages/validation/src/index.ts` (or a new `packages/validation/src/sender.ts` exported from it), `packages/db/src/models/Organization.model.ts`, `packages/db/src/models/EmailCampaign.model.ts`, `packages/db/src/seed/demo-dataset.ts`
+- Create: `packages/shared-types/src/outreach-message.ts` (exported from the index; pure, no Node APIs, so the seed and the workers share it)
+- Test: the validation package's spec folder (`sender.spec.ts`), `packages/shared-types` spec folder (`outreach-message.spec.ts`), `packages/db/__tests__/models.spec.ts`, `packages/db/src/__tests__/demo-dataset.spec.ts`
 
 **Interfaces (Produces):**
 ```ts
 // shared-types
-export const MAILBOX_KINDS = ['gmail', 'smtp'] as const; export type MailboxKind = (typeof MAILBOX_KINDS)[number];
-export const MAILBOX_STATUSES = ['CONNECTED', 'NEEDS_RECONNECT'] as const; export type MailboxStatus = ...;
-export const MAILBOX_DEFAULT_DAILY_LIMIT = 500; export const MAILBOX_MAX_DAILY_LIMIT = 2000;
-export interface IMailboxView { connected: boolean; kind?: MailboxKind; address?: string; displayName?: string;
-  status?: MailboxStatus; lastError?: string; dailyLimit?: number; sentLast24h?: number; gmailAvailable: boolean;
-  smtp?: { host: string; port: number; secure: boolean; user: string } }   // never a password or token
-export const OUTREACH_ERROR_CODES = ['MAILBOX_NOT_CONNECTED', 'MAILBOX_NEEDS_RECONNECT', 'MAILBOX_AUTH_FAILED'] as const;
-export interface ILeadOutreachError { code: (typeof OUTREACH_ERROR_CODES)[number]; message: string; at: string | Date }
-// ILead gains: outreachError?: ILeadOutreachError
-// API_ERROR_CODES: + MAILBOX_NOT_CONNECTED, MAILBOX_NEEDS_RECONNECT, MAILBOX_VERIFY_FAILED, GMAIL_OAUTH_NOT_CONFIGURED,
-//   MAILBOX_OAUTH_FAILED; − EMAIL_PROVIDER_NOT_CONFIGURED (and delete the EMAIL_PROVIDER_NOT_CONFIGURED constant)
+export interface IStudioSender { name: string; address: string }
+export interface ISenderView { configured: boolean; name?: string; address?: string }
+export const EMAIL_DELIVERY_MODES = ['SIMULATED'] as const; export type EmailDeliveryMode = (typeof EMAIL_DELIVERY_MODES)[number];
+export interface IOutboxMessage { from: string; to: string; subject: string; headers: Record<string, string>; html: string; text: string }
+export interface IOutboxView extends IOutboxMessage { deliveryMode: EmailDeliveryMode; sentAt: string }
+export interface IEmailTestJobResult { to: string; from: string; subject: string; simulated: true }   // replaces messageId/provider/sentAt
+// IEmailCampaign gains: senderName?: string; deliveryMode?: EmailDeliveryMode; outbox?: IOutboxMessage
+// API_ERROR_CODES: + 'SENDER_NOT_CONFIGURED', 'OUTBOX_NOT_FOUND'; − 'EMAIL_PROVIDER_NOT_CONFIGURED' (and delete the constant)
+
+// outreach-message.ts (moved out of the workers' EmailService.sendEmail, behavior identical)
+export function formatFromHeader(sender: IStudioSender): string
+export function renderOutreachMessage(input: { sender: IStudioSender; to: string; subject: string; html: string; text?: string;
+  trackingToken: string; publicApiUrl: string; trackOpens?: boolean; unsubscribeEmail?: string }): IOutboxMessage
+  // List-Unsubscribe + List-Unsubscribe-Post headers, footer in html and text, pixel unless trackOpens === false
 
 // validation
-ConnectSmtpMailboxSchema: { host: string 1..253 trimmed, port: int 1..65535, secure: boolean default (port === 465),
-  user: string 1..320, password: string 1..1024 (not trimmed), address: email lowercased, displayName?: string 1..100 trimmed }
-UpdateMailboxSchema: { dailyLimit?: int 1..MAILBOX_MAX_DAILY_LIMIT, displayName?: string 1..100 } with at least one key
-GoogleTokenResponseSchema: { access_token: string, expires_in: number, refresh_token?: string, id_token?: string, scope: string, token_type: 'Bearer' }
-GoogleIdTokenClaimsSchema: { email: email, email_verified: literal(true) }
-LeadOutreachErrorSchema: { code: enum(OUTREACH_ERROR_CODES), message: string 1..500, at: date }
+export const StudioSenderSchema = z.object({ name: z.string().trim().min(1).max(100), address: z.string().trim().toLowerCase().email().max(320) });
 
 // db
-export interface EncryptedSecret { iv: string; tag: string; data: string }   // base64 each
-export function parseEncryptionKey(raw: string | undefined): Buffer            // throws unless exactly 32 bytes after base64 decode
-export function encryptSecret(plain: string, key: Buffer): EncryptedSecret     // AES-256-GCM, random 12-byte iv
-export function decryptSecret(secret: EncryptedSecret, key: Buffer): string    // throws on a wrong key or tampering
-export function redactSecret(text: string, secrets: string[]): string          // replaces each non-empty secret with '[redacted]'
-export interface IMailboxDocument extends Document { tenantId: Types.ObjectId; kind: MailboxKind; address: string;
-  displayName: string; status: MailboxStatus; lastError?: string; dailyLimit: number;
-  smtp?: { host: string; port: number; secure: boolean; user: string }; secret: EncryptedSecret;
-  connectedBy: Types.ObjectId; connectedAt: Date; createdAt: Date; updatedAt: Date }
-export const Mailbox: Model<IMailboxDocument>   // collection 'mailboxes'
-export async function revertOutreachApproval(leadId: string, options?: { outreachError?: ILeadOutreachError }): Promise<boolean>
+// Organization: sender?: { name: String maxlength 100, address: String lowercase }  (_id: false)
+// EmailCampaign: senderName?: String; deliveryMode?: enum EMAIL_DELIVERY_MODES;
+//   outbox?: { from, to, subject, html, text: String; headers: { type: Map, of: String } }  (_id: false)
 ```
 
 - [ ] **Step 1: Write failing tests**
-  - `mailbox.spec.ts` (validation): an SMTP body with port 465 and no `secure` parses to `secure: true`, and 587 parses to `false`. Port 0 and port 70000 fail. Bad email fails. `password: '  pw  '` keeps its spaces. `address` is lowercased. `UpdateMailboxSchema` accepts `{dailyLimit: 2000}` and rejects 0, 2001, 1.5 and `{}`. `GoogleIdTokenClaimsSchema` rejects `email_verified: false`. `LeadOutreachErrorSchema` rejects an unknown code.
-  - `mailbox-secret.spec.ts`: round trip. Two encryptions of the same text differ (`iv`). Decrypting with another key throws. A flipped `data` byte throws. `parseEncryptionKey` rejects `undefined`, 16 bytes and non-base64, and accepts `randomBytes(32).toString('base64')`. `redactSecret('535 bad pw hunter2', ['hunter2', ''])` returns `'535 bad pw [redacted]'`.
-  - `models.spec.ts`: `new Mailbox({...}).toJSON()` has no `secret` key. `Mailbox.schema.path('secret').options.select === false`. `dailyLimit` defaults to 500. `Lead` accepts `outreachError` and rejects an unknown code via the enum.
-  - `real-mongo.spec.ts`: a second `Mailbox` for the same `tenantId` is E11000. `revertOutreachApproval(id, { outreachError })` on a SCHEDULED lead sets the lead to NEEDS_APPROVAL with `outreachError.code`. `approveOutreachWithCampaign` on a lead with `outreachError` clears it (`$unset`).
-- [ ] **Step 2:** Run `npx vitest run packages/validation packages/db` from the repo root. Expected: the new tests FAIL.
-- [ ] **Step 3:** Implement to the interfaces above. `Lead.outreachError` is a subdocument `{ code: enum OUTREACH_ERROR_CODES, message: String maxlength 500, at: Date }` with `_id: false`. Validate it with `LeadOutreachErrorSchema` inside `revertOutreachApproval` before writing (packages/db AGENTS rule for structured values). `approveOutreachWithCampaign` adds `$unset: { outreachError: '' }` to its lead update.
-- [ ] **Step 4:** Run `npm run build:packages && npx vitest run packages`. Expected: PASS. (The dictionary rows for `mailboxes.*` and `leads.outreachError` go into `../Revamp-docs` after the merge; list them under `Docs to update`.)
-- [ ] **Step 5:** Commit `feat(REV-221): mailbox model, encrypted secret and outreach error`.
+  - `sender.spec.ts`: a valid sender parses, and the address is lowercased and trimmed. An empty name, a 101-char name and an invalid address fail.
+  - `outreach-message.spec.ts`:
+    - `formats a From header with quotes and non-ASCII`.
+    - The html has the footer link `${url}/track/unsubscribe/${token}` and the pixel `${url}/track/open/${token}.gif`, and `trackOpens: false` leaves the pixel out.
+    - The footer goes before `</body>` when there is one.
+    - The text ends with the unsubscribe line.
+    - The headers equal `{ 'List-Unsubscribe': '<mailto:…?subject=unsubscribe>, <…>', 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' }`.
+    - The output matches what today's `email.service.spec.ts` asserts: port those assertions.
+  - `models.spec.ts`: `Organization` accepts `sender` and lowercases the address. `EmailCampaign` accepts `deliveryMode: 'SIMULATED'` and rejects `'REAL'`. `outbox.headers` round-trips as a Map.
+  - `demo-dataset.spec.ts`: the demo studio has a sender. Every DELIVERED demo campaign has `deliveryMode: 'SIMULATED'` and an outbox whose `from` is `formatFromHeader(demo sender)`. No demo record mentions `revampdemo.com`.
+- [ ] **Step 2:** Run `npx vitest run packages`. Expected: FAIL.
+- [ ] **Step 3:** Implement to the interfaces. The seed calls `renderOutreachMessage` with `publicApiUrl: 'http://localhost:4000/api/v1'`.
+- [ ] **Step 4:** Run `npm run build:packages && npx vitest run packages`. Expected: PASS.
+- [ ] **Step 5:** Commit `feat(REV-221): studio sender, simulated outbox fields and shared message renderer`.
 
-### Task 2: Environment, secrets plumbing, removal of the platform provider config
+### Task 2: Remove the platform provider configuration
 
-**Files:**
-- Modify: `apps/api/src/config/env.ts`, `apps/workers/src/config/env.ts`, `.env.example`, `.env.production.example`, `scripts/lib/dev-stack.mjs`, `docker-compose.full.yml`, `docker-compose.prod.yml`, `deploy/prepare-secrets.sh`, `scripts/verify-production-env.ts`, `apps/workers/src/services/provider-config.ts`
-- Test: `scripts/__tests__/dev-stack.spec.ts`, `deploy/__tests__/deployment.spec.ts`, `apps/workers/src/services/__tests__/provider-config.spec.ts`, plus env tests if present
+**Files:** `apps/api/src/config/env.ts`, `apps/workers/src/config/env.ts`, `apps/workers/package.json` (drop `nodemailer` and `@types/nodemailer`, then `npm install` to update the lockfile), `apps/workers/src/services/provider-config.ts`, `scripts/verify-production-env.ts`, `.env.example`, `.env.production.example`, `scripts/__tests__/dev-stack.spec.ts`, `deploy/__tests__/deployment.spec.ts`, `apps/workers/src/services/__tests__/provider-config.spec.ts`
 
-**Interfaces (Produces):**
-```ts
-// both env schemas: MAILBOX_ENCRYPTION_KEY: z.string() refined by parseEncryptionKey (message names the variable)
-// api only:  GOOGLE_OAUTH_CLIENT_ID?: string, GOOGLE_OAUTH_CLIENT_SECRET?: string (empty → undefined, like EMAIL_PROVIDER did),
-//            GOOGLE_OAUTH_REDIRECT_URI: string default `${PUBLIC_API_URL}/oauth/google/callback`,
-//            DASHBOARD_URL: string url default 'http://localhost:5173', MAILBOX_VERIFY_TIMEOUT_MS: number default 10000
-// workers:   GOOGLE_OAUTH_CLIENT_ID?, GOOGLE_OAUTH_CLIENT_SECRET? (to refresh tokens)
-// both: remove EMAIL_FROM, EMAIL_PROVIDER, RESEND_API_KEY, SENDGRID_API_KEY, SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS
-// dev-stack.mjs: export function ensureMailboxKey(root): boolean   // like ensureJwtSecret; randomBytes(32).toString('base64')
-```
+- [ ] **Step 1: Failing tests.**
+  - `provider-config.spec.ts`: `providerConfigWarnings({})` has no item matching `/email/i`.
+  - `deployment.spec.ts`: `.env.production.example` does not contain `RESEND_API_KEY`, `SENDGRID_API_KEY` or `EMAIL_PROVIDER`. Replace the old `toContain('RESEND_API_KEY=')`.
+  - `dev-stack.spec.ts`: the `.env` fixtures drop `EMAIL_FROM`.
+- [ ] **Step 2:** Run them. Expected: FAIL.
+- [ ] **Step 3:** Remove the keys from both env schemas, the `emailProvider` input from `ProviderConfigInputs`, and the email check from `verify-production-env.ts`. In `.env.example`, replace the Email Outreach block with a comment: delivery is simulated (REV-221) and each studio sets its sender in Settings.
+- [ ] **Step 4:** Rerun. Expected: PASS. Compile errors in the email code are expected until Tasks 3 and 4.
+- [ ] **Step 5:** Commit `refactor(REV-221): drop the platform-wide email provider settings`.
 
-- [ ] **Step 1: Write failing tests**
-  - `dev-stack.spec.ts`: `ensureMailboxKey` adds `MAILBOX_ENCRYPTION_KEY` (44 chars, decodes to 32 bytes) when it is missing or invalid, leaves a valid one unchanged, and returns `false` then. `writeStackSecretFiles` writes `mailbox_encryption_key` and `google_oauth_client_secret` (empty file when unset). The REV-95 `.env` fixtures no longer mention `EMAIL_FROM`.
-  - `deployment.spec.ts`: `.env.production.example` contains `MAILBOX_ENCRYPTION_KEY=`, `GOOGLE_OAUTH_CLIENT_ID=`, `GOOGLE_OAUTH_CLIENT_SECRET=` and `DASHBOARD_URL=`, and does not contain `RESEND_API_KEY`. `prepare-secrets.sh` `SECRET_KEYS` includes `MAILBOX_ENCRYPTION_KEY` and `GOOGLE_OAUTH_CLIENT_SECRET`. `docker-compose.prod.yml` and `docker-compose.full.yml` mount both secrets on api and workers and set the `_FILE` variables.
-  - `provider-config.spec.ts`: no email warning at all (the mailbox is per studio). Remove the old email-warning case and assert that `providerConfigWarnings({})` has no item matching `/email/i`.
-- [ ] **Step 2:** Run the three specs. Expected: FAIL.
-- [ ] **Step 3:** Implement. Call `ensureMailboxKey` in setup next to `ensureJwtSecret` (log `Generated MAILBOX_ENCRYPTION_KEY in .env`). In `verify-production-env.ts`, replace the Resend/SendGrid check with: `MAILBOX_ENCRYPTION_KEY` decodes to 32 bytes (ERROR otherwise), and the Google client is set (WARNING otherwise: "Gmail connect unavailable; SMTP still works"). Remove the `EMAIL_PROVIDER` field from `ProviderConfigInputs`.
-- [ ] **Step 4:** Rerun. Expected: PASS. Give the worktree's `.env` a key by calling `ensureMailboxKey` (don't edit the main checkout's `.env`; report that it needs `npm run setup` after the merge, which adds the key without touching other lines).
-- [ ] **Step 5:** Commit `feat(REV-221): mailbox encryption key and Google client config; drop platform email provider settings`.
-
-Compile errors in code that still reads the removed env keys are expected until Tasks 3 and 5. Keep those tasks in the same run, and run the full gates only at the end of Task 5.
-
-### Task 3: API: tenant scope, mailbox service, SMTP connect, sender view, approve/test checks
+### Task 3: API: sender routes, approve and test gates, outbox route
 
 **Files:**
-- Modify: `apps/api/src/data/tenant-scope.ts`, `apps/api/src/__tests__/tenant-guard.ts` (`GUARDED` += `'Mailbox'`), `apps/api/src/routes/index.ts`, `apps/api/src/routes/outreach.routes.ts`, `apps/api/package.json` (+ `nodemailer`, `@types/nodemailer` at the workers' versions), `apps/api/src/models/` (re-export `Mailbox` like the others)
-- Create: `apps/api/src/services/mailbox.service.ts`, `apps/api/src/routes/mailbox.routes.ts`
-- Test: `apps/api/src/services/__tests__/mailbox.service.spec.ts`, `apps/api/src/routes/__tests__/mailbox.routes.spec.ts`, `api.routes.spec.ts` (outreach cases), `route-auth.spec.ts`, `tenant-isolation.spec.ts`
+- Create: `apps/api/src/routes/sender.routes.ts` (mounted `router.use('/organization/sender', requireAuth, requireOwner, senderRoutes)` before `/organization`), `apps/api/src/services/sender.service.ts`
+- Modify: `apps/api/src/routes/index.ts`, `apps/api/src/routes/outreach.routes.ts`
+- Test: `apps/api/src/routes/__tests__/sender.routes.spec.ts`, `api.routes.spec.ts`, `tenant-isolation.spec.ts`, `route-auth.spec.ts` (no list change expected; it must stay green)
 
 **Interfaces:**
-- Consumes: Task 1 (`Mailbox`, `encryptSecret`, `parseEncryptionKey`, `redactSecret`, schemas, `IMailboxView`), Task 2 env.
-- Produces:
 ```ts
-// tenant-scope: TenantScope.mailboxes: Repository<IMailboxDocument>
-// mailbox.service.ts
-export async function mailboxView(scope: TenantScope): Promise<IMailboxView>   // sentLast24h = scope.campaigns.countDocuments({status:'DELIVERED', senderEmail: address, sentAt: {$gte: now-24h}}); gmailAvailable from env
-export async function verifySmtp(input: ConnectSmtpMailbox, timeoutMs?: number): Promise<void>  // throws AppError 422 MAILBOX_VERIFY_FAILED, message redacted
-export async function connectSmtpMailbox(scope: TenantScope, input: ConnectSmtpMailbox, userId: string, studioName: string): Promise<IMailboxView>
-export async function saveMailbox(scope: TenantScope, fields: { kind; address; displayName; smtp?; secretPlain: string }, userId: string): Promise<void>
-  // upsert on {} in scope, status CONNECTED, lastError unset, connectedAt now; dailyLimit kept if present else default (via $setOnInsert)
-export async function requireUsableMailbox(scope: TenantScope): Promise<IMailboxDocument>  // 409 MAILBOX_NOT_CONNECTED / MAILBOX_NEEDS_RECONNECT
+// sender.service.ts
+export async function readSender(organizationId: string): Promise<ISenderView>
+export async function saveSender(organizationId: string, sender: IStudioSender): Promise<ISenderView>   // Organization.findByIdAndUpdate $set sender
+export async function requireSender(organizationId: string): Promise<IStudioSender>                    // 409 SENDER_NOT_CONFIGURED
 ```
-- Routes, `mailbox.routes.ts` (mounted `router.use('/organization/mailbox', requireAuth, requireOwner, mailboxRoutes)` **before** `/organization`):
-  `PUT /smtp` (body `ConnectSmtpMailboxSchema`) → 200 `{success, data: IMailboxView}`. `PATCH /` (`UpdateMailboxSchema`) → 200 view, 409 `MAILBOX_NOT_CONNECTED` when there is none. `DELETE /` → 200 `{success, data: {connected:false, gmailAvailable}}`, idempotent. `POST /gmail/start` is added in Task 4.
-- `GET /outreach/sender` → 200 `{success, data: IMailboxView}` for every role.
-- Approve: after the `NO_CONTACT_EMAIL` check, `const mailbox = await requireUsableMailbox(req.tenant!)`, and `senderEmail: mailbox.address` replaces `env.EMAIL_FROM`. The test send replaces the `EMAIL_PROVIDER` check with `requireUsableMailbox`. A worker failure reason that starts with an outreach error code maps to that 409 code; otherwise it stays 502 `EMAIL_SEND_FAILED`.
+- `PUT /organization/sender` (body `StudioSenderSchema`) → 200 `{ success, data: ISenderView }`.
+- `GET /outreach/sender` → 200 `{ success, data: ISenderView }`, any role.
+- `POST /outreach/:id/approve`: after `NO_CONTACT_EMAIL`, `const sender = await requireSender(req.auth!.organizationId)`. The campaign gets `senderEmail: sender.address, senderName: sender.name` (replaces `env.EMAIL_FROM`).
+- `POST /outreach/:id/test`: `requireSender` replaces the `EMAIL_PROVIDER` check. The response `data` is the job result (`IEmailTestJobResult`) and the message is `Test email simulated for ${testEmail}`. A failure reason starting with `SENDER_NOT_CONFIGURED` maps to that 409.
+- `GET /outreach/:id/outbox`: `INVALID_ID` → 400. The lead comes from `req.tenant.leads.findById` (none → 404 `LEAD_NOT_FOUND`), then `req.tenant.campaigns.findOne({ leadId })`. No campaign, or no `outbox` → 404 `OUTBOX_NOT_FOUND`. Otherwise 200 `{ success, data: IOutboxView }` (headers converted from the Map to a plain object). It writes nothing.
 
 - [ ] **Step 1: Write failing tests**
-  - `mailbox.service.spec.ts` (nodemailer mocked): `verifySmtp` passes host, port, secure and auth to `createTransport`, and rejects after `timeoutMs` with `MAILBOX_VERIFY_FAILED`. An `EAUTH` error whose message contains the password produces an AppError whose message and `details` do not contain the password. `mailboxView` never has `secret` or a password key (`JSON.stringify(view)` does not contain the plain secret).
-  - `mailbox.routes.spec.ts` (real-MongoDB pattern of `tenant-isolation.spec.ts`, queues mocked):
-    - `PUT /organization/mailbox/smtp` stores an encrypted secret (`Mailbox.findOne().select('+secret')`: `decryptSecret` returns the password), the response body string does not contain the password, and `console.*` spies saw no call containing it.
-    - Invalid body → 400.
-    - `MAILBOX_VERIFY_FAILED never echoes the password`.
-    - The operator gets 403 on PUT, PATCH and DELETE. The viewer gets 200 on `GET /outreach/sender`.
-    - Studio B's `GET /outreach/sender` shows `connected:false` while studio A is connected.
-    - PATCH `{dailyLimit: 2000}` → 200. DELETE removes it and is idempotent.
+  - `sender.routes.spec.ts` (real-MongoDB setup like `tenant-isolation.spec.ts`):
+    - The owner's PUT stores the sender, and `GET /outreach/sender` returns it for a viewer.
+    - An invalid address → 400.
+    - The operator gets 403 and nothing is written.
+    - Studio B's `GET /outreach/sender` is `configured:false` after studio A saved one.
   - `api.routes.spec.ts`:
-    - approve without a mailbox → 409 `MAILBOX_NOT_CONNECTED`, `addEmailDispatchJob` not called, lead still NEEDS_APPROVAL.
-    - With `NEEDS_RECONNECT` → 409 `MAILBOX_NEEDS_RECONNECT`.
-    - With a mailbox, the campaign `senderEmail` is the mailbox address.
-    - Test send without a mailbox → 409 `MAILBOX_NOT_CONNECTED` and no job.
+    - Approve without a sender → 409 `SENDER_NOT_CONFIGURED`, `addEmailDispatchJob` not called, lead still NEEDS_APPROVAL.
+    - With a sender, the campaign has `senderEmail` and `senderName` from it.
+    - Test send without a sender → 409 and no job. With one → 200 with `simulated: true`.
+    - Outbox: 200 with the stored message, 404 `OUTBOX_NOT_FOUND` without one, 400 for a bad id.
+    - `GET outbox writes nothing`.
     - Remove the `EMAIL_PROVIDER_NOT_CONFIGURED` cases.
-  - `route-auth.spec.ts`: the new routes are covered by its walk (owner-only for `/organization/*` already, so no list change for them).
-  - `tenant-isolation.spec.ts`: classify `PUT /organization/mailbox/smtp`, `PATCH /organization/mailbox`, `DELETE /organization/mailbox` and `GET /outreach/sender` as `TENANT_OWNED`, with a wrong-studio test: studio B's DELETE does not remove studio A's mailbox.
-  - `tenant-guard.spec.ts`: add `'await Mailbox.findOne({});'` to `planted`.
-- [ ] **Step 2:** Run `npx vitest run apps/api`. Expected: new tests FAIL.
-- [ ] **Step 3:** Implement. Read `parseEncryptionKey(env.MAILBOX_ENCRYPTION_KEY)` once at module load. The studio name for `displayName` comes from `Organization.findById(req.auth.organizationId)` (not tenant-owned, so this is allowed). Never pass `input` or the transporter options to `console`.
-- [ ] **Step 4:** Rerun. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(REV-221): connect an SMTP mailbox per studio; approval and test send require it`.
-
-### Task 4: Gmail OAuth: start, callback, token exchange
-
-**Files:**
-- Create: `apps/api/src/services/gmail-oauth.ts`, `apps/api/src/routes/oauth.routes.ts`
-- Modify: `apps/api/src/routes/mailbox.routes.ts` (`POST /gmail/start`), `apps/api/src/routes/index.ts` (`router.use('/oauth', oauthRoutes)`, public, with a comment)
-- Test: `apps/api/src/services/__tests__/gmail-oauth.spec.ts`, `apps/api/src/routes/__tests__/oauth.routes.spec.ts`, `route-auth.spec.ts` (`PUBLIC_ROUTES` += `GET /oauth/google/callback`), `tenant-isolation.spec.ts` (`PUBLIC_BY_SECRET` += it)
-
-**Interfaces:**
-```ts
-export const GMAIL_SCOPES = ['openid', 'email', 'https://www.googleapis.com/auth/gmail.send'];
-export const OAUTH_STATE_TTL_MS = 10 * 60_000;
-export function signOAuthState(p: { organizationId: string; userId: string }, now?: number): string   // base64url(json).base64url(hmac)
-export function readOAuthState(state: string, now?: number): { organizationId: string; userId: string } | null  // null: bad mac (timingSafeEqual), purpose, expiry, shape
-export function gmailAuthUrl(state: string): string   // accounts.google.com/o/oauth2/v2/auth with client_id, redirect_uri, response_type=code, scope, access_type=offline, prompt=consent, include_granted_scopes=false, state
-export async function exchangeGmailCode(code: string, fetchImpl?: typeof fetch): Promise<{ address: string; refreshToken: string }>
-  // POST https://oauth2.googleapis.com/token (form); GoogleTokenResponseSchema; requires refresh_token, scope containing gmail.send, id_token;
-  // claims = base64url-decoded id_token payload (direct TLS response from Google's token endpoint, OIDC §3.1.3.7 allows skipping the signature) → GoogleIdTokenClaimsSchema
-  // any failure throws Error('MAILBOX_OAUTH_FAILED: <short reason>') without the code or tokens in it
-```
-- `POST /organization/mailbox/gmail/start` → 503 `GMAIL_OAUTH_NOT_CONFIGURED` without client id and secret, else 200 `{success, data: {url}}`.
-- `GET /oauth/google/callback?code&state` (or `?error=access_denied&state`): `readOAuthState`, then check that the membership `{userId, organizationId}` is `owner` (`Membership` from `@revamp/db`), then `exchangeGmailCode`, then `saveMailbox(scopeFor(organizationId), {kind:'gmail', address, displayName: studio name, secretPlain: refreshToken}, userId)`, then `302 ${DASHBOARD_URL}/settings?mailbox=connected`. Any failure → `302 …?mailbox=error&reason=MAILBOX_OAUTH_FAILED` (or `GMAIL_OAUTH_NOT_CONFIGURED`), with a `console.warn` naming only the reason (never the code, state or tokens). The route never writes JSON errors: it always redirects.
-
-- [ ] **Step 1: Write failing tests**
-  - `gmail-oauth.spec.ts`:
-    - A state round trip works. A tampered mac, a tampered payload, `now + 10 min + 1 ms` and another `purpose` each give `null`.
-    - The URL contains each scope, `access_type=offline` and `prompt=consent`.
-    - `exchangeGmailCode` with a mocked fetch returns the address and refresh token.
-    - `refuses a token response without refresh_token`, `refuses an unverified email`, refuses a scope without `gmail.send`, and refuses a 400 from Google. None of the thrown messages contains the code or the tokens.
-  - `oauth.routes.spec.ts` (real Mongo, fetch mocked):
-    - A valid state for an owner stores a gmail mailbox (decrypted secret = refresh token) and redirects to `…?mailbox=connected`.
-    - An operator's state, an expired state, `error=access_denied` and an exchange failure each redirect with `reason=MAILBOX_OAUTH_FAILED` and write nothing.
-    - No auth header is needed.
-    - Studio A's state never writes studio B's mailbox.
-  - `mailbox.routes.spec.ts`: `/gmail/start` → 503 without config, and 200 with a url when the env is stubbed.
+  - `tenant-isolation.spec.ts`: `GET /outreach/:id/outbox` in `TENANT_OWNED` with a wrong-studio test (404 `LEAD_NOT_FOUND`). `GET /outreach/sender` in `NO_TENANT_DATA` (it reads the caller's own organization), with a test that it never shows another studio's sender.
 - [ ] **Step 2:** Run `npx vitest run apps/api`. Expected: FAIL.
 - [ ] **Step 3:** Implement.
 - [ ] **Step 4:** Rerun. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(REV-221): connect a Gmail mailbox through Google OAuth`.
+- [ ] **Step 5:** Commit `feat(REV-221): studio sender in the API; approval and test send require it; outbox endpoint`.
 
-### Task 5: Workers: transports, studio mailbox, daily limit, auth failures
+### Task 4: Workers: simulated delivery
 
 **Files:**
-- Create: `apps/workers/src/services/mailbox-transport.ts`
-- Modify: `apps/workers/src/services/email.service.ts`, `apps/workers/src/workers/email.worker.ts`, `apps/workers/src/workers/email-test.worker.ts`, `apps/workers/src/models/` (re-export `Mailbox`)
-- Test: `apps/workers/src/services/__tests__/mailbox-transport.spec.ts`, `email.service.spec.ts`, `apps/workers/src/workers/__tests__/email.worker.spec.ts` (create if it does not exist, following `email-test.worker.spec.ts`), `email-test.worker.spec.ts`
+- Modify: `apps/workers/src/services/email.service.ts` (becomes the simulated outbox; delete the provider classes), `apps/workers/src/workers/email.worker.ts`, `apps/workers/src/workers/email-test.worker.ts`
+- Test: `apps/workers/src/services/__tests__/email.service.spec.ts`, `apps/workers/src/workers/__tests__/email.worker.spec.ts` (create if missing, following `email-test.worker.spec.ts`), `email-test.worker.spec.ts`
 
 **Interfaces:**
+- Consumes: `renderOutreachMessage`, `formatFromHeader`, `IStudioSender`, `IOutboxMessage` (Task 1); `Organization`, `revertOutreachApproval` from `@revamp/db`.
+- Produces:
 ```ts
-export interface OutgoingMessage { from: string; to: string; subject: string; html: string; text: string; headers: Record<string, string> }
-export interface MailboxTransport { kind: MailboxKind; send(m: OutgoingMessage): Promise<{ messageId: string }> }
-export class MailboxAuthError extends Error {}   // the mailbox refused our credentials; message already redacted
-export class SmtpTransport implements MailboxTransport   // ctor(cfg: {host,port,secure,user,password}, createTransport = nodemailer.createTransport); EAUTH or responseCode 535/534 → MailboxAuthError
-export class GmailTransport implements MailboxTransport  // ctor(refreshToken, fetchImpl = fetch); refresh at oauth2.googleapis.com/token (400 invalid_grant → MailboxAuthError);
-  // raw MIME via nodemailer.createTransport({ streamTransport: true, buffer: true, newline: 'unix' }).sendMail(m) → info.message;
-  // POST gmail.googleapis.com/gmail/v1/users/me/messages/send {raw: base64url}; 401/403 → MailboxAuthError; other non-2xx → Error (retry)
-export interface StudioMailbox { address: string; from: string; dailyLimit: number; transport: MailboxTransport }
-export type StudioMailboxResult = { ok: true; mailbox: StudioMailbox } | { ok: false; code: 'MAILBOX_NOT_CONNECTED' | 'MAILBOX_NEEDS_RECONNECT'; message: string }
-export async function loadStudioMailbox(tenant: Types.ObjectId): Promise<StudioMailboxResult>   // Mailbox.findOne(withTenant(tenant, {})).select('+secret'); decrypt with parseEncryptionKey(env.MAILBOX_ENCRYPTION_KEY)
-export async function markMailboxNeedsReconnect(tenant: Types.ObjectId, reason: string): Promise<void>
 // email.service.ts
-export class EmailService { sendEmail(transport: MailboxTransport, options: ISendEmailOptions & { from: string }): Promise<ISendEmailResult> }  // same compliance headers, footer and pixel as today; provider field = transport.kind
+export async function loadStudioSender(tenant: Types.ObjectId): Promise<IStudioSender | null>   // Organization.findById(tenant, { sender: 1 }).lean()
+export function simulateDelivery(input: Omit<Parameters<typeof renderOutreachMessage>[0], 'publicApiUrl'>): IOutboxMessage   // uses env.PUBLIC_API_URL
 ```
-- `email.worker.ts` flow (the existing order is kept, and the new steps are marked):
-  1. Lead, tenant, HITL gate, campaign and DELIVERED short-circuit, as today.
-  2. **NEW: `loadStudioMailbox(tenant)`.** If not ok, call `returnToReview(code, message)` and return `{ success:false, aborted:true, reason }`.
-  3. MX check, as today.
-  4. **NEW: daily limit.** `count` = DELIVERED campaigns with `withTenant`, `senderEmail === mailbox.address` and `sentAt >= now-24h`. If `count >= dailyLimit`, find the oldest such `sentAt`, call `await job.moveToDelayed(oldest + 24h + 1000, token)` and `throw new DelayedError()`. The processor signature becomes `(job, token)`.
-  5. Claim, as today.
-  6. Send: `emailService.sendEmail(mailbox.transport, { from: mailbox.from, … })`. On `MailboxAuthError`: release the claim to SCHEDULED, `markMailboxNeedsReconnect(tenant, err.message)`, `returnToReview('MAILBOX_AUTH_FAILED', err.message)`, then `throw new UnrecoverableError(err.message)`. Any other error behaves as today (release, rethrow, retry).
-  7. DELIVERED with `sentAt` **and `senderEmail: mailbox.address`**. Lead SENT, as today.
-  - `returnToReview(code, message)` = `revertOutreachApproval(leadId, { outreachError: { code, message, at: new Date() } })`.
-- `email-test.worker.ts`: `loadStudioMailbox(jobTenant(data.tenantId))`. If not ok, `throw new Error(\`${code}: ${message}\`)` (the API maps the prefix, Task 3). On a `MailboxAuthError`, call `markMailboxNeedsReconnect` and then throw `MAILBOX_AUTH_FAILED: …`.
-- Logs: name the mailbox `kind` and `address` only.
+- `email.worker.ts`: keep steps 1–5 as they are. **Between the campaign checks and the MX check**, `const sender = await loadStudioSender(tenant)`. If it is null, call `revertOutreachApproval(leadId)`, log `Studio has no sender; lead returned to review`, and return `{ success:false, aborted:true, reason }`. Step 6 becomes `const message = simulateDelivery({ sender, to, subject, html, text, trackingToken })`; it does not throw, so the claim-release `catch` goes away. Step 7 writes `{ status:'DELIVERED', sentAt, senderEmail: sender.address, senderName: sender.name, deliveryMode:'SIMULATED', outbox: message }` in one `findByIdAndUpdate`. Step 8 is unchanged. The result has `deliveryMode: 'SIMULATED'` in place of `messageId`/`provider`. Log `Simulated delivery recorded (not sent) for lead …`.
+- `email-test.worker.ts`: `loadStudioSender(jobTenant(data.tenantId))`. If it is null, `throw new Error('SENDER_NOT_CONFIGURED: this studio has no sender')`. Otherwise `simulateDelivery({…, subject: TEST_SUBJECT_PREFIX + subject, trackingToken: TEST_TRACKING_TOKEN, trackOpens: false })` and return `{ to, from: message.from, subject: message.subject, simulated: true }`. Nothing is stored.
 
 - [ ] **Step 1: Write failing tests**
-  - `mailbox-transport.spec.ts`:
-    - `SmtpTransport` maps `{code:'EAUTH'}` to `MailboxAuthError` with the password redacted, and passes other errors through.
-    - `GmailTransport` refreshes, then POSTs base64url raw whose decoded text contains `From: "Studio" <a@studio.test>`, `Subject:` and `List-Unsubscribe:`.
-    - Refresh `400 {error:'invalid_grant'}` gives `MailboxAuthError`. Send 401 gives `MailboxAuthError`. Send 500 gives a plain Error.
-    - `loadStudioMailbox` returns `MAILBOX_NOT_CONNECTED` for none and `MAILBOX_NEEDS_RECONNECT` for that status, and for another studio's tenant returns not connected (the query has `tenantId`).
-  - `email.service.spec.ts`: adapt to `sendEmail(transport, …)`. The compliance header, footer and pixel assertions stay. Remove the Resend/SendGrid and no-provider cases.
-  - `email.worker.spec.ts`:
-    - `sends through the lead's studio mailbox with its From`: the transport mock got `from` = studio A's, and the campaign `senderEmail` = studio A's address.
-    - `never uses another studio's mailbox`: the `Mailbox.findOne` filter contains the job tenant.
-    - `returns the lead to review when the mailbox was disconnected after approval`: lead NEEDS_APPROVAL, `outreachError.code === 'MAILBOX_NOT_CONNECTED'`, transport not called.
-    - `sends from the mailbox address current at send time`.
-    - `delays the job to the end of the window when the mailbox is at its daily limit`.
-    - `a revoked Gmail token fails the campaign with a reason and the lead does not move to SENT`: `UnrecoverableError`, mailbox NEEDS_RECONNECT, lead NEEDS_APPROVAL with `MAILBOX_AUTH_FAILED`, campaign not DELIVERED.
-    - A transient error releases the claim and rethrows (retry), and `outreachError` is not set.
-    - The existing HITL and tenant-mismatch cases stay green.
-  - `email-test.worker.spec.ts`: uses the studio mailbox. With no mailbox it throws `MAILBOX_NOT_CONNECTED: …`.
-- [ ] **Step 2:** Run `npx vitest run apps/workers/src/services apps/workers/src/workers` from the root. Expected: FAIL.
-- [ ] **Step 3:** Implement. Delete `ResendEmailProvider`, `SendGridEmailProvider`, `createEmailProvider`, `IEmailProvider` and `setProvider`/`getProvider`.
-- [ ] **Step 4:** Rerun, then run the full gates: `npm run build:packages && npm run typecheck && npm run lint && npm test && npm run build`. Expected: all green, and `grep -rnE "EMAIL_PROVIDER|EMAIL_FROM|RESEND_API_KEY|SENDGRID_API_KEY" apps packages scripts deploy --include='*.ts' --include='*.mjs' --include='*.yml' --include='*.sh'` finds nothing outside the docs.
-- [ ] **Step 5:** Commit `feat(REV-221): workers send through the studio mailbox with a daily limit and visible auth failures`.
+  - `email.service.spec.ts`: `simulateDelivery` returns the rendered message with `env.PUBLIC_API_URL`. Remove the provider and no-provider cases.
+  - `email.worker.spec.ts` (models mocked like the existing worker specs):
+    - `records a simulated delivery from the studio sender`: the campaign update has `deliveryMode:'SIMULATED'`, `outbox.from === '"Studio A" <a@studio-a.test>'`, `senderEmail`, and the lead update to SENT.
+    - `uses the studio sender current at send time`: Organization returns a sender other than the campaign's approval-time `senderEmail`, and the outbox uses the current one.
+    - `reads the sender of the job's studio only`: `Organization.findById` is called with the tenant ObjectId.
+    - `returns the lead to review when the studio has no sender`: `revertOutreachApproval` is called and there is no DELIVERED write.
+    - `a retry of a delivered campaign leaves the outbox and sentAt as they were`: no campaign update.
+    - The HITL abort, MX bounce and tenant mismatch cases still pass, with no outbox write.
+  - `email-test.worker.spec.ts`: the result is `{…, simulated: true }` with the `[Test] ` subject, and no pixel in the rendered html (assert through a spy on `simulateDelivery` or the returned message). With no sender it throws `SENDER_NOT_CONFIGURED: …`.
+- [ ] **Step 2:** Run `npx vitest run apps/workers/src/services/__tests__/email.service.spec.ts apps/workers/src/workers` from the root. Expected: FAIL.
+- [ ] **Step 3:** Implement.
+- [ ] **Step 4:** Rerun, then the five gates: `npm run build:packages && npm run typecheck && npm run lint && npm test && npm run build`. All green. `grep -rnE "EMAIL_PROVIDER|EMAIL_FROM|RESEND_API_KEY|SENDGRID_API_KEY|nodemailer" apps packages scripts deploy --include='*.ts' --include='*.mjs' --include='*.json' --include='*.yml' | grep -v node_modules` finds nothing.
+- [ ] **Step 5:** Commit `feat(REV-221): workers record a simulated delivery from the studio sender`.
 
-### Task 6: Dashboard: mailbox settings, review gate, error texts
+### Task 5: Dashboard: sender settings, review gate, simulated labels, outbox view
 
 **Files:**
-- Modify: `apps/dashboard/src/api/client.ts` (`mailboxApi`), `apps/dashboard/src/pages/SettingsPage.tsx`, `apps/dashboard/src/components/leadReview/ReviewActionBar.tsx`, `apps/dashboard/src/i18n/locales/{en,ru,be,pl,lt}.ts`
-- Create: `apps/dashboard/src/hooks/useMailbox.ts`, `apps/dashboard/src/components/settings/MailboxSection.tsx`
-- Test: `apps/dashboard/src/api/__tests__/client.spec.ts`, `apps/dashboard/src/hooks/__tests__/useMailbox.spec.ts`, `apps/dashboard/src/components/settings/__tests__/MailboxSection.spec.ts`, `apps/dashboard/src/components/leadReview/__tests__/ReviewActionBar.spec.ts` (extend the existing one), the locale parity test
+- Modify: `apps/dashboard/src/api/client.ts`, `apps/dashboard/src/pages/SettingsPage.tsx`, `apps/dashboard/src/components/leadReview/ReviewActionBar.tsx`, `apps/dashboard/src/components/leadReview/LeadReview.tsx` (place the outbox button on the email step), locales `en, ru, be, pl, lt`
+- Create: `apps/dashboard/src/hooks/useSender.ts`, `apps/dashboard/src/components/settings/SenderSection.tsx`, `apps/dashboard/src/components/leadReview/OutboxDialog.tsx`, `apps/dashboard/src/utils/outboxFrame.ts`
+- Test: `api/__tests__/client.spec.ts`, `hooks/__tests__/useSender.spec.ts`, `components/settings/__tests__/SenderSection.spec.ts`, `components/leadReview/__tests__/OutboxDialog.spec.ts`, `ReviewActionBar.spec.ts` (extend), the locale parity test
 
 **Interfaces:**
 ```ts
-export const mailboxApi = {
-  sender(): Promise<IMailboxView>,                                   // GET /outreach/sender
-  connectSmtp(body: ConnectSmtpMailbox): Promise<IMailboxView>,      // PUT /organization/mailbox/smtp
-  update(body: UpdateMailbox): Promise<IMailboxView>,                // PATCH
-  disconnect(): Promise<IMailboxView>,                               // DELETE
-  startGmail(): Promise<{ url: string }>,                            // POST /organization/mailbox/gmail/start
-};
-// useMailbox.ts
-export const MAILBOX_QUERY_KEY = ['mailbox'] as const;
-export function useMailboxQuery(); export function useConnectSmtpMutation(); export function useUpdateMailboxMutation();
-export function useDisconnectMailboxMutation(); export function useStartGmailMutation();  // onSuccess: window.location.assign(url)
-// each mutation writes the returned view into MAILBOX_QUERY_KEY
+export const senderApi = { get(): Promise<ISenderView>; save(body: IStudioSender): Promise<ISenderView> };  // GET /outreach/sender, PUT /organization/sender
+export const outreachApi.outbox: (leadId: string) => Promise<IOutboxView>;   // GET /outreach/:id/outbox (add to the existing outreach client object)
+export const SENDER_QUERY_KEY = ['sender'] as const;
+export function useSenderQuery(); export function useSaveSenderMutation();   // onSuccess writes the view into the cache
+export function useOutboxQuery(leadId: string, enabled: boolean);
+export function outboxSrcDoc(html: string): string
+  // prepends <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:"> and <base target="_blank">
+  // inside <head> (adds a <head> when missing)
 ```
-- `MailboxSection` (in Settings, below the existing sections, `aria-label` = section title). Every role sees the status: address, kind, status chip, `sentLast24h / dailyLimit`, and `lastError` when `NEEDS_RECONNECT`. Only the owner (`useAuthStore` role) sees:
-  - "Connect Gmail", disabled with a hint when `gmailAvailable` is false;
-  - the SMTP form (host, port, security switch, user, password `type=password`, from address, display name), validated with `ConnectSmtpMailboxSchema` before the request;
-  - a daily limit field;
-  - Disconnect, with a confirm dialog.
-
-  Others see "Only the studio owner can connect the mailbox." On mount, `?mailbox=connected|error&reason=` from the URL shows a success or error Alert. Then remove the params with `setSearchParams` (`replace: true`).
-- `ReviewActionBar`:
-  - It reads `useMailboxQuery()`. When the mailbox is not connected or `NEEDS_RECONNECT`, Approve and "Send test" are disabled and an `Alert severity="warning"` shows `email.mailbox.notConnected` / `needsReconnect`, with a `Link` to `ROUTES.settings` (owner) or `email.mailbox.askOwner` (others).
-  - When `lead.outreachError` exists and the lead is `NEEDS_APPROVAL`, an `Alert severity="error"` shows `email.outreachError.<code>` with the message.
-  - `runAction` maps `ApiError` codes `MAILBOX_NOT_CONNECTED` and `MAILBOX_NEEDS_RECONNECT` to the same texts and invalidates `MAILBOX_QUERY_KEY`.
-  - The approve path and its shortcut are unchanged otherwise.
-- Locale keys (all five): `settings.mailbox.{title,connectGmail,gmailUnavailable,smtpTitle,host,port,secure,user,password,address,displayName,save,dailyLimit,sentToday,disconnect,disconnectConfirm,ownerOnly,connected,error,statusConnected,statusNeedsReconnect}`, `email.mailbox.{notConnected,needsReconnect,askOwner,openSettings}`, `email.outreachError.{MAILBOX_NOT_CONNECTED,MAILBOX_NEEDS_RECONNECT,MAILBOX_AUTH_FAILED}`. Remove any `EMAIL_PROVIDER_NOT_CONFIGURED` text.
+- `SenderSection` (Settings): every role sees the current sender, or "No sender yet". The owner gets a form (name, address) validated with `StudioSenderSchema`, and Save. Others see "Only the studio owner can set the sender." A note under it: `settings.sender.simulatedNote` ("Emails are simulated: they are recorded in the outbox and not delivered.").
+- `ReviewActionBar`: without a configured sender, Approve and "Send test" are disabled and an `Alert severity="warning"` shows `email.sender.notConfigured`, with a link to `ROUTES.settings` (owner) or `email.sender.askOwner` (others). `runAction` maps `ApiError.code === 'SENDER_NOT_CONFIGURED'` to that text and invalidates `SENDER_QUERY_KEY`. The success texts become `email.approvedSimulated` and `email.testSimulated`.
+- `OutboxDialog`: opened by a "View sent email" button on the email step when the lead's status is SENT or later (`OPENED`, `CLICKED`, `ENGAGED`, `UNSUBSCRIBED`). It shows a `Chip` "Simulated – not delivered", From, To, Subject and sent date (`formatDate`), and `<iframe title=… sandbox="" srcDoc={outboxSrcDoc(html)} />`. 404 `OUTBOX_NOT_FOUND` (campaigns sent before REV-221) → `email.outbox.missing`.
+- Locale keys (all five): `settings.sender.{title,name,address,save,saved,none,ownerOnly,simulatedNote}`, `email.sender.{notConfigured,askOwner,openSettings}`, `email.{approvedSimulated,testSimulated}`, `email.outbox.{open,title,simulated,from,to,subject,sentAt,missing}`. Remove the old `email.approved` / `email.testSent` keys only if nothing else uses them.
 
 - [ ] **Step 1: Write failing tests**
-  - `client.spec.ts`: each `mailboxApi` call hits its method and path, and `ApiError` carries `MAILBOX_NOT_CONNECTED`.
-  - `useMailbox.spec.ts`: a connect mutation writes the view into the cache, disconnect sets `connected:false`, and `startGmail` calls `window.location.assign` with the url.
-  - `MailboxSection.spec.ts` (createElement, happy-dom):
-    - The owner sees the SMTP form and the viewer does not.
-    - With `gmailAvailable:false` the Gmail button is disabled.
-    - An invalid port blocks submit, with no request.
-    - `?mailbox=connected` shows the success alert and clears the param.
-    - The password value never appears in the rendered DOM after save (the form resets it).
+  - `client.spec.ts`: paths and methods for `senderApi.get`, `senderApi.save` and `outreachApi.outbox`.
+  - `useSender.spec.ts`: the save mutation writes into the cache.
+  - `SenderSection.spec.ts` (createElement, happy-dom):
+    - The owner sees the form and the viewer does not.
+    - An invalid address blocks Save, with no request.
+    - The simulated note is shown.
+  - `OutboxDialog.spec.ts`:
+    - `frame is sandboxed with no permissions and the srcdoc carries the CSP meta and base target`: `getAttribute('sandbox') === ''`.
+    - The chip text is shown.
+    - 404 shows the missing text.
+    - Unit tests of `outboxSrcDoc` cover html with and without `<head>`.
   - `ReviewActionBar.spec.ts`:
-    - With `connected:false`, Approve is disabled and the warning has a settings link for the owner.
-    - `outreachError` renders its text.
-    - An approve that rejects with `MAILBOX_NOT_CONNECTED` shows the localized text and not the raw message.
+    - `configured:false` disables Approve and shows the warning with the settings link for the owner.
+    - An approve rejected with `SENDER_NOT_CONFIGURED` shows the localized text.
+    - A successful approve shows `approvedSimulated`.
 - [ ] **Step 2:** Run `npx vitest run apps/dashboard`. Expected: FAIL.
-- [ ] **Step 3:** Implement with theme tokens only.
+- [ ] **Step 3:** Implement (theme tokens only).
 - [ ] **Step 4:** Rerun plus the locale parity test. Expected: PASS.
-- [ ] **Step 5:** Commit `feat(REV-221): dashboard connects the studio mailbox and gates approval on it`.
+- [ ] **Step 5:** Commit `feat(REV-221): dashboard sets the studio sender and shows simulated emails`.
 
-### Task 7: Docs in this repository, gates, end to end
+### Task 6: Repo docs, the REV-45 exception, gates, end to end
 
-**Files:** `README.md`, `AGENTS.md` (root §3.2: a new item "Studio mailbox (REV-221)" with one line on the rules: mailbox per studio, secret encrypted and never returned or logged, worker reads it at send time), `apps/api/AGENTS.md` (mailbox routes, public OAuth callback, `requireUsableMailbox` in approve and test), `apps/workers/AGENTS.md` (transports, daily limit via `DelayedError`, auth failure → review with `outreachError`), `apps/dashboard/AGENTS.md` (MailboxSection, review gate), `packages/db/AGENTS.md` (Mailbox model, `select:false` secret, `MAILBOX_ENCRYPTION_KEY`), `.env.example`
+**Files:** root `AGENTS.md` §3.2.2 (add the exception sentence from Ruling 1 and a line "Studio sender (REV-221): approval needs the studio's sender; the worker reads it at send time"), `apps/api/AGENTS.md`, `apps/workers/AGENTS.md`, `apps/dashboard/AGENTS.md` (OutboxDialog's empty sandbox is the email exception to the MVP iframe rule), `packages/db/AGENTS.md` (sender in the demo dataset), `README.md`, `.env.example`
 
-- [ ] **Step 1:** Remove every "interim" note listed by `grep -rnE "[Ii]nterim|REV-221" README.md AGENTS.md apps/*/AGENTS.md packages/*/AGENTS.md .env.example`. Describe the shipped design instead: env table rows for `MAILBOX_ENCRYPTION_KEY`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `GOOGLE_OAUTH_REDIRECT_URI` and `DASHBOARD_URL`, plus the Google Cloud setup (OAuth client, redirect URI, `gmail.send` scope, test users while unverified). Remove the old provider rows.
-- [ ] **Step 2:** Run the five gates. Expected: all green, 0 lint errors, no new warnings.
-- [ ] **Step 3: E2E on an isolated stack** (memory `email-e2e-isolated-stack`: Redis DB 1, a separate Mongo DB `revamp_e2e_rev221`, API on :4100 with `CORS_ORIGIN=http://localhost:5174`, Vite on :5174, branch workers on Redis DB 1 only, and a Python socket SMTP sink on :2525 that records each message and answers 535 when the AUTH password is `wrong`).
-  1. Register a studio, add a lead, and get it to NEEDS_APPROVAL. Approve: the dashboard shows the "connect a mailbox" warning and the API answers 409 `MAILBOX_NOT_CONNECTED`, with no job in `bull:email-queue` (`redis-cli -n 1 KEYS 'bull:email-queue:*'`).
-  2. Settings → SMTP with password `wrong` → the error alert shows and no mailbox is stored. Connect with the right password → Connected. The network tab responses and the API/worker logs do not contain the password (`grep` the captured logs).
-  3. Send a test → it arrives at the sink with `From: "<studio>" <address>`.
-  4. Approve → the sink receives the email, its From is the studio's, the campaign `senderEmail` is that address, and the lead is SENT.
-  5. Change the sink to answer 535 for the next send, then approve another lead → the lead is back in review with the auth-failure alert and the mailbox shows "Needs reconnect".
-  6. Set `dailyLimit` to 1 with one DELIVERED in the window, then approve → the job is delayed (`redis-cli -n 1 ZRANGE bull:email-queue:delayed 0 -1 WITHSCORES`, score about `sentAt + 24h`).
-  7. Gmail button: shows "not configured" without a Google client.
-  Screenshot steps 1, 2, 4, 5 and 7. Expect no new console errors. Then drop `revamp_e2e_rev221`, flush Redis DB 1 and stop the extra processes.
-- [ ] **Step 4:** Commit `docs(REV-221): studio mailbox replaces the platform email provider`.
+- [ ] **Step 1:** Replace every "interim" email note (`grep -rnE "[Ii]nterim|REV-221|EMAIL_PROVIDER|RESEND|SENDGRID" README.md AGENTS.md apps/*/AGENTS.md packages/*/AGENTS.md .env.example`) with the shipped behavior: studio sender plus simulated outbox, nothing delivered.
+- [ ] **Step 2:** Run the five gates. All green, 0 lint errors, no new warnings.
+- [ ] **Step 3: E2E on an isolated stack** (Redis DB 1, Mongo DB `revamp_e2e_rev221`, API on :4100 with `CORS_ORIGIN=http://localhost:5174`, Vite on :5174, branch workers on Redis DB 1). Screenshot each step and expect no new console errors:
+  1. Register a studio, add a lead, and wait for NEEDS_APPROVAL. Approve is disabled with the "set a sender" warning. A direct `POST approve` answers 409 `SENDER_NOT_CONFIGURED` and no job is queued (`redis-cli -n 1 KEYS 'bull:email-queue:*'`).
+  2. Settings → set the sender as owner. Sign in as a viewer, who sees it read-only.
+  3. "Send test" → "Test email simulated – not delivered".
+  4. Approve → after the delay (`DEL bull:email-queue:limiter` on DB 1 to skip the limiter) the lead is SENT. "View sent email" shows the chip, the studio's From and the body. The network tab shows no request to `/track/open` or `/track/click` from the frame, and the lead stays SENT after viewing.
+  5. Change the sender, approve a second lead: its outbox From is the new sender.
+  Then drop `revamp_e2e_rev221`, flush Redis DB 1 and stop the extra processes.
+- [ ] **Step 4:** Commit `docs(REV-221): studio sender and simulated outbox replace the platform email provider`.
 
-Docs in `../Revamp-docs` (done by the orchestrator after the merge, listed here for the implementer's `Docs to update`):
-- `blueprint.md`: lines ~52, ~93 and 1142–1143 (drop "interim"), §5 error codes (+5, −1), the `mailboxes` schema, and `email-queue` settings (daily limit, `DelayedError`).
-- `spec.md`: the new endpoints and DTOs, and approve's 409s.
-- `database-expertise.md`: `senderEmail` row (line 149) and the dictionary rows from Task 1.
-- `milestones.md`: lines 20, 125 and 183.
+**Docs to update in `../Revamp-docs`** (done by the orchestrator after the merge):
+- `blueprint.md` lines ~52, ~93, 1142–1143, 1165 and 1169 (simulated delivery, studio sender), §5 error codes (+2, −1), and the `EmailCampaign`/`Organization` schema fields.
+- `spec.md`: `GET/PUT` sender, the outbox endpoint, approve's 409, the test send response.
+- `database-expertise.md`: the `senderEmail` row (line 149), plus `senderName`, `deliveryMode`, `outbox.*` and `organizations.sender.*`.
+- `milestones.md` lines 20, 125 and 183.
 - `api-docs/guides/concepts.md:24` and `tutorial-lead-to-outreach.md:116`.
-- `README.md:71`, `:147` and `:216`.
-- `ba-expertise.md`: nothing (US18 stays as written).
+- `README.md` lines 71, 147 and 216.
+- `research.md`: an ADR note "delivery simulated for the diploma build; a studio mailbox (Gmail OAuth / SMTP) is future work".
 - Then `npm run docs:index`.
+- Linear: the Concept and Decision Log gets a row for 2026-11-25 (rescope), and BA US18's acceptance criteria get a note that delivery is simulated.
