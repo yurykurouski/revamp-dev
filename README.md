@@ -152,7 +152,9 @@ A change in the operator's own words (`POST /mvp/:id/edit`, "Describe a change" 
 
 ### Email
 
-`EMAIL_PROVIDER` picks the outreach provider: `resend` (`RESEND_API_KEY`), `sendgrid` (`SENDGRID_API_KEY`) or `smtp` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`). It has no default: without it, an approved email fails at dispatch instead of being reported as sent.
+**Design: each studio sends from its own mailbox.** Under the Business Analysis (2.4, US17 Won't, US18), the platform never sends outreach under its own name. A studio owner connects the studio's mailbox (Gmail through Google OAuth, or SMTP), and every approved email goes out from that address. This is not built yet: [REV-221](https://linear.app/revamp-proect/issue/REV-221) replaces the platform-wide provider described below.
+
+**Today (interim, until REV-221):** `EMAIL_PROVIDER` picks the outreach provider: `resend` (`RESEND_API_KEY`), `sendgrid` (`SENDGRID_API_KEY`) or `smtp` (`SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`). It has no default: without it, an approved email fails at dispatch instead of being reported as sent.
 
 A lead can be added without a contact email; the audit then fills it in from the email published on the site. Outreach cannot be approved for a lead that still has no email (409). Outreach can be approved only while the lead awaits review (`NEEDS_APPROVAL`), and a lead can be rejected only until its outreach is approved; otherwise the API answers `409 LEAD_NOT_AWAITING_APPROVAL` or `409 LEAD_NOT_REJECTABLE` and the dashboard disables the action. The dashboard approves the draft exactly as its preview shows it, with every `{{variable}}` substituted; the API stores the plain-text draft as `bodyPlainText` and as escaped HTML that keeps its paragraphs and line breaks (`draftToHtml` in `@revamp/shared-types`), the same conversion the test send uses.
 
@@ -351,7 +353,7 @@ Settings reach every container as environment variables: `npm run dev` reads the
 | `MVP_LLM_PROVIDER`, `VISION_LLM_PROVIDER` | workers | Provider for text and for vision calls |
 | `CLAUDE_CLI_PATH`, `CLAUDE_CLI_MODEL`, `CLAUDE_CLI_TIMEOUT_MS` | workers | Local Claude Code CLI settings (not available inside the images) |
 | `MVP_COMPLETENESS_LLM`, `MVP_COMPLETENESS_LLM_TIMEOUT_MS`, `MVP_PAGE_SELF_REVIEW` | workers | MVP completeness judge and visual self-review switches |
-| `EMAIL_PROVIDER`, `RESEND_API_KEY`, `SENDGRID_API_KEY`, `EMAIL_FROM` | api, workers | Email provider and sender; none configured means approved emails fail at dispatch |
+| `EMAIL_PROVIDER`, `RESEND_API_KEY`, `SENDGRID_API_KEY`, `EMAIL_FROM` | api, workers | Interim platform-wide email provider and sender, used for every studio until per-studio mailboxes ship (REV-221); none configured means approved emails fail at dispatch |
 | `OPERATOR_NOTIFY_EMAIL` | none | In both example files only; no code reads it today (approval is manual in the dashboard) |
 | `GOOGLE_PLACES_API_KEY`, `OVERPASS_URL`, `NOMINATIM_URL`, `NOMINATIM_REVERSE_URL`, `DISCOVERY_USER_AGENT` | workers (reverse geocoding: api) | Business discovery providers |
 | `DISCOVERY_MAX_REQUESTS`, `DISCOVERY_ASSESS_TIMEOUT_MS`, `DISCOVERY_ASSESS_CONCURRENCY` | workers | Discovery paging and pre-assessment limits |

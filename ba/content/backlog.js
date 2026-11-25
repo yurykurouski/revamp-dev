@@ -12,7 +12,7 @@
 //     }],
 //   }
 // Priority is one of Must, Should, Could, Won't. Every Must story needs criteria.
-// Story IDs US1–US12 follow the Linear "Business Analysis" document; section 1.2
+// Story IDs US1–US12 and US18 follow the Linear "Business Analysis" document; section 1.2
 // cites US2–US10 by these IDs.
 
 module.exports = [
@@ -68,6 +68,16 @@ module.exports = [
         criteria: [
           'Given a record of studio B, when a user of studio A requests it, then the API answers "not found".',
           'Given a background job of studio A, when it runs, then it reads and writes only studio A’s records.',
+        ],
+      },
+      {
+        id: 'US18',
+        priority: 'Must',
+        statement: 'As a studio owner, I want to connect my studio’s mailbox (Gmail or SMTP), so that every e-mail is sent from my studio’s address and not from the platform.',
+        criteria: [
+          'Given a studio without a connected mailbox, when an operator approves an e-mail, then the approval is rejected with a clear error code.',
+          'Given an approved e-mail of studio A, when it is sent, then it goes through studio A’s mailbox with studio A’s address as the sender.',
+          'Given a stored mailbox credential, when any response or log is produced, then the secret does not appear in it.',
         ],
       },
     ],

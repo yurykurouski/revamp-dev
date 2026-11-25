@@ -336,7 +336,7 @@ module.exports = [
             ['G1', 'K1', 'E0, E3', 'US13 review and approve, US5 buy a right, US10 masked listing, US11 interests'],
             ['G2', 'K4', 'E2, E3, E5', 'US3 contact only with a right, US4 no repeated pitches, US5, US6 right granted once, US7 pricing simulation, US12 scans and releases, US9 market map'],
             ['G3', 'K2, K3', 'E0, E3', 'US14 deterministic facts and checked pages, US5 identical audit gives identical price, US7'],
-            ['G4', 'NFR3 (no KPI)', 'E1, E4', 'US1 studio organization, US2 data isolation, US8 owner audit and consent'],
+            ['G4', 'NFR3 (no KPI)', 'E1, E4', 'US1 studio organization, US2 data isolation, US18 studio mailbox, US8 owner audit and consent'],
           ],
         },
       },
@@ -469,7 +469,7 @@ module.exports = [
     level: 2,
     title: '2.10 Conclusions to Chapter 2',
     blocks: [
-      'The specification fixes the vision, four business goals and KPIs K1–K4 with their baselines and targets, the scope with its assumptions and constraints, the solution concept with the rejected alternatives, 17 user stories (14 in six epics and 3 deferred; all 12 Must stories have Given/When/Then criteria), two use cases, ten non-functional requirements, the legal basis of processing and seven risks. The result will be verified as follows:',
+      'The specification fixes the vision, four business goals and KPIs K1–K4 with their baselines and targets, the scope with its assumptions and constraints, the solution concept with the rejected alternatives, 18 user stories (15 in six epics and 3 deferred; all 13 Must stories have Given/When/Then criteria), two use cases, ten non-functional requirements, the legal basis of processing and seven risks. The result will be verified as follows:',
       {
         bullets: [
           '**K1:** the median operator time per reviewed lead is at most 15 minutes in a pilot, compared with a baseline measured on the manual process first.',
