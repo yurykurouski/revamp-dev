@@ -4,11 +4,9 @@
  */
 import { env } from '../config/env.js';
 import { DesignCritiqueService } from './design-critique.service.js';
-import { EMAIL_PROVIDER_NOT_CONFIGURED } from './email.service.js';
 import { LlmClient } from './llm-client.js';
 
 export interface ProviderConfigInputs {
-  emailProvider?: string;
   /** Why the Vision design critique cannot run (no key and no local CLI), or undefined when it can */
   visionUnavailableReason?: string;
   /** Why MVP copy cannot be generated, or undefined when it can */
@@ -17,7 +15,6 @@ export interface ProviderConfigInputs {
 
 export function providerConfigWarnings(
   inputs: ProviderConfigInputs = {
-    emailProvider: env.EMAIL_PROVIDER,
     visionUnavailableReason: new DesignCritiqueService().unavailableReason(),
     llmUnavailableReason: new LlmClient().unavailableReason(),
   },
@@ -28,9 +25,6 @@ export function providerConfigWarnings(
   }
   if (inputs.llmUnavailableReason) {
     warnings.push(`${inputs.llmUnavailableReason}: MVP generation without a provider chosen in the dashboard will fail`);
-  }
-  if (!inputs.emailProvider) {
-    warnings.push(`${EMAIL_PROVIDER_NOT_CONFIGURED}: approved emails will fail at dispatch`);
   }
   return warnings;
 }

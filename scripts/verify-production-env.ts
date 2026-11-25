@@ -182,22 +182,18 @@ export async function checkS3Storage(): Promise<VerificationResult> {
 export function checkApiKeys(): VerificationResult {
   const anthropic = Boolean(process.env.ANTHROPIC_API_KEY);
   const openai = Boolean(process.env.OPENAI_API_KEY);
-  const resend = Boolean(process.env.RESEND_API_KEY);
-  const sendgrid = Boolean(process.env.SENDGRID_API_KEY);
 
+  // Email delivery is simulated (REV-221): there is no email provider key to check
   const hasLLM = anthropic || openai;
-  const hasEmail = resend || sendgrid;
 
-  if (hasLLM && hasEmail) {
+  if (hasLLM) {
     return {
       service: 'API Keys & Secrets',
       status: 'SUCCESS',
-      message: 'Required AI and Email API keys are present.',
+      message: 'Required AI API key is present.',
       details: {
         anthropic: anthropic ? 'Configured' : 'Missing',
         openai: openai ? 'Configured' : 'Missing',
-        resend: resend ? 'Configured' : 'Missing',
-        sendgrid: sendgrid ? 'Configured' : 'Missing',
       },
     };
   }
@@ -205,8 +201,8 @@ export function checkApiKeys(): VerificationResult {
   return {
     service: 'API Keys & Secrets',
     status: 'WARNING',
-    message: `Incomplete API keys: ${!hasLLM ? 'Missing LLM key (Anthropic/OpenAI); ' : ''}${!hasEmail ? 'Missing Email key (Resend/SendGrid);' : ''}`,
-    details: { anthropic, openai, resend, sendgrid },
+    message: 'Incomplete API keys: Missing LLM key (Anthropic/OpenAI);',
+    details: { anthropic, openai },
   };
 }
 

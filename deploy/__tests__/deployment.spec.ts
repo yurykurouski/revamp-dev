@@ -464,7 +464,10 @@ describe('Production Deployment & Infrastructure Verification (REV-20)', () => {
       expect(content).toContain('CORS_ORIGIN=https://app.revamp.io');
       expect(content).toContain('ANTHROPIC_API_KEY=');
       expect(content).toContain('JWT_SECRET=');
-      expect(content).toContain('RESEND_API_KEY=');
+      // Delivery is simulated (REV-221): no platform-wide email provider
+      expect(content).not.toContain('RESEND_API_KEY');
+      expect(content).not.toContain('SENDGRID_API_KEY');
+      expect(content).not.toContain('EMAIL_PROVIDER');
       expect(content).toContain('TRACKING_BASE_URL=');
 
       // No plain passwords
