@@ -4,6 +4,7 @@ import { alpha } from '@mui/material/styles';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import type { ISenderView } from '@revamp/shared-types';
 import type { ILeadItem, IMvpProjectDetail } from '../api/client.js';
 import { mvpPreviewVersion, withPreviewVersion } from '../hooks/useLeads.js';
 import { useTranslation } from 'react-i18next';
@@ -20,6 +21,8 @@ interface EmailDraftEditorProps {
   draft: EmailDraft;
   /** The lead's MVP: a later change re-publishes the banner at the same URL (REV-127) */
   mvp?: IMvpProjectDetail | null;
+  /** The studio's sender, shown as the From of the preview (REV-221); never a platform address */
+  sender?: ISenderView;
 }
 
 const TEMPLATE_VARIABLES: Array<keyof Translation['email']['variables']> = [
@@ -32,7 +35,7 @@ const TEMPLATE_VARIABLES: Array<keyof Translation['email']['variables']> = [
 ];
 
 /** The outreach email editor with a live inbox preview; approving and rejecting live in the review's action bar */
-export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({ lead, draft, mvp }) => {
+export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({ lead, draft, mvp, sender }) => {
   const { t } = useTranslation();
   const { subject, preheader, body, setSubject, setPreheader, setBody, insertTag, renderText } = draft;
   const demoUrl = lead.previewUrl;
@@ -156,7 +159,7 @@ export const EmailDraftEditor: React.FC<EmailDraftEditorProps> = ({ lead, draft,
                 </Box>
                 <Box>
                   <Typography variant="caption" sx={{ fontWeight: 700, color: INBOX.text.primary, display: 'block' }}>
-                    Revamp SaaS &lt;outreach@revampdemo.com&gt;
+                    {sender?.configured ? `${sender.name} <${sender.address}>` : t('settings.sender.none')}
                   </Typography>
                   <Typography variant="caption" sx={{ color: INBOX.text.secondary }}>
                     {t('email.to')} {lead.phone || t('email.businessOwner')} &lt;info@{lead.domain}&gt;

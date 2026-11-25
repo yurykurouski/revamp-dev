@@ -8,7 +8,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ThemeProvider } from '@mui/material';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
-import { apiClient, IAuditDetail, ILeadItem } from '../../api/client.js';
+import { apiClient, senderApi, IAuditDetail, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { LeadReview, type ReviewDecision } from '../leadReview/LeadReview.js';
 import { APPROVE_ARM_DELAY_MS } from '../leadReview/ReviewActionBar.js';
@@ -65,6 +65,7 @@ describe('LeadReview (REV-77)', () => {
   beforeEach(() => {
     vi.spyOn(apiClient, 'getAudit').mockResolvedValue(audit);
     vi.spyOn(apiClient, 'getMvp').mockResolvedValue(null);
+    vi.spyOn(senderApi, 'get').mockResolvedValue({ configured: true, name: 'Studio A', address: 'a@studio-a.test' });
     vi.spyOn(apiClient, 'approveOutreach').mockResolvedValue({ success: true, leadId: 'lead-1', status: 'SCHEDULED' });
     vi.spyOn(apiClient, 'rejectLead').mockResolvedValue({ success: true, leadId: 'lead-1', status: 'REJECTED' });
     onClose = vi.fn<() => void>();
@@ -297,7 +298,7 @@ describe('LeadReview (REV-77)', () => {
     const [leadId, draft] = vi.mocked(apiClient.approveOutreach).mock.calls[0]!;
     expect(leadId).toBe('lead-1');
     expect(draft.subject).toBe('A faster site for Harbor Dental');
-    expect(document.body.textContent).toContain(en.email.approved);
+    expect(document.body.textContent).toContain(en.email.approvedSimulated);
     // The review queue moves on to the next lead and confirms the approval (REV-79)
     expect(onDecision).toHaveBeenCalledExactlyOnceWith('approved');
   });

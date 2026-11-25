@@ -2,7 +2,7 @@ import { Worker, Job } from 'bullmq';
 import { IEmailTestJobData, IEmailTestJobResult, draftToHtml } from '@revamp/shared-types';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
-import { emailService } from '../services/email.service.js';
+import { loadStudioSender, simulateDelivery } from '../services/email.service.js';
 import { jobTenant } from '../tenant.js';
 
 /** Marks test sends in the operator's inbox */
@@ -12,15 +12,19 @@ export const TEST_SUBJECT_PREFIX = '[Test] ';
 export const TEST_TRACKING_TOKEN = 'test-send';
 
 /**
- * Sends the operator's current draft to the operator's own address (REV-60). The email goes through
- * the same provider as outreach, but it is not outreach: no HITL gate, no MX pre-check, no open
- * tracking, and the lead and its campaign are left untouched. A missing provider fails the job.
+ * Simulates sending the operator's current draft to the operator's own address (REV-60, REV-221). The message is
+ * rendered like outreach, From the studio's sender, but it is not outreach and nothing is delivered or stored: no HITL
+ * gate, no MX pre-check, no open pixel, and the lead and its campaign are left untouched. A studio without a sender
+ * fails the job.
  */
 export async function processEmailTestJob(data: IEmailTestJobData): Promise<IEmailTestJobResult> {
-  // The job names its studio even though it reads no record: a job without one is refused (REV-210)
-  jobTenant(data.tenantId);
-  console.log(`[EmailTestWorker] Sending a test of lead ${data.leadId}'s draft to ${data.to}`);
-  const result = await emailService.sendEmail({
+  // The job names its studio and the sender is read from it: a job without one is refused (REV-210)
+  const tenant = jobTenant(data.tenantId);
+  console.log(`[EmailTestWorker] Simulating a test of lead ${data.leadId}'s draft to ${data.to}`);
+  const sender = await loadStudioSender(tenant);
+  if (!sender) throw new Error('SENDER_NOT_CONFIGURED: this studio has no sender');
+  const message = simulateDelivery({
+    sender,
     to: data.to,
     subject: `${TEST_SUBJECT_PREFIX}${data.subject}`,
     html: draftToHtml(data.body, data.preheader),
@@ -28,11 +32,7 @@ export async function processEmailTestJob(data: IEmailTestJobData): Promise<IEma
     trackingToken: TEST_TRACKING_TOKEN,
     trackOpens: false,
   });
-  return {
-    messageId: result.messageId,
-    provider: result.provider,
-    sentAt: result.sentAt.toISOString(),
-  };
+  return { to: message.to, from: message.from, subject: message.subject, simulated: true };
 }
 
 export const createEmailTestWorker = (): Worker => {

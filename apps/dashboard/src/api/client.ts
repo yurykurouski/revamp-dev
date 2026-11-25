@@ -16,6 +16,9 @@ import {
   ICreatedInvitation,
   IInvitationPreview,
   IOrganizationMembers,
+  IOutboxView,
+  ISenderView,
+  IStudioSender,
   OrganizationRole,
   IAudit,
   IMeasurementError,
@@ -301,8 +304,9 @@ export const apiClient = {
   },
 
   /**
-   * Sends the current draft to the operator's own address (REV-60). Resolves only once the email
-   * provider accepted it; a missing provider or a failed send rejects with the API's message.
+   * Simulates sending the current draft to the operator's own address (REV-60, REV-221). Resolves once the workers
+   * rendered it from the studio sender; nothing is delivered. A studio without a sender rejects with
+   * SENDER_NOT_CONFIGURED.
    */
   async sendTestEmail(leadId: string, testEmail: string, draft: IEmailDraft): Promise<ITestEmailResult> {
     const res = await authFetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/test`, {
@@ -311,6 +315,13 @@ export const apiClient = {
       body: JSON.stringify({ testEmail, ...draft }),
     });
     return readDataOrThrow<ITestEmailResult>(res);
+  },
+
+  /** The simulated email recorded for a lead (REV-221); 404 OUTBOX_NOT_FOUND for one sent before the outbox existed */
+  async getOutbox(leadId: string): Promise<IOutboxView> {
+    return readDataOrThrow<IOutboxView>(
+      await authFetch(`${API_BASE_URL}/outreach/${encodeURIComponent(leadId)}/outbox`, { headers: { Accept: 'application/json' } }),
+    );
   },
 
   /**
@@ -481,11 +492,12 @@ export interface IEmailDraft {
   body: string;
 }
 
+/** A test send is simulated (REV-221): the message that would have gone to the operator, nothing was delivered */
 export interface ITestEmailResult {
   to: string;
-  messageId?: string;
-  provider: string;
-  sentAt: string;
+  from: string;
+  subject: string;
+  simulated: true;
 }
 
 /** An error response from the API, with its `error.code` for callers that branch on it (REV-63) */
@@ -532,6 +544,22 @@ export const authApi = {
       body: JSON.stringify(body),
     });
     return readDataOrThrow<IAuthSession>(res);
+  },
+};
+
+/** The studio sender (REV-221): every role reads it, only the owner saves it */
+export const senderApi = {
+  async get(): Promise<ISenderView> {
+    return readDataOrThrow<ISenderView>(await authFetch(`${API_BASE_URL}/outreach/sender`, { headers: { Accept: 'application/json' } }));
+  },
+
+  async save(body: IStudioSender): Promise<ISenderView> {
+    const res = await authFetch(`${API_BASE_URL}/organization/sender`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    return readDataOrThrow<ISenderView>(res);
   },
 };
 

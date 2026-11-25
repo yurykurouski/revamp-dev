@@ -3,6 +3,7 @@ import healthRoutes from './health.routes.js';
 import authRoutes from './auth.routes.js';
 import invitationRoutes from './invitation.routes.js';
 import organizationRoutes from './organization.routes.js';
+import senderRoutes from './sender.routes.js';
 import leadRoutes from './lead.routes.js';
 import auditRoutes from './audit.routes.js';
 import mvpRoutes from './mvp.routes.js';
@@ -25,6 +26,8 @@ router.use('/invitations', invitationRoutes);
 // Public: called by email recipients and by the generated MVP pages, which carry a campaign token
 router.use('/track', trackRoutes);
 
+// REV-221: the studio's sender is set by the owner (before the generic /organization mount)
+router.use('/organization/sender', requireAuth, requireOwner, senderRoutes);
 // REV-207: members and invitations of the caller's organization are for owners
 router.use('/organization', requireAuth, requireOwner, organizationRoutes);
 

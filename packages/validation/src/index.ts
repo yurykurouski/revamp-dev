@@ -1077,3 +1077,9 @@ export function leadFieldsFromAudit(
   }
   return { set, clearsEmailGuess };
 }
+
+/** A studio's sender identity (REV-221); the address is not verified, as nothing is delivered */
+export const StudioSenderSchema = z.object({
+  name: z.string().trim().min(1).max(100),
+  address: z.string().trim().toLowerCase().email().max(320),
+});

@@ -3,7 +3,7 @@ import mongoose, { Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Business, createOrganizationWithOwner } from '@revamp/db';
+import { Business, Organization, createOrganizationWithOwner } from '@revamp/db';
 import { createApp } from '../../app.js';
 import { env } from '../../config/env.js';
 import { signSessionToken } from '../../services/token.js';
@@ -276,6 +276,35 @@ describe('a record of another studio answers 404 and nothing changes (REV-209)',
     expect(await statusOf(B.leadId)).toBe('NEEDS_APPROVAL');
   });
 
+  it("GET /outreach/:id/outbox never shows another studio's email (REV-221)", async () => {
+    await EmailCampaign.updateOne(
+      { leadId: A.leadId },
+      {
+        $set: {
+          status: 'DELIVERED',
+          deliveryMode: 'SIMULATED',
+          sentAt: new Date(),
+          outbox: { from: '"Alpha" <a@alpha.test>', to: 'x@y.test', subject: 'S', html: '<p>secret</p>', text: 'secret', headers: {} },
+        },
+      },
+    );
+    const res = await as(B).get(`/outreach/${A.leadId}/outbox`);
+    expect(res.status).toBe(404);
+    expect(res.body.error.code).toBe('LEAD_NOT_FOUND');
+    expect(JSON.stringify(res.body)).not.toContain('secret');
+    const own = await as(A).get(`/outreach/${A.leadId}/outbox`);
+    expect(own.status).toBe(200);
+    expect(own.body.data.html).toBe('<p>secret</p>');
+    // B's own lead has no outbox yet
+    expect((await as(B).get(`/outreach/${B.leadId}/outbox`)).body.error.code).toBe('OUTBOX_NOT_FOUND');
+  });
+
+  it("GET /outreach/sender never shows another studio's sender (REV-221)", async () => {
+    await Organization.updateOne({ _id: A.tenantId }, { $set: { sender: { name: 'Alpha', address: 'a@alpha.test' } } });
+    expect((await as(B).get('/outreach/sender')).body.data).toEqual({ configured: false });
+    expect((await as(A).get('/outreach/sender')).body.data).toEqual({ configured: true, name: 'Alpha', address: 'a@alpha.test' });
+  });
+
   it('POST /outreach/:id/test sends nothing', async () => {
     const res = await as(B).post(`/outreach/${A.leadId}/test`).send({ testEmail: 'me@revamp.test', subject: 'S', body: 'B' });
     expect(res.status).toBe(404);
@@ -447,6 +476,7 @@ const TENANT_OWNED = [
   'POST /outreach/:id/approve',
   'POST /outreach/:id/reject',
   'POST /outreach/:id/test',
+  'GET /outreach/:id/outbox',
   'POST /discovery',
   'GET /discovery/:jobId',
   'POST /discovery/:jobId/import',
@@ -472,6 +502,8 @@ const NO_TENANT_DATA = [
   'GET /track/revamp-tracker.js',
   'GET /mvp/providers',
   'GET /discovery/reverse-geocode',
+  // REV-221: reads the caller's own organization, never a tenant-owned record
+  'GET /outreach/sender',
 ];
 
 describe('every route is classified (REV-209)', () => {

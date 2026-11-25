@@ -9,7 +9,7 @@ import { ThemeProvider } from '@mui/material';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
-import { apiClient, authApi, invitationApi, organizationApi, ILeadItem } from '../../api/client.js';
+import { apiClient, authApi, invitationApi, organizationApi, senderApi, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore.js';
@@ -63,6 +63,7 @@ describe('app shell and routes (REV-76)', () => {
     vi.spyOn(apiClient, 'getLeads').mockResolvedValue({ leads: LEADS, total: LEADS.length });
     vi.spyOn(apiClient, 'getLeadStats').mockResolvedValue({ total: 4, byStatus: { NEEDS_APPROVAL: 1, AUDIT_FAILED: 1, QUEUED: 1, SENT: 1 } });
     vi.spyOn(apiClient, 'getLlmProviders').mockResolvedValue({ workersOnline: false, providers: [] });
+    vi.spyOn(senderApi, 'get').mockResolvedValue({ configured: true, name: 'Studio A', address: 'a@studio-a.test' });
     useLeadFilterStore.getState().resetFilters();
     useLeadFilterStore.getState().setViewMode('kanban');
     // The app is behind sign-in (REV-206)

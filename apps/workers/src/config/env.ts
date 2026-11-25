@@ -54,16 +54,9 @@ export const EnvSchema = z.object({
   MVP_COMPLETENESS_LLM_TIMEOUT_MS: z.coerce.number().int().positive().default(90000),
   // Visual self-review of the MVP page (REV-143): one revision call from the accepted page's captures. Off by default
   MVP_PAGE_SELF_REVIEW: envFlag(false),
-  // Outreach email provider; without one, approved emails fail at dispatch instead of being faked
-  EMAIL_PROVIDER: z.preprocess((v) => (v === '' ? undefined : v), z.enum(['resend', 'sendgrid', 'smtp']).optional()),
-  RESEND_API_KEY: z.string().optional(),
-  SENDGRID_API_KEY: z.string().optional(),
-  EMAIL_FROM: z.string().default('Revamp Team <outreach@revampdemo.com>'),
+  // Outreach delivery is simulated (REV-221): the message is recorded in the campaign's outbox, nothing is sent.
+  // PUBLIC_API_URL builds the unsubscribe and open-pixel links inside it
   PUBLIC_API_URL: z.string().default('http://localhost:4000/api/v1'),
-  SMTP_HOST: z.string().optional(),
-  SMTP_PORT: z.coerce.number().optional(),
-  SMTP_USER: z.string().optional(),
-  SMTP_PASS: z.string().optional(),
   // Local business discovery (REV-26)
   GOOGLE_PLACES_API_KEY: z.string().optional(),
   OVERPASS_URL: z.string().url().default('https://overpass-api.de/api/interpreter'),

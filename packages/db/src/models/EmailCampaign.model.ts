@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { IEmailCampaign, EmailCampaignStatus } from '@revamp/shared-types';
+import { IEmailCampaign, EmailCampaignStatus, EMAIL_DELIVERY_MODES, IOutboxMessage } from '@revamp/shared-types';
 
 export interface IEmailCampaignDocument
   extends Omit<
@@ -15,6 +15,7 @@ export interface IEmailCampaignDocument
       | 'sentAt'
       | 'approvedAt'
       | 'unsubscribedAt'
+      | 'outbox'
     >,
     Document {
   /** The studio of the lead (REV-209); absent on records made before the migration */
@@ -22,6 +23,8 @@ export interface IEmailCampaignDocument
   leadId: Types.ObjectId;
   auditId?: Types.ObjectId;
   mvpProjectId?: Types.ObjectId;
+  /** The simulated message (REV-221); headers are a Map in the document */
+  outbox?: Omit<IOutboxMessage, 'headers'> & { headers: Map<string, string> };
   bouncedAt?: Date;
   bounceReason?: string;
   approvedAt?: Date;
@@ -40,6 +43,18 @@ const EmailMetricsSchema = new Schema(
     clickCount: { type: Number, default: 0 },
     demoVisitCount: { type: Number, default: 0 },
     totalDwellTimeSeconds: { type: Number, default: 0 },
+  },
+  { _id: false },
+);
+
+const OutboxSchema = new Schema(
+  {
+    from: { type: String, required: true },
+    to: { type: String, required: true },
+    subject: { type: String, required: true },
+    html: { type: String, required: true },
+    text: { type: String, required: true },
+    headers: { type: Map, of: String },
   },
   { _id: false },
 );
@@ -84,6 +99,9 @@ const EmailCampaignSchema = new Schema<IEmailCampaignDocument>(
       required: [true, 'Sender email is required'],
       trim: true,
     },
+    senderName: { type: String, trim: true },
+    deliveryMode: { type: String, enum: EMAIL_DELIVERY_MODES },
+    outbox: { type: OutboxSchema },
     recipientEmail: {
       type: String,
       required: [true, 'Recipient email is required'],

@@ -98,7 +98,7 @@ describe('parseEnv', () => {
         '# comment',
         'PORT=4000',
         'EMPTY=',
-        'EMAIL_FROM="Revamp Team <outreach@revampdemo.com>"',
+        'QUOTED="Studio Team <hello@studio.test>"',
         "SINGLE='a b'",
         'export EXPORTED=yes',
         'INLINE=value # trailing comment',
@@ -109,7 +109,7 @@ describe('parseEnv', () => {
     expect(env).toEqual({
       PORT: '4000',
       EMPTY: '',
-      EMAIL_FROM: 'Revamp Team <outreach@revampdemo.com>',
+      QUOTED: 'Studio Team <hello@studio.test>',
       SINGLE: 'a b',
       EXPORTED: 'yes',
       INLINE: 'value',

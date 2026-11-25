@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Box, Chip, IconButton, Tab, Tabs, Tooltip, Typography } from '@mui/material';
+import { Box, Button, Chip, IconButton, Tab, Tabs, Tooltip, Typography } from '@mui/material';
+import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckIcon from '@mui/icons-material/Check';
 import { useTranslation } from 'react-i18next';
@@ -13,11 +14,13 @@ import {
   useSendTestEmailMutation,
 } from '../../hooks/useLeads.js';
 import { useEmailDraft } from '../../hooks/useEmailDraft.js';
+import { SENDER_QUERY_KEY, useSenderQuery } from '../../hooks/useSender.js';
 import { criticalIssueFields } from '../../utils/completeness.js';
 import { isDashboardNiche } from '../../i18n/niches.js';
 import { EmailDraftEditor } from '../EmailDraftEditor.js';
 import { AuditStep, NOT_MEASURED } from './AuditStep.js';
 import { PrototypeStep } from './PrototypeStep.js';
+import { OutboxDialog } from './OutboxDialog.js';
 import { ReviewActionBar } from './ReviewActionBar.js';
 import { nextStep, previousStep, REVIEW_STEPS, ReviewStep } from './steps.js';
 
@@ -34,6 +37,9 @@ interface LeadReviewProps {
 }
 
 export type ReviewDecision = 'approved' | 'rejected';
+
+/** Statuses whose email has been (simulated as) sent, so the outbox has it (REV-221) */
+const OUTBOX_STATUSES: ILeadItem['status'][] = ['SENT', 'OPENED', 'CLICKED', 'ENGAGED', 'UNSUBSCRIBED'];
 
 const tabId = (step: ReviewStep) => `lead-review-tab-${step}`;
 const panelId = (step: ReviewStep) => `lead-review-panel-${step}`;
@@ -62,6 +68,8 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
     }
   }, [lead.id, lead.mvpGeneratedAt, queryClient]);
   const draft = useEmailDraft(lead, audit);
+  const { data: sender } = useSenderQuery();
+  const [outboxOpen, setOutboxOpen] = useState(false);
 
   const approveMutation = useApproveOutreachMutation();
   const sendTestMutation = useSendTestEmailMutation();
@@ -184,7 +192,19 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
           >
             {s === 'audit' && <AuditStep audit={audit} mvp={mvp} isLoading={isAuditLoading} error={auditError} />}
             {s === 'prototype' && <PrototypeStep lead={lead} audit={audit} mvp={mvp} />}
-            {s === 'email' && <EmailDraftEditor lead={lead} draft={draft} mvp={mvp} />}
+            {s === 'email' && (
+              <>
+                {OUTBOX_STATUSES.includes(lead.status) && (
+                  <Box sx={{ mb: 1.5 }}>
+                    <Button variant="outlined" color="inherit" size="small" startIcon={<MarkEmailReadIcon />} onClick={() => setOutboxOpen(true)} data-testid="open-outbox">
+                      {t('email.outbox.open')}
+                    </Button>
+                    <OutboxDialog leadId={lead.id} open={outboxOpen} onClose={() => setOutboxOpen(false)} />
+                  </Box>
+                )}
+                <EmailDraftEditor lead={lead} draft={draft} mvp={mvp} sender={sender} />
+              </>
+            )}
           </Box>
         ))}
       </Box>
@@ -200,6 +220,8 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
         onReject={handleReject}
         isActionLoading={approveMutation.isPending || sendTestMutation.isPending || rejectMutation.isPending}
         criticalDataIssues={criticalIssueFields(mvp?.completenessReport, lead.completeness)}
+        sender={sender}
+        onSenderMissing={() => void queryClient.invalidateQueries({ queryKey: SENDER_QUERY_KEY })}
       />
     </Box>
   );

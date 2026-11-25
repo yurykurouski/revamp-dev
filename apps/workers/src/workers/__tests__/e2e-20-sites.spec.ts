@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import sharp from 'sharp';
 import { ImageService } from '../../services/image.service.js';
 import { BrandExtractorService, RawBrandExtractionData } from '../../services/brand-extractor.service.js';
@@ -6,7 +6,7 @@ import { DesignCritiqueService } from '../../services/design-critique.service.js
 import { ScoringService } from '../../services/scoring.service.js';
 import { finishMvpPage } from '../../services/mvp-page-finish.js';
 import { VALID } from '../../services/__tests__/fixtures/page-gen/page.js';
-import { emailService, IEmailProvider } from '../../services/email.service.js';
+import { simulateDelivery } from '../../services/email.service.js';
 import { checkMvpStandards } from '../../services/mvp-standards.js';
 import { AnalyticsEventType } from '@revamp/shared-types';
 
@@ -251,12 +251,6 @@ const DATASET_20_SITES: TestSiteConfig[] = [
   },
 ];
 
-/** Test double for the outreach provider: accepts every email without sending it */
-const acceptingEmailProvider: IEmailProvider = {
-  name: 'test-double',
-  send: async () => ({ success: true, messageId: 'test-message', provider: 'test-double', sentAt: new Date() }),
-};
-
 /** A fake Anthropic Messages API that answers with the given JSON, with token usage (REV-45) */
 const anthropicReplying = (json: unknown) =>
   vi.fn(
@@ -271,10 +265,6 @@ const anthropicReplying = (json: unknown) =>
   );
 
 describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimization', () => {
-  beforeAll(() => {
-    emailService.setProvider(acceptingEmailProvider);
-  });
-
   it('should successfully execute the full SaaS lifecycle on ≥ 90% (18/20) sites', async () => {
     let successCount = 0;
     let failureCount = 0;
@@ -436,14 +426,15 @@ describe('REV-19: E2E Pipeline Testing on 20 Diverse SMB Sites & Token Optimizat
         const trackingPixelHtml = `<img src="https://api.revamp.io/api/v1/track/open/${trackingToken}.gif" width="1" height="1" alt="" style="display:none;" />`;
         const clickUrl = `https://api.revamp.io/api/v1/track/click/${trackingToken}?url=https://preview.revamp.io/${site.id}`;
 
-        const emailResult = await emailService.sendEmail({
+        const emailResult = simulateDelivery({
+          sender: { name: 'Revamp Studio', address: 'hello@studio.test' },
           to: brandResult.contacts.email || 'info@revamp-demo.com',
           subject: `Website redesign concept for ${site.businessName}`,
           html: `<p>Hello! Take a look at the interactive prototype: <a href="${clickUrl}">Demo</a></p>${trackingPixelHtml}`,
           trackingToken,
         });
 
-        expect(emailResult.success).toBe(true);
+        expect(emailResult.from).toBe('"Revamp Studio" <hello@studio.test>');
 
         // Simulated Telemetry Events check
         const telemetryEvents: AnalyticsEventType[] = [
