@@ -91,7 +91,7 @@ describe('lead review test send (REV-60, REV-77)', () => {
     expect(draft.preheader).toContain('Warsaw');
     expect(draft.body).toContain('https://demo.example/dr-smile');
     expect(draft.body).not.toContain('{{demoUrl}}');
-    expect(page()).toContain(en.email.testSent.replace('{{email}}', 'operator@revamp.io'));
+    expect(page()).toContain(en.email.testSimulated.replace('{{email}}', 'operator@revamp.io'));
   });
 
   it('shows the error and no success when the send fails', async () => {
@@ -101,7 +101,7 @@ describe('lead review test send (REV-60, REV-77)', () => {
     await openAndSend();
 
     expect(page()).toContain('No email provider is configured');
-    expect(page()).not.toContain(en.email.testSent.replace('{{email}}', 'operator@revamp.io'));
+    expect(page()).not.toContain(en.email.testSimulated.replace('{{email}}', 'operator@revamp.io'));
   });
 
   it('closes the dialog and disables the opener while the send is in flight', async () => {

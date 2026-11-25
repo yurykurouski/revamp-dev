@@ -18,6 +18,7 @@ import { useThemeStore, ThemeMode } from '../store/useThemeStore.js';
 import { useLanguageStore } from '../store/useLanguageStore.js';
 import { useLlmProvidersQuery } from '../hooks/useLeads.js';
 import { LlmModelSelect } from '../components/LlmModelSelect.js';
+import { SenderSection } from '../components/settings/SenderSection.js';
 import { AppLanguage, LANGUAGE_NAMES, SUPPORTED_LANGUAGES } from '../i18n/languages.js';
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -95,8 +96,8 @@ const WorkerStatus: React.FC = () => {
 };
 
 /**
- * Settings (REV-76): appearance (theme, interface language) and the default LLM for new MVPs. Every
- * control writes straight to its store, so there is nothing to save.
+ * Settings (REV-76): appearance (theme, interface language), the studio sender (REV-221, saved with its own button)
+ * and the default LLM for new MVPs. The other controls write straight to their store.
  */
 export const SettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -152,6 +153,10 @@ export const SettingsPage: React.FC = () => {
               </Select>
             </FormControl>
           </Row>
+        </Section>
+
+        <Section title={t('settings.sender.title')}>
+          <SenderSection />
         </Section>
 
         <Section title={t('settings.aiGeneration')}>

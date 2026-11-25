@@ -19,10 +19,12 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import MarkEmailReadIcon from '@mui/icons-material/MarkEmailRead';
 import KeyboardIcon from '@mui/icons-material/Keyboard';
-import type { CompletenessField } from '@revamp/shared-types';
+import type { CompletenessField, ISenderView } from '@revamp/shared-types';
 import { canApproveOutreach, canRejectLead } from '@revamp/validation';
+import { Link as RouterLink, useInRouterContext } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import type { IEmailDraft, ILeadItem } from '../../api/client.js';
+import { ApiError, type IEmailDraft, type ILeadItem } from '../../api/client.js';
+import { ROUTES } from '../../routes/paths.js';
 import { usePermissions } from '../../hooks/usePermissions.js';
 import { useShortcuts } from '../../hooks/useShortcuts.js';
 import { ariaKeyShortcuts, getShortcut } from '../../utils/shortcuts.js';
@@ -49,7 +51,28 @@ interface ReviewActionBarProps {
   isActionLoading?: boolean;
   /** Critical business data the MVP lost or changed; approving then needs an extra confirmation (REV-36) */
   criticalDataIssues?: CompletenessField[];
+  /**
+   * The studio's sender (REV-221). Without a configured one Approve and Send test are disabled; undefined (not loaded
+   * yet) blocks nothing, because the API refuses with SENDER_NOT_CONFIGURED anyway
+   */
+  sender?: ISenderView;
+  /** Called when the API says the studio has no sender, so the sender is read again */
+  onSenderMissing?: () => void;
 }
+
+/** A link to Settings; a plain anchor when the bar is shown outside the router */
+const SettingsLink: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const inRouter = useInRouterContext();
+  return inRouter ? (
+    <Button component={RouterLink} to={ROUTES.settings} size="small" color="inherit" sx={{ fontWeight: 600 }}>
+      {children}
+    </Button>
+  ) : (
+    <Button href={ROUTES.settings} size="small" color="inherit" sx={{ fontWeight: 600 }}>
+      {children}
+    </Button>
+  );
+};
 
 /**
  * The lead review's bottom bar (REV-77): one primary action per step (Next, Next, Approve & send), Reject on
@@ -67,10 +90,14 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
   onReject,
   isActionLoading = false,
   criticalDataIssues = [],
+  sender,
+  onSenderMissing,
 }) => {
   const { t } = useTranslation();
   // A viewer reads the review and changes nothing (REV-207); the API would answer 403 to each of these actions
-  const { canWrite } = usePermissions();
+  const { canWrite, canManageMembers } = usePermissions();
+  // Approval and test sends need the studio's sender (REV-221)
+  const senderMissing = sender?.configured === false;
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testEmail, setTestEmail] = useState('operator@revamp.io');
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
@@ -94,6 +121,12 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
       return true;
     } catch (err) {
       setSuccessAlert(null);
+      if (err instanceof ApiError && err.code === 'SENDER_NOT_CONFIGURED') {
+        // The sender query is stale: read it again, so the warning and the disabled buttons show
+        onSenderMissing?.();
+        setErrorAlert(t('email.sender.notConfigured'));
+        return false;
+      }
       setErrorAlert(t('email.actionFailed', { error: err instanceof Error ? err.message : String(err) }));
       return false;
     }
@@ -107,12 +140,12 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
   }, [isEmailStep]);
 
   const approve = async () => {
-    if (await runAction(() => onApprove(getDraft()))) setSuccessAlert(t('email.approved'));
+    if (await runAction(() => onApprove(getDraft()))) setSuccessAlert(t('email.approvedSimulated'));
   };
 
   // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
   const handleApproveSubmit = async () => {
-    if (!canWrite || !isEmailStep || !approveArmed || !canApprove || isActionLoading) return;
+    if (!canWrite || !isEmailStep || !approveArmed || !canApprove || senderMissing || isActionLoading) return;
     if (criticalDataIssues.length > 0) {
       setDataConfirmOpen(true);
       return;
@@ -130,7 +163,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
     // Close first: the outcome shows as an alert, and the opener stays disabled while the send runs
     setTestDialogOpen(false);
     const sent = await runAction(() => onSendTest(testEmail, draft));
-    if (sent) setSuccessAlert(t('email.testSent', { email: testEmail }));
+    if (sent) setSuccessAlert(t('email.testSimulated', { email: testEmail }));
   };
 
   const handleRejectSubmit = async () => {
@@ -156,6 +189,15 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
       {!canWrite && (
         <Alert severity="info" data-testid="read-only-notice">
           {t('permissions.readOnly')}
+        </Alert>
+      )}
+      {canWrite && isEmailStep && canApprove && senderMissing && (
+        <Alert
+          severity="warning"
+          data-testid="sender-missing-notice"
+          action={canManageMembers ? <SettingsLink>{t('email.sender.openSettings')}</SettingsLink> : undefined}
+        >
+          {canManageMembers ? t('email.sender.notConfigured') : `${t('email.sender.notConfigured')} ${t('email.sender.askOwner')}`}
         </Alert>
       )}
       {canWrite && isEmailStep && !canApprove && !successAlert && (
@@ -211,7 +253,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
               variant="outlined"
               startIcon={<MarkEmailReadIcon />}
               onClick={() => setTestDialogOpen(true)}
-              disabled={isActionLoading || !canWrite}
+              disabled={isActionLoading || !canWrite || senderMissing}
               sx={{ fontWeight: 600 }}
             >
               {t('email.sendTestToMe')}
@@ -239,7 +281,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
                   variant="contained"
                   startIcon={isActionLoading ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
                   onClick={handleApproveSubmit}
-                  disabled={isActionLoading || !canApprove || !approveArmed || !canWrite}
+                  disabled={isActionLoading || !canApprove || !approveArmed || !canWrite || senderMissing}
                   aria-keyshortcuts={ariaKeyShortcuts(getShortcut('approve'))}
                   sx={{ px: 2 }}
                 >

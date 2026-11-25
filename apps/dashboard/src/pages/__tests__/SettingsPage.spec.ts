@@ -10,7 +10,7 @@ import { findLlmProvider, type ILlmProvidersResponse } from '@revamp/shared-type
 import i18n from '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
 import { pl } from '../../i18n/locales/pl.js';
-import { apiClient } from '../../api/client.js';
+import { apiClient, senderApi } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useThemeStore } from '../../store/useThemeStore.js';
 import { useLanguageStore } from '../../store/useLanguageStore.js';
@@ -55,6 +55,7 @@ describe('SettingsPage (REV-76)', () => {
 
   beforeEach(() => {
     vi.spyOn(apiClient, 'getLlmProviders').mockResolvedValue(PROVIDERS);
+    vi.spyOn(senderApi, 'get').mockResolvedValue({ configured: false });
     useThemeStore.getState().setTheme('dark');
     useLanguageStore.getState().setLanguage('en');
     useLlmChoiceStore.getState().resetToDefault();
@@ -107,7 +108,7 @@ describe('SettingsPage (REV-76)', () => {
     await mount();
     expect(document.querySelector('h1')!.textContent).toBe(en.settings.title);
     const sections = [...document.querySelectorAll('section')].map((s) => s.getAttribute('aria-label'));
-    expect(sections).toEqual([en.settings.appearance, en.settings.aiGeneration]);
+    expect(sections).toEqual([en.settings.appearance, en.settings.sender.title, en.settings.aiGeneration]);
   });
 
   it('switches the theme through the theme store', async () => {

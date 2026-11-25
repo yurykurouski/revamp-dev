@@ -23,7 +23,7 @@ describe('i18next wiring (REV-24)', () => {
   });
 
   it('interpolates without HTML-escaping (React escapes rendered text)', () => {
-    expect(i18n.t('email.testSent', { email: 'a&b@example.com' })).toBe('Test email sent to a&b@example.com');
+    expect(i18n.t('email.testSimulated', { email: 'a&b@example.com' })).toBe('Test email to a&b@example.com simulated – not delivered.');
   });
 });
 

@@ -10,6 +10,7 @@ import {
   LEADS_PAGE_SIZE,
   mapServerAudit,
   mapServerLead,
+  senderApi,
 } from '../client.js';
 import { useLanguageStore } from '../../store/useLanguageStore.js';
 
@@ -559,12 +560,40 @@ describe('Dashboard apiClient', () => {
       await expect(apiClient.sendTestEmail('missing', 'op@revamp.io', testDraft)).rejects.toThrow('Lead not found');
     });
 
-    it('surfaces a missing email provider instead of reporting a send (REV-60)', async () => {
-      const error = { code: 'EMAIL_PROVIDER_NOT_CONFIGURED', message: 'No email provider is configured' };
-      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error }, 503)));
-      await expect(apiClient.sendTestEmail('lead-2', 'op@revamp.io', testDraft)).rejects.toThrow(
-        'No email provider is configured',
-      );
+    it('surfaces a studio without a sender instead of reporting a simulation (REV-221)', async () => {
+      const error = { code: 'SENDER_NOT_CONFIGURED', message: 'This studio has no sender yet' };
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error }, 409)));
+      const thrown = await apiClient.sendTestEmail('lead-2', 'op@revamp.io', testDraft).catch((e: unknown) => e);
+      expect(thrown).toBeInstanceOf(ApiError);
+      expect(thrown).toMatchObject({ status: 409, code: 'SENDER_NOT_CONFIGURED' });
+    });
+
+    it('reads the studio sender with GET /outreach/sender (REV-221)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { configured: true, name: 'Studio A', address: 'a@studio-a.test' } }));
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(senderApi.get()).resolves.toEqual({ configured: true, name: 'Studio A', address: 'a@studio-a.test' });
+      expect(fetchMock.mock.calls[0][0]).toMatch(/\/outreach\/sender$/);
+      expect(fetchMock.mock.calls[0][1]?.method).toBeUndefined();
+    });
+
+    it('saves the studio sender with PUT /organization/sender (REV-221)', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(jsonRes({ success: true, data: { configured: true, name: 'Studio A', address: 'a@studio-a.test' } }));
+      vi.stubGlobal('fetch', fetchMock);
+      await senderApi.save({ name: 'Studio A', address: 'a@studio-a.test' });
+      expect(fetchMock.mock.calls[0][0]).toMatch(/\/organization\/sender$/);
+      expect(fetchMock.mock.calls[0][1].method).toBe('PUT');
+      expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ name: 'Studio A', address: 'a@studio-a.test' });
+    });
+
+    it('reads a lead\'s simulated email with GET /outreach/:id/outbox and surfaces OUTBOX_NOT_FOUND (REV-221)', async () => {
+      const view = { from: 'f', to: 't', subject: 's', headers: {}, html: '<p>x</p>', text: 'x', deliveryMode: 'SIMULATED', sentAt: '2026-11-25T10:00:00.000Z' };
+      const fetchMock = vi.fn().mockResolvedValueOnce(jsonRes({ success: true, data: view }));
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(apiClient.getOutbox('lead 1')).resolves.toEqual(view);
+      expect(fetchMock.mock.calls[0][0]).toMatch(/\/outreach\/lead%201\/outbox$/);
+
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(jsonRes({ success: false, error: { code: 'OUTBOX_NOT_FOUND', message: 'none' } }, 404)));
+      await expect(apiClient.getOutbox('lead-1')).rejects.toMatchObject({ status: 404, code: 'OUTBOX_NOT_FOUND' });
     });
 
     it('should reject a lead through the API', async () => {

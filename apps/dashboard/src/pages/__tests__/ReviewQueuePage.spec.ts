@@ -9,7 +9,7 @@ import { ThemeProvider } from '@mui/material';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import '../../i18n/index.js';
 import { en } from '../../i18n/locales/en.js';
-import { apiClient, ILeadItem } from '../../api/client.js';
+import { apiClient, senderApi, ILeadItem } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useLeadFilterStore } from '../../store/useLeadFilterStore.js';
 import { useAuthStore } from '../../store/useAuthStore.js';
@@ -88,6 +88,7 @@ describe('review queue home (REV-79)', () => {
       byStatus: { NEEDS_APPROVAL: 2, AUDIT_FAILED: 1, AUDITING: 1, SENT: 1, OPENED: 1 },
     });
     vi.spyOn(apiClient, 'getLlmProviders').mockResolvedValue({ workersOnline: false, providers: [] });
+    vi.spyOn(senderApi, 'get').mockResolvedValue({ configured: true, name: 'Studio A', address: 'a@studio-a.test' });
     useLeadFilterStore.getState().resetFilters();
     container = document.createElement('div');
     document.body.appendChild(container);
