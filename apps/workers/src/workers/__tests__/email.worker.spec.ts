@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEmailWorker } from '../email.worker.js';
 import { Lead } from '../../models/Lead.model.js';
-import { EmailCampaign } from '../../models/EmailCampaign.model.js';
+import { EmailCampaign, revertOutreachApproval } from '../../models/EmailCampaign.model.js';
 import { mxValidator } from '../../services/mx.validator.js';
-import { emailService } from '../../services/email.service.js';
+import { loadStudioSender, simulateDelivery } from '../../services/email.service.js';
 import { Types } from 'mongoose';
 
 const TENANT = '5eed00000000000000000009';
@@ -12,7 +12,21 @@ const TENANT_ID = new Types.ObjectId(TENANT);
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
 vi.mock('../../services/mx.validator.js');
-vi.mock('../../services/email.service.js');
+vi.mock('../../services/email.service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/email.service.js')>()),
+  loadStudioSender: vi.fn(),
+  simulateDelivery: vi.fn(),
+}));
+const SENDER = { name: 'Studio A', address: 'a@studio-a.test' };
+const message = (over: Record<string, unknown> = {}) => ({
+  from: '"Studio A" <a@studio-a.test>',
+  to: 'director@listonosz.site',
+  subject: 's',
+  headers: { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+  html: '<p>rendered</p>',
+  text: 'rendered',
+  ...over,
+});
 vi.mock('../../queues/connection.js', () => ({
   redisConnection: {} as any,
 }));
@@ -45,6 +59,8 @@ vi.mock('bullmq', () => {
 describe('EmailWorker (@revamp/workers)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(loadStudioSender).mockResolvedValue(SENDER);
+    vi.mocked(simulateDelivery).mockReturnValue(message());
     capturedProcessor = null;
     capturedWorkerOpts = null;
   });
@@ -64,7 +80,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     );
   });
 
-  it('should successfully validate MX, dispatch email via emailService, and update Lead status to SENT', async () => {
+  it('should validate MX, record a simulated delivery in the outbox, and update Lead status to SENT', async () => {
     createEmailWorker();
     expect(capturedProcessor).not.toBeNull();
 
@@ -109,14 +125,6 @@ describe('EmailWorker (@revamp/workers)', () => {
       mxRecords: ['mx.listonosz.site'],
     });
 
-    (emailService.getProvider as any).mockReturnValue({ name: 'mock' });
-    (emailService.sendEmail as any).mockResolvedValue({
-      success: true,
-      messageId: 'mock-msg-999',
-      provider: 'mock',
-      sentAt: new Date(),
-    });
-
     (EmailCampaign.findByIdAndUpdate as any).mockReturnValue({
       exec: vi.fn().mockResolvedValue(mockCampaign),
     });
@@ -135,14 +143,15 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     expect(result.success).toBe(true);
     expect(result.leadId).toBe(mockLeadId);
-    expect(result.messageId).toBe('mock-msg-999');
+    expect(result.deliveryMode).toBe('SIMULATED');
 
     // Verify MX validation was called
     expect(mxValidator.validateRecipientDomain).toHaveBeenCalledWith('director@listonosz.site');
 
-    // Verify emailService.sendEmail was called with proper options
-    expect(emailService.sendEmail).toHaveBeenCalledWith(
+    // Verify the message is rendered from the studio sender with the approved text
+    expect(simulateDelivery).toHaveBeenCalledWith(
       expect.objectContaining({
+        sender: SENDER,
         to: 'director@listonosz.site',
         trackingToken: 'tok-listonosz-123',
         subject: mockCampaign.subject,
@@ -202,7 +211,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     expect(result.success).toBe(false);
     expect(result.aborted).toBe(true);
     expect(result.reason).toContain('Outreach requires explicit operator approval');
-    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    expect(simulateDelivery).not.toHaveBeenCalled();
     expect(mxValidator.validateRecipientDomain).not.toHaveBeenCalled();
   });
 
@@ -227,7 +236,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     expect(result.success).toBe(false);
     expect(result.aborted).toBe(true);
     expect(result.reason).toContain('UNSUBSCRIBED');
-    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    expect(simulateDelivery).not.toHaveBeenCalled();
     expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
   });
@@ -290,7 +299,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     expect(result.reason).toContain('ENOTFOUND');
 
     // Verified: No email sent
-    expect(emailService.sendEmail).not.toHaveBeenCalled();
+    expect(simulateDelivery).not.toHaveBeenCalled();
 
     // Verified: Campaign marked BOUNCED
     expect(EmailCampaign.findByIdAndUpdate).toHaveBeenCalledWith(
@@ -327,6 +336,97 @@ describe('EmailWorker (@revamp/workers)', () => {
         },
       }),
     ).rejects.toThrow('Lead missing-lead not found');
+  });
+
+  describe('simulated delivery from the studio sender (REV-221)', () => {
+    const leadId = '64f8a1234567890123456789';
+    const campaignId = '64f8a9876543210987654321';
+    const lead = { _id: leadId, tenantId: TENANT, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
+    const campaign = {
+      _id: campaignId,
+      leadId,
+      status: 'SCHEDULED',
+      senderEmail: 'old@studio-a.test',
+      recipientEmail: 'owner@biz.com',
+      subject: 'Approved subject',
+      bodyHtml: '<p>Approved body</p>',
+      bodyPlainText: 'Approved body',
+      trackingToken: 'tok-approved',
+    };
+    const job = { id: 'j', data: { tenantId: TENANT, campaignId, leadId } };
+    const exec = (value: unknown) => ({ exec: vi.fn().mockResolvedValue(value) });
+
+    beforeEach(() => {
+      (Lead.findById as any).mockReturnValue(exec(lead));
+      (Lead.findOneAndUpdate as any).mockReturnValue(exec(lead));
+      (EmailCampaign.findOne as any).mockReturnValue(exec(campaign));
+      (EmailCampaign.findOneAndUpdate as any).mockReturnValue(exec({ ...campaign, status: 'SENDING' }));
+      (EmailCampaign.findByIdAndUpdate as any).mockReturnValue(exec(campaign));
+      (mxValidator.validateRecipientDomain as any).mockResolvedValue({ valid: true, domain: 'biz.com', mxRecords: ['mx.biz.com'] });
+      createEmailWorker();
+    });
+
+    it('records a simulated delivery from the studio sender', async () => {
+      const result = await capturedProcessor!(job);
+
+      expect(result).toMatchObject({ success: true, deliveryMode: 'SIMULATED' });
+      expect(EmailCampaign.findByIdAndUpdate).toHaveBeenCalledWith(
+        campaignId,
+        expect.objectContaining({
+          status: 'DELIVERED',
+          deliveryMode: 'SIMULATED',
+          senderEmail: 'a@studio-a.test',
+          senderName: 'Studio A',
+          outbox: expect.objectContaining({ from: '"Studio A" <a@studio-a.test>' }),
+        }),
+      );
+      expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ status: 'SENT' }));
+    });
+
+    it('uses the studio sender current at send time', async () => {
+      // The campaign carries the approval-time sender; the owner changed it before the job ran
+      vi.mocked(loadStudioSender).mockResolvedValue({ name: 'Studio A New', address: 'new@studio-a.test' });
+
+      await capturedProcessor!(job);
+
+      expect(vi.mocked(simulateDelivery).mock.calls[0]![0].sender).toEqual({ name: 'Studio A New', address: 'new@studio-a.test' });
+      expect(EmailCampaign.findByIdAndUpdate).toHaveBeenCalledWith(
+        campaignId,
+        expect.objectContaining({ senderEmail: 'new@studio-a.test', senderName: 'Studio A New' }),
+      );
+    });
+
+    it("reads the sender of the job's studio only", async () => {
+      await capturedProcessor!(job);
+      expect(loadStudioSender).toHaveBeenCalledTimes(1);
+      expect(vi.mocked(loadStudioSender).mock.calls[0]![0]).toEqual(TENANT_ID);
+    });
+
+    it('returns the lead to review, with no DELIVERED write, when the studio has no sender', async () => {
+      vi.mocked(loadStudioSender).mockResolvedValue(null);
+
+      const result = await capturedProcessor!(job);
+
+      expect(result).toMatchObject({ success: false, aborted: true, reason: expect.stringContaining('no sender') });
+      expect(revertOutreachApproval).toHaveBeenCalledWith(leadId);
+      expect(simulateDelivery).not.toHaveBeenCalled();
+      expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+      expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+    });
+
+    it('a retry of a delivered campaign leaves the outbox and sentAt as they were', async () => {
+      const sentAt = new Date('2026-11-25T10:00:00Z');
+      (EmailCampaign.findOne as any).mockReturnValue(exec({ ...campaign, status: 'DELIVERED', sentAt, outbox: message() }));
+
+      const result = await capturedProcessor!(job);
+
+      expect(result).toMatchObject({ success: true, alreadySent: true, sentAt });
+      expect(simulateDelivery).not.toHaveBeenCalled();
+      expect(loadStudioSender).not.toHaveBeenCalled();
+      expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
+      expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+    });
   });
 
   describe('at-most-once dispatch with only the approved text (REV-61)', () => {
@@ -376,12 +476,10 @@ describe('EmailWorker (@revamp/workers)', () => {
       );
 
       (mxValidator.validateRecipientDomain as any).mockResolvedValue({ valid: true, domain: 'biz.com', mxRecords: ['mx.biz.com'] });
-      (emailService.getProvider as any).mockReturnValue({ name: 'smtp' });
-      (emailService.sendEmail as any).mockResolvedValue({ success: true, messageId: 'msg-1', provider: 'smtp', sentAt: new Date() });
       createEmailWorker();
     });
 
-    it('does not send again when a retry follows a failure after the provider accepted the email', async () => {
+    it('does not record again when a retry follows a failure after the message was recorded', async () => {
       (EmailCampaign.findByIdAndUpdate as any).mockReturnValueOnce({
         exec: vi.fn().mockRejectedValue(new Error('Mongo write failed')),
       });
@@ -391,7 +489,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
       const retry = await capturedProcessor!(job('attempt-2'));
 
-      expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+      expect(simulateDelivery).toHaveBeenCalledTimes(1);
       expect(retry.success).toBe(false);
       expect(retry.aborted).toBe(true);
       expect(retry.reason).toContain('SENDING');
@@ -408,7 +506,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
       const retry = await capturedProcessor!(job('attempt-2'));
 
-      expect(emailService.sendEmail).toHaveBeenCalledTimes(1);
+      expect(simulateDelivery).toHaveBeenCalledTimes(1);
       expect(retry.success).toBe(true);
       expect(retry.alreadySent).toBe(true);
       expect(lead['status']).toBe('SENT');
@@ -420,28 +518,14 @@ describe('EmailWorker (@revamp/workers)', () => {
       const result = await capturedProcessor!(job('attempt-1'));
 
       expect(result.aborted).toBe(true);
-      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(simulateDelivery).not.toHaveBeenCalled();
       expect(lead['status']).toBe('SCHEDULED');
     });
 
-    it('releases the claim when the provider fails, so the retry sends the email once', async () => {
-      (emailService.sendEmail as any).mockRejectedValueOnce(new Error('SMTP 421 try later'));
-
-      await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('SMTP 421');
-      expect(campaign['status']).toBe('SCHEDULED');
-
-      const retry = await capturedProcessor!(job('attempt-2'));
-
-      expect(retry.success).toBe(true);
-      expect(emailService.sendEmail).toHaveBeenCalledTimes(2);
-      expect(campaign['status']).toBe('DELIVERED');
-      expect(lead['status']).toBe('SENT');
-    });
-
     it('keeps a lead that opted out while the email was being sent UNSUBSCRIBED (REV-62)', async () => {
-      (emailService.sendEmail as any).mockImplementationOnce(async () => {
+      vi.mocked(simulateDelivery).mockImplementationOnce(() => {
         lead['status'] = 'UNSUBSCRIBED';
-        return { success: true, messageId: 'msg-1', provider: 'smtp', sentAt: new Date() };
+        return message();
       });
 
       const result = await capturedProcessor!(job('attempt-1'));
@@ -458,7 +542,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
       await expect(failure).rejects.toThrow('No approved EmailCampaign');
       await expect(failure).rejects.toMatchObject({ name: 'UnrecoverableError' });
-      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(simulateDelivery).not.toHaveBeenCalled();
       expect(mxValidator.validateRecipientDomain).not.toHaveBeenCalled();
       expect(lead['status']).toBe('SCHEDULED');
     });
@@ -472,7 +556,7 @@ describe('EmailWorker (@revamp/workers)', () => {
       Object.assign(campaign, patch);
 
       await expect(capturedProcessor!(job('attempt-1'))).rejects.toThrow('no approved subject or body');
-      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(simulateDelivery).not.toHaveBeenCalled();
       expect(campaign['status']).toBe('SCHEDULED');
     });
   });
@@ -490,7 +574,7 @@ describe('EmailWorker (@revamp/workers)', () => {
       ['has a lead with no studio yet', { tenantId: TENANT }, scheduled, /migrate:tenants/],
     ])('refuses a job that %s: nothing is sent or written', async (_name, data, lead, message) => {
       await expect(attempt(data, lead)).rejects.toThrow(message);
-      expect(emailService.sendEmail).not.toHaveBeenCalled();
+      expect(simulateDelivery).not.toHaveBeenCalled();
       expect(EmailCampaign.findOne).not.toHaveBeenCalled();
       expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
       expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();

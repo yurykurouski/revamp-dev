@@ -2,7 +2,6 @@
  * Startup check for the external providers the workers need (REV-45). Nothing is faked when one
  * is missing: the jobs that need it fail with the same message, so the operator sees it early.
  */
-import { env } from '../config/env.js';
 import { DesignCritiqueService } from './design-critique.service.js';
 import { LlmClient } from './llm-client.js';
 

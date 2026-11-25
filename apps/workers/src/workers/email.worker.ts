@@ -5,17 +5,17 @@ import { canTransition, leadStatusesInto } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
-import { EmailCampaign } from '../models/EmailCampaign.model.js';
+import { EmailCampaign, revertOutreachApproval } from '../models/EmailCampaign.model.js';
 import { mxValidator } from '../services/mx.validator.js';
-import { emailService } from '../services/email.service.js';
+import { loadStudioSender, simulateDelivery } from '../services/email.service.js';
 import { assertJobTenant, withTenant } from '../tenant.js';
 
 export interface IEmailWorkerResult {
   success: boolean;
   campaignId?: string;
   leadId?: string;
-  messageId?: string;
-  provider?: string;
+  /** Always SIMULATED: nothing is delivered outside the platform (REV-221) */
+  deliveryMode?: 'SIMULATED';
   sentAt?: Date;
   bounced?: boolean;
   aborted?: boolean;
@@ -26,7 +26,7 @@ export interface IEmailWorkerResult {
 /** Campaign statuses an approved email is sent from; the worker claims it by moving it to SENDING (REV-61) */
 const SENDABLE_CAMPAIGN_STATUSES = ['SCHEDULED', 'APPROVED'];
 
-/** Finishes the lead update for a campaign that was already delivered, without sending anything */
+/** Finishes the lead update for a campaign that was already recorded as delivered, without recording it again */
 const markLeadSent = async (
   tenant: Types.ObjectId,
   leadId: Types.ObjectId | string,
@@ -93,6 +93,16 @@ export const createEmailWorker = (): Worker => {
         return markLeadSent(tenant, lead._id, campaign, 'The email was already sent; finishing the lead update only.');
       }
 
+      // The studio sends under its own sender, read now, so a change after approval applies (REV-221). A studio that
+      // has none (a job queued before this shipped) goes back to review instead of sending under another address
+      const sender = await loadStudioSender(tenant);
+      if (!sender) {
+        const reason = 'Studio has no sender; lead returned to review';
+        console.warn(`[EmailWorker] ${reason} (lead ${leadId})`);
+        await revertOutreachApproval(lead._id.toString());
+        return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
+      }
+
       const recipientEmail = campaign.recipientEmail || lead.contactEmail;
       if (!recipientEmail) {
         throw new Error(`No recipient email address available for lead ${leadId}`);
@@ -147,36 +157,27 @@ export const createEmailWorker = (): Worker => {
         return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
       }
 
-      // 6. Dispatch Email via Provider with Compliance Headers
-      console.log(`[EmailWorker] Dispatching email to ${recipientEmail} via ${emailService.getProvider()?.name ?? 'no configured provider'}...`);
-      let sendResult: Awaited<ReturnType<typeof emailService.sendEmail>>;
-      try {
-        sendResult = await emailService.sendEmail({
-          to: recipientEmail,
-          subject: claimed.subject,
-          html: claimed.bodyHtml,
-          text: claimed.bodyPlainText,
-          trackingToken: claimed.trackingToken,
-        });
-      } catch (error) {
-        // The provider did not take the email, so release the claim and let the retry send it
-        await EmailCampaign.findOneAndUpdate(
-          { _id: campaign._id, status: 'SENDING' },
-          { $set: { status: 'SCHEDULED' } },
-        ).exec();
-        throw error;
-      }
+      // 6. Render the message exactly as it would be sent. Nothing is delivered (REV-221): it is recorded in the outbox
+      console.log(`[EmailWorker] Simulating delivery to ${recipientEmail} from ${sender.address}...`);
+      const message = simulateDelivery({
+        sender,
+        to: recipientEmail,
+        subject: claimed.subject,
+        html: claimed.bodyHtml,
+        text: claimed.bodyPlainText,
+        trackingToken: claimed.trackingToken,
+      });
 
-      console.log(
-        `[EmailWorker] Email successfully dispatched. Message ID: ${sendResult.messageId}, Provider: ${sendResult.provider}`,
-      );
-
-      // 7. Record the send first: if this or anything later throws, the campaign stays SENDING and
-      // a retry skips it instead of sending twice
+      // 7. Record the message first: if this or anything later throws, the campaign stays SENDING and a retry skips
+      // it instead of recording it twice. senderEmail records the sender as of now
       const now = new Date();
       await EmailCampaign.findByIdAndUpdate(campaign._id, {
         status: 'DELIVERED',
         sentAt: now,
+        senderEmail: sender.address,
+        senderName: sender.name,
+        deliveryMode: 'SIMULATED',
+        outbox: message,
       }).exec();
 
       // 8. Update Lead status to SENT, unless it opted out while the email was being sent
@@ -185,14 +186,13 @@ export const createEmailWorker = (): Worker => {
         { status: 'SENT', updatedAt: now },
       ).exec();
 
-      console.log(`[EmailWorker] Lead ${leadId} status updated to 'SENT'. Dispatch complete.`);
+      console.log(`[EmailWorker] Simulated delivery recorded (not sent) for lead ${leadId}; status updated to 'SENT'.`);
 
       return {
         success: true,
         campaignId: campaign._id.toString(),
         leadId: lead._id.toString(),
-        messageId: sendResult.messageId,
-        provider: sendResult.provider,
+        deliveryMode: 'SIMULATED',
         sentAt: now,
       };
     },
