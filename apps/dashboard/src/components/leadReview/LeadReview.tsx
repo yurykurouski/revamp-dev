@@ -202,7 +202,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
                     <OutboxDialog leadId={lead.id} open={outboxOpen} onClose={() => setOutboxOpen(false)} />
                   </Box>
                 )}
-                <EmailDraftEditor lead={lead} draft={draft} mvp={mvp} />
+                <EmailDraftEditor lead={lead} draft={draft} mvp={mvp} sender={sender} />
               </>
             )}
           </Box>

@@ -91,3 +91,21 @@ describe('renderEmailDraft (REV-72)', () => {
     expect(renderEmailDraft({ subject: 'S', preheader: '  ', body: 'B' }, context)).toEqual({ subject: 'S', body: 'B' });
   });
 });
+
+describe('EmailDraftEditor sender in the preview (REV-221)', () => {
+  it('shows the studio sender as From and never a platform address', async () => {
+    const { createElement } = await import('react');
+    const { renderToStaticMarkup } = await import('react-dom/server');
+    const { useEmailDraft } = await import('../../hooks/useEmailDraft.js');
+    const { EmailDraftEditor } = await import('../EmailDraftEditor.js');
+    const lead = { id: 'l', businessName: 'Biz', domain: 'biz.test', originalUrl: 'https://biz.test', niche: 'dental', status: 'NEEDS_APPROVAL', createdAt: '2026-01-01T00:00:00.000Z' } as never;
+    const Probe = ({ sender }: { sender?: { configured: boolean; name?: string; address?: string } }) => {
+      const draft = useEmailDraft(lead);
+      return createElement(EmailDraftEditor, { lead, draft, sender });
+    };
+    const withSender = renderToStaticMarkup(createElement(Probe, { sender: { configured: true, name: 'Studio A', address: 'a@studio-a.test' } }));
+    expect(withSender).toContain('Studio A &lt;a@studio-a.test&gt;');
+    expect(withSender).not.toContain('revampdemo.com');
+    expect(renderToStaticMarkup(createElement(Probe, { sender: { configured: false } }))).not.toContain('revampdemo.com');
+  });
+});
