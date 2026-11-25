@@ -5,6 +5,7 @@ import { Audit } from '../src/models/Audit.model.js';
 import { EmailCampaign } from '../src/models/EmailCampaign.model.js';
 import { AnalyticsEvent } from '../src/models/AnalyticsEvent.model.js';
 import { MvpProject } from '../src/models/MvpProject.model.js';
+import { Organization } from '../src/models/Organization.model.js';
 
 describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => {
 
@@ -280,6 +281,51 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(saved.controls).toEqual({ primary: '#000000' });
       expect(saved.grounding).toEqual(grounding);
       expect(saved.versions).toEqual(versions);
+    });
+  });
+  describe('Studio sender and simulated outbox (REV-221)', () => {
+    it('Organization accepts a sender and lowercases the address', () => {
+      const org = new Organization({ name: 'Studio', sender: { name: 'Studio A', address: 'Hello@Studio-A.test' } });
+      expect(org.validateSync()).toBeUndefined();
+      expect(org.sender?.address).toBe('hello@studio-a.test');
+    });
+
+    it('Organization has no sender by default', () => {
+      expect(new Organization({ name: 'Studio' }).sender).toBeUndefined();
+    });
+
+    const campaignBase = {
+      leadId: new mongoose.Types.ObjectId(),
+      senderEmail: 'a@studio-a.test',
+      recipientEmail: 'director@listonosz.site',
+      subject: 'Redesign concept',
+      bodyHtml: '<p>Hello</p>',
+      trackingToken: 'tok-221',
+    };
+
+    it('EmailCampaign accepts deliveryMode SIMULATED and rejects REAL', () => {
+      expect(new EmailCampaign({ ...campaignBase, deliveryMode: 'SIMULATED' }).validateSync()).toBeUndefined();
+      expect(new EmailCampaign({ ...campaignBase, deliveryMode: 'REAL' }).validateSync()?.errors['deliveryMode']).toBeDefined();
+    });
+
+    it('EmailCampaign outbox.headers round-trips as a Map', () => {
+      const campaign = new EmailCampaign({
+        ...campaignBase,
+        senderName: 'Studio A',
+        deliveryMode: 'SIMULATED',
+        outbox: {
+          from: '"Studio A" <a@studio-a.test>',
+          to: 'director@listonosz.site',
+          subject: 'Redesign concept',
+          html: '<p>Hello</p>',
+          text: 'Hello',
+          headers: { 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' },
+        },
+      });
+      expect(campaign.validateSync()).toBeUndefined();
+      expect(campaign.outbox?.headers).toBeInstanceOf(Map);
+      expect(campaign.outbox?.headers.get('List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
+      expect(Object.fromEntries(campaign.outbox!.headers)).toEqual({ 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' });
     });
   });
 });

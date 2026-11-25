@@ -4,6 +4,10 @@ import {
   AuditMeasurement,
   AuditStatus,
   EmailCampaignStatus,
+  EmailDeliveryMode,
+  IOutboxMessage,
+  IStudioSender,
+  renderOutreachMessage,
   IMvpPageVersion,
   IMvpStandards,
   IMvpTheme,
@@ -71,6 +75,9 @@ export interface DemoEmailCampaign extends Extra {
   mvpProjectId?: Types.ObjectId;
   status: EmailCampaignStatus;
   senderEmail: string;
+  senderName?: string;
+  deliveryMode?: EmailDeliveryMode;
+  outbox?: IOutboxMessage;
   recipientEmail: string;
   trackingToken: string;
 }
@@ -106,6 +113,7 @@ export interface DemoBusiness extends Extra {
 export interface DemoOrganization extends Extra {
   _id: Types.ObjectId;
   name: string;
+  sender?: IStudioSender;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -163,7 +171,7 @@ const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5, organization: 6
 const demoId = (kind: keyof typeof KIND, n: number) =>
   new Types.ObjectId(`5eed${KIND[kind].toString(16).padStart(2, '0')}${n.toString(16).padStart(18, '0')}`);
 
-const SENDER = 'outreach@revamp-demo.test';
+const SENDER = { name: 'Demo Studio', address: 'hello@demo-studio.test' };
 
 /**
  * The demo owner (REV-206): a local test account, so its password is documented and public. The seed refuses any
@@ -326,7 +334,7 @@ export function buildDemoDataset(
   const at = (ms: number) => new Date(now.getTime() - ms);
   const accountCreated = at(30 * DAY);
   const organizationId = demoId('organization', 1);
-  ds.organizations.push({ _id: organizationId, name: 'Demo Studio', createdAt: accountCreated, updatedAt: accountCreated });
+  ds.organizations.push({ _id: organizationId, name: 'Demo Studio', sender: SENDER, createdAt: accountCreated, updatedAt: accountCreated });
   const accounts: { email: string; name: string; role: OrganizationRole }[] = [
     { email: DEMO_OWNER_EMAIL, name: 'Demo Owner', role: 'owner' },
     { email: DEMO_OPERATOR_EMAIL, name: 'Demo Operator', role: 'operator' },
@@ -490,6 +498,20 @@ export function buildDemoDataset(
     const events = EVENTS[spec.status] ?? [];
     const count = (t: AnalyticsEventType) => events.filter((e) => e === t).length;
     const trackingToken = `demo-token-${spec.key}`;
+    const recipientEmail = spec.email ?? `owner@${domain}`;
+    const campaignSubject = `A refreshed website for ${spec.name}`;
+    const campaignHtml = `<p>Hello ${spec.name} team,</p><p>We prepared a refreshed version of your home page.</p><p><a href="${fullPreviewUrl}">See the preview</a></p>`;
+    const campaignText = `Hello ${spec.name} team, we prepared a refreshed version of your home page: ${fullPreviewUrl}`;
+    // The same render function the email worker uses, so the seed matches runtime (REV-221)
+    const outbox = renderOutreachMessage({
+      sender: SENDER,
+      to: recipientEmail,
+      subject: campaignSubject,
+      html: campaignHtml,
+      text: campaignText,
+      trackingToken,
+      publicApiUrl: 'http://localhost:4000/api/v1',
+    });
     ds.emailCampaigns.push({
       _id: campaignId,
       tenantId: organizationId,
@@ -497,12 +519,13 @@ export function buildDemoDataset(
       auditId,
       mvpProjectId: mvpId,
       status,
-      senderEmail: SENDER,
-      recipientEmail: spec.email ?? `owner@${domain}`,
-      subject: `A refreshed website for ${spec.name}`,
+      senderEmail: SENDER.address,
+      ...(sent ? { senderName: SENDER.name, deliveryMode: 'SIMULATED' as const, outbox } : {}),
+      recipientEmail,
+      subject: campaignSubject,
       previewText: 'We rebuilt your home page — have a look.',
-      bodyHtml: `<p>Hello ${spec.name} team,</p><p>We prepared a refreshed version of your home page.</p><p><a href="${fullPreviewUrl}">See the preview</a></p>`,
-      bodyPlainText: `Hello ${spec.name} team, we prepared a refreshed version of your home page: ${fullPreviewUrl}`,
+      bodyHtml: campaignHtml,
+      bodyPlainText: campaignText,
       trackingToken,
       requiresManualReview: true,
       ...(sent ? { approvedBy: 'demo-operator', approvedAt: sent, sentAt: sent } : {}),

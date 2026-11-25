@@ -677,7 +677,13 @@ export interface IEmailCampaign {
   auditId: string;
   mvpProjectId: string;
   status: EmailCampaignStatus;
+  /** The studio's sender address at send time (REV-221) */
   senderEmail: string;
+  senderName?: string;
+  /** Always SIMULATED: nothing is delivered outside the platform (REV-221) */
+  deliveryMode?: EmailDeliveryMode;
+  /** The message as it would have been sent, written when the worker processes the approved email */
+  outbox?: IOutboxMessage;
   recipientEmail: string;
   subject: string;
   previewText?: string;
@@ -1073,15 +1079,48 @@ export interface IEmailTestJobData {
   body: string;
 }
 
+/** A test send is simulated like every send (REV-221): the message that would have gone to the operator */
 export interface IEmailTestJobResult {
-  messageId?: string;
-  provider: string;
+  to: string;
+  from: string;
+  subject: string;
+  simulated: true;
+}
+
+/** The sender a studio sends outreach under (REV-221) */
+export interface IStudioSender {
+  name: string;
+  address: string;
+}
+
+/** What `GET /outreach/sender` answers: the caller's studio sender, if it has set one */
+export interface ISenderView {
+  configured: boolean;
+  name?: string;
+  address?: string;
+}
+
+/** How a campaign was delivered. Delivery is always simulated (REV-221): nothing leaves the platform */
+export const EMAIL_DELIVERY_MODES = ['SIMULATED'] as const;
+export type EmailDeliveryMode = (typeof EMAIL_DELIVERY_MODES)[number];
+
+/** An outreach email as it would have been sent, stored on the campaign's outbox (REV-221) */
+export interface IOutboxMessage {
+  from: string;
+  to: string;
+  subject: string;
+  headers: Record<string, string>;
+  html: string;
+  text: string;
+}
+
+/** What `GET /outreach/:id/outbox` answers */
+export interface IOutboxView extends IOutboxMessage {
+  deliveryMode: EmailDeliveryMode;
   sentAt: string;
 }
 
-/** Why an email could not be sent at all; shared so the API can recognise it in a failed job (REV-60) */
-export const EMAIL_PROVIDER_NOT_CONFIGURED =
-  'No email provider is configured: set EMAIL_PROVIDER to resend, sendgrid or smtp';
+export * from './outreach-message.js';
 
 /** The code a generation the model could not make is stored with (REV-132, REV-138) */
 export const MVP_RENDER_FAILURE_CODES = ['MVP_PAGE_UNAVAILABLE'] as const;
@@ -1140,7 +1179,9 @@ export const API_ERROR_CODES = [
   'LEAD_NOT_AWAITING_APPROVAL',
   'LEAD_NOT_REJECTABLE',
   'NO_CONTACT_EMAIL',
-  'EMAIL_PROVIDER_NOT_CONFIGURED',
+  // REV-221: the studio has no sender yet; the campaign has no simulated outbox message
+  'SENDER_NOT_CONFIGURED',
+  'OUTBOX_NOT_FOUND',
   'EMAIL_TEST_TIMEOUT',
   'EMAIL_SEND_FAILED',
   // Discovery

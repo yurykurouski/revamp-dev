@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatFromHeader } from '@revamp/shared-types';
 import { DesignCritiqueOutputSchema, MvpPageVersionSchema, MvpStandardsSchema, MvpThemeSchema } from '@revamp/validation';
 import { DEMO_OPERATOR_EMAIL, DEMO_OWNER_EMAIL, DEMO_OWNER_PASSWORD, DEMO_VIEWER_EMAIL, buildDemoDataset, demoDocumentIds } from '../seed/demo-dataset.js';
 import { verifyPassword } from '../password.js';
@@ -186,5 +187,26 @@ describe('buildDemoDataset (REV-199)', () => {
       expect(l.tags).toContain('demo-seed');
       expect(l.businessName.startsWith('Demo ')).toBe(true);
     }
+  });
+});
+
+describe('demo studio sender and simulated outbox (REV-221)', () => {
+  it('gives the demo studio a sender', () => {
+    expect(ds.organizations[0]?.sender).toEqual({ name: 'Demo Studio', address: 'hello@demo-studio.test' });
+  });
+
+  it('marks every sent demo campaign SIMULATED with an outbox from the studio sender', () => {
+    const delivered = ds.emailCampaigns.filter((c) => c.status === 'DELIVERED');
+    expect(delivered.length).toBeGreaterThan(0);
+    for (const c of delivered) {
+      expect(c.deliveryMode).toBe('SIMULATED');
+      expect(c.senderEmail).toBe('hello@demo-studio.test');
+      expect(c.outbox?.from).toBe(formatFromHeader({ name: 'Demo Studio', address: 'hello@demo-studio.test' }));
+      expect(c.outbox?.to).toBe(c.recipientEmail);
+    }
+  });
+
+  it('mentions no revampdemo.com address anywhere', () => {
+    expect(JSON.stringify(ds)).not.toContain('revampdemo.com');
   });
 });
