@@ -1,6 +1,8 @@
 import mongoose, { Model } from 'mongoose';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
 import { Business } from '../models/Business.model.js';
+import { ContactRight } from '../models/ContactRight.model.js';
+import { SuppressedAddress } from '../models/SuppressedAddress.model.js';
 import { Audit } from '../models/Audit.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { Lead } from '../models/Lead.model.js';
@@ -61,6 +63,8 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
     ['businesses', Business as unknown as SeedModel, ds.businesses],
     ['users', User as unknown as SeedModel, ds.users],
     ['memberships', Membership as unknown as SeedModel, ds.memberships],
+    ['contactRights', ContactRight as unknown as SeedModel, ds.contactRights],
+    ['suppressedAddresses', SuppressedAddress as unknown as SeedModel, ds.suppressedAddresses],
   ];
   const ids = demoDocumentIds(ds);
   // Unique indexes must exist before the transaction: a collection or index cannot be created inside one reliably
@@ -81,17 +85,41 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
         if (found && String(found) !== String(seed._id)) remap.set(String(seed._id), found);
       }
     }
+    // REV-224: a business that already has a hold or an opt-out (made by the normal path or the migration) keeps it:
+    // its seed right is not inserted, so no business ends up with two rights. A seeded business that has neither gets
+    // the seed's hold and opt-out
+    const claimed = new Set<string>(remap.keys());
+    if (!opts.reset) {
+      const existing = await Business.find({ _id: { $in: ids.businesses } }, { contactHold: 1, optedOutAt: 1 }, { session }).lean();
+      const seedBusiness = new Map(ds.businesses.map((b) => [String(b._id), b]));
+      for (const found of existing) {
+        if (found.contactHold || found.optedOutAt) {
+          claimed.add(String(found._id));
+          continue;
+        }
+        const seed = seedBusiness.get(String(found._id));
+        const set = { ...(seed?.contactHold ? { contactHold: seed.contactHold } : {}), ...(seed?.optedOutAt ? { optedOutAt: seed.optedOutAt } : {}) };
+        if (Object.keys(set).length > 0) await Business.updateOne({ _id: found._id }, { $set: set }, { session });
+      }
+    }
     const relink = (doc: { _id: unknown; businessId?: unknown }) =>
       remap.has(String(doc.businessId)) ? { ...doc, businessId: remap.get(String(doc.businessId)) } : doc;
 
     for (const [name, model, rawDocs] of steps) {
-      const docs = name === 'leads' || name === 'audits' ? rawDocs.map((doc) => relink(doc as { _id: unknown; businessId?: unknown })) : rawDocs;
+      const docs =
+        name === 'leads' || name === 'audits'
+          ? rawDocs.map((doc) => relink(doc as { _id: unknown; businessId?: unknown }))
+          : name === 'contactRights'
+            ? rawDocs.filter((doc) => !claimed.has(String((doc as { businessId?: unknown }).businessId)))
+            : rawDocs;
       let missing = docs;
       if (opts.reset) {
         // A demo lead's children belong to the demo, whatever their id: a retried audit, a generated MVP or campaign,
         // tracking hits; leaving them would make the latest audit or the lead's MVP not the seeded one
         const owned: Record<string, unknown>[] = [{ _id: { $in: ids[name] } }];
-        if (['audits', 'mvpProjects', 'emailCampaigns', 'analyticsEvents'].includes(name)) owned.push({ leadId: { $in: ids.leads } });
+        if (['audits', 'mvpProjects', 'emailCampaigns', 'analyticsEvents', 'contactRights'].includes(name)) owned.push({ leadId: { $in: ids.leads } });
+        // The hash is unique: the same address suppressed under another id (the migration) is replaced by the seed's
+        if (name === 'suppressedAddresses') owned.push({ hash: { $in: ds.suppressedAddresses.map((a) => a['hash']) } });
         if (name === 'analyticsEvents') owned.push({ campaignId: { $in: ids.emailCampaigns } }, { mvpProjectId: { $in: ids.mvpProjects } });
         await model.deleteMany({ $or: owned }, { session });
         if (name === 'businesses') {
@@ -102,10 +130,19 @@ export async function seedDemoDataset(ds: DemoDataset, opts: { reset: boolean })
           }
         }
       } else {
-        const existing = await model.find({ _id: { $in: ids[name] } }, { _id: 1 }, { session }).lean();
+        const sameDoc: Record<string, unknown>[] = [{ _id: { $in: ids[name] } }];
+        if (name === 'suppressedAddresses') sameDoc.push({ hash: { $in: ds.suppressedAddresses.map((a) => a['hash']) } });
+        const existing = await model.find({ $or: sameDoc }, { _id: 1, hash: 1 }, { session }).lean();
         const kept = new Set(existing.map((doc) => String((doc as { _id: unknown })._id)));
+        // A suppressed address is the same document by its hash, whatever its id
+        const keptHashes = new Set(existing.map((doc) => (doc as { hash?: string }).hash).filter(Boolean));
         // A seed business whose domain a backfilled business already holds is kept as that one
-        missing = docs.filter((doc) => !kept.has(String(doc._id)) && !(name === 'businesses' && remap.has(String(doc._id))));
+        missing = docs.filter(
+          (doc) =>
+            !kept.has(String(doc._id)) &&
+            !(name === 'businesses' && remap.has(String(doc._id))) &&
+            !(name === 'suppressedAddresses' && keptHashes.has((doc as { hash?: string }).hash)),
+        );
       }
       if (missing.length > 0) await model.insertMany(missing as Record<string, unknown>[], { session });
       report[name] = { inserted: missing.length, kept: rawDocs.length - missing.length };

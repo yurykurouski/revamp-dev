@@ -361,7 +361,7 @@ describe('real MongoDB (mongodb-memory-server)', () => {
 
   describe('seedDemoDataset (REV-199)', () => {
     const ds = buildDemoDataset(new Date('2026-11-21T12:00:00.000Z'));
-    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership, Business] as const;
+    const models = [Lead, Audit, MvpProject, EmailCampaign, AnalyticsEvent, Organization, User, Membership, Business, ContactRight, SuppressedAddress] as const;
     const foreignLead = {
       businessName: 'Real Customer',
       originalUrl: 'https://real.example.org',
@@ -396,6 +396,46 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       // REV-208: every demo lead has its business, and the unique {tenant, business} index accepted all of them
       expect(await Business.countDocuments()).toBe(ds.leads.length);
       expect(await Lead.countDocuments({ tenantId: { $exists: true }, businessId: { $exists: true } })).toBe(ds.leads.length);
+    });
+
+    it('seeds the contact registry: a right and hold per business, the florist opted out (REV-224)', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      expect(await ContactRight.countDocuments()).toBe(ds.contactRights.length);
+      expect(await SuppressedAddress.countDocuments()).toBe(1);
+      expect(await Business.countDocuments({ contactHold: { $exists: true } })).toBe(ds.contactRights.length);
+      expect(await Business.countDocuments({ optedOutAt: { $exists: true } })).toBe(1);
+      const again = await seedDemoDataset(ds, { reset: false });
+      expect(again.contactRights).toEqual({ inserted: 0, kept: ds.contactRights.length });
+      expect(again.suppressedAddresses).toEqual({ inserted: 0, kept: 1 });
+      expect(await ContactRight.countDocuments()).toBe(ds.contactRights.length);
+      await seedDemoDataset(ds, { reset: true });
+      expect(await ContactRight.countDocuments()).toBe(ds.contactRights.length);
+      expect(await SuppressedAddress.countDocuments()).toBe(1);
+    });
+
+    it('reset replaces a right and a suppressed hash the migration made for a demo lead (REV-224)', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      const right = ds.contactRights[0]!;
+      await ContactRight.deleteOne({ _id: right._id });
+      await ContactRight.create({ tenantId: right.tenantId, businessId: right.businessId, leadId: right.leadId, source: 'MIGRATION', grantedAt: right.grantedAt, expiresAt: right.expiresAt, cooldownUntil: right.cooldownUntil });
+      const hash = ds.suppressedAddresses[0]!.hash;
+      await SuppressedAddress.deleteOne({ hash });
+      await SuppressedAddress.create({ hash });
+      await seedDemoDataset(ds, { reset: true });
+      expect(await ContactRight.countDocuments()).toBe(ds.contactRights.length);
+      expect(await ContactRight.countDocuments({ _id: right._id })).toBe(1);
+      expect(await SuppressedAddress.countDocuments({ hash, _id: ds.suppressedAddresses[0]!._id })).toBe(1);
+    });
+
+    it('a plain run adds no second right to a business the migration already claimed (REV-224)', async () => {
+      await seedDemoDataset(ds, { reset: false });
+      await Promise.all([ContactRight.deleteMany({}), SuppressedAddress.deleteMany({}), Business.updateMany({}, { $unset: { contactHold: 1, optedOutAt: 1 } })]);
+      await migrateContactRights({ apply: true, durations: { rightDays: 14, cooldownDays: 30 }, now: new Date('2026-11-21T12:00:00.000Z') });
+      const before = await ContactRight.countDocuments();
+      const report = await seedDemoDataset(ds, { reset: false });
+      expect(report.contactRights.inserted).toBe(0);
+      expect(report.suppressedAddresses.inserted).toBe(0);
+      expect(await ContactRight.countDocuments()).toBe(before);
     });
 
     it('leaves a real user and organization alone, also on reset (REV-206)', async () => {
