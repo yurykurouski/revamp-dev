@@ -6,6 +6,9 @@ import { EmailCampaign } from '../src/models/EmailCampaign.model.js';
 import { AnalyticsEvent } from '../src/models/AnalyticsEvent.model.js';
 import { MvpProject } from '../src/models/MvpProject.model.js';
 import { Organization } from '../src/models/Organization.model.js';
+import { Business } from '../src/models/Business.model.js';
+import { ContactRight } from '../src/models/ContactRight.model.js';
+import { SuppressedAddress } from '../src/models/SuppressedAddress.model.js';
 
 describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => {
 
@@ -326,6 +329,37 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(campaign.outbox?.headers).toBeInstanceOf(Map);
       expect(campaign.outbox?.headers.get('List-Unsubscribe-Post')).toBe('List-Unsubscribe=One-Click');
       expect(Object.fromEntries(campaign.outbox!.headers)).toEqual({ 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' });
+    });
+  });
+  describe('Contact registry models (REV-224)', () => {
+    const ids = () => ({ tenantId: new mongoose.Types.ObjectId(), businessId: new mongoose.Types.ObjectId(), leadId: new mongoose.Types.ObjectId() });
+    const dates = { grantedAt: new Date('2026-11-01T00:00:00Z'), expiresAt: new Date('2026-11-15T00:00:00Z'), cooldownUntil: new Date('2026-12-15T00:00:00Z') };
+
+    it('ContactRight is valid with every required field', () => {
+      expect(new ContactRight({ ...ids(), ...dates, source: 'ADD_LEAD' }).validateSync()).toBeUndefined();
+    });
+
+    it('ContactRight requires studio, business, lead and the three dates', () => {
+      const errors = new ContactRight({ source: 'ADD_LEAD' }).validateSync()?.errors ?? {};
+      for (const field of ['tenantId', 'businessId', 'leadId', 'grantedAt', 'expiresAt', 'cooldownUntil']) expect(errors[field]).toBeDefined();
+    });
+
+    it('ContactRight rejects an unknown source', () => {
+      expect(new ContactRight({ ...ids(), ...dates, source: 'GIFT' }).validateSync()?.errors['source']).toBeDefined();
+    });
+
+    it('SuppressedAddress accepts a sha-256 hex and rejects anything else', () => {
+      expect(new SuppressedAddress({ hash: 'a'.repeat(64) }).validateSync()).toBeUndefined();
+      expect(new SuppressedAddress({ hash: 'owner@example.com' }).validateSync()?.errors['hash']).toBeDefined();
+      expect(new SuppressedAddress({ hash: 'A'.repeat(64) }).validateSync()?.errors['hash']).toBeDefined();
+    });
+
+    it('Business accepts contactHold and optedOutAt', () => {
+      const hold = { rightId: new mongoose.Types.ObjectId(), tenantId: new mongoose.Types.ObjectId(), expiresAt: dates.expiresAt, cooldownUntil: dates.cooldownUntil };
+      const business = new Business({ domain: 'a.example', originalUrl: 'https://a.example', businessName: 'A', contactHold: hold, optedOutAt: dates.grantedAt });
+      expect(business.validateSync()).toBeUndefined();
+      expect(business.toObject().contactHold).toEqual(hold);
+      expect(business.optedOutAt).toEqual(dates.grantedAt);
     });
   });
 });

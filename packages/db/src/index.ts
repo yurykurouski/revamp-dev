@@ -8,8 +8,11 @@ export * from './models/User.model.js';
 export * from './models/Membership.model.js';
 export * from './models/Business.model.js';
 export * from './models/Invitation.model.js';
+export * from './models/ContactRight.model.js';
+export * from './models/SuppressedAddress.model.js';
 
 export * from './password.js';
+export * from './address-hash.js';
 export * from './redact-uri.js';
 export * from './lead-children-migration.js';
 export * from './business-migration.js';
