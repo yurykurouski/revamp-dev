@@ -7,3 +7,4 @@ export * from './AnalyticsEvent.model.js';
 export * from './User.model.js';
 export * from './Membership.model.js';
 export * from './Organization.model.js';
+export * from './ContactRight.model.js';

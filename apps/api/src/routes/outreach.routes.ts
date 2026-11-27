@@ -8,6 +8,7 @@ import {
   RejectOutreachSchema,
   TestEmailOutreachSchema,
   canApproveOutreach,
+  requiresContactRight,
 } from '@revamp/validation';
 import type { IOutboxView } from '@revamp/shared-types';
 import { LeadStatus, draftToHtml } from '@revamp/shared-types';
@@ -19,6 +20,7 @@ import { enqueueEmailOrRevert } from '../services/email-enqueue.js';
 import { sendTestEmailJob } from '../queues/email-test.queue.js';
 import { readSender, requireSender } from '../services/sender.service.js';
 import { tenantIdOf } from '../data/tenant-scope.js';
+import { activeContactRight, latestContactRight } from '../data/contact-rights.js';
 
 const router = Router();
 
@@ -131,6 +133,19 @@ router.post(
 
       // The studio sends under its own sender (REV-221); without one nothing is written and nothing is queued
       const sender = await requireSender(req.auth!.organizationId);
+
+      // Outreach needs the studio's active right to contact this business (REV-226). Checked before the transaction, so
+      // nothing is written and no job is queued; a test send goes to the operator and needs none
+      if (requiresContactRight('SCHEDULED') && !(await activeContactRight(req.tenant!, existing.businessId))) {
+        const latest = await latestContactRight(req.tenant!, existing.businessId);
+        const expiredAt = latest ? (latest.endedAt ?? latest.expiresAt) : undefined;
+        throw new AppError(
+          409,
+          'CONTACT_RIGHT_REQUIRED',
+          "Your studio's right to contact this business has ended; outreach can no longer be approved.",
+          expiredAt ? { expiredAt: expiredAt.toISOString() } : undefined,
+        );
+      }
 
       // 1. Store the draft exactly as the operator approved it; there is no default copy (REV-61). It is sent as
       // escaped HTML with its line breaks, plus the same text as the plain-text part, exactly like the test send (REV-72)

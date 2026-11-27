@@ -25,6 +25,7 @@ describe('tenant guard (REV-209)', () => {
       'const l = new Lead({ businessName });',
       'await Lead.collection.deleteMany({});',
       'await Lead . findById(id);',
+      'const r = await ContactRight.findOne({ businessId });',
     ];
 
     it.each(planted)('catches %s', (line) => {
