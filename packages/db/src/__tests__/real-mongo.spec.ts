@@ -34,6 +34,7 @@ import { ContactRight } from '../models/ContactRight.model.js';
 import { SuppressedAddress } from '../models/SuppressedAddress.model.js';
 import { hashAddress } from '../address-hash.js';
 import { ContactRightRefusedError, endContactRight, findActiveContactRight, grantContactRight } from '../contact-rights.js';
+import { contactAvailabilityByDomain } from '../contact-availability.js';
 import { MIGRATE_CONTACT_RIGHTS_COMMAND, checkContactRights, migrateContactRights } from '../contact-rights-migration.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
@@ -1251,6 +1252,52 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(result.contactRight).toBeUndefined();
       expect(await ContactRight.countDocuments()).toBe(0);
       expect((await Business.findOne({ domain: 'script.example' }).lean())?.contactHold).toBeUndefined();
+    });
+  });
+  describe('contactAvailabilityByDomain (REV-225)', () => {
+    const day = 24 * 60 * 60 * 1000;
+    const now = new Date('2026-11-10T00:00:00Z');
+    const hold = (expiresAt: Date, cooldownUntil: Date) => ({ rightId: new Types.ObjectId(), tenantId: new Types.ObjectId(), expiresAt, cooldownUntil });
+    const make = (domain: string, extra: Record<string, unknown> = {}) =>
+      Business.create({ domain, originalUrl: `https://${domain}`, businessName: domain, ...extra });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-availability-test' });
+      await Promise.all([Business.init(), SuppressedAddress.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), SuppressedAddress.deleteMany({})]);
+    });
+
+    it('marks held, cooldown and opted-out domains with their reason and date; free and unknown ones are absent', async () => {
+      const expires = new Date(now.getTime() + 3 * day);
+      const cooldownEnd = new Date(now.getTime() + 20 * day);
+      await make('held.test', { contactHold: hold(expires, cooldownEnd) });
+      await make('cool.test', { contactHold: hold(new Date(now.getTime() - day), cooldownEnd) });
+      await make('flag.test', { optedOutAt: now });
+      await make('free.test');
+      await make('over.test', { contactHold: hold(new Date(now.getTime() - 40 * day), new Date(now.getTime() - 10 * day)) });
+      await make('mail.test');
+      await SuppressedAddress.create({ hash: hashAddress('Stop@mail.test') });
+
+      const map = await contactAvailabilityByDomain(
+        [{ domain: 'held.test' }, { domain: 'cool.test' }, { domain: 'flag.test' }, { domain: 'free.test' }, { domain: 'over.test' }, { domain: 'unknown.test' }, { domain: 'mail.test', email: 'stop@mail.test' }],
+        now,
+      );
+      expect(map.get('held.test')).toEqual({ reason: 'held', until: expires });
+      expect(map.get('cool.test')).toEqual({ reason: 'cooldown', until: cooldownEnd });
+      expect(map.get('flag.test')).toEqual({ reason: 'opted_out' });
+      expect(map.get('mail.test')).toEqual({ reason: 'opted_out' });
+      expect([...map.keys()].sort()).toEqual(['cool.test', 'flag.test', 'held.test', 'mail.test']);
+    });
+
+    it('an opt-out wins over a hold, and an empty list reads nothing', async () => {
+      await make('both.test', { optedOutAt: now, contactHold: hold(new Date(now.getTime() + day), new Date(now.getTime() + 9 * day)) });
+      expect((await contactAvailabilityByDomain([{ domain: 'both.test' }], now)).get('both.test')).toEqual({ reason: 'opted_out' });
+      expect((await contactAvailabilityByDomain([], now)).size).toBe(0);
     });
   });
   describe('findAuditForLead (REV-208)', () => {

@@ -927,6 +927,12 @@ export interface IDiscoveryCandidate {
   city?: string;
   /** The lead that already covers this business (existing_lead only) */
   leadId?: string;
+  /**
+   * A `new` candidate the studio cannot claim now (REV-225): another studio holds the business, it is in cooldown or
+   * opted out. `until` is when the right ends (held) or the business is free again (cooldown); never who holds it.
+   * Set when the status is read and re-checked at import; the dashboard shows it (REV-228).
+   */
+  unavailable?: { reason: ContactRightRefusal; until?: string };
   /** Pre-assessment of the site, for `new` candidates found since REV-98 */
   assessment?: ISiteAssessment;
 }
@@ -945,11 +951,20 @@ export interface IDiscoveryJobResult {
   skippedChecked?: number;
 }
 
-export type DiscoveryImportOutcome = 'imported' | 'existing_lead' | 'not_importable' | 'not_found' | 'failed';
+export type DiscoveryImportOutcome =
+  | 'imported'
+  | 'existing_lead'
+  | 'not_importable'
+  | 'not_found'
+  | 'failed'
+  // REV-225: the contact right is not available; `until` is the date from `unavailable`
+  | 'right_held'
+  | 'cooldown'
+  | 'opted_out';
 
 export interface IDiscoveryImportResult {
   imported: number;
-  results: Array<{ externalId: string; outcome: DiscoveryImportOutcome; leadId?: string }>;
+  results: Array<{ externalId: string; outcome: DiscoveryImportOutcome; leadId?: string; until?: string }>;
 }
 
 /** A browser position resolved to a searchable place name (REV-28) */

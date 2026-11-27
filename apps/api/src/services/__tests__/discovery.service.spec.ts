@@ -5,6 +5,7 @@ import { AppError } from '../../middlewares/errorHandler.js';
 import { Lead } from '../../models/Lead.model.js';
 import { LeadService } from '../lead.service.js';
 import { scopeFor } from '../../data/tenant-scope.js';
+import { contactAvailabilityByDomain } from '@revamp/db';
 
 vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../queues/discovery.queue.js', () => ({
@@ -13,6 +14,8 @@ vi.mock('../../queues/discovery.queue.js', () => ({
 }));
 vi.mock('../../models/Lead.model.js');
 vi.mock('../lead.service.js');
+// REV-225: the contact registry read; real MongoDB tests cover it in @revamp/db
+vi.mock('@revamp/db', async (importOriginal) => ({ ...(await importOriginal<typeof import('@revamp/db')>()), contactAvailabilityByDomain: vi.fn() }));
 
 const mockLeadIdentities = (leads: Array<{ _id: string; externalId?: string; domain?: string; phoneE164?: string }>) => {
   vi.spyOn(Lead, 'find').mockReturnValue({
@@ -51,6 +54,7 @@ const scope = scopeFor(TENANT);
 describe('DiscoveryService (API)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(contactAvailabilityByDomain).mockResolvedValue(new Map());
   });
 
   it('startDiscovery should enqueue a job with only the known fields', async () => {
@@ -288,6 +292,99 @@ describe('DiscoveryService (API)', () => {
       const legacy = { found: 1, created: 1, leadIds: ['x'] };
       expect(await DiscoveryService.withCurrentLeads(scope, legacy as any)).toBe(legacy);
       expect(await DiscoveryService.withCurrentLeads(scope, null)).toBeNull();
+    });
+  });
+
+  describe('unavailable candidates (REV-225)', () => {
+    const held = new Date('2026-12-11T00:00:00.000Z');
+    const cooldown = new Date('2027-01-10T00:00:00.000Z');
+    const availability = () =>
+      new Map([
+        ['clinic-2.lt', { reason: 'held' as const, until: held }],
+        ['clinic-3.lt', { reason: 'cooldown' as const, until: cooldown }],
+        ['clinic-4.lt', { reason: 'opted_out' as const }],
+      ]);
+
+    it('marks new candidates the studio cannot claim, and leaves existing leads and other statuses alone', async () => {
+      mockExistingLeads(['clinic-5.lt']);
+      vi.mocked(contactAvailabilityByDomain).mockResolvedValue(
+        new Map([...availability(), ['clinic-5.lt', { reason: 'held' as const, until: held }]]),
+      );
+      vi.mocked(getDiscoveryJob).mockResolvedValue(
+        completedJob([
+          candidate('1'),
+          candidate('2'),
+          candidate('3'),
+          candidate('4', { email: 'hi@clinic-4.lt' }),
+          candidate('5'),
+          candidate('6', { status: 'no_website', website: undefined, domain: undefined }),
+        ]) as any,
+      );
+
+      const { result } = await DiscoveryService.getDiscoveryStatus(scope, 'disc-9');
+
+      expect(result?.candidates.map((c) => [c.externalId, c.status, c.unavailable])).toEqual([
+        ['node/1', 'new', undefined],
+        ['node/2', 'new', { reason: 'held', until: held.toISOString() }],
+        ['node/3', 'new', { reason: 'cooldown', until: cooldown.toISOString() }],
+        ['node/4', 'new', { reason: 'opted_out' }],
+        ['node/5', 'existing_lead', undefined],
+        ['node/6', 'no_website', undefined],
+      ]);
+      // The guessed info@ address is checked when the candidate has no email
+      const items = vi.mocked(contactAvailabilityByDomain).mock.calls[0]![0];
+      expect(items).toContainEqual({ domain: 'clinic-1.lt', email: 'info@clinic-1.lt' });
+      expect(items).toContainEqual({ domain: 'clinic-4.lt', email: 'hi@clinic-4.lt' });
+    });
+
+    it('imports the first and third, reports the held middle one with its date, and keeps going', async () => {
+      mockExistingLeads([]);
+      vi.mocked(contactAvailabilityByDomain).mockResolvedValue(new Map([['clinic-2.lt', { reason: 'held' as const, until: held }]]));
+      vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2'), candidate('3')]) as any);
+      let n = 0;
+      vi.mocked(LeadService.createLead).mockImplementation(async () => ({ lead: { _id: { toString: () => `L${++n}` } }, auditId: 'a' }) as any);
+
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2', 'node/3'] });
+
+      expect(result.imported).toBe(2);
+      expect(result.results).toEqual([
+        { externalId: 'node/1', outcome: 'imported', leadId: 'L1' },
+        { externalId: 'node/2', outcome: 'right_held', until: held.toISOString() },
+        { externalId: 'node/3', outcome: 'imported', leadId: 'L2' },
+      ]);
+      expect(LeadService.createLead).toHaveBeenCalledTimes(2);
+    });
+
+    it('reports cooldown and opted_out candidates without creating them', async () => {
+      mockExistingLeads([]);
+      vi.mocked(contactAvailabilityByDomain).mockResolvedValue(availability());
+      vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('3'), candidate('4')]) as any);
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/3', 'node/4'] });
+      expect(result.results).toEqual([
+        { externalId: 'node/3', outcome: 'cooldown', until: cooldown.toISOString() },
+        { externalId: 'node/4', outcome: 'opted_out' },
+      ]);
+      expect(LeadService.createLead).not.toHaveBeenCalled();
+    });
+
+    it('maps a refusal that happens at the add (a race after the read) to the same outcomes and continues', async () => {
+      mockExistingLeads([]);
+      vi.mocked(getDiscoveryJob).mockResolvedValue(completedJob([candidate('1'), candidate('2'), candidate('3'), candidate('4')]) as any);
+      vi.mocked(LeadService.createLead)
+        .mockRejectedValueOnce(new AppError(409, 'CONTACT_RIGHT_HELD', 'held', { expiresAt: held.toISOString() }))
+        .mockRejectedValueOnce(new AppError(409, 'BUSINESS_IN_COOLDOWN', 'cooldown', { availableAt: cooldown.toISOString() }))
+        .mockRejectedValueOnce(new AppError(409, 'BUSINESS_OPTED_OUT', 'out'))
+        .mockResolvedValueOnce({ lead: { _id: { toString: () => 'L4' } }, auditId: 'a' } as any);
+
+      const result = await DiscoveryService.importCandidates(scope, 'disc-9', { externalIds: ['node/1', 'node/2', 'node/3', 'node/4'] });
+
+      expect(result.results).toEqual([
+        { externalId: 'node/1', outcome: 'right_held', until: held.toISOString() },
+        { externalId: 'node/2', outcome: 'cooldown', until: cooldown.toISOString() },
+        { externalId: 'node/3', outcome: 'opted_out' },
+        { externalId: 'node/4', outcome: 'imported', leadId: 'L4' },
+      ]);
+      expect(LeadService.createLead).toHaveBeenCalledTimes(4);
     });
   });
 

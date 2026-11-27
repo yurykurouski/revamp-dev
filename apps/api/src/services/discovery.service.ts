@@ -9,8 +9,10 @@ import {
   leadMatchFilter,
   leadMatchKeys,
 } from '@revamp/validation';
+import { contactAvailabilityByDomain, type ContactAvailability } from '@revamp/db';
 import {
   EMAIL_GUESSED_TAG,
+  type DiscoveryImportOutcome,
   DiscoveryJobState,
   IDiscoveryCandidate,
   IDiscoveryJobData,
@@ -45,6 +47,28 @@ async function findExistingLeadIds(scope: TenantScope, candidates: IDiscoveryCan
   }
   return result;
 }
+
+/**
+ * REV-225: which of these candidates the studio cannot claim, by domain. Reads the shared business and the suppressed
+ * addresses (reason and date only, never who holds it). The address checked is the candidate's own or the `info@`
+ * guess the import would use.
+ */
+async function findUnavailable(candidates: IDiscoveryCandidate[]): Promise<Map<string, ContactAvailability>> {
+  const items = candidates.filter((c) => c.domain).map((c) => ({ domain: c.domain!, email: c.email ?? `info@${c.domain}` }));
+  return contactAvailabilityByDomain(items);
+}
+
+const UNAVAILABLE_OUTCOME: Record<ContactAvailability['reason'], DiscoveryImportOutcome> = {
+  held: 'right_held',
+  cooldown: 'cooldown',
+  opted_out: 'opted_out',
+};
+/** `createLead` answers a refused right with one of these codes (a race after the read) */
+const REFUSAL_OUTCOME: Record<string, DiscoveryImportOutcome> = {
+  CONTACT_RIGHT_HELD: 'right_held',
+  BUSINESS_IN_COOLDOWN: 'cooldown',
+  BUSINESS_OPTED_OUT: 'opted_out',
+};
 
 /** A search belongs to the studio that started it; another studio's job answers like a missing one (REV-209) */
 async function getOwnedJob(scope: TenantScope, jobId: string) {
@@ -112,9 +136,15 @@ export class DiscoveryService {
     if (!result || !Array.isArray(result.candidates)) return result;
 
     const leadIds = await findExistingLeadIds(scope, result.candidates.filter((c) => c.status === 'new'));
-    const candidates = result.candidates.map((c): IDiscoveryCandidate => {
+    const refreshed = result.candidates.map((c): IDiscoveryCandidate => {
       const leadId = c.status === 'new' ? leadIds.get(c.externalId) : undefined;
       return leadId ? { ...c, status: 'existing_lead', leadId } : c;
+    });
+    // REV-225: a candidate that is still new may be held by another studio, in cooldown or opted out
+    const unavailable = await findUnavailable(refreshed.filter((c) => c.status === 'new'));
+    const candidates = refreshed.map((c): IDiscoveryCandidate => {
+      const why = c.status === 'new' && c.domain ? unavailable.get(c.domain.toLowerCase()) : undefined;
+      return why ? { ...c, unavailable: { reason: why.reason, ...(why.until ? { until: why.until.toISOString() } : {}) } } : c;
     });
     // `counts` stays as the worker recorded it at search time
     return { ...result, candidates };
@@ -138,6 +168,9 @@ export class DiscoveryService {
       selected.filter((c): c is IDiscoveryCandidate => c?.status === 'new'),
     );
 
+    // REV-225: re-checked at import; the grant in the add-lead transaction is still the one rule
+    const unavailable = await findUnavailable(selected.filter((c): c is IDiscoveryCandidate => c?.status === 'new' && !leadIds.has(c.externalId)));
+
     const results: IDiscoveryImportResult['results'] = [];
     // REV-202: once the audit queue is down, the rest are not created; each would wait out the timeout
     let queueDown = false;
@@ -154,6 +187,12 @@ export class DiscoveryService {
       }
       if (candidate.status !== 'new' || !candidate.website || !candidate.domain) {
         results.push({ externalId, outcome: 'not_importable' });
+        continue;
+      }
+
+      const why = unavailable.get(candidate.domain.toLowerCase());
+      if (why) {
+        results.push({ externalId, outcome: UNAVAILABLE_OUTCOME[why.reason], ...(why.until ? { until: why.until.toISOString() } : {}) });
         continue;
       }
 
@@ -188,6 +227,14 @@ export class DiscoveryService {
         if (error instanceof AppError && error.code === 'LEAD_ALREADY_EXISTS') {
           const leadId = (error.details as { leadId?: string } | undefined)?.leadId;
           results.push({ externalId, outcome: 'existing_lead', ...(leadId ? { leadId } : {}) });
+          continue;
+        }
+        // The right was refused at the add, after the read above (REV-225): not a failure, and the loop goes on
+        const refused = error instanceof AppError ? REFUSAL_OUTCOME[error.code] : undefined;
+        if (refused) {
+          const details = error instanceof AppError ? (error.details as { expiresAt?: string; availableAt?: string } | undefined) : undefined;
+          const until = details?.expiresAt ?? details?.availableAt;
+          results.push({ externalId, outcome: refused, ...(until ? { until } : {}) });
           continue;
         }
         console.error(`[Discovery] Failed to import ${candidate.name} (${candidate.domain}):`, error);
