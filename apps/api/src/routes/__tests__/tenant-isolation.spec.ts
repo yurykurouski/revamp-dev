@@ -397,6 +397,72 @@ describe('adding a lead claims the contact right or is refused (REV-225)', () =>
   });
 });
 
+describe('approving outreach needs the studio\'s active contact right (REV-226)', () => {
+  const draft = { subject: 'Hello', body: 'Hi there', approvedBy: 'owner' };
+  const day = 24 * 60 * 60 * 1000;
+
+  async function grant(studio: Studio, offsets: { grantedDaysAgo: number; expiresInDays: number }) {
+    const lead = await Lead.findById(studio.leadId).lean();
+    const now = Date.now();
+    await ContactRight.create({
+      tenantId: new Types.ObjectId(studio.tenantId),
+      businessId: lead!.businessId,
+      leadId: lead!._id,
+      source: 'ADD_LEAD',
+      grantedAt: new Date(now - offsets.grantedDaysAgo * day),
+      expiresAt: new Date(now + offsets.expiresInDays * day),
+      cooldownUntil: new Date(now + (offsets.expiresInDays + 30) * day),
+    });
+  }
+  const withSender = (studio: Studio) =>
+    Organization.updateOne({ _id: studio.tenantId }, { $set: { sender: { name: 'Studio', address: `studio-${studio.tenantId}@studio.test` } } });
+
+  beforeEach(async () => {
+    await Promise.all([withSender(A), withSender(B)]);
+  });
+
+  it('approves with an active right and queues the send', async () => {
+    await grant(A, { grantedDaysAgo: 1, expiresInDays: 30 });
+    const res = await as(A).post(`/outreach/${A.leadId}/approve`).send(draft);
+    expect(res.status).toBe(200);
+    expect(await statusOf(A.leadId)).toBe('SCHEDULED');
+    expect(addEmailDispatchJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses with CONTACT_RIGHT_REQUIRED and the expiry date once the right has expired', async () => {
+    await grant(A, { grantedDaysAgo: 60, expiresInDays: -1 });
+    const res = await as(A).post(`/outreach/${A.leadId}/approve`).send(draft);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONTACT_RIGHT_REQUIRED');
+    expect(typeof res.body.error.details.expiredAt).toBe('string');
+    expect(await statusOf(A.leadId)).toBe('NEEDS_APPROVAL');
+    expect((await EmailCampaign.findOne({ leadId: A.leadId }).lean())?.status).toBe('NEEDS_APPROVAL');
+    noSideEffects();
+  });
+
+  it('refuses a lead whose business the studio never held, without details', async () => {
+    const res = await as(A).post(`/outreach/${A.leadId}/approve`).send(draft);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONTACT_RIGHT_REQUIRED');
+    expect(res.body.error.details).toBeUndefined();
+    noSideEffects();
+  });
+
+  it('a studio without the right cannot approve its conflicting lead, while the holder can', async () => {
+    await grant(A, { grantedDaysAgo: 1, expiresInDays: 30 });
+    const aLead = await Lead.findById(A.leadId).lean();
+    const C = await seedStudio('Charlie', { businessId: aLead!.businessId! });
+    await withSender(C);
+    const refused = await as(C).post(`/outreach/${C.leadId}/approve`).send(draft);
+    expect(refused.status).toBe(409);
+    expect(refused.body.error.code).toBe('CONTACT_RIGHT_REQUIRED');
+    expect(await statusOf(C.leadId)).toBe('NEEDS_APPROVAL');
+    noSideEffects();
+    const ok = await as(A).post(`/outreach/${A.leadId}/approve`).send(draft);
+    expect(ok.status).toBe(200);
+  });
+});
+
 describe('audits are shared between studios and reached through leads (REV-209)', () => {
   it('a studio that has its own lead for the same business reads that business\'s audit; a third studio does not', async () => {
     const alpha = await Lead.findById(A.leadId).lean();

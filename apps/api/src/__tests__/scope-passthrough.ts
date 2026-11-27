@@ -4,6 +4,7 @@
 // real MongoDB in `routes/__tests__/tenant-isolation.spec.ts`.
 import { Types } from 'mongoose';
 import { AnalyticsEvent } from '../models/AnalyticsEvent.model.js';
+import { ContactRight } from '../models/ContactRight.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { Lead } from '../models/Lead.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
@@ -37,6 +38,7 @@ export const tenantScopeMock = () => {
       mvps: repository(() => MvpProject as unknown as Delegate),
       campaigns: repository(() => EmailCampaign as unknown as Delegate),
       events: repository(() => AnalyticsEvent as unknown as Delegate),
+      rights: repository(() => ContactRight as unknown as Delegate),
     }),
     bySecret: {
       campaignByToken: (token: string) => (EmailCampaign as unknown as Delegate)['findOne']!({ trackingToken: token }),

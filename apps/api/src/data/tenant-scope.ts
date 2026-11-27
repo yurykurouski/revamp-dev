@@ -1,10 +1,11 @@
 import { Types, type Aggregate, type Query, type Document, type Model } from 'mongoose';
 import { AnalyticsEvent, type IAnalyticsEventDocument } from '../models/AnalyticsEvent.model.js';
 import { EmailCampaign, type IEmailCampaignDocument } from '../models/EmailCampaign.model.js';
+import { ContactRight, type IContactRightDocument } from '../models/ContactRight.model.js';
 import { Lead, type ILeadDocument } from '../models/Lead.model.js';
 import { MvpProject, type IMvpProjectDocument } from '../models/MvpProject.model.js';
 
-// REV-209: the one place the API reads and writes tenant-owned data (leads, MVPs, campaigns, events). Every operation
+// REV-209: the one place the API reads and writes tenant-owned data (leads, MVPs, campaigns, events, contact rights). Every operation
 // here adds the studio, so a route cannot forget it; `tenant-guard.spec.ts` fails when code outside this folder
 // queries those four models directly. Audits and businesses are shared on purpose and are reached through leads.
 
@@ -137,6 +138,8 @@ export interface TenantScope {
   mvps: Repository<IMvpProjectDocument>;
   campaigns: Repository<IEmailCampaignDocument>;
   events: Repository<IAnalyticsEventDocument>;
+  /** The studio's rights to contact businesses (REV-226); read with `data/contact-rights.ts` */
+  rights: Repository<IContactRightDocument>;
 }
 
 /** The data of one studio. Routes get it from `req.tenant`; the public routes build it from the campaign they found */
@@ -148,6 +151,7 @@ export function scopeFor(tenantId: TenantId): TenantScope {
     mvps: repository(MvpProject, tenant),
     campaigns: repository(EmailCampaign, tenant),
     events: repository(AnalyticsEvent, tenant),
+    rights: repository(ContactRight, tenant),
   };
 }
 

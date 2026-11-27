@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  LEAD_OUTREACH_ERROR_CODES,
   DISCOVERY_MAX_EXCLUDED_DOMAINS,
   DiscoveryCandidateStatus,
   LLM_PROVIDER_IDS,
@@ -125,6 +126,13 @@ export type EmailDraftOutput = z.infer<typeof EmailDraftOutputSchema>;
 // ==============================================================================
 
 /** The operator's dashboard language, sent with lead and MVP requests (REV-162) */
+/** `Lead.outreachError` (REV-226), validated before it is written */
+export const LeadOutreachErrorSchema = z.object({
+  code: z.enum(LEAD_OUTREACH_ERROR_CODES),
+  message: z.string().min(1).max(500),
+  at: z.coerce.date(),
+});
+
 export const OperatorLocaleSchema = z.enum(OPERATOR_LOCALES);
 
 export const NicheEnumSchema = z.enum([

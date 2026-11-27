@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import type { ILeadOutreachError } from '@revamp/shared-types';
 import { EmailCampaign, type IEmailCampaignDocument } from './models/EmailCampaign.model.js';
 import { Lead, type ILeadDocument } from './models/Lead.model.js';
 
@@ -17,7 +18,7 @@ export async function approveOutreachWithCampaign(
     result = null;
     const lead = await Lead.findOneAndUpdate(
       { _id: leadId, status: 'NEEDS_APPROVAL' },
-      { $set: { status: 'SCHEDULED' } },
+      { $set: { status: 'SCHEDULED' }, $unset: { outreachError: '' } },
       { new: true, session },
     ).exec();
     if (!lead) return;
@@ -31,12 +32,13 @@ export async function approveOutreachWithCampaign(
 const REVERTIBLE_CAMPAIGN_STATUSES: readonly string[] = ['SCHEDULED', 'APPROVED'];
 
 /**
- * Undoes an approval whose send could not be queued (REV-203): the lead SCHEDULED → NEEDS_APPROVAL and its campaign
- * back to NEEDS_APPROVAL without the approval stamps, in one transaction, so the operator can approve again. Only a
+ * Undoes an approval whose send could not be queued (REV-203): the lead SCHEDULED → NEEDS_APPROVAL (with `outreachError` when given, REV-226) and its campaign
+ * back to NEEDS_APPROVAL without the approval stamps, in one transaction, so the operator can approve again. An invalid `outreachError` is refused by the Lead model's validators (the caller parses it with `LeadOutreachErrorSchema` first, REV-226). Only a
  * lead still SCHEDULED changes, and nothing changes when its campaign is already claimed or finished by the email
  * worker (SENDING, DELIVERED, …) or the lead is already SENT. Returns whether the lead was moved.
  */
-export async function revertOutreachApproval(leadId: string): Promise<boolean> {
+export async function revertOutreachApproval(leadId: string, options: { outreachError?: ILeadOutreachError } = {}): Promise<boolean> {
+  const outreachError = options.outreachError;
   let moved = false;
   await mongoose.connection.transaction(async (session) => {
     moved = false;
@@ -44,7 +46,7 @@ export async function revertOutreachApproval(leadId: string): Promise<boolean> {
     // would let a second approval send the email again
     const campaign = await EmailCampaign.findOne({ leadId }, { status: 1 }, { session }).lean().exec();
     if (campaign && !REVERTIBLE_CAMPAIGN_STATUSES.includes(campaign.status)) return;
-    const lead = await Lead.findOneAndUpdate({ _id: leadId, status: 'SCHEDULED' }, { $set: { status: 'NEEDS_APPROVAL' } }, { session }).exec();
+    const lead = await Lead.findOneAndUpdate({ _id: leadId, status: 'SCHEDULED' }, { $set: { status: 'NEEDS_APPROVAL', ...(outreachError ? { outreachError } : {}) } }, { session, runValidators: true }).exec();
     moved = Boolean(lead);
     if (!lead) return;
     await EmailCampaign.updateOne(

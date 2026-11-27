@@ -5,7 +5,7 @@ import { join, relative } from 'node:path';
 // Leads, MVPs, campaigns and events belong to a studio; a query written outside the scope can forget the studio filter
 // and show one studio another's records.
 
-const GUARDED = ['Lead', 'MvpProject', 'EmailCampaign', 'AnalyticsEvent'];
+const GUARDED = ['Lead', 'MvpProject', 'EmailCampaign', 'AnalyticsEvent', 'ContactRight'];
 
 /** Any use of a guarded model as a value: a static call (`Lead.find(`), `new Lead(`, or its raw `.collection` */
 const USE = new RegExp(`\\b(?:${GUARDED.join('|')})\\s*\\.\\s*[a-zA-Z]+|\\bnew\\s+(?:${GUARDED.join('|')})\\s*\\(`);

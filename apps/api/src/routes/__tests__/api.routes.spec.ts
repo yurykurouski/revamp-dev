@@ -15,12 +15,14 @@ import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { addEmailDispatchJob } from '../../queues/email.queue.js';
 import { sendTestEmailJob } from '../../queues/email-test.queue.js';
 import { runMvpPageJob } from '../../queues/mvp-page.queue.js';
+import { activeContactRight, latestContactRight } from '../../data/contact-rights.js';
 import { readSender, requireSender } from '../../services/sender.service.js';
 import { redisConnection } from '../../queues/connection.js';
 import { LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
 
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/lead.service.js');
+vi.mock('../../data/contact-rights.js', () => ({ activeContactRight: vi.fn(), latestContactRight: vi.fn() }));
 vi.mock('../../services/sender.service.js', () => ({ readSender: vi.fn(), saveSender: vi.fn(), requireSender: vi.fn() }));
 vi.mock('../../models/Audit.model.js');
 vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
@@ -556,6 +558,42 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.mocked(requireSender).mockReset().mockResolvedValue(studioSender);
       vi.mocked(approveOutreachWithCampaign).mockReset();
       vi.mocked(revertOutreachApproval).mockReset().mockResolvedValue(true);
+      vi.mocked(activeContactRight).mockReset().mockResolvedValue({ _id: 'right' } as any);
+      vi.mocked(latestContactRight).mockReset().mockResolvedValue(null);
+    });
+
+    it('returns 409 CONTACT_RIGHT_REQUIRED, writes nothing and queues no job when the right expired (REV-226)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      const businessId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, businessId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      vi.mocked(activeContactRight).mockResolvedValue(null);
+      const expiresAt = new Date('2026-01-01T00:00:00Z');
+      vi.mocked(latestContactRight).mockResolvedValue({ expiresAt } as any);
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe('CONTACT_RIGHT_REQUIRED');
+      expect(res.body.error.details).toEqual({ expiredAt: expiresAt.toISOString() });
+      expect(activeContactRight).toHaveBeenCalledWith(expect.anything(), businessId);
+      expect(approveOutreachWithCampaign).not.toHaveBeenCalled();
+      expect(addEmailDispatchJob).not.toHaveBeenCalled();
+    });
+
+    it('prefers the end date of an ended right and leaves details out when the studio never had one (REV-226)', async () => {
+      const leadId = new mongoose.Types.ObjectId().toString();
+      mockFindById({ _id: leadId, status: 'NEEDS_APPROVAL', contactEmail: 'owner@business.com' });
+      vi.mocked(activeContactRight).mockResolvedValue(null);
+      const endedAt = new Date('2026-02-02T00:00:00Z');
+      vi.mocked(latestContactRight).mockResolvedValue({ expiresAt: new Date('2026-06-01T00:00:00Z'), endedAt } as any);
+      const ended = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+      expect(ended.body.error.details).toEqual({ expiredAt: endedAt.toISOString() });
+
+      vi.mocked(latestContactRight).mockResolvedValue(null);
+      const none = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+      expect(none.status).toBe(409);
+      expect(none.body.error.code).toBe('CONTACT_RIGHT_REQUIRED');
+      expect(none.body.error.details).toBeUndefined();
     });
 
     it('approves a NEEDS_APPROVAL lead in one write, enqueues the email and returns 200', async () => {
@@ -889,6 +927,16 @@ describe('API Routes Integration Tests (Supertest)', () => {
         body: draft.body,
       });
       expectNothingChanged();
+    });
+
+    it('does not need a contact right for a test send: it goes to the operator (REV-226)', async () => {
+      vi.mocked(activeContactRight).mockReset().mockResolvedValue(null);
+      vi.mocked(sendTestEmailJob).mockResolvedValue({ status: 'sent', result: { to: 'operator@revamp.io', from: 'x', subject: 's', simulated: true as const } });
+
+      const res = await request(app).post(`/api/v1/outreach/${leadId}/test`).send(draft);
+
+      expect(res.status).toBe(200);
+      expect(activeContactRight).not.toHaveBeenCalled();
     });
 
     it.each(['SENT', 'REJECTED', 'SCHEDULED'])('does not gate a test send on the lead status (%s)', async (status) => {
