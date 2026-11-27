@@ -19,9 +19,15 @@ import { activeContactRight, latestContactRight } from '../../data/contact-right
 import { readSender, requireSender } from '../../services/sender.service.js';
 import { redisConnection } from '../../queues/connection.js';
 import { LLM_CAPABILITIES_REDIS_KEY, draftToHtml } from '@revamp/shared-types';
+import { isAddressSuppressed, isBusinessOptedOut } from '@revamp/db';
 
 vi.mock('../../services/membership.service.js', async () => (await import('./authed-request.js')).membershipServiceMock());
 vi.mock('../../services/lead.service.js');
+vi.mock('@revamp/db', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@revamp/db')>()),
+  isAddressSuppressed: vi.fn(),
+  isBusinessOptedOut: vi.fn(),
+}));
 vi.mock('../../data/contact-rights.js', () => ({ activeContactRight: vi.fn(), latestContactRight: vi.fn() }));
 vi.mock('../../services/sender.service.js', () => ({ readSender: vi.fn(), saveSender: vi.fn(), requireSender: vi.fn() }));
 vi.mock('../../models/Audit.model.js');
@@ -560,6 +566,32 @@ describe('API Routes Integration Tests (Supertest)', () => {
       vi.mocked(revertOutreachApproval).mockReset().mockResolvedValue(true);
       vi.mocked(activeContactRight).mockReset().mockResolvedValue({ _id: 'right' } as any);
       vi.mocked(latestContactRight).mockReset().mockResolvedValue(null);
+      vi.mocked(isBusinessOptedOut).mockReset().mockResolvedValue(false);
+      vi.mocked(isAddressSuppressed).mockReset().mockResolvedValue(false);
+    });
+
+    describe('opt-outs (REV-227)', () => {
+      const optedOut = async (reason: 'business' | 'address') => {
+        const leadId = new mongoose.Types.ObjectId().toString();
+        const businessId = new mongoose.Types.ObjectId().toString();
+        mockFindById({ _id: leadId, businessId, status: 'NEEDS_APPROVAL', contactEmail: ' Owner@Business.com ' });
+        vi.mocked(reason === 'business' ? isBusinessOptedOut : isAddressSuppressed).mockResolvedValue(true);
+        // The opt-out also ended the right: its reason is the clearer one and is answered first
+        vi.mocked(activeContactRight).mockResolvedValue(null);
+        const res = await request(app).post(`/api/v1/outreach/${leadId}/approve`).send(approvedDraft);
+        return { res, businessId };
+      };
+
+      it.each(['business', 'address'] as const)('returns 409 BUSINESS_OPTED_OUT and writes nothing when the %s opted out', async (reason) => {
+        const { res, businessId } = await optedOut(reason);
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('BUSINESS_OPTED_OUT');
+        expect(isBusinessOptedOut).toHaveBeenCalledWith(businessId);
+        if (reason === 'address') expect(isAddressSuppressed).toHaveBeenCalledWith(' Owner@Business.com ');
+        expect(activeContactRight).not.toHaveBeenCalled();
+        expect(approveOutreachWithCampaign).not.toHaveBeenCalled();
+        expect(addEmailDispatchJob).not.toHaveBeenCalled();
+      });
     });
 
     it('returns 409 CONTACT_RIGHT_REQUIRED, writes nothing and queues no job when the right expired (REV-226)', async () => {

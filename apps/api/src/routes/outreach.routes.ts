@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import mongoose from 'mongoose';
+import { isAddressSuppressed, isBusinessOptedOut } from '@revamp/db';
 import {
   ApproveOutreachSchema,
   OUTREACH_APPROVABLE_STATUSES,
@@ -133,6 +134,13 @@ router.post(
 
       // The studio sends under its own sender (REV-221); without one nothing is written and nothing is queued
       const sender = await requireSender(req.auth!.organizationId);
+
+      // A business or an address that asked not to be contacted is closed to every studio (REV-227). Checked before the
+      // right, because an opt-out also ends the right and its reason is the clearer one; the test send goes to the
+      // operator and is not gated
+      if ((await isBusinessOptedOut(existing.businessId)) || (await isAddressSuppressed(existing.contactEmail))) {
+        throw new AppError(409, 'BUSINESS_OPTED_OUT', 'This business or its contact address asked not to be contacted.');
+      }
 
       // Outreach needs the studio's active right to contact this business (REV-226). Checked before the transaction, so
       // nothing is written and no job is queued; a test send goes to the operator and needs none

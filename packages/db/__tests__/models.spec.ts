@@ -17,6 +17,7 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       const base = { businessName: 'A', originalUrl: 'https://a.pl', domain: 'a.pl' };
       const error = { code: 'CONTACT_RIGHT_EXPIRED', message: 'Ended', at: new Date() };
       expect(new Lead({ ...base, outreachError: error }).validateSync()).toBeUndefined();
+      expect(new Lead({ ...base, outreachError: { ...error, code: 'CONTACT_OPTED_OUT' } }).validateSync()).toBeUndefined();
       expect(new Lead({ ...base, outreachError: { ...error, code: 'NOPE' } }).validateSync()).toBeDefined();
     });
 

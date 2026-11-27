@@ -4,6 +4,7 @@ import { Lead } from '../../models/Lead.model.js';
 import { EmailCampaign, revertOutreachApproval } from '../../models/EmailCampaign.model.js';
 import { LeadOutreachErrorSchema } from '@revamp/validation';
 import { findActiveContactRight } from '../../models/ContactRight.model.js';
+import { isAddressSuppressed } from '../../models/SuppressedAddress.model.js';
 import { mxValidator } from '../../services/mx.validator.js';
 import { loadStudioSender, simulateDelivery } from '../../services/email.service.js';
 import { Types } from 'mongoose';
@@ -15,6 +16,7 @@ const BUSINESS_ID = new Types.ObjectId();
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
 vi.mock('../../models/ContactRight.model.js');
+vi.mock('../../models/SuppressedAddress.model.js');
 vi.mock('../../services/mx.validator.js');
 vi.mock('../../services/email.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/email.service.js')>()),
@@ -66,6 +68,7 @@ describe('EmailWorker (@revamp/workers)', () => {
     vi.mocked(loadStudioSender).mockResolvedValue(SENDER);
     // The studio holds an active right unless a test says otherwise (REV-226)
     vi.mocked(findActiveContactRight).mockResolvedValue({ _id: 'right' } as never);
+    vi.mocked(isAddressSuppressed).mockResolvedValue(false);
     vi.mocked(simulateDelivery).mockReturnValue(message());
     capturedProcessor = null;
     capturedWorkerOpts = null;
@@ -485,6 +488,54 @@ describe('EmailWorker (@revamp/workers)', () => {
       });
 
       it('with an active right the simulated send works as before', async () => {
+        const result = await capturedProcessor!(job);
+        expect(result).toMatchObject({ success: true, deliveryMode: 'SIMULATED' });
+        expect(revertOutreachApproval).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('a recipient who opted out (REV-227)', () => {
+      const expectNothingWritten = () => {
+        expect(mxValidator.validateRecipientDomain).not.toHaveBeenCalled();
+        expect(simulateDelivery).not.toHaveBeenCalled();
+        expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
+        expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      };
+
+      it('returns the lead to review when the recipient opted out under any business', async () => {
+        vi.mocked(isAddressSuppressed).mockResolvedValue(true);
+
+        const result = await capturedProcessor!(job);
+
+        expect(result).toMatchObject({ success: false, aborted: true, leadId, reason: expect.stringContaining('not to be contacted') });
+        expect(revertOutreachApproval).toHaveBeenCalledTimes(1);
+        const [revertedId, options] = vi.mocked(revertOutreachApproval).mock.calls[0]!;
+        expect(revertedId).toBe(leadId);
+        expect(options?.outreachError).toMatchObject({ code: 'CONTACT_OPTED_OUT', message: expect.any(String) });
+        expect(LeadOutreachErrorSchema.safeParse(options?.outreachError).success).toBe(true);
+        // The address is never logged or returned
+        expect(JSON.stringify(result)).not.toContain(campaign.recipientEmail);
+        expectNothingWritten();
+      });
+
+      it('checks the address the email would go to', async () => {
+        await capturedProcessor!(job);
+        expect(isAddressSuppressed).toHaveBeenCalledWith(campaign.recipientEmail || lead.contactEmail);
+      });
+
+      it('an UNSUBSCRIBED lead (its business opted out) still aborts at the HITL gate: nothing is sent', async () => {
+        (Lead.findById as any).mockReturnValue(exec({ ...lead, status: 'UNSUBSCRIBED' }));
+
+        const result = await capturedProcessor!(job);
+
+        expect(result).toMatchObject({ success: false, aborted: true });
+        expect(revertOutreachApproval).not.toHaveBeenCalled();
+        expect(isAddressSuppressed).not.toHaveBeenCalled();
+        expectNothingWritten();
+      });
+
+      it('a recipient who did not opt out is sent to as before', async () => {
         const result = await capturedProcessor!(job);
         expect(result).toMatchObject({ success: true, deliveryMode: 'SIMULATED' });
         expect(revertOutreachApproval).not.toHaveBeenCalled();

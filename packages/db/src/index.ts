@@ -14,6 +14,7 @@ export * from './models/SuppressedAddress.model.js';
 export * from './password.js';
 export * from './address-hash.js';
 export * from './contact-rights.js';
+export * from './opt-out.js';
 export * from './contact-availability.js';
 export * from './contact-rights-migration.js';
 export * from './redact-uri.js';

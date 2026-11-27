@@ -110,8 +110,8 @@ export const OPERATOR_LOCALE_NAMES: Record<OperatorLocale, string> = {
   lt: 'Lithuanian',
 };
 
-/** Codes of `Lead.outreachError`; REV-227 extends the list (REV-226) */
-export const LEAD_OUTREACH_ERROR_CODES = ['CONTACT_RIGHT_EXPIRED'] as const;
+/** Codes of `Lead.outreachError`; REV-227 added CONTACT_OPTED_OUT (REV-226) */
+export const LEAD_OUTREACH_ERROR_CODES = ['CONTACT_RIGHT_EXPIRED', 'CONTACT_OPTED_OUT'] as const;
 export type LeadOutreachErrorCode = (typeof LEAD_OUTREACH_ERROR_CODES)[number];
 
 /** The reason an approved send was returned to review, shown to the operator (REV-226) */

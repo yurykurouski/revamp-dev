@@ -7,6 +7,7 @@ import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign, revertOutreachApproval } from '../models/EmailCampaign.model.js';
 import { findActiveContactRight } from '../models/ContactRight.model.js';
+import { isAddressSuppressed } from '../models/SuppressedAddress.model.js';
 import { mxValidator } from '../services/mx.validator.js';
 import { loadStudioSender, simulateDelivery } from '../services/email.service.js';
 import { assertJobTenant, withTenant } from '../tenant.js';
@@ -122,6 +123,18 @@ export const createEmailWorker = (): Worker => {
       const recipientEmail = campaign.recipientEmail || lead.contactEmail;
       if (!recipientEmail) {
         throw new Error(`No recipient email address available for lead ${leadId}`);
+      }
+
+      // The recipient may have opted out under another business or studio since the approval (REV-227): the suppression
+      // list is checked at send time, whatever business the address is under. The lead goes back to review with the
+      // reason; nothing is claimed, recorded or sent. An opted-out business needs no branch here: its leads are
+      // UNSUBSCRIBED and the HITL gate above already stopped the job
+      if (await isAddressSuppressed(recipientEmail)) {
+        const reason = 'The contact address asked not to be contacted. Nothing was sent.';
+        console.warn(`[EmailWorker] Recipient opted out (lead ${leadId}); lead returned to review`);
+        const outreachError = LeadOutreachErrorSchema.parse({ code: 'CONTACT_OPTED_OUT', message: reason, at: new Date() });
+        await revertOutreachApproval(lead._id.toString(), { outreachError });
+        return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
       }
 
       // 4. Pre-flight DNS MX-Record Validation
