@@ -2,15 +2,18 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEmailWorker } from '../email.worker.js';
 import { Lead } from '../../models/Lead.model.js';
 import { EmailCampaign, revertOutreachApproval } from '../../models/EmailCampaign.model.js';
+import { findActiveContactRight } from '../../models/ContactRight.model.js';
 import { mxValidator } from '../../services/mx.validator.js';
 import { loadStudioSender, simulateDelivery } from '../../services/email.service.js';
 import { Types } from 'mongoose';
 
 const TENANT = '5eed00000000000000000009';
 const TENANT_ID = new Types.ObjectId(TENANT);
+const BUSINESS_ID = new Types.ObjectId();
 
 vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
+vi.mock('../../models/ContactRight.model.js');
 vi.mock('../../services/mx.validator.js');
 vi.mock('../../services/email.service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/email.service.js')>()),
@@ -60,6 +63,8 @@ describe('EmailWorker (@revamp/workers)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(loadStudioSender).mockResolvedValue(SENDER);
+    // The studio holds an active right unless a test says otherwise (REV-226)
+    vi.mocked(findActiveContactRight).mockResolvedValue({ _id: 'right' } as never);
     vi.mocked(simulateDelivery).mockReturnValue(message());
     capturedProcessor = null;
     capturedWorkerOpts = null;
@@ -89,7 +94,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     const mockLead = {
       _id: mockLeadId,
-      tenantId: TENANT,
+      tenantId: TENANT, businessId: BUSINESS_ID,
       businessName: 'Listonosz Courier & Logistics',
       domain: 'listonosz.site',
       contactEmail: 'director@listonosz.site',
@@ -249,7 +254,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     const mockLead = {
       _id: mockLeadId,
-      tenantId: TENANT,
+      tenantId: TENANT, businessId: BUSINESS_ID,
       businessName: 'Non Existent Company',
       contactEmail: 'info@non-existent-fake-domain-xyz.com',
       status: 'SCHEDULED',
@@ -341,7 +346,7 @@ describe('EmailWorker (@revamp/workers)', () => {
   describe('simulated delivery from the studio sender (REV-221)', () => {
     const leadId = '64f8a1234567890123456789';
     const campaignId = '64f8a9876543210987654321';
-    const lead = { _id: leadId, tenantId: TENANT, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
+    const lead = { _id: leadId, tenantId: TENANT, businessId: BUSINESS_ID, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
     const campaign = {
       _id: campaignId,
       leadId,
@@ -415,6 +420,75 @@ describe('EmailWorker (@revamp/workers)', () => {
       expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
     });
 
+    describe('the contact right at send time (REV-226)', () => {
+      const expectNothingWritten = () => {
+        expect(mxValidator.validateRecipientDomain).not.toHaveBeenCalled();
+        expect(simulateDelivery).not.toHaveBeenCalled();
+        expect(EmailCampaign.findOneAndUpdate).not.toHaveBeenCalled();
+        expect(EmailCampaign.findByIdAndUpdate).not.toHaveBeenCalled();
+        expect(Lead.findOneAndUpdate).not.toHaveBeenCalled();
+      };
+
+      it('returns the lead to review when the right expired after approval', async () => {
+        vi.mocked(findActiveContactRight).mockResolvedValue(null);
+
+        const result = await capturedProcessor!(job);
+
+        expect(result).toMatchObject({ success: false, aborted: true, leadId, reason: expect.stringContaining('right') });
+        expect(revertOutreachApproval).toHaveBeenCalledTimes(1);
+        const [revertedId, options] = vi.mocked(revertOutreachApproval).mock.calls[0]!;
+        expect(revertedId).toBe(leadId);
+        expect(options?.outreachError).toMatchObject({ code: 'CONTACT_RIGHT_EXPIRED', message: expect.any(String) });
+        expect(options?.outreachError?.at).toBeInstanceOf(Date);
+        expectNothingWritten();
+      });
+
+      it('an ended right is not active: lead returned to review', async () => {
+        // findActiveContactRight excludes an ended (opted-out) right, so it answers null like an expired one
+        vi.mocked(findActiveContactRight).mockResolvedValue(null);
+        const result = await capturedProcessor!(job);
+        expect(result).toMatchObject({ success: false, aborted: true });
+        expect(vi.mocked(revertOutreachApproval).mock.calls[0]![1]?.outreachError?.code).toBe('CONTACT_RIGHT_EXPIRED');
+        expectNothingWritten();
+      });
+
+      it("reads the right of the job's studio and the lead's business only", async () => {
+        const businessId = new Types.ObjectId();
+        (Lead.findById as any).mockReturnValue(exec({ ...lead, businessId }));
+
+        await capturedProcessor!(job);
+
+        expect(findActiveContactRight).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(findActiveContactRight).mock.calls[0]![0]).toEqual({ tenantId: TENANT_ID, businessId });
+      });
+
+      it('returns a lead without a business to review: it has no right', async () => {
+        vi.mocked(findActiveContactRight).mockResolvedValue(null);
+        (Lead.findById as any).mockReturnValue(exec({ ...lead, businessId: undefined }));
+        const result = await capturedProcessor!(job);
+        expect(result).toMatchObject({ success: false, aborted: true });
+        expect(findActiveContactRight).not.toHaveBeenCalled();
+        expectNothingWritten();
+      });
+
+      it('a delivered campaign finishes as SENT even if the right expired since', async () => {
+        vi.mocked(findActiveContactRight).mockResolvedValue(null);
+        (EmailCampaign.findOne as any).mockReturnValue(exec({ ...campaign, status: 'DELIVERED', sentAt: new Date(), outbox: message() }));
+
+        const result = await capturedProcessor!(job);
+
+        expect(result).toMatchObject({ success: true, alreadySent: true });
+        expect(Lead.findOneAndUpdate).toHaveBeenCalledWith(expect.anything(), { status: 'SENT' });
+        expect(revertOutreachApproval).not.toHaveBeenCalled();
+      });
+
+      it('with an active right the simulated send works as before', async () => {
+        const result = await capturedProcessor!(job);
+        expect(result).toMatchObject({ success: true, deliveryMode: 'SIMULATED' });
+        expect(revertOutreachApproval).not.toHaveBeenCalled();
+      });
+    });
+
     it('a retry of a delivered campaign leaves the outbox and sentAt as they were', async () => {
       const sentAt = new Date('2026-11-25T10:00:00Z');
       (EmailCampaign.findOne as any).mockReturnValue(exec({ ...campaign, status: 'DELIVERED', sentAt, outbox: message() }));
@@ -439,7 +513,7 @@ describe('EmailWorker (@revamp/workers)', () => {
 
     // A campaign and lead whose fake queries behave like MongoDB's, so retries see earlier writes
     beforeEach(() => {
-      lead = { _id: leadId, tenantId: TENANT, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
+      lead = { _id: leadId, tenantId: TENANT, businessId: BUSINESS_ID, businessName: 'Biz', contactEmail: 'owner@biz.com', status: 'SCHEDULED' };
       campaign = {
         _id: campaignId,
         leadId,

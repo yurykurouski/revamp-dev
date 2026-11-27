@@ -1,11 +1,12 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import type { Types } from 'mongoose';
 import { IEmailDispatchJobData } from '@revamp/shared-types';
-import { canTransition, leadStatusesInto } from '@revamp/validation';
+import { canTransition, leadStatusesInto, requiresContactRight } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
 import { EmailCampaign, revertOutreachApproval } from '../models/EmailCampaign.model.js';
+import { findActiveContactRight } from '../models/ContactRight.model.js';
 import { mxValidator } from '../services/mx.validator.js';
 import { loadStudioSender, simulateDelivery } from '../services/email.service.js';
 import { assertJobTenant, withTenant } from '../tenant.js';
@@ -101,6 +102,20 @@ export const createEmailWorker = (): Worker => {
         console.warn(`[EmailWorker] ${reason} (lead ${leadId})`);
         await revertOutreachApproval(lead._id.toString());
         return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
+      }
+
+      // The studio's right to contact the business must still be active now: it may have expired or been ended (an
+      // opt-out) since the approval, and the job can wait behind the limiter. Checked after the DELIVERED short-circuit
+      // (that email was recorded while the right was active). The lead goes back to review with the reason; nothing is
+      // claimed, recorded or sent (REV-226)
+      if (requiresContactRight('SENT')) {
+        const right = lead.businessId ? await findActiveContactRight({ tenantId: tenant, businessId: lead.businessId }, new Date()) : null;
+        if (!right) {
+          const reason = 'The right to contact this business ended before the email was sent. Nothing was sent.';
+          console.warn(`[EmailWorker] ${reason} (lead ${leadId}); lead returned to review`);
+          await revertOutreachApproval(lead._id.toString(), { outreachError: { code: 'CONTACT_RIGHT_EXPIRED', message: reason, at: new Date() } });
+          return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
+        }
       }
 
       const recipientEmail = campaign.recipientEmail || lead.contactEmail;
