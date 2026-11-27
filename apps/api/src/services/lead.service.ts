@@ -9,7 +9,8 @@ import {
 } from '@revamp/validation';
 import { ILeadDocument, addLeadToBusiness } from '../models/Lead.model.js';
 import { scopeFor, tenantIdOf, type TenantScope } from '../data/tenant-scope.js';
-import type { DeriveFromAudit } from '@revamp/db';
+import { ContactRightRefusedError, type DeriveFromAudit } from '@revamp/db';
+import { env } from '../config/env.js';
 import { addAiGenerationJob } from '../queues/ai.queue.js';
 import { findAuditForLead } from '../models/Audit.model.js';
 import { AUDIT_ENQUEUE_TIMEOUT_MS, enqueueAuditOrFail } from './audit-enqueue.js';
@@ -29,6 +30,21 @@ export interface GetLeadsQuery {
 export const LEAD_LIST_SORT = { onePageBrochure: -1, createdAt: -1 } as const;
 
 const escapeRegex = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * REV-225: the answer for a refused contact right. It says only why and until when, never which studio holds the
+ * business. Shared by Add lead and the discovery import.
+ */
+export function contactRightRefusal(error: ContactRightRefusedError): AppError {
+  const until = error.until?.toISOString();
+  if (error.reason === 'held') {
+    return new AppError(409, 'CONTACT_RIGHT_HELD', `Another studio holds the right to contact this business until ${until}.`, { expiresAt: until });
+  }
+  if (error.reason === 'cooldown') {
+    return new AppError(409, 'BUSINESS_IN_COOLDOWN', `This business can be contacted again from ${until}.`, { availableAt: until });
+  }
+  return new AppError(409, 'BUSINESS_OPTED_OUT', 'This business asked not to be contacted.');
+}
 
 export class LeadService {
   /**
@@ -56,7 +72,7 @@ export class LeadService {
   static async createLead(
     dto: CreateLeadDto,
     options: { tags?: string[]; source?: LeadSource; externalId?: string; tenantId: string },
-  ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string; reused?: boolean }> {
+  ): Promise<{ lead: ILeadDocument; auditId: string; jobId?: string; reused?: boolean; contactRightExpiresAt?: Date }> {
     let domain: string | undefined;
     try {
       domain = normalizeDomain(new URL(dto.originalUrl).hostname);
@@ -73,6 +89,8 @@ export class LeadService {
       created = await addLeadToBusiness({
         tenantId: options.tenantId,
         deriveFromAudit: leadFieldsFromAudit as DeriveFromAudit,
+        // REV-225: the studio claims the business's contact right in the same transaction, or the add is refused
+        contactRight: { durations: { rightDays: env.CONTACT_RIGHT_DAYS, cooldownDays: env.CONTACT_COOLDOWN_DAYS }, source: 'ADD_LEAD' },
         lead: {
           businessName: dto.businessName,
           originalUrl: dto.originalUrl,
@@ -92,6 +110,7 @@ export class LeadService {
         },
       });
     } catch (error) {
+      if (error instanceof ContactRightRefusedError) throw contactRightRefusal(error);
       if ((error as { code?: unknown } | null)?.code === 'LEAD_ALREADY_EXISTS') {
         throw new AppError(409, 'LEAD_ALREADY_EXISTS', 'Your studio already has a lead for this site', {
           leadId: (error as { leadId?: string }).leadId,
@@ -100,6 +119,7 @@ export class LeadService {
       throw error;
     }
     const { lead } = created;
+    const contactRightExpiresAt = created.contactRight?.expiresAt;
 
     // 2a. The lead took another studio's completed audit: it is AUDITED, so queue the MVP generation as after an audit.
     // If that fails the lead stays AUDITED and the operator can press Generate MVP, so nothing is reverted
@@ -112,7 +132,7 @@ export class LeadService {
       } catch (error) {
         console.error(`[LeadService] Could not queue the MVP generation for lead ${lead._id}:`, error);
       }
-      return { lead, auditId, jobId, reused: true };
+      return { lead, auditId, jobId, reused: true, ...(contactRightExpiresAt ? { contactRightExpiresAt } : {}) };
     }
 
     // 2b. Queue the audit; if that fails the lead becomes AUDIT_FAILED and a 503 is thrown (REV-202)
@@ -127,6 +147,7 @@ export class LeadService {
       lead,
       auditId: created.audit!._id.toString(),
       jobId,
+      ...(contactRightExpiresAt ? { contactRightExpiresAt } : {}),
     };
   }
 

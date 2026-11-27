@@ -15,6 +15,7 @@ export const createLead = async (req: Request, res: Response, next: NextFunction
         lead: result.lead,
         auditId: result.auditId,
         jobId: result.jobId,
+        ...(result.contactRightExpiresAt ? { contactRight: { expiresAt: result.contactRightExpiresAt.toISOString() } } : {}),
       },
     });
   } catch (error) {

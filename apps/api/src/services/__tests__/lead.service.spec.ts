@@ -8,6 +8,8 @@ import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { AUDIT_ENQUEUE_TIMEOUT_MS } from '../audit-enqueue.js';
 import { AppError } from '../../middlewares/errorHandler.js';
 import { scopeFor } from '../../data/tenant-scope.js';
+import { ContactRightRefusedError } from '@revamp/db';
+import { env } from '../../config/env.js';
 
 vi.mock('../../data/tenant-scope.js', async () => (await import('../../__tests__/scope-passthrough.js')).tenantScopeMock());
 vi.mock('../../models/Lead.model.js');
@@ -252,6 +254,48 @@ describe('LeadService', () => {
       expect(error).toBeInstanceOf(AppError);
       expect(error).toMatchObject({ statusCode: 409, code: 'LEAD_ALREADY_EXISTS', details: { leadId: 'old-lead' } });
       expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
+    });
+
+    it('claims the studio\'s contact right with the env durations and returns its expiry (REV-225)', async () => {
+      const expiresAt = new Date('2026-12-11T00:00:00.000Z');
+      vi.mocked(addLeadToBusiness).mockResolvedValue({
+        lead: { _id: 'l', originalUrl: 'https://x.example', niche: 'dental' },
+        audit: { _id: 'a' },
+        reused: false,
+        contactRight: { expiresAt },
+      } as any);
+      vi.spyOn(auditQueueModule, 'addAuditJob').mockResolvedValue({ id: 'job' } as any);
+      const result = await create(dto, { tenantId: 'studio-1' });
+      expect(vi.mocked(addLeadToBusiness).mock.calls[0]![0].contactRight).toEqual({
+        durations: { rightDays: env.CONTACT_RIGHT_DAYS, cooldownDays: env.CONTACT_COOLDOWN_DAYS },
+        source: 'ADD_LEAD',
+      });
+      expect(result.contactRightExpiresAt).toEqual(expiresAt);
+    });
+
+    it('returns the right on the reused-audit path too (REV-225)', async () => {
+      const expiresAt = new Date('2026-12-11T00:00:00.000Z');
+      vi.mocked(addLeadToBusiness).mockResolvedValue({
+        lead: { _id: 'l' },
+        sourceAudit: { _id: 'shared' },
+        reused: true,
+        contactRight: { expiresAt },
+      } as any);
+      vi.mocked(addAiGenerationJob).mockResolvedValue({ id: 'ai' } as any);
+      expect((await create(dto, { tenantId: 'studio-1' })).contactRightExpiresAt).toEqual(expiresAt);
+    });
+
+    it.each([
+      ['held', 'CONTACT_RIGHT_HELD', new Date('2026-12-11T00:00:00.000Z'), { expiresAt: '2026-12-11T00:00:00.000Z' }],
+      ['cooldown', 'BUSINESS_IN_COOLDOWN', new Date('2027-01-10T00:00:00.000Z'), { availableAt: '2027-01-10T00:00:00.000Z' }],
+      ['opted_out', 'BUSINESS_OPTED_OUT', undefined, undefined],
+    ] as const)('maps a %s refusal to 409 %s and queues nothing (REV-225)', async (reason, code, until, details) => {
+      vi.mocked(addLeadToBusiness).mockRejectedValue(new ContactRightRefusedError(reason, until));
+      const error = await create(dto, { tenantId: 'studio-1' }).catch((e) => e);
+      expect(error).toBeInstanceOf(AppError);
+      expect(error).toMatchObject({ statusCode: 409, code, details });
+      expect(auditQueueModule.addAuditJob).not.toHaveBeenCalled();
+      expect(addAiGenerationJob).not.toHaveBeenCalled();
     });
 
     it('passes any other failure through', async () => {

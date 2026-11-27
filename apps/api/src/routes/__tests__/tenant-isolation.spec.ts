@@ -3,7 +3,7 @@ import mongoose, { Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Business, Organization, createOrganizationWithOwner } from '@revamp/db';
+import { Business, ContactRight, Organization, SuppressedAddress, createOrganizationWithOwner, hashAddress } from '@revamp/db';
 import { createApp } from '../../app.js';
 import { env } from '../../config/env.js';
 import { signSessionToken } from '../../services/token.js';
@@ -141,7 +141,7 @@ const noSideEffects = () => {
 beforeAll(async () => {
   mongo = await MongoMemoryReplSet.create({ replSet: { count: 1, storageEngine: 'wiredTiger' } });
   await mongoose.connect(mongo.getUri('revamp-tenant-isolation-test'));
-  await Promise.all([Lead.init(), MvpProject.init(), EmailCampaign.init(), Audit.init(), Business.init()]);
+  await Promise.all([Lead.init(), MvpProject.init(), EmailCampaign.init(), Audit.init(), Business.init(), ContactRight.init(), SuppressedAddress.init()]);
   const app = createApp();
   routes = listApiRoutes(app);
   server = await listenOnLoopback(app);
@@ -345,6 +345,55 @@ describe('a record of another studio answers 404 and nothing changes (REV-209)',
       expect(res.status).toBe(202);
       expect(vi.mocked(addDiscoveryJob).mock.calls[0]![0]).toMatchObject({ tenantId: B.tenantId });
     });
+  });
+});
+
+describe('adding a lead claims the contact right or is refused (REV-225)', () => {
+  const body = { businessName: 'Bravo Dental', originalUrl: 'https://shared.example', niche: 'dental' };
+
+  it('studio B adding the site studio A holds gets CONTACT_RIGHT_HELD with the expiry and no hint of A; no lead, no job', async () => {
+    const first = await as(A).post('/leads').send({ ...body, businessName: 'Alpha Dental' });
+    expect(first.status).toBe(201);
+    const right = await ContactRight.findOne({ tenantId: A.tenantId }).lean();
+    expect(first.body.data.contactRight.expiresAt).toBe(right!.expiresAt.toISOString());
+    vi.mocked(addAuditJob).mockClear();
+
+    const res = await as(B).post('/leads').send(body);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('CONTACT_RIGHT_HELD');
+    expect(res.body.error.details).toEqual({ expiresAt: right!.expiresAt.toISOString() });
+    const text = JSON.stringify(res.body);
+    for (const secret of [A.tenantId, A.leadId, 'Alpha']) expect(text).not.toContain(secret);
+    expect(await Lead.countDocuments({ tenantId: B.tenantId, domain: 'shared.example' })).toBe(0);
+    expect(addAuditJob).not.toHaveBeenCalled();
+    expect(addAiGenerationJob).not.toHaveBeenCalled();
+  });
+
+  it('the cooldown and the opt-out each answer their own code with the date where there is one', async () => {
+    expect((await as(A).post('/leads').send(body)).status).toBe(201);
+    const business = await Business.findOne({ domain: 'shared.example' }).lean();
+    const hold = business!.contactHold!;
+    // The right has ended; the cooldown runs on
+    await Business.updateOne({ _id: business!._id }, { $set: { 'contactHold.expiresAt': new Date(Date.now() - 1000) } });
+    const cooldown = await as(B).post('/leads').send(body);
+    expect(cooldown.status).toBe(409);
+    expect(cooldown.body.error.code).toBe('BUSINESS_IN_COOLDOWN');
+    expect(cooldown.body.error.details).toEqual({ availableAt: hold.cooldownUntil.toISOString() });
+
+    await Business.updateOne({ _id: business!._id }, { $set: { optedOutAt: new Date() } });
+    const optedOut = await as(B).post('/leads').send(body);
+    expect(optedOut.status).toBe(409);
+    expect(optedOut.body.error.code).toBe('BUSINESS_OPTED_OUT');
+    expect(optedOut.body.error.details).toBeUndefined();
+    expect(await Lead.countDocuments({ tenantId: B.tenantId, domain: 'shared.example' })).toBe(0);
+  });
+
+  it('a suppressed contact email refuses a brand-new site and leaves no business behind', async () => {
+    await SuppressedAddress.create({ hash: hashAddress('stop@fresh-site.example') });
+    const res = await as(B).post('/leads').send({ ...body, originalUrl: 'https://fresh-site.example', contactEmail: 'stop@fresh-site.example' });
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('BUSINESS_OPTED_OUT');
+    expect(await Business.countDocuments({ domain: 'fresh-site.example' })).toBe(0);
   });
 });
 
