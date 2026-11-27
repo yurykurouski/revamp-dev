@@ -30,7 +30,7 @@ describe('ContactRightChip (REV-228)', () => {
     container.remove();
     vi.useRealTimers();
   });
-  const render = (right: React.ComponentProps<typeof ContactRightChip>['right']) => act(() => root.render(React.createElement(ContactRightChip, { right })));
+  const render = (right: React.ComponentProps<typeof ContactRightChip>['right'], variant?: 'full' | 'compact') => act(() => root.render(React.createElement(ContactRightChip, { right, variant })));
   const chip = () => container.querySelector('[data-testid="contact-right-chip"]');
   const expires = (ms: number) => new Date(NOW.getTime() + ms).toISOString();
 
@@ -68,5 +68,37 @@ describe('ContactRightChip (REV-228)', () => {
       vi.advanceTimersByTime(3 * 60_000);
     });
     expect(chip()!.textContent).toBe(en.contactRight.expired);
+  });
+
+  describe('compact variant (REV-229)', () => {
+    it('shows the short label with the full date and keeps the colors', () => {
+      const expiresAt = expires(10 * DAY);
+      const date = formatDate(expiresAt, 'en', DATE_FORMAT);
+      render({ expiresAt, active: true }, 'compact');
+      expect(chip()!.textContent).toBe(en.contactRight.untilShort.replace('{{date}}', date));
+      expect(chip()!.textContent).toContain('2026');
+      expect(chip()!.className).toContain('MuiChip-colorSuccess');
+      render({ expiresAt: expires(DAY), active: true }, 'compact');
+      expect(chip()!.className).toContain('MuiChip-colorWarning');
+    });
+
+    it('carries the full text as its accessible name', () => {
+      const expiresAt = expires(10 * DAY);
+      render({ expiresAt, active: true }, 'compact');
+      expect(chip()!.getAttribute('aria-label')).toBe(en.contactRight.until.replace('{{date}}', formatDate(expiresAt, 'en', DATE_FORMAT)));
+    });
+
+    it('keeps the expired label and shortens the opted-out one', () => {
+      render({ expiresAt: expires(-DAY), active: false }, 'compact');
+      expect(chip()!.textContent).toBe(en.contactRight.expired);
+      render({ expiresAt: expires(20 * DAY), active: false, endedAt: NOW.toISOString(), endReason: 'opted_out' }, 'compact');
+      expect(chip()!.textContent).toBe(en.contactRight.optedOutShort);
+      expect(chip()!.getAttribute('aria-label')).toBe(en.contactRight.optedOut);
+    });
+
+    it('leaves the default variant on the full label', () => {
+      render({ expiresAt: expires(10 * DAY), active: true });
+      expect(chip()!.textContent).toContain('Contact right until');
+    });
   });
 });

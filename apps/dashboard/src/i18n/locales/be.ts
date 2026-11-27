@@ -421,8 +421,10 @@ export const be: Translation = {
   },
   contactRight: {
     until: 'Права на кантакт да {{date}}',
+    untilShort: 'Да {{date}}',
     expired: 'Права скончылася',
     optedOut: 'Бізнес адмовіўся ад рассылкі',
+    optedOutShort: 'Адмова ад лістоў',
     approveBlocked: 'Права вашай студыі на кантакт з гэтым бізнесам скончылася, таму рассылку нельга зацвердзіць.',
     approveBlockedOptedOut: 'Гэты бізнес папрасіў не звязвацца з ім, таму рассылку нельга зацвердзіць.',
     column: 'Права на кантакт',

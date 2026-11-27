@@ -422,8 +422,10 @@ export const en = {
   },
   contactRight: {
     until: 'Contact right until {{date}}',
+    untilShort: 'Until {{date}}',
     expired: 'Right expired',
     optedOut: 'Business opted out',
+    optedOutShort: 'Opted out',
     approveBlocked: 'Your studio\'s right to contact this business has ended, so outreach can\'t be approved.',
     approveBlockedOptedOut: 'This business asked not to be contacted, so outreach can\'t be approved.',
     column: 'Contact right',

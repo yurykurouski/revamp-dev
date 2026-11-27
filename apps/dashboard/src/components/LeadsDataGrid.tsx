@@ -140,10 +140,11 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
     {
       field: 'contactRight',
       headerName: t('contactRight.column'),
-      width: 200,
+      width: 170,
+      minWidth: 160,
       // Sorted by the expiry date; a lead without a right sorts last
       valueGetter: (_value, row) => (row.contactRight ? new Date(row.contactRight.expiresAt).getTime() : null),
-      renderCell: (params: GridRenderCellParams<ILeadItem>) => <ContactRightChip right={params.row.contactRight} />,
+      renderCell: (params: GridRenderCellParams<ILeadItem>) => <ContactRightChip right={params.row.contactRight} variant="compact" />,
     },
     {
       field: 'createdAt',

@@ -62,7 +62,7 @@ describe('LeadsDataGrid contact right column (REV-228)', () => {
     });
     expect(container.textContent).toContain(en.contactRight.column);
     const chips = [...container.querySelectorAll('[data-testid="contact-right-chip"]')];
-    expect(chips.map((c) => c.textContent)).toEqual([expect.stringContaining('Contact right until'), en.contactRight.expired]);
+    expect(chips.map((c) => c.textContent)).toEqual([expect.stringMatching(/^Until .*2026$/), en.contactRight.expired]);
     expect(chips[0]!.className).toContain('MuiChip-colorSuccess');
   });
 });
