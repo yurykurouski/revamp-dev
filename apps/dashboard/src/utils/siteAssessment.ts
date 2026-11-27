@@ -71,7 +71,7 @@ export function sortByAssessment(candidates: IDiscoveryCandidate[]): IDiscoveryC
 /** New businesses start selected, except those rated poor: the operator can still tick them */
 export function defaultSelection(candidates: IDiscoveryCandidate[]): string[] {
   return candidates
-    .filter((c) => c.status === 'new' && assessmentBucket(c.assessment) !== 'poor')
+    .filter((c) => c.status === 'new' && !c.unavailable && assessmentBucket(c.assessment) !== 'poor')
     .map((c) => c.externalId);
 }
 

@@ -159,6 +159,8 @@ export interface ILead {
   auditError?: string;
   /** Why outreach was returned to review at send time; cleared by the next approval (REV-226) */
   outreachError?: ILeadOutreachError;
+  /** The studio's newest right on this lead's business; set by the list and detail endpoints, `null` when it has none (REV-228) */
+  contactRight?: IContactRightView | null;
   /** Complexity class from the latest audit, copied here for list sorting and filtering (REV-38) */
   siteComplexity?: SiteComplexityClass;
   /** Set when the latest audit found a one-page brochure site; these leads sort first (REV-38) */
@@ -1519,5 +1521,9 @@ export type ContactRightRefusal = (typeof CONTACT_RIGHT_REFUSALS)[number];
 /** What a studio may see of its own right; never who else holds or held the business */
 export interface IContactRightView {
   expiresAt: string;
+  /** Granted, not expired and not ended at the time of the request */
   active: boolean;
+  /** Set when the right ended before `expiresAt` (REV-228) */
+  endedAt?: string;
+  endReason?: 'opted_out';
 }

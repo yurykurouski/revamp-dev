@@ -25,11 +25,14 @@ import { useLeadFilterStore } from '../store/useLeadFilterStore.js';
 import { useCreateLeadMutation } from '../hooks/useLeads.js';
 import { useTranslation } from 'react-i18next';
 import { NICHES, NICHE_EMOJI } from '../i18n/niches.js';
+import { useLanguageStore } from '../store/useLanguageStore.js';
+import { refusalMessage } from '../utils/contactRight.js';
 
 export const AddLeadModal: React.FC = () => {
   const { isAddModalOpen, closeAddModal } = useLeadFilterStore();
   const createLeadMutation = useCreateLeadMutation();
   const { t } = useTranslation();
+  const { language } = useLanguageStore();
 
   const [url, setUrl] = useState('');
   const [niche, setNiche] = useState<NicheType>('other');
@@ -72,7 +75,7 @@ export const AddLeadModal: React.FC = () => {
       await createLeadMutation.mutateAsync(validation.data);
       handleClose();
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : t('addLead.submitFailed'));
+      setFormError(refusalMessage(t, err, language) ?? (err instanceof Error ? err.message : t('addLead.submitFailed')));
     }
   };
 

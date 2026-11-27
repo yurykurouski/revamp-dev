@@ -419,6 +419,28 @@ export const lt: Translation = {
       workers_offline: 'Darbuotojų procesai neprisijungę',
     },
   },
+  contactRight: {
+    until: 'Teisė susisiekti iki {{date}}',
+    expired: 'Teisė baigėsi',
+    optedOut: 'Įmonė atsisakė laiškų',
+    approveBlocked: 'Jūsų studijos teisė susisiekti su šia įmone baigėsi, todėl siuntimo patvirtinti negalima.',
+    approveBlockedOptedOut: 'Ši įmonė paprašė su ja nesusisiekti, todėl siuntimo patvirtinti negalima.',
+    column: 'Teisė susisiekti',
+  },
+  refusals: {
+    heldNoDate: 'Šią įmonę yra rezervavusi kita studija.',
+    cooldownNoDate: 'Šios įmonės kol kas negalima pridėti vėl.',
+    held: 'Šią įmonę iki {{date}} yra rezervavusi kita studija.',
+    cooldown: 'Šią įmonę galima pridėti vėl nuo {{date}}.',
+    optedOut: 'Ši įmonė arba jos adresas paprašė su jais nesusisiekti.',
+    rightRequired: 'Jūsų studijos teisė susisiekti su šia įmone baigėsi {{date}}.',
+    rightRequiredNoDate: 'Jūsų studija neturi galiojančios teisės susisiekti su šia įmone.',
+  },
+  outreachError: {
+    CONTACT_RIGHT_EXPIRED: 'Teisė susisiekti su šia įmone baigėsi prieš išsiunčiant laišką. Nieko neišsiųsta.',
+    CONTACT_OPTED_OUT: 'Gavėjo adresas paprašė jam nerašyti. Nieko neišsiųsta.',
+    at: 'Grąžinta peržiūrai {{date}}.',
+  },
   grid: {
     company: 'Įmonė ir svetainė',
     openOriginal: 'Atidaryti originalią svetainę',
@@ -501,6 +523,13 @@ export const lt: Translation = {
       completed: 'Baigta',
       failed: 'Klaida',
     },
+    unavailable: {
+      held: 'Užimta iki {{date}}',
+      heldNoDate: 'Rezervavo kita studija',
+      cooldown: 'Prieinama nuo {{date}}',
+      cooldownNoDate: 'Pauzė po kontakto',
+      opted_out: 'Atsisakė laiškų',
+    },
     candidateStatus: {
       new: 'Nauja',
       existing_lead: 'Jau sąraše',
@@ -572,6 +601,7 @@ export const lt: Translation = {
     nothingNewHint: 'Nėra ką importuoti: visos rastos įmonės jau yra sąraše arba neturi savo svetainės. Pabandykite kitą vietovę ar raktinį žodį.',
     importDone: 'Importuota: {{imported}}. Jų auditai pradėti.',
     importSkipped: 'Neimportuota: {{skipped}} (jau sąraše arba nebepasiekiamos).',
+    importUnavailable: 'Neimportuota: {{count}} (rezervavo kita studija arba atsisakė laiškų).',
     importFailedCount: 'Klaidų: {{failed}}.',
     legacyResult: 'Ši paieška atlikta prieš atsirandant peržiūrai, todėl įmonės buvo importuotos automatiškai.',
     errors: {

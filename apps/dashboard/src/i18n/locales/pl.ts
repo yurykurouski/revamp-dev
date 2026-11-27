@@ -419,6 +419,28 @@ export const pl: Translation = {
       workers_offline: 'Workery są offline',
     },
   },
+  contactRight: {
+    until: 'Prawo do kontaktu do {{date}}',
+    expired: 'Prawo wygasło',
+    optedOut: 'Firma zrezygnowała z wiadomości',
+    approveBlocked: 'Prawo Twojego studia do kontaktu z tą firmą wygasło, więc nie można zatwierdzić wysyłki.',
+    approveBlockedOptedOut: 'Ta firma poprosiła, by się z nią nie kontaktować, więc nie można zatwierdzić wysyłki.',
+    column: 'Prawo do kontaktu',
+  },
+  refusals: {
+    heldNoDate: 'Ta firma jest zarezerwowana przez inne studio.',
+    cooldownNoDate: 'Tej firmy nie można jeszcze dodać ponownie.',
+    held: 'Ta firma jest zarezerwowana przez inne studio do {{date}}.',
+    cooldown: 'Tę firmę można dodać ponownie od {{date}}.',
+    optedOut: 'Ta firma lub jej adres poprosiły, by się z nimi nie kontaktować.',
+    rightRequired: 'Prawo Twojego studia do kontaktu z tą firmą wygasło {{date}}.',
+    rightRequiredNoDate: 'Twoje studio nie ma aktywnego prawa do kontaktu z tą firmą.',
+  },
+  outreachError: {
+    CONTACT_RIGHT_EXPIRED: 'Prawo do kontaktu z tą firmą wygasło przed wysłaniem wiadomości. Nic nie wysłano.',
+    CONTACT_OPTED_OUT: 'Adres odbiorcy poprosił, by do niego nie pisać. Nic nie wysłano.',
+    at: 'Wrócono do przeglądu {{date}}.',
+  },
   grid: {
     company: 'Firma i strona',
     openOriginal: 'Otwórz oryginalną stronę',
@@ -501,6 +523,13 @@ export const pl: Translation = {
       completed: 'Gotowe',
       failed: 'Błąd',
     },
+    unavailable: {
+      held: 'Zajęta do {{date}}',
+      heldNoDate: 'Zarezerwowana przez inne studio',
+      cooldown: 'Dostępna od {{date}}',
+      cooldownNoDate: 'Przerwa po kontakcie',
+      opted_out: 'Zrezygnowała z wiadomości',
+    },
     candidateStatus: {
       new: 'Nowa',
       existing_lead: 'Już w leadach',
@@ -572,6 +601,7 @@ export const pl: Translation = {
     nothingNewHint: 'Nie ma nic nowego do importu: wszystkie znalezione firmy są już w leadach lub nie mają własnej strony. Spróbuj innego obszaru lub słowa kluczowego.',
     importDone: 'Zaimportowano: {{imported}}. Ich audyty ruszyły.',
     importSkipped: 'Nie zaimportowano: {{skipped}} (już w leadach lub niedostępne).',
+    importUnavailable: 'Nie zaimportowano: {{count}} (zarezerwowane przez inne studio lub zrezygnowały z wiadomości).',
     importFailedCount: 'Błędy: {{failed}}.',
     legacyResult: 'To wyszukiwanie odbyło się przed wprowadzeniem przeglądu, więc firmy zaimportowano automatycznie.',
     errors: {

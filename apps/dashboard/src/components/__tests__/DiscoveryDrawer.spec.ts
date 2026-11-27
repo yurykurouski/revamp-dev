@@ -14,6 +14,8 @@ import { apiClient } from '../../api/client.js';
 import { getTheme } from '../../theme/theme.js';
 import { useDiscoveryStore } from '../../store/useDiscoveryStore.js';
 import { DiscoveryDrawer } from '../DiscoveryDrawer.js';
+import { formatDate } from '../../i18n/languages.js';
+import { DATE_FORMAT } from '../../utils/contactRight.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -299,6 +301,22 @@ describe('DiscoveryDrawer (REV-78)', () => {
     });
   });
 
+  it('the import summary mentions candidates refused for the contact right (REV-228)', async () => {
+    await mountWithJob(completed([candidate('a', 'existing_lead')]));
+    act(() =>
+      useDiscoveryStore.getState().setImportResult('disc-1', {
+        imported: 0,
+        results: [
+          { externalId: 'a', outcome: 'right_held', until: '2026-12-31T00:00:00.000Z' },
+          { externalId: 'b', outcome: 'opted_out' },
+        ],
+      }),
+    );
+    await flush();
+    expect(page()).toContain(en.discovery.importUnavailable.replace('{{count}}', '2'));
+    expect(page()).not.toContain(en.discovery.importSkipped.replace('{{skipped}}', '2'));
+  });
+
   it('closes from the Import step with Done and reopens on it', async () => {
     await mountWithJob(completed([candidate('a', 'existing_lead')]));
     act(() => useDiscoveryStore.getState().setImportResult('disc-1', { imported: 0, results: [] }));
@@ -398,5 +416,40 @@ describe('DiscoveryDrawer (REV-78)', () => {
     expect(page()).toContain('network down');
     await click(button(en.discovery.changeSearch));
     expect(currentStep()).toBe(en.discovery.steps.where);
+  });
+
+  it('dims a candidate another studio holds, disables its checkbox and keeps it out of select all and import (REV-228)', async () => {
+    const until = '2026-12-31T00:00:00.000Z';
+    await mountWithJob(
+      completed([
+        candidate('free', 'new'),
+        { ...candidate('held', 'new'), unavailable: { reason: 'held', until } },
+        { ...candidate('cool', 'new'), unavailable: { reason: 'cooldown', until } },
+        { ...candidate('out', 'new'), unavailable: { reason: 'opted_out' } },
+      ]),
+    );
+    const rows = [...document.body.querySelectorAll('[data-testid="discovery-candidate"]')];
+    const row = (name: string) => rows.find((r) => r.textContent?.includes(name))!;
+    const checkbox = (name: string) => row(name).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+    const date = formatDate(until, 'en', DATE_FORMAT);
+
+    expect(row('Business held').textContent).toContain(en.discovery.unavailable.held.replace('{{date}}', date));
+    expect(row('Business cool').textContent).toContain(en.discovery.unavailable.cooldown.replace('{{date}}', date));
+    expect(row('Business out').textContent).toContain(en.discovery.unavailable.opted_out);
+    for (const name of ['held', 'cool', 'out']) {
+      expect(checkbox(`Business ${name}`).disabled).toBe(true);
+      expect(checkbox(`Business ${name}`).checked).toBe(false);
+    }
+    expect(checkbox('Business free').disabled).toBe(false);
+    expect(checkbox('Business free').checked).toBe(true);
+
+    // Select all picks the available row only; clicking an unavailable row selects nothing
+    const selectAll = [...document.body.querySelectorAll('label')].find((l) => l.textContent === en.discovery.selectAll)!.querySelector<HTMLInputElement>('input')!;
+    await click(selectAll);
+    await click(selectAll);
+    expect(checkbox('Business free').checked).toBe(true);
+    await click(row('Business held') as HTMLElement);
+    for (const name of ['held', 'cool', 'out']) expect(checkbox(`Business ${name}`).checked).toBe(false);
+    expect(button(en.discovery.import.replace('{{selected}}', '1'))).toBeDefined();
   });
 });

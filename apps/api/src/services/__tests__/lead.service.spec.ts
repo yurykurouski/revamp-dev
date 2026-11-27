@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { LeadService, LEAD_LIST_SORT } from '../lead.service.js';
 import { Lead, addLeadToBusiness } from '../../models/Lead.model.js';
 import { Audit, findAuditForLead } from '../../models/Audit.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
+import { ContactRight } from '../../models/ContactRight.model.js';
 import * as auditQueueModule from '../../queues/audit.queue.js';
 import { addAiGenerationJob } from '../../queues/ai.queue.js';
 import { AUDIT_ENQUEUE_TIMEOUT_MS } from '../audit-enqueue.js';
@@ -331,7 +332,7 @@ describe('LeadService', () => {
       );
       expect(mockFind.skip).toHaveBeenCalledWith(10);
       expect(mockFind.limit).toHaveBeenCalledWith(10);
-      expect(result.leads).toEqual(mockLeads);
+      expect(result.leads).toEqual(mockLeads.map((l) => ({ ...l, contactRight: null })));
       expect(result.pagination).toEqual({
         total: 25,
         page: 2,
@@ -555,6 +556,98 @@ describe('LeadService', () => {
     });
   });
 
+  describe('the studio\'s contact right on a lead (REV-228)', () => {
+    const NOW = new Date('2026-11-27T12:00:00.000Z');
+    const day = 86_400_000;
+    const mockLeadQuery = (leads: unknown[]) => {
+      vi.spyOn(Lead, 'find').mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        skip: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        exec: vi.fn().mockResolvedValue(leads),
+      } as any);
+      vi.spyOn(Lead, 'countDocuments').mockReturnValue({ exec: vi.fn().mockResolvedValue(leads.length) } as any);
+    };
+    const mockRights = (rights: unknown[]) =>
+      vi.spyOn(ContactRight, 'find').mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        lean: () => ({ exec: vi.fn().mockResolvedValue(rights) }),
+      } as any);
+
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(NOW);
+    });
+    afterEach(() => vi.useRealTimers());
+
+    it('adds the view to each lead of a page with one query: active, ended, and none', async () => {
+      mockLeadQuery([
+        { _id: 'l1', businessId: 'b1' },
+        { _id: 'l2', businessId: 'b2' },
+        { _id: 'l3', businessId: 'b3' },
+        { _id: 'l4' },
+      ]);
+      const expiresAt = new Date(NOW.getTime() + 10 * day);
+      const endedAt = new Date(NOW.getTime() - day);
+      const rights = mockRights([
+        { businessId: 'b1', grantedAt: new Date(NOW.getTime() - day), expiresAt },
+        // newest first: the second b2 right is older and ignored
+        { businessId: 'b2', grantedAt: new Date(NOW.getTime() - 5 * day), expiresAt: new Date(NOW.getTime() + 20 * day), endedAt, endReason: 'opted_out' },
+        { businessId: 'b2', grantedAt: new Date(NOW.getTime() - 50 * day), expiresAt: new Date(NOW.getTime() - 20 * day) },
+        { businessId: 'b3', grantedAt: new Date(NOW.getTime() - 40 * day), expiresAt: new Date(NOW.getTime() - 10 * day) },
+      ]);
+
+      const { leads } = await LeadService.getLeads(scope, {});
+
+      expect(rights).toHaveBeenCalledTimes(1);
+      expect(leads[0].contactRight).toEqual({ expiresAt: expiresAt.toISOString(), active: true });
+      expect(leads[1].contactRight).toEqual({
+        expiresAt: new Date(NOW.getTime() + 20 * day).toISOString(),
+        active: false,
+        endedAt: endedAt.toISOString(),
+        endReason: 'opted_out',
+      });
+      expect(leads[2].contactRight).toEqual({ expiresAt: new Date(NOW.getTime() - 10 * day).toISOString(), active: false });
+      expect(leads[3].contactRight).toBeNull();
+    });
+
+    it('is null for a business the studio never had a right on, and reads nothing without a business', async () => {
+      mockLeadQuery([{ _id: 'l1', businessId: 'b1' }, { _id: 'l2' }]);
+      mockRights([]);
+      const { leads } = await LeadService.getLeads(scope, {});
+      expect(leads.map((l: any) => l.contactRight)).toEqual([null, null]);
+
+      const rights = mockRights([]);
+      rights.mockClear();
+      mockLeadQuery([{ _id: 'l2' }]);
+      await LeadService.getLeads(scope, {});
+      expect(rights).toHaveBeenCalledTimes(0);
+    });
+
+    it('the lead detail carries the same view', async () => {
+      const expiresAt = new Date(NOW.getTime() + 2 * day);
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'l1', businessId: 'b1', businessName: 'Clinic' }) } as any);
+      vi.spyOn(ContactRight, 'findOne').mockReturnValue({
+        sort: vi.fn().mockReturnThis(),
+        lean: () => ({ exec: vi.fn().mockResolvedValue({ businessId: 'b1', grantedAt: new Date(NOW.getTime() - day), expiresAt }) }),
+        exec: vi.fn().mockResolvedValue({ businessId: 'b1', grantedAt: new Date(NOW.getTime() - day), expiresAt }),
+      } as any);
+      vi.mocked(findAuditForLead).mockResolvedValue(null as never);
+
+      const result = await LeadService.getLeadById(scope, 'l1');
+
+      expect((result.lead as any).contactRight).toEqual({ expiresAt: expiresAt.toISOString(), active: true });
+      expect((result.lead as any).businessName).toBe('Clinic');
+    });
+
+    it('the lead detail has a null view without a right', async () => {
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: 'l1', businessName: 'Clinic' }) } as any);
+      vi.mocked(findAuditForLead).mockResolvedValue(null as never);
+      const result = await LeadService.getLeadById(scope, 'l1');
+      expect((result.lead as any).contactRight).toBeNull();
+    });
+  });
+
   describe('getLeadById', () => {
     it('should return lead and its audit record', async () => {
       const mockLead = { _id: 'lead-1', businessName: 'Clinic' };
@@ -568,7 +661,7 @@ describe('LeadService', () => {
 
       const result = await LeadService.getLeadById(scope, 'lead-1');
 
-      expect(result.lead).toEqual(mockLead);
+      expect(result.lead).toEqual({ ...mockLead, contactRight: null });
       expect(result.audit).toEqual(mockAudit);
       // The lead's own newest audit, else the completed audit of its business (REV-208)
       expect(findAuditForLead).toHaveBeenCalledWith(mockLead);

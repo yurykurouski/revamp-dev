@@ -103,6 +103,16 @@ describe('LeadReview (REV-77)', () => {
     await flush();
   };
 
+  it('shows the studio\'s contact right in the header (REV-228)', async () => {
+    const expiresAt = new Date(Date.now() + 10 * 86_400_000).toISOString();
+    await mount({ ...lead, contactRight: { expiresAt, active: true } });
+    expect(document.body.querySelector('[data-testid="contact-right-chip"]')!.textContent).toContain('Contact right until');
+    await mount({ ...lead, contactRight: { expiresAt, active: false } });
+    expect(document.body.querySelector('[data-testid="contact-right-chip"]')!.textContent).toBe(en.contactRight.expired);
+    await mount({ ...lead, contactRight: null });
+    expect(document.body.querySelector('[data-testid="contact-right-chip"]')).toBeNull();
+  });
+
   it('fetches the MVP again once a generation publishes one, so a first MVP shows its design tools (REV-132)', async () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const renderLead = (reviewed: ILeadItem) =>
