@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
+import { recordBusinessOptOut } from '@revamp/db';
 import { MvpTrackEventDto, canTransition, leadStatusesInto } from '@revamp/validation';
 import { bySecret, scopeFor, type TenantScope } from '../data/tenant-scope.js';
 
@@ -204,6 +205,8 @@ export class TrackingService {
         { _id: existing.leadId, status: { $in: leadStatusesInto('UNSUBSCRIBED') } },
         { $set: { status: 'UNSUBSCRIBED' } },
       ).exec();
+      // A first call may have stopped before the business write: the repeat completes it (idempotent, REV-227)
+      await this.optBusinessOut(scope, existing);
       return { found: true, alreadyUnsubscribed: true, leadId: existing.leadId?.toString() };
     }
 
@@ -212,6 +215,8 @@ export class TrackingService {
       { _id: campaign.leadId, status: { $in: leadStatusesInto('UNSUBSCRIBED') } },
       { $set: { status: 'UNSUBSCRIBED' }, $addToSet: { tags: 'unsubscribed' } },
     ).exec();
+
+    await this.optBusinessOut(scope, campaign);
 
     await scope.events.create({
       leadId: campaign.leadId,
@@ -226,6 +231,29 @@ export class TrackingService {
     });
 
     return { found: true, alreadyUnsubscribed: false, leadId: campaign.leadId?.toString() };
+  }
+
+  /**
+   * REV-227: an opt-out blocks the business for every studio and suppresses the recipient's address. The one
+   * cross-studio write lives in `@revamp/db`; the state machine's own list says which statuses may move. Logs name ids
+   * only, never an address.
+   */
+  private async optBusinessOut(
+    scope: TenantScope,
+    campaign: { leadId?: unknown; recipientEmail?: string },
+  ): Promise<void> {
+    const lead = await scope.leads.findById(campaign.leadId as never).exec();
+    const outcome = await recordBusinessOptOut({
+      businessId: lead?.businessId as never,
+      recipientEmail: campaign.recipientEmail,
+      unsubscribableStatuses: leadStatusesInto('UNSUBSCRIBED'),
+    });
+    if (outcome.leadsUnsubscribed > 0 || outcome.campaignsClosed > 0 || outcome.newlyOptedOut) {
+      console.info(
+        `[tracking] Opt-out of business ${String(lead?.businessId)} from lead ${String(campaign.leadId)}: ` +
+          `${outcome.leadsUnsubscribed} lead(s) and ${outcome.campaignsClosed} campaign(s) closed, right ended: ${outcome.rightEnded}`,
+      );
+    }
   }
 
   /**

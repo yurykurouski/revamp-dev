@@ -463,6 +463,87 @@ describe('approving outreach needs the studio\'s active contact right (REV-226)'
   });
 });
 
+describe('an opt-out blocks every studio (REV-227)', () => {
+  const draft = { subject: 'Hello', body: 'Hi there', approvedBy: 'owner' };
+  const withSender = (studio: Studio) =>
+    Organization.updateOne({ _id: studio.tenantId }, { $set: { sender: { name: 'Studio', address: `studio-${studio.tenantId}@studio.test` } } });
+
+  /** C's lead of A's business is SCHEDULED with an open campaign; A's was sent */
+  async function businessWithTwoStudios() {
+    const aLead = await Lead.findById(A.leadId).lean();
+    const C = await seedStudio('Charlie', { businessId: aLead!.businessId as Types.ObjectId });
+    await Lead.updateOne({ _id: A.leadId }, { $set: { status: 'SENT' } });
+    await Lead.updateOne({ _id: C.leadId }, { $set: { status: 'SCHEDULED' } });
+    await EmailCampaign.updateOne({ leadId: A.leadId }, { $set: { status: 'DELIVERED' } });
+    await EmailCampaign.updateOne({ leadId: C.leadId }, { $set: { status: 'SCHEDULED' } });
+    return { C, businessId: aLead!.businessId as Types.ObjectId };
+  }
+
+  it("an unsubscribe from studio A's email closes studio C's lead of the same business", async () => {
+    const { C, businessId } = await businessWithTwoStudios();
+    // The body of the answer is what it was before the opt-out reached other studios
+    const res = await anonymous().post(`/track/unsubscribe/${A.campaignToken}`);
+    expect(res.status).toBe(200);
+    expect(await statusOf(A.leadId)).toBe('UNSUBSCRIBED');
+    expect(await statusOf(C.leadId)).toBe('UNSUBSCRIBED');
+    expect((await EmailCampaign.findOne({ leadId: C.leadId }).lean())?.status).toBe('UNSUBSCRIBED');
+    expect((await Business.findById(businessId).lean())?.optedOutAt).toBeInstanceOf(Date);
+    // Nothing of studio C reaches the response
+    expect(JSON.stringify(res.body) + res.text).not.toContain(C.leadId);
+    // Another business is untouched
+    expect(await statusOf(B.leadId)).toBe('NEEDS_APPROVAL');
+  });
+
+  it('the suppression list holds only hashes', async () => {
+    await businessWithTwoStudios();
+    await anonymous().post(`/track/unsubscribe/${A.campaignToken}`).expect(200);
+    const docs = await SuppressedAddress.find({}).lean();
+    expect(docs).toHaveLength(1);
+    expect(docs[0]?.hash).toBe(hashAddress('hello@alpha-site.example'));
+    expect(JSON.stringify(docs)).not.toContain('alpha-site');
+  });
+
+  it('a repeated unsubscribe completes an interrupted opt-out and answers the same', async () => {
+    const { C, businessId } = await businessWithTwoStudios();
+    // The first call wrote A's campaign and then crashed: nothing else was written
+    await EmailCampaign.updateOne({ leadId: A.leadId }, { $set: { status: 'UNSUBSCRIBED', unsubscribedAt: new Date() } });
+    const first = await anonymous().post(`/track/unsubscribe/${A.campaignToken}`);
+    expect(first.status).toBe(200);
+    expect(await statusOf(C.leadId)).toBe('UNSUBSCRIBED');
+    expect((await Business.findById(businessId).lean())?.optedOutAt).toBeInstanceOf(Date);
+    const optedOutAt = (await Business.findById(businessId).lean())?.optedOutAt;
+
+    const again = await anonymous().post(`/track/unsubscribe/${A.campaignToken}`);
+    expect(again.status).toBe(first.status);
+    expect(again.body).toEqual(first.body);
+    expect(again.text).toBe(first.text);
+    expect((await Business.findById(businessId).lean())?.optedOutAt).toEqual(optedOutAt);
+    expect(await SuppressedAddress.countDocuments()).toBe(1);
+  });
+
+  it("the opted-out address under another studio's business is refused at approval, whatever its case", async () => {
+    await withSender(B);
+    await businessWithTwoStudios();
+    await anonymous().post(`/track/unsubscribe/${A.campaignToken}`).expect(200);
+    // B's business is a different one whose contact is the address that opted out, written differently
+    await Lead.updateOne({ _id: B.leadId }, { $set: { contactEmail: ' Hello@Alpha-Site.example ' } });
+    const res = await as(B).post(`/outreach/${B.leadId}/approve`).send(draft);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('BUSINESS_OPTED_OUT');
+    expect(await statusOf(B.leadId)).toBe('NEEDS_APPROVAL');
+    noSideEffects();
+  });
+
+  it('approval of a lead of an opted-out business answers BUSINESS_OPTED_OUT before the right check', async () => {
+    await withSender(B);
+    await Business.updateOne({ _id: (await Lead.findById(B.leadId).lean())!.businessId }, { $set: { optedOutAt: new Date() } });
+    const res = await as(B).post(`/outreach/${B.leadId}/approve`).send(draft);
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('BUSINESS_OPTED_OUT');
+    noSideEffects();
+  });
+});
+
 describe('audits are shared between studios and reached through leads (REV-209)', () => {
   it('a studio that has its own lead for the same business reads that business\'s audit; a third studio does not', async () => {
     const alpha = await Lead.findById(A.leadId).lean();

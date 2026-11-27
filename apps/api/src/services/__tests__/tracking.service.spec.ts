@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TrackingService } from '../tracking.service.js';
 import { LEAD_STATUSES } from '@revamp/shared-types';
+import { recordBusinessOptOut } from '@revamp/db';
 import { Lead } from '../../models/Lead.model.js';
 import { EmailCampaign } from '../../models/EmailCampaign.model.js';
 import { MvpProject } from '../../models/MvpProject.model.js';
@@ -11,6 +12,7 @@ vi.mock('../../models/Lead.model.js');
 vi.mock('../../models/EmailCampaign.model.js');
 vi.mock('../../models/MvpProject.model.js');
 vi.mock('../../models/AnalyticsEvent.model.js');
+vi.mock('@revamp/db', async (importOriginal) => ({ ...(await importOriginal<typeof import('@revamp/db')>()), recordBusinessOptOut: vi.fn() }));
 
 
 describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
@@ -322,6 +324,8 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
 
     beforeEach(() => {
       vi.spyOn(Lead, 'findOneAndUpdate').mockReturnValue(execOf({}));
+      vi.spyOn(Lead, 'findById').mockReturnValue(execOf({ _id: 'lead-1', businessId: 'biz-1' }));
+      vi.mocked(recordBusinessOptOut).mockResolvedValue({ newlyOptedOut: true, rightEnded: false, leadsUnsubscribed: 2, campaignsClosed: 1, addressSuppressed: true });
       vi.spyOn(AnalyticsEvent, 'create').mockResolvedValue({} as any);
     });
 
@@ -370,6 +374,27 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
         { $set: { status: 'UNSUBSCRIBED' } },
       );
       expect(AnalyticsEvent.create).not.toHaveBeenCalled();
+    });
+
+    it('opts the business out for every studio, on the first call and on a repeat (REV-227)', async () => {
+      const recipient = { recipientEmail: 'owner@example.com' };
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValueOnce(execOf({ _id: 'camp-1', leadId: 'lead-1', ...recipient }));
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf({ _id: 'camp-1', leadId: 'lead-1', status: 'UNSUBSCRIBED', ...recipient }));
+      const expected = { businessId: 'biz-1', recipientEmail: 'owner@example.com', unsubscribableStatuses: NOT_OPTED_OUT };
+
+      expect(await service.recordUnsubscribe('tok-1')).toEqual({ found: true, alreadyUnsubscribed: false, leadId: 'lead-1' });
+      expect(recordBusinessOptOut).toHaveBeenLastCalledWith(expected);
+
+      vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValueOnce(execOf(null));
+      expect(await service.recordUnsubscribe('tok-1')).toEqual({ found: true, alreadyUnsubscribed: true, leadId: 'lead-1' });
+      expect(recordBusinessOptOut).toHaveBeenCalledTimes(2);
+      expect(recordBusinessOptOut).toHaveBeenLastCalledWith(expected);
+    });
+
+    it('an unknown token opts nothing out (REV-227)', async () => {
+      vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf(null));
+      await service.recordUnsubscribe('nope');
+      expect(recordBusinessOptOut).not.toHaveBeenCalled();
     });
 
     it.each(['unknown-token', 'test-send'])('changes nothing for the unknown token %s', async (token) => {
