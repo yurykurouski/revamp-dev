@@ -93,6 +93,7 @@ describe('ContactRightChip (REV-228)', () => {
       expect(chip()!.textContent).toBe(en.contactRight.expired);
       render({ expiresAt: expires(20 * DAY), active: false, endedAt: NOW.toISOString(), endReason: 'opted_out' }, 'compact');
       expect(chip()!.textContent).toBe(en.contactRight.optedOut);
+      expect(chip()!.getAttribute('aria-label')).toBe(en.contactRight.optedOut);
     });
 
     it('leaves the default variant on the full label', () => {
