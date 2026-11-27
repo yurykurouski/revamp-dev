@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { env } from './config/env.js';
-import { checkBusinessLinks, checkTenantLinks, checkLeadChildIndexes, configureLogging, redactMongoUri } from '@revamp/db';
+import { checkBusinessLinks, checkContactRights, checkTenantLinks, checkLeadChildIndexes, configureLogging, redactMongoUri } from '@revamp/db';
 import { createAuditWorker } from './workers/audit.worker.js';
 import { createAiWorker } from './workers/ai.worker.js';
 import { createDeployWorker } from './workers/deploy.worker.js';
@@ -34,6 +34,10 @@ async function startWorkers(): Promise<void> {
     );
     // REV-209: records made before the studios have none; no studio sees them until the migration ran
     void checkTenantLinks(mongoose.connection).then((warnings) =>
+      warnings.forEach((warning) => console.warn(`[Workers] ${warning}`)),
+    );
+    // REV-224: leads made before the contact registry have no right; nothing stops two studios until the migration ran
+    void checkContactRights(mongoose.connection).then((warnings) =>
       warnings.forEach((warning) => console.warn(`[Workers] ${warning}`)),
     );
 

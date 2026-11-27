@@ -3,6 +3,7 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import {
   checkBusinessLinks,
+  checkContactRights,
   checkTenantLinks,
   checkLeadChildIndexes,
   configureLogging,
@@ -34,6 +35,10 @@ async function startServer(): Promise<void> {
     );
     // REV-209: records made before the studios have none; no studio sees them until the migration ran
     void checkTenantLinks(mongoose.connection).then((warnings) =>
+      warnings.forEach((warning) => console.warn(`[API] ${warning}`)),
+    );
+    // REV-224: leads made before the contact registry have no right; nothing stops two studios until the migration ran
+    void checkContactRights(mongoose.connection).then((warnings) =>
       warnings.forEach((warning) => console.warn(`[API] ${warning}`)),
     );
 

@@ -12,6 +12,9 @@ import { Audit } from '../models/Audit.model.js';
 import { EmailCampaign } from '../models/EmailCampaign.model.js';
 import { Lead } from '../models/Lead.model.js';
 import { MvpProject } from '../models/MvpProject.model.js';
+import { ContactRight } from '../models/ContactRight.model.js';
+import { SuppressedAddress } from '../models/SuppressedAddress.model.js';
+import { hashAddress } from '../address-hash.js';
 
 const NOW = new Date('2026-11-21T12:00:00.000Z');
 const ds = buildDemoDataset(NOW);
@@ -28,13 +31,13 @@ describe('buildDemoDataset (REV-199)', () => {
   });
 
   it('has documents in every collection', () => {
-    for (const docs of [ds.leads, ds.audits, ds.mvpProjects, ds.emailCampaigns, ds.analyticsEvents, ds.pages, ds.organizations, ds.users, ds.memberships, ds.businesses]) {
+    for (const docs of [ds.leads, ds.audits, ds.mvpProjects, ds.emailCampaigns, ds.analyticsEvents, ds.pages, ds.organizations, ds.users, ds.memberships, ds.businesses, ds.contactRights, ds.suppressedAddresses]) {
       expect(docs.length).toBeGreaterThan(0);
     }
   });
 
   it('every document passes its Mongoose schema', () => {
-    const pairs: [typeof Lead | typeof Audit | typeof MvpProject | typeof EmailCampaign | typeof AnalyticsEvent | typeof Organization | typeof User | typeof Membership | typeof Business, object[]][] = [
+    const pairs: [typeof Lead | typeof Audit | typeof MvpProject | typeof EmailCampaign | typeof AnalyticsEvent | typeof Organization | typeof User | typeof Membership | typeof Business | typeof ContactRight | typeof SuppressedAddress, object[]][] = [
       [Lead, ds.leads],
       [Audit, ds.audits],
       [MvpProject, ds.mvpProjects],
@@ -44,6 +47,8 @@ describe('buildDemoDataset (REV-199)', () => {
       [User, ds.users],
       [Membership, ds.memberships],
       [Business, ds.businesses],
+      [ContactRight, ds.contactRights],
+      [SuppressedAddress, ds.suppressedAddresses],
     ];
     for (const [Model, docs] of pairs) {
       for (const doc of docs) {
@@ -167,6 +172,37 @@ describe('buildDemoDataset (REV-199)', () => {
     }
     const leadBusiness = new Map(ds.leads.map((l) => [String(l._id), String(l['businessId'])]));
     for (const audit of ds.audits) expect(String(audit['businessId'])).toBe(leadBusiness.get(String(audit.leadId)));
+  });
+
+  it('gives every non-opted-out demo business a contact hold whose right is the demo studio lead\'s and active now (REV-224)', () => {
+    const studio = String(ds.organizations[0]!._id);
+    const rights = new Map(ds.contactRights.map((r) => [String(r._id), r]));
+    const leadOf = new Map(ds.leads.map((l) => [String(l['businessId']), l]));
+    const held = ds.businesses.filter((b) => !b.optedOutAt);
+    expect(held.length).toBe(ds.contactRights.length);
+    for (const business of held) {
+      const hold = business.contactHold;
+      expect(hold, business.businessName).toBeDefined();
+      const right = rights.get(String(hold!.rightId))!;
+      expect(right, business.businessName).toBeDefined();
+      expect(String(right.businessId)).toBe(String(business._id));
+      expect(String(right.leadId)).toBe(String(leadOf.get(String(business._id))!._id));
+      expect(String(right.tenantId)).toBe(studio);
+      expect(String(hold!.tenantId)).toBe(studio);
+      expect(hold!.expiresAt).toEqual(right.expiresAt);
+      expect(hold!.cooldownUntil).toEqual(right.cooldownUntil);
+      expect(right.grantedAt.getTime()).toBeLessThanOrEqual(NOW.getTime());
+      expect(right.expiresAt.getTime()).toBeGreaterThan(NOW.getTime());
+    }
+  });
+
+  it('opts the unsubscribed florist out with a suppressed hash and no right (REV-224)', () => {
+    const florist = ds.businesses.find((b) => b.businessName === 'Demo Florist')!;
+    expect(florist.optedOutAt).toBeInstanceOf(Date);
+    expect(florist.contactHold).toBeUndefined();
+    expect(ds.contactRights.some((r) => String(r.businessId) === String(florist._id))).toBe(false);
+    expect(ds.suppressedAddresses.map((a) => a.hash)).toEqual([hashAddress('flowers@florist.test')]);
+    expect(JSON.stringify(ds.suppressedAddresses)).not.toContain('florist');
   });
 
   it('is deterministic for a given time and has unique ids', () => {

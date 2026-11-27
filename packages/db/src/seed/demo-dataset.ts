@@ -15,9 +15,12 @@ import {
   LeadStatus,
   NicheType,
   OrganizationRole,
+  DEFAULT_CONTACT_COOLDOWN_DAYS,
+  DEFAULT_CONTACT_RIGHT_DAYS,
   STANDARDS_CHECKS,
   STANDARDS_POINTS,
 } from '@revamp/shared-types';
+import { hashAddress } from '../address-hash.js';
 import { hashPasswordWithSalt } from '../password.js';
 import { DEMO_SEED_TAG } from '../demo-tag.js';
 
@@ -106,8 +109,30 @@ export interface DemoBusiness extends Extra {
   businessName: string;
   niche: NicheType;
   city?: string;
+  /** REV-224: the demo studio's right to contact it; absent for the opted-out business */
+  contactHold?: { rightId: Types.ObjectId; tenantId: Types.ObjectId; expiresAt: Date; cooldownUntil: Date };
+  optedOutAt?: Date;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface DemoContactRight extends Extra {
+  _id: Types.ObjectId;
+  tenantId: Types.ObjectId;
+  businessId: Types.ObjectId;
+  leadId: Types.ObjectId;
+  source: 'MIGRATION';
+  grantedAt: Date;
+  expiresAt: Date;
+  cooldownUntil: Date;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DemoSuppressedAddress extends Extra {
+  _id: Types.ObjectId;
+  hash: string;
+  createdAt: Date;
 }
 
 export interface DemoOrganization extends Extra {
@@ -147,6 +172,9 @@ export interface DemoDataset {
   businesses: DemoBusiness[];
   users: DemoUser[];
   memberships: DemoMembership[];
+  /** REV-224: one right per demo business (the studio's lead), and the opted-out florist's suppressed address */
+  contactRights: DemoContactRight[];
+  suppressedAddresses: DemoSuppressedAddress[];
   pages: DemoPage[];
 }
 
@@ -164,10 +192,12 @@ export type DemoCollection =
   | 'organizations'
   | 'businesses'
   | 'users'
-  | 'memberships';
+  | 'memberships'
+  | 'contactRights'
+  | 'suppressedAddresses';
 
 /** Fixed ids: prefix `5eed`, one byte for the collection, then the index */
-const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5, organization: 6, user: 7, membership: 8, business: 9 } as const;
+const KIND = { lead: 1, audit: 2, mvp: 3, campaign: 4, event: 5, organization: 6, user: 7, membership: 8, business: 9, contactRight: 10, suppressedAddress: 11 } as const;
 const demoId = (kind: keyof typeof KIND, n: number) =>
   new Types.ObjectId(`5eed${KIND[kind].toString(16).padStart(2, '0')}${n.toString(16).padStart(18, '0')}`);
 
@@ -329,6 +359,8 @@ export function buildDemoDataset(
     businesses: [],
     users: [],
     memberships: [],
+    contactRights: [],
+    suppressedAddresses: [],
     pages: [],
   };
   const at = (ms: number) => new Date(now.getTime() - ms);
@@ -382,6 +414,13 @@ export function buildDemoDataset(
 
     // The shared business of the site, and the lead of the demo studio that pursues it (REV-208)
     const businessId = demoId('business', n);
+    // REV-224: the demo studio holds every business it pursues, from a day ago; the florist that unsubscribed is opted
+    // out instead, with its address suppressed
+    const optedOut = spec.status === 'UNSUBSCRIBED';
+    const rightId = demoId('contactRight', n);
+    const grantedAt = at(DAY);
+    const rightEnds = new Date(grantedAt.getTime() + DEFAULT_CONTACT_RIGHT_DAYS * DAY);
+    const cooldownEnds = new Date(rightEnds.getTime() + DEFAULT_CONTACT_COOLDOWN_DAYS * DAY);
     ds.businesses.push({
       _id: businessId,
       domain,
@@ -389,9 +428,28 @@ export function buildDemoDataset(
       businessName: spec.name,
       niche: spec.niche,
       city: spec.city,
+      ...(optedOut
+        ? { optedOutAt: grantedAt }
+        : { contactHold: { rightId, tenantId: organizationId, expiresAt: rightEnds, cooldownUntil: cooldownEnds } }),
       createdAt: added,
       updatedAt: added,
     });
+    if (optedOut) {
+      if (spec.email) ds.suppressedAddresses.push({ _id: demoId('suppressedAddress', n), hash: hashAddress(spec.email), createdAt: grantedAt });
+    } else {
+      ds.contactRights.push({
+        _id: rightId,
+        tenantId: organizationId,
+        businessId,
+        leadId,
+        source: 'MIGRATION',
+        grantedAt,
+        expiresAt: rightEnds,
+        cooldownUntil: cooldownEnds,
+        createdAt: grantedAt,
+        updatedAt: grantedAt,
+      });
+    }
 
     const lead: DemoLead = {
       _id: leadId,
@@ -577,5 +635,7 @@ export function demoDocumentIds(ds: DemoDataset): Record<DemoCollection, Types.O
     businesses: ds.businesses.map((d) => d._id),
     users: ds.users.map((d) => d._id),
     memberships: ds.memberships.map((d) => d._id),
+    contactRights: ds.contactRights.map((d) => d._id),
+    suppressedAddresses: ds.suppressedAddresses.map((d) => d._id),
   };
 }

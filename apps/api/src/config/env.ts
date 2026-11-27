@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 import { loadFileSecrets } from '@revamp/db';
+import { DEFAULT_CONTACT_COOLDOWN_DAYS, DEFAULT_CONTACT_RIGHT_DAYS } from '@revamp/shared-types';
 
 // Load .env from root or local directory
 dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
@@ -22,6 +23,9 @@ const EnvSchema = z.object({
   REDIS_PASSWORD: z.string().optional(),
   REDIS_URL: z.string().optional(),
   REDIS_TLS: z.coerce.boolean().default(false),
+  // REV-224: how long a studio holds the exclusive right to contact a business, and the cooldown after it (days)
+  CONTACT_RIGHT_DAYS: z.coerce.number().int().positive().default(DEFAULT_CONTACT_RIGHT_DAYS),
+  CONTACT_COOLDOWN_DAYS: z.coerce.number().int().positive().default(DEFAULT_CONTACT_COOLDOWN_DAYS),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),
   S3_ACCESS_KEY: z.string().default('minioadmin'),
   S3_SECRET_KEY: z.string().default('minioadmin'),

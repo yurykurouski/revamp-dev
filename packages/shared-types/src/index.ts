@@ -1466,3 +1466,22 @@ export interface IBusiness {
   niche: NicheType;
   city?: string;
 }
+
+// 12. Contact registry (REV-224)
+/** How long a studio holds the exclusive right to contact a business (days); the API env `CONTACT_RIGHT_DAYS` overrides it */
+export const DEFAULT_CONTACT_RIGHT_DAYS = 14;
+/** After a right ends, no studio (the former holder included) may claim the business for this many days */
+export const DEFAULT_CONTACT_COOLDOWN_DAYS = 30;
+
+export const CONTACT_RIGHT_SOURCES = ['ADD_LEAD', 'PURCHASE', 'MIGRATION'] as const;
+export type ContactRightSource = (typeof CONTACT_RIGHT_SOURCES)[number];
+
+/** Why a grant was refused, in the order the registry checks them */
+export const CONTACT_RIGHT_REFUSALS = ['opted_out', 'held', 'cooldown'] as const;
+export type ContactRightRefusal = (typeof CONTACT_RIGHT_REFUSALS)[number];
+
+/** What a studio may see of its own right; never who else holds or held the business */
+export interface IContactRightView {
+  expiresAt: string;
+  active: boolean;
+}
