@@ -33,6 +33,8 @@ import {
   ILlmProvidersResponse,
   LlmProviderId,
   IMvpCompletenessSummary,
+  IContactRightView,
+  ILeadOutreachError,
   IMvpControlsUpdate,
   IMvpPageJobResult,
   IReverseGeocodeResult,
@@ -70,6 +72,10 @@ export interface ILeadItem {
   completeness?: IMvpCompletenessSummary;
   /** Complexity class from the latest audit (REV-38) */
   siteComplexity?: SiteComplexityClass;
+  /** The studio's newest right on the lead's business; null when it has none (REV-228) */
+  contactRight?: IContactRightView | null;
+  /** Why outreach was returned to review at send time (REV-226) */
+  outreachError?: Serialized<ILeadOutreachError>;
   createdAt: string;
 }
 
@@ -159,6 +165,8 @@ export const mapServerLead = (l: IServerLead): ILeadItem => {
     auditError: l.auditError,
     completeness: l.completeness,
     siteComplexity: l.siteComplexity,
+    contactRight: l.contactRight,
+    outreachError: l.outreachError,
     createdAt: l.createdAt,
   };
 };

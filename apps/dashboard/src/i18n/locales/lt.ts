@@ -419,6 +419,28 @@ export const lt: Translation = {
       workers_offline: 'Darbuotojų procesai neprisijungę',
     },
   },
+  contactRight: {
+    until: 'Teisė susisiekti iki {{date}}',
+    expired: 'Teisė baigėsi',
+    optedOut: 'Įmonė atsisakė laiškų',
+    approveBlocked: 'Jūsų studijos teisė susisiekti su šia įmone baigėsi, todėl siuntimo patvirtinti negalima.',
+    approveBlockedOptedOut: 'Ši įmonė paprašė su ja nesusisiekti, todėl siuntimo patvirtinti negalima.',
+    column: 'Teisė susisiekti',
+  },
+  refusals: {
+    heldNoDate: 'Šią įmonę yra rezervavusi kita studija.',
+    cooldownNoDate: 'Šios įmonės kol kas negalima pridėti vėl.',
+    held: 'Šią įmonę iki {{date}} yra rezervavusi kita studija.',
+    cooldown: 'Šią įmonę galima pridėti vėl nuo {{date}}.',
+    optedOut: 'Ši įmonė arba jos adresas paprašė su jais nesusisiekti.',
+    rightRequired: 'Jūsų studijos teisė susisiekti su šia įmone baigėsi {{date}}.',
+    rightRequiredNoDate: 'Jūsų studija neturi galiojančios teisės susisiekti su šia įmone.',
+  },
+  outreachError: {
+    CONTACT_RIGHT_EXPIRED: 'Teisė susisiekti su šia įmone baigėsi prieš išsiunčiant laišką. Nieko neišsiųsta.',
+    CONTACT_OPTED_OUT: 'Gavėjo adresas paprašė jam nerašyti. Nieko neišsiųsta.',
+    at: 'Grąžinta peržiūrai {{date}}.',
+  },
   grid: {
     company: 'Įmonė ir svetainė',
     openOriginal: 'Atidaryti originalią svetainę',

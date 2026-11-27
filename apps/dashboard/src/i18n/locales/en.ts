@@ -420,6 +420,28 @@ export const en = {
       workers_offline: 'The workers are offline',
     },
   },
+  contactRight: {
+    until: 'Contact right until {{date}}',
+    expired: 'Right expired',
+    optedOut: 'Business opted out',
+    approveBlocked: 'Your studio\'s right to contact this business has ended, so outreach can\'t be approved.',
+    approveBlockedOptedOut: 'This business asked not to be contacted, so outreach can\'t be approved.',
+    column: 'Contact right',
+  },
+  refusals: {
+    heldNoDate: 'Another studio holds this business.',
+    cooldownNoDate: 'This business cannot be added again yet.',
+    held: 'Another studio holds this business until {{date}}.',
+    cooldown: 'This business can be added again from {{date}}.',
+    optedOut: 'This business or its contact address asked not to be contacted.',
+    rightRequired: 'Your studio\'s right to contact this business ended on {{date}}.',
+    rightRequiredNoDate: 'Your studio has no active right to contact this business.',
+  },
+  outreachError: {
+    CONTACT_RIGHT_EXPIRED: 'The right to contact this business ended before the email was sent. Nothing was sent.',
+    CONTACT_OPTED_OUT: 'The contact address asked not to be contacted. Nothing was sent.',
+    at: 'Returned to review on {{date}}.',
+  },
   grid: {
     company: 'Company & website',
     openOriginal: 'Open original website',

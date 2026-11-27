@@ -419,6 +419,28 @@ export const pl: Translation = {
       workers_offline: 'Workery są offline',
     },
   },
+  contactRight: {
+    until: 'Prawo do kontaktu do {{date}}',
+    expired: 'Prawo wygasło',
+    optedOut: 'Firma zrezygnowała z wiadomości',
+    approveBlocked: 'Prawo Twojego studia do kontaktu z tą firmą wygasło, więc nie można zatwierdzić wysyłki.',
+    approveBlockedOptedOut: 'Ta firma poprosiła, by się z nią nie kontaktować, więc nie można zatwierdzić wysyłki.',
+    column: 'Prawo do kontaktu',
+  },
+  refusals: {
+    heldNoDate: 'Ta firma jest zarezerwowana przez inne studio.',
+    cooldownNoDate: 'Tej firmy nie można jeszcze dodać ponownie.',
+    held: 'Ta firma jest zarezerwowana przez inne studio do {{date}}.',
+    cooldown: 'Tę firmę można dodać ponownie od {{date}}.',
+    optedOut: 'Ta firma lub jej adres poprosiły, by się z nimi nie kontaktować.',
+    rightRequired: 'Prawo Twojego studia do kontaktu z tą firmą wygasło {{date}}.',
+    rightRequiredNoDate: 'Twoje studio nie ma aktywnego prawa do kontaktu z tą firmą.',
+  },
+  outreachError: {
+    CONTACT_RIGHT_EXPIRED: 'Prawo do kontaktu z tą firmą wygasło przed wysłaniem wiadomości. Nic nie wysłano.',
+    CONTACT_OPTED_OUT: 'Adres odbiorcy poprosił, by do niego nie pisać. Nic nie wysłano.',
+    at: 'Wrócono do przeglądu {{date}}.',
+  },
   grid: {
     company: 'Firma i strona',
     openOriginal: 'Otwórz oryginalną stronę',
