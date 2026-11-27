@@ -1,8 +1,10 @@
 import mongoose, { Types } from 'mongoose';
-import { EMAIL_GUESSED_TAG } from '@revamp/shared-types';
+import { EMAIL_GUESSED_TAG, type ContactRightSource } from '@revamp/shared-types';
 import { Audit, type IAuditDocument } from './models/Audit.model.js';
 import { Business, type IBusinessDocument } from './models/Business.model.js';
 import { Lead, type ILeadDocument } from './models/Lead.model.js';
+import { ContactRightRefusedError, grantContactRight, type ContactRightDurations } from './contact-rights.js';
+import type { IContactRightDocument } from './models/ContactRight.model.js';
 import { retryOnDuplicateKey } from './retry-duplicate-key.js';
 
 // REV-208: adding a lead. The company and its site are one shared `Business` (one per domain); the lead is one
@@ -29,6 +31,11 @@ export interface AddLeadInput {
   /** The lead's own fields: name, URL, the canonical `domain`, niche, contacts, source, tags, status `QUEUED` */
   lead: Record<string, unknown>;
   deriveFromAudit: DeriveFromAudit;
+  /**
+   * REV-225: claim the studio's contact right for the business in this transaction (needs `tenantId`). A refusal
+   * throws `ContactRightRefusedError` and rolls back the lead, its audit and a new business. Scripts omit it.
+   */
+  contactRight?: { durations: ContactRightDurations; source: ContactRightSource; now?: Date };
 }
 
 export interface AddLeadResult {
@@ -40,6 +47,29 @@ export interface AddLeadResult {
   sourceAudit?: IAuditDocument;
   /** The lead took a completed audit of the business and starts as AUDITED: no audit job is needed */
   reused: boolean;
+  /** The right claimed together with the lead (only when `contactRight` was asked for) */
+  contactRight?: IContactRightDocument;
+}
+
+async function claimRight(
+  input: AddLeadInput,
+  business: IBusinessDocument,
+  lead: ILeadDocument,
+  session: mongoose.ClientSession,
+): Promise<IContactRightDocument | undefined> {
+  if (!input.tenantId || !input.contactRight) return undefined;
+  const granted = await grantContactRight({
+    tenantId: input.tenantId,
+    businessId: business._id,
+    leadId: lead._id,
+    contactEmail: lead.contactEmail,
+    source: input.contactRight.source,
+    durations: input.contactRight.durations,
+    now: input.contactRight.now,
+    session,
+  });
+  if (granted.granted) return granted.right;
+  throw new ContactRightRefusedError(granted.reason, 'expiresAt' in granted ? granted.expiresAt : 'availableAt' in granted ? granted.availableAt : undefined);
 }
 
 /**
@@ -91,13 +121,15 @@ export async function addLeadToBusiness(input: AddLeadInput): Promise<AddLeadRes
         });
         const tags = (input.lead['tags'] as string[] | undefined)?.filter((tag) => !(clearsEmailGuess && tag === EMAIL_GUESSED_TAG));
         const [lead] = await Lead.create([{ ...base, ...set, ...(tags ? { tags } : {}), status: 'AUDITED' }], { session });
-        result = { lead: lead!, business, sourceAudit: completed, reused: true };
+        const contactRight = await claimRight(input, business, lead!, session);
+        result = { lead: lead!, business, sourceAudit: completed, reused: true, ...(contactRight ? { contactRight } : {}) };
         return;
       }
 
       const [lead] = await Lead.create([base], { session });
       const [audit] = await Audit.create([{ leadId: lead!._id, businessId: business._id, status: 'QUEUED' }], { session });
-      result = { lead: lead!, business, audit: audit!, reused: false };
+      const contactRight = await claimRight(input, business, lead!, session);
+      result = { lead: lead!, business, audit: audit!, reused: false, ...(contactRight ? { contactRight } : {}) };
     });
     return result!;
   }).catch(async (error) => {

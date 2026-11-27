@@ -33,7 +33,7 @@ import { MIGRATE_TENANTS_COMMAND, TenantMigrationError, checkTenantLinks, migrat
 import { ContactRight } from '../models/ContactRight.model.js';
 import { SuppressedAddress } from '../models/SuppressedAddress.model.js';
 import { hashAddress } from '../address-hash.js';
-import { endContactRight, findActiveContactRight, grantContactRight } from '../contact-rights.js';
+import { ContactRightRefusedError, endContactRight, findActiveContactRight, grantContactRight } from '../contact-rights.js';
 import { MIGRATE_CONTACT_RIGHTS_COMMAND, checkContactRights, migrateContactRights } from '../contact-rights-migration.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
@@ -1146,6 +1146,111 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       });
       expect(result.lead.contactEmail).toBe('hello@harbor.example');
       expect(result.lead.tags).toEqual(['manual']);
+    });
+  });
+  describe('addLeadToBusiness claims the contact right (REV-225)', () => {
+    const durations = { rightDays: 14, cooldownDays: 30 };
+    const day = 24 * 60 * 60 * 1000;
+    const t0 = new Date('2026-11-01T00:00:00Z');
+    const studioA = new Types.ObjectId();
+    const studioB = new Types.ObjectId();
+    const derive = (audit: { scores?: { total?: number } }) => ({ set: { totalScore: audit.scores?.total }, clearsEmailGuess: false });
+    const add = (domain: string, tenantId: Types.ObjectId | undefined, opts: { claim?: boolean; now?: Date; email?: string } = {}) =>
+      addLeadToBusiness({
+        tenantId,
+        lead: {
+          businessName: 'Claim Dental',
+          originalUrl: `https://${domain}`,
+          domain,
+          niche: 'dental',
+          status: 'QUEUED',
+          ...(opts.email ? { contactEmail: opts.email } : {}),
+        },
+        deriveFromAudit: derive as never,
+        ...(opts.claim === false ? {} : { contactRight: { durations, source: 'ADD_LEAD' as const, now: opts.now ?? t0 } }),
+      });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-addlead-right-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init(), ContactRight.init(), SuppressedAddress.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({}), ContactRight.deleteMany({}), SuppressedAddress.deleteMany({})]);
+    });
+
+    it('a free business gives the studio a right for rightDays, copied into the hold', async () => {
+      const result = await add('free.example', studioA);
+      expect(result.contactRight?.expiresAt).toEqual(new Date(t0.getTime() + 14 * day));
+      expect(String(result.contactRight?.leadId)).toBe(String(result.lead._id));
+      const business = await Business.findOne({ domain: 'free.example' }).lean();
+      expect(String(business?.contactHold?.rightId)).toBe(String(result.contactRight?._id));
+      expect(await ContactRight.countDocuments()).toBe(1);
+    });
+
+    it('the reused-audit path claims the right too', async () => {
+      const first = await add('reuse.example', studioA, { claim: false });
+      await Audit.updateOne({ _id: first.audit!._id }, { status: 'COMPLETED', 'scores.total': 70 });
+      const result = await add('reuse.example', studioB);
+      expect(result.reused).toBe(true);
+      expect(result.contactRight?.expiresAt).toEqual(new Date(t0.getTime() + 14 * day));
+      expect(String(result.contactRight?.tenantId)).toBe(String(studioB));
+    });
+
+    it('a business held by studio A refuses studio B with held and the expiry; no lead, no audit', async () => {
+      const first = await add('held.example', studioA);
+      const error = await add('held.example', studioB).catch((e) => e);
+      expect(error).toBeInstanceOf(ContactRightRefusedError);
+      expect(error.reason).toBe('held');
+      expect(error.until).toEqual(first.contactRight!.expiresAt);
+      expect(await Lead.countDocuments({ tenantId: studioB })).toBe(0);
+      expect(await Audit.countDocuments()).toBe(1);
+    });
+
+    it('a business in cooldown refuses with the date it is available', async () => {
+      const first = await add('cool.example', studioA);
+      const later = new Date(first.contactRight!.expiresAt.getTime() + day);
+      const error = await add('cool.example', studioB, { now: later }).catch((e) => e);
+      expect(error).toBeInstanceOf(ContactRightRefusedError);
+      expect(error.reason).toBe('cooldown');
+      expect(error.until).toEqual(first.contactRight!.cooldownUntil);
+    });
+
+    it('an opted-out business refuses with opted_out', async () => {
+      await Business.create({ domain: 'out.example', originalUrl: 'https://out.example', businessName: 'Out', optedOutAt: t0 });
+      const error = await add('out.example', studioA).catch((e) => e);
+      expect(error).toBeInstanceOf(ContactRightRefusedError);
+      expect(error.reason).toBe('opted_out');
+      expect(error.until).toBeUndefined();
+    });
+
+    it('a refused add leaves no lead, no audit and no new business', async () => {
+      await SuppressedAddress.create({ hash: hashAddress('stop@fresh.example') });
+      const error = await add('fresh.example', studioA, { email: 'stop@fresh.example' }).catch((e) => e);
+      expect(error).toBeInstanceOf(ContactRightRefusedError);
+      expect(error.reason).toBe('opted_out');
+      expect(await Business.countDocuments({ domain: 'fresh.example' })).toBe(0);
+      expect(await Promise.all([Lead.countDocuments(), Audit.countDocuments(), ContactRight.countDocuments()])).toEqual([0, 0, 0]);
+    });
+
+    it('two studios adding one new site at once: one lead, one right, one CONTACT_RIGHT_HELD', async () => {
+      const results = await Promise.allSettled([add('both.example', studioA), add('both.example', studioB)]);
+      const ok = results.filter((r) => r.status === 'fulfilled');
+      const refused = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+      expect(ok).toHaveLength(1);
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.reason).toBeInstanceOf(ContactRightRefusedError);
+      expect(refused[0]!.reason.reason).toBe('held');
+      expect(await Promise.all([Lead.countDocuments(), ContactRight.countDocuments(), Business.countDocuments()])).toEqual([1, 1, 1]);
+    });
+
+    it('without contactRight (a script) no right is written', async () => {
+      const result = await add('script.example', studioA, { claim: false });
+      expect(result.contactRight).toBeUndefined();
+      expect(await ContactRight.countDocuments()).toBe(0);
+      expect((await Business.findOne({ domain: 'script.example' }).lean())?.contactHold).toBeUndefined();
     });
   });
   describe('findAuditForLead (REV-208)', () => {

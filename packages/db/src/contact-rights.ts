@@ -1,5 +1,5 @@
 import mongoose, { Types, type ClientSession } from 'mongoose';
-import type { ContactRightSource } from '@revamp/shared-types';
+import type { ContactRightRefusal, ContactRightSource } from '@revamp/shared-types';
 import { hashAddress } from './address-hash.js';
 import { Business } from './models/Business.model.js';
 import { ContactRight, type IContactRightDocument } from './models/ContactRight.model.js';
@@ -37,6 +37,21 @@ export type GrantContactRightResult =
   | { granted: false; reason: 'opted_out' }
   | { granted: false; reason: 'held'; expiresAt: Date }
   | { granted: false; reason: 'cooldown'; availableAt: Date };
+
+/**
+ * Thrown inside a caller's transaction when the grant was refused (REV-225), so the whole transaction aborts.
+ * `until` is `expiresAt` (held) or `availableAt` (cooldown); the other studio is never named.
+ */
+export class ContactRightRefusedError extends Error {
+  readonly code = 'CONTACT_RIGHT_REFUSED';
+  constructor(
+    readonly reason: ContactRightRefusal,
+    readonly until?: Date,
+  ) {
+    super(`The contact right was refused: ${reason}`);
+    this.name = 'ContactRightRefusedError';
+  }
+}
 
 async function grantInSession(input: GrantContactRightInput, session: ClientSession | undefined): Promise<GrantContactRightResult> {
   const now = input.now ?? new Date();
