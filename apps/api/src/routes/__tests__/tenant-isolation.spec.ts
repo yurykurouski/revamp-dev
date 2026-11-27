@@ -711,3 +711,37 @@ describe('every route is classified (REV-209)', () => {
     expect(gone).toEqual([]);
   });
 });
+
+describe('leads carry only the studio\'s own contact right (REV-228)', () => {
+  const day = 24 * 60 * 60 * 1000;
+
+  it('the holder sees its right on the list and the detail; a studio on the same business sees none', async () => {
+    const aLead = await Lead.findById(A.leadId).lean();
+    const now = Date.now();
+    await ContactRight.create({
+      tenantId: new Types.ObjectId(A.tenantId),
+      businessId: aLead!.businessId,
+      leadId: aLead!._id,
+      source: 'ADD_LEAD',
+      grantedAt: new Date(now - day),
+      expiresAt: new Date(now + 10 * day),
+      cooldownUntil: new Date(now + 40 * day),
+    });
+    const C = await seedStudio('Charlie', { businessId: aLead!.businessId! });
+
+    const aList = await as(A).get('/leads');
+    expect(aList.body.data).toHaveLength(1);
+    expect(aList.body.data[0].contactRight).toMatchObject({ active: true });
+    const aDetail = await as(A).get(`/leads/${A.leadId}`);
+    expect(aDetail.body.data.lead.contactRight).toMatchObject({ active: true });
+
+    const cList = await as(C).get('/leads');
+    expect(cList.body.data[0].contactRight).toBeNull();
+    const cDetail = await as(C).get(`/leads/${C.leadId}`);
+    expect(cDetail.body.data.lead.contactRight).toBeNull();
+    expect(JSON.stringify(cList.body)).not.toContain(A.tenantId);
+
+    // B holds nothing and has its own business
+    expect((await as(B).get('/leads')).body.data[0].contactRight).toBeNull();
+  });
+});
