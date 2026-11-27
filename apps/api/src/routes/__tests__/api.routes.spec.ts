@@ -152,6 +152,28 @@ describe('API Routes Integration Tests (Supertest)', () => {
       spy.mockRestore();
     });
 
+    it('answers 201 with the right the studio claimed (REV-225)', async () => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j', contactRightExpiresAt: new Date('2026-12-11T00:00:00.000Z') } as any);
+      const res = await request(app).post('/api/v1/leads').send({ businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.contactRight).toEqual({ expiresAt: '2026-12-11T00:00:00.000Z' });
+      spy.mockRestore();
+    });
+
+    it.each([
+      ['CONTACT_RIGHT_HELD', { expiresAt: '2026-12-11T00:00:00.000Z' }],
+      ['BUSINESS_IN_COOLDOWN', { availableAt: '2027-01-10T00:00:00.000Z' }],
+      ['BUSINESS_OPTED_OUT', undefined],
+    ])('answers 409 %s and queues no audit (REV-225)', async (code, details) => {
+      const spy = vi.spyOn(LeadService, 'createLead').mockRejectedValue(new AppError(409, code as any, 'refused', details));
+      const res = await request(app).post('/api/v1/leads').send({ businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' });
+      expect(res.status).toBe(409);
+      expect(res.body.error.code).toBe(code);
+      expect(res.body.error.details).toEqual(details);
+      expect(auditQueue.addAuditJob).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+
     it("should pass the operator's locale to the service, and refuse an unknown one (REV-162)", async () => {
       const spy = vi.spyOn(LeadService, 'createLead').mockResolvedValue({ lead: { id: 'lead-1' }, auditId: 'a', jobId: 'j' } as any);
       const body = { businessName: 'Dr. Smile Clinic', originalUrl: 'https://drsmile.com' };

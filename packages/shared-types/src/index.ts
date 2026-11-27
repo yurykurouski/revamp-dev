@@ -1203,6 +1203,11 @@ export const API_ERROR_CODES = [
   'INVITATION_EMAIL_MISMATCH',
   // Business and lead split (REV-208): this studio already has a lead for the site, `details.leadId`
   'LEAD_ALREADY_EXISTS',
+  // Contact registry (REV-225): another studio holds the business (`details.expiresAt`), it is in cooldown
+  // (`details.availableAt`) or it asked not to be contacted; never names the holder
+  'CONTACT_RIGHT_HELD',
+  'BUSINESS_IN_COOLDOWN',
+  'BUSINESS_OPTED_OUT',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
