@@ -96,6 +96,7 @@ Revamp-dev/
      - **Workers & Queues:** Test job payload handling, state transitions, and error recovery.
      - **Frontend Stores:** Test Zustand state transitions, filter mutations, and reset actions.
    * All test suites must execute and pass cleanly (`npm test`) with 0 failures prior to submitting any task.
+   * Specs that launch a real browser are listed in `vitest.browser-specs.ts` and run in the `browser` project after the unit tests, one file at a time, with 30 s/60 s timeouts (REV-230); the guard test (`scripts/__tests__/browser-specs.spec.ts`) fails on an unlisted one.
 6. **Dashboard:** theme tokens only, routes, the lead review, shortcuts and the design tools: [apps/dashboard/AGENTS.md](apps/dashboard/AGENTS.md).
 7. **One Schema per Collection (REV-48):**
    * Mongoose schemas are defined only in `packages/db` (`@revamp/db`). `apps/api/src/models` and `apps/workers/src/models` only re-export them; never add or change a schema inside an app.
