@@ -13,6 +13,7 @@ export * from './models/SuppressedAddress.model.js';
 
 export * from './password.js';
 export * from './address-hash.js';
+export * from './contact-rights.js';
 export * from './redact-uri.js';
 export * from './lead-children-migration.js';
 export * from './business-migration.js';

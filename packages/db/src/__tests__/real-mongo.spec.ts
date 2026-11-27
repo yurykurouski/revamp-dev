@@ -30,6 +30,10 @@ import { Organization } from '../models/Organization.model.js';
 import { User } from '../models/User.model.js';
 import { Membership } from '../models/Membership.model.js';
 import { MIGRATE_TENANTS_COMMAND, TenantMigrationError, checkTenantLinks, migrateTenants } from '../tenant-migration.js';
+import { ContactRight } from '../models/ContactRight.model.js';
+import { SuppressedAddress } from '../models/SuppressedAddress.model.js';
+import { hashAddress } from '../address-hash.js';
+import { endContactRight, findActiveContactRight, grantContactRight } from '../contact-rights.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
 
@@ -1612,6 +1616,188 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await probe(own._id)).toBeNull();
       expect(await probe(foreign._id)).not.toBeNull();
       expect(await probe(legacy._id)).not.toBeNull();
+    });
+  });
+  describe('contact registry (REV-224)', () => {
+    const durations = { rightDays: 14, cooldownDays: 30 };
+    const day = 24 * 60 * 60 * 1000;
+    const t0 = at('2026-11-01T00:00:00Z');
+    const expires = new Date(t0.getTime() + 14 * day);
+    const cooldownEnd = new Date(expires.getTime() + 30 * day);
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-contact-registry-test' });
+      await Promise.all([Business.init(), ContactRight.init(), SuppressedAddress.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), ContactRight.deleteMany({}), SuppressedAddress.deleteMany({})]);
+    });
+
+    const makeBusiness = (n = 1, extra: Record<string, unknown> = {}) =>
+      Business.create({ domain: `b${n}.test`, originalUrl: `https://b${n}.test`, businessName: `B${n}`, ...extra });
+    const grant = (businessId: Types.ObjectId, extra: Partial<Parameters<typeof grantContactRight>[0]> = {}) =>
+      grantContactRight({
+        tenantId: new Types.ObjectId(),
+        businessId,
+        leadId: new Types.ObjectId(),
+        source: 'ADD_LEAD',
+        durations,
+        now: t0,
+        ...extra,
+      });
+
+    it('grants a free business and writes the hold', async () => {
+      const business = await makeBusiness();
+      const result = await grant(business._id);
+      expect(result.granted).toBe(true);
+      if (!result.granted) return;
+      expect(result.right.expiresAt).toEqual(expires);
+      expect(result.right.cooldownUntil).toEqual(cooldownEnd);
+      const stored = await Business.findById(business._id).lean();
+      expect(String(stored?.contactHold?.rightId)).toBe(String(result.right._id));
+      expect(String(stored?.contactHold?.tenantId)).toBe(String(result.right.tenantId));
+      expect(stored?.contactHold?.expiresAt).toEqual(expires);
+      expect(await ContactRight.countDocuments()).toBe(1);
+    });
+
+    it('refuses another studio while held, with expiresAt, writing nothing', async () => {
+      const business = await makeBusiness();
+      await grant(business._id);
+      const refused = await grant(business._id, { now: new Date(t0.getTime() + day) });
+      expect(refused).toEqual({ granted: false, reason: 'held', expiresAt: expires });
+      expect(await ContactRight.countDocuments()).toBe(1);
+    });
+
+    it('refuses the same studio while held', async () => {
+      const business = await makeBusiness();
+      const tenantId = new Types.ObjectId();
+      await grant(business._id, { tenantId });
+      const refused = await grant(business._id, { tenantId, now: new Date(t0.getTime() + day) });
+      expect(refused).toMatchObject({ granted: false, reason: 'held' });
+    });
+
+    it('at expiresAt it is cooldown with availableAt, and at cooldownUntil a new grant succeeds', async () => {
+      const business = await makeBusiness();
+      const first = await grant(business._id);
+      expect(first.granted).toBe(true);
+      expect(await grant(business._id, { now: new Date(expires.getTime() - 1) })).toMatchObject({ granted: false, reason: 'held' });
+      expect(await grant(business._id, { now: expires })).toEqual({ granted: false, reason: 'cooldown', availableAt: cooldownEnd });
+      expect(await grant(business._id, { now: new Date(cooldownEnd.getTime() - 1) })).toMatchObject({ granted: false, reason: 'cooldown' });
+      const next = await grant(business._id, { now: cooldownEnd });
+      expect(next.granted).toBe(true);
+      if (!next.granted) return;
+      const stored = await Business.findById(business._id).lean();
+      expect(String(stored?.contactHold?.rightId)).toBe(String(next.right._id));
+      expect(await ContactRight.countDocuments()).toBe(2);
+    });
+
+    it('the cooldown blocks the former holder too', async () => {
+      const business = await makeBusiness();
+      const tenantId = new Types.ObjectId();
+      await grant(business._id, { tenantId });
+      expect(await grant(business._id, { tenantId, now: new Date(expires.getTime() + day) })).toMatchObject({ granted: false, reason: 'cooldown' });
+    });
+
+    it('refuses an opted-out business', async () => {
+      const business = await makeBusiness(1, { optedOutAt: t0 });
+      expect(await grant(business._id)).toEqual({ granted: false, reason: 'opted_out' });
+      expect(await ContactRight.countDocuments()).toBe(0);
+      expect((await Business.findById(business._id).lean())?.contactHold).toBeUndefined();
+    });
+
+    it('opted_out wins over held', async () => {
+      const business = await makeBusiness();
+      await grant(business._id);
+      await Business.updateOne({ _id: business._id }, { $set: { optedOutAt: t0 } });
+      expect(await grant(business._id, { now: new Date(t0.getTime() + day) })).toEqual({ granted: false, reason: 'opted_out' });
+    });
+
+    it('refuses a lead whose contact email is suppressed under another business', async () => {
+      const other = await makeBusiness(1);
+      const business = await makeBusiness(2);
+      await SuppressedAddress.create({ hash: hashAddress('Owner@Example.com') });
+      expect(other.optedOutAt).toBeUndefined();
+      const refused = await grant(business._id, { contactEmail: ' owner@example.COM ' });
+      expect(refused).toEqual({ granted: false, reason: 'opted_out' });
+      expect(await ContactRight.countDocuments()).toBe(0);
+      expect((await Business.findById(business._id).lean())?.contactHold).toBeUndefined();
+      expect((await grant(business._id, { contactEmail: 'someone@else.test' })).granted).toBe(true);
+    });
+
+    it('throws for a business that does not exist', async () => {
+      await expect(grant(new Types.ObjectId())).rejects.toThrow('not found');
+    });
+
+    it('20 concurrent grants leave exactly one right', async () => {
+      const business = await makeBusiness();
+      const results = await Promise.allSettled(
+        Array.from({ length: 20 }, () =>
+          mongoose.connection.transaction((session) => grant(business._id, { session })),
+        ),
+      );
+      expect(results.filter((r) => r.status === 'rejected')).toEqual([]);
+      const values = results.map((r) => (r as PromiseFulfilledResult<Awaited<ReturnType<typeof grant>>>).value);
+      expect(values.filter((v) => v.granted)).toHaveLength(1);
+      expect(values.filter((v) => !v.granted && v.reason === 'held')).toHaveLength(19);
+      expect(await ContactRight.countDocuments({ businessId: business._id })).toBe(1);
+      const stored = await Business.findById(business._id).lean();
+      const right = await ContactRight.findOne({ businessId: business._id }).lean();
+      expect(String(stored?.contactHold?.rightId)).toBe(String(right?._id));
+    });
+
+    it('20 concurrent grants without a session also leave exactly one right', async () => {
+      const business = await makeBusiness();
+      const results = await Promise.all(Array.from({ length: 20 }, () => grant(business._id)));
+      expect(results.filter((r) => r.granted)).toHaveLength(1);
+      expect(await ContactRight.countDocuments({ businessId: business._id })).toBe(1);
+    });
+
+    it('a grant in a transaction that aborts leaves no hold and no right', async () => {
+      const business = await makeBusiness();
+      await expect(
+        mongoose.connection.transaction(async (session) => {
+          expect((await grant(business._id, { session })).granted).toBe(true);
+          throw new Error('enqueue failed');
+        }),
+      ).rejects.toThrow('enqueue failed');
+      expect(await ContactRight.countDocuments()).toBe(0);
+      expect((await Business.findById(business._id).lean())?.contactHold).toBeUndefined();
+      expect((await grant(business._id)).granted).toBe(true);
+    });
+
+    it('findActiveContactRight finds the right by studio and business and by lead while active', async () => {
+      const business = await makeBusiness();
+      const tenantId = new Types.ObjectId();
+      const leadId = new Types.ObjectId();
+      const result = await grant(business._id, { tenantId, leadId });
+      if (!result.granted) throw new Error('expected a grant');
+      const during = new Date(t0.getTime() + day);
+      expect(String((await findActiveContactRight({ tenantId, businessId: business._id }, during))?._id)).toBe(String(result.right._id));
+      expect(String((await findActiveContactRight({ leadId }, during))?._id)).toBe(String(result.right._id));
+      expect(await findActiveContactRight({ tenantId: new Types.ObjectId(), businessId: business._id }, during)).toBeNull();
+      expect(await findActiveContactRight({ leadId }, new Date(t0.getTime() - 1))).toBeNull();
+      expect(await findActiveContactRight({ leadId }, expires)).toBeNull();
+      expect(await findActiveContactRight({ leadId }, new Date(expires.getTime() + day))).toBeNull();
+    });
+
+    it('findActiveContactRight returns null after endContactRight, and the cooldown starts at the end time', async () => {
+      const business = await makeBusiness();
+      const leadId = new Types.ObjectId();
+      const result = await grant(business._id, { leadId });
+      if (!result.granted) throw new Error('expected a grant');
+      const end = new Date(t0.getTime() + 3 * day);
+      await endContactRight(result.right._id, { at: end, reason: 'opted_out' });
+      expect(await findActiveContactRight({ leadId }, new Date(end.getTime() - 1))).toBeNull();
+      const stored = await ContactRight.findById(result.right._id).lean();
+      expect(stored?.endedAt).toEqual(end);
+      expect(stored?.endReason).toBe('opted_out');
+      const hold = (await Business.findById(business._id).lean())?.contactHold;
+      expect(hold?.expiresAt).toEqual(end);
+      expect(hold?.cooldownUntil).toEqual(new Date(end.getTime() + 30 * day));
+      expect(await grant(business._id, { now: end })).toMatchObject({ granted: false, reason: 'cooldown' });
     });
   });
 });
