@@ -523,6 +523,13 @@ export const be: Translation = {
       completed: 'Гатова',
       failed: 'Памылка',
     },
+    unavailable: {
+      held: 'Занята да {{date}}',
+      heldNoDate: 'Замацаваны за іншай студыяй',
+      cooldown: 'Даступны з {{date}}',
+      cooldownNoDate: 'Паўза пасля кантакту',
+      opted_out: 'Адмовіўся ад рассылкі',
+    },
     candidateStatus: {
       new: 'Новая',
       existing_lead: 'Ужо ў лідах',
@@ -594,6 +601,7 @@ export const be: Translation = {
     nothingNewHint: 'Няма чаго імпартаваць: усе знойдзеныя кампаніі ўжо ў лідах або не маюць свайго сайта. Паспрабуйце іншы раён або ключавое слова.',
     importDone: 'Імпартавана: {{imported}}. Іх аўдыт запушчаны.',
     importSkipped: 'Не імпартавана: {{skipped}} (ужо ў лідах або больш недаступныя).',
+    importUnavailable: 'Не імпартавана: {{count}} (замацаваны за іншай студыяй або адмовіліся ад рассылкі).',
     importFailedCount: 'Памылак: {{failed}}.',
     legacyResult: 'Гэты пошук выкананы да з’яўлення праверкі, таму кампаніі былі імпартаваныя аўтаматычна.',
     errors: {

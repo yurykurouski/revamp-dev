@@ -413,7 +413,7 @@ export const DiscoveryDrawer: React.FC = () => {
     const remaining = Array.isArray(status?.result?.candidates) ? importableIds(status.result.candidates).length : 0;
     const stats = [
       { key: 'imported', value: summary.imported, color: 'success.main' },
-      { key: 'skipped', value: summary.skipped, color: 'text.primary' },
+      { key: 'skipped', value: summary.skipped + summary.unavailable, color: 'text.primary' },
       { key: 'failed', value: summary.failed, color: summary.failed > 0 ? 'error.main' : 'text.primary' },
     ] as const;
 
@@ -424,6 +424,7 @@ export const DiscoveryDrawer: React.FC = () => {
           <Alert severity={summary.failed > 0 ? 'warning' : 'success'}>
             {t('discovery.importDone', { imported: summary.imported })}
             {summary.skipped > 0 && ` ${t('discovery.importSkipped', { skipped: summary.skipped })}`}
+            {summary.unavailable > 0 && ` ${t('discovery.importUnavailable', { count: summary.unavailable })}`}
             {summary.failed > 0 && ` ${t('discovery.importFailedCount', { failed: summary.failed })}`}
           </Alert>
           <Box component="dl" sx={{ m: 0, display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1.5 }}>

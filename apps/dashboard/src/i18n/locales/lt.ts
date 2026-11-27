@@ -523,6 +523,13 @@ export const lt: Translation = {
       completed: 'Baigta',
       failed: 'Klaida',
     },
+    unavailable: {
+      held: 'Užimta iki {{date}}',
+      heldNoDate: 'Rezervavo kita studija',
+      cooldown: 'Prieinama nuo {{date}}',
+      cooldownNoDate: 'Pauzė po kontakto',
+      opted_out: 'Atsisakė laiškų',
+    },
     candidateStatus: {
       new: 'Nauja',
       existing_lead: 'Jau sąraše',
@@ -594,6 +601,7 @@ export const lt: Translation = {
     nothingNewHint: 'Nėra ką importuoti: visos rastos įmonės jau yra sąraše arba neturi savo svetainės. Pabandykite kitą vietovę ar raktinį žodį.',
     importDone: 'Importuota: {{imported}}. Jų auditai pradėti.',
     importSkipped: 'Neimportuota: {{skipped}} (jau sąraše arba nebepasiekiamos).',
+    importUnavailable: 'Neimportuota: {{count}} (rezervavo kita studija arba atsisakė laiškų).',
     importFailedCount: 'Klaidų: {{failed}}.',
     legacyResult: 'Ši paieška atlikta prieš atsirandant peržiūrai, todėl įmonės buvo importuotos automatiškai.',
     errors: {

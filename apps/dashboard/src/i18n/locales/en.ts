@@ -524,6 +524,13 @@ export const en = {
       completed: 'Done',
       failed: 'Failed',
     },
+    unavailable: {
+      held: 'Held until {{date}}',
+      heldNoDate: 'Held by another studio',
+      cooldown: 'Available from {{date}}',
+      cooldownNoDate: 'In cooldown',
+      opted_out: 'Opted out',
+    },
     candidateStatus: {
       new: 'New',
       existing_lead: 'Already a lead',
@@ -595,6 +602,7 @@ export const en = {
     nothingNewHint: 'Nothing new to import: every business found is already a lead or has no website of its own. Try another area or keyword.',
     importDone: 'Imported: {{imported}}. Their audits have started.',
     importSkipped: 'Not imported: {{skipped}} (already leads or no longer available).',
+    importUnavailable: '{{count}} not imported: another studio holds them, or they opted out.',
     importFailedCount: 'Failed: {{failed}}.',
     legacyResult: 'This search ran before review was available, so its businesses were imported automatically.',
     errors: {

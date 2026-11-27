@@ -12,7 +12,7 @@ import {
   Typography,
 } from '@mui/material';
 import PlaylistAddIcon from '@mui/icons-material/PlaylistAdd';
-import { DiscoveryCandidateStatus, IDiscoveryJobResult } from '@revamp/shared-types';
+import { DiscoveryCandidateStatus, IDiscoveryCandidate, IDiscoveryJobResult } from '@revamp/shared-types';
 import { useTranslation } from 'react-i18next';
 import {
   countCandidates,
@@ -22,6 +22,9 @@ import {
   useImportDiscoveryMutation,
   visibleCandidates,
 } from '../hooks/useDiscovery.js';
+import { useLanguageStore } from '../store/useLanguageStore.js';
+import { formatDate } from '../i18n/languages.js';
+import { DATE_FORMAT } from '../utils/contactRight.js';
 import { useDiscoveryStore } from '../store/useDiscoveryStore.js';
 import { useOpenLead } from '../hooks/useOpenLead.js';
 import {
@@ -75,6 +78,7 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({
   searchAgainError,
 }) => {
   const { t } = useTranslation();
+  const { language } = useLanguageStore();
   const importMutation = useImportDiscoveryMutation(jobId);
   const closeDiscovery = useDiscoveryStore((s) => s.close);
   const setImportResult = useDiscoveryStore((s) => s.setImportResult);
@@ -109,6 +113,13 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({
 
   const importable = importableIds(rows);
   const allSelected = importable.length > 0 && importable.every((id) => selected.has(id));
+
+  const unavailableLabel = ({ reason, until }: NonNullable<IDiscoveryCandidate['unavailable']>) => {
+    const date = until ? formatDate(until, language, DATE_FORMAT) : undefined;
+    if (reason === 'held') return date ? t('discovery.unavailable.held', { date }) : t('discovery.unavailable.heldNoDate');
+    if (reason === 'cooldown') return date ? t('discovery.unavailable.cooldown', { date }) : t('discovery.unavailable.cooldownNoDate');
+    return t('discovery.unavailable.opted_out');
+  };
 
   const toggle = (externalId: string) =>
     setSelected((current) => {
@@ -275,13 +286,15 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({
         <Box component="ul" aria-label={t('discovery.columns.business')} sx={{ listStyle: 'none', m: 0, p: 0 }}>
           {rows.map((c) => {
             const isNew = c.status === 'new';
+            // Another studio holds it, it is in cooldown or it opted out: shown but never selectable (REV-228)
+            const selectable = isNew && !c.unavailable;
             const details = [c.city, c.phone].filter(Boolean).join(' · ');
             return (
               <Box
                 component="li"
                 key={c.externalId}
                 data-testid="discovery-candidate"
-                onClick={isNew && !importMutation.isPending ? () => toggle(c.externalId) : undefined}
+                onClick={selectable && !importMutation.isPending ? () => toggle(c.externalId) : undefined}
                 sx={{
                   display: 'grid',
                   gridTemplateColumns: 'auto minmax(0, 1fr) auto',
@@ -291,14 +304,14 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({
                   py: 1,
                   borderBottom: '1px solid',
                   borderColor: 'divider',
-                  cursor: isNew ? 'pointer' : 'default',
-                  opacity: isNew || c.status === 'existing_lead' ? 1 : 0.6,
-                  '&:hover': isNew ? { backgroundColor: 'action.hover' } : undefined,
+                  cursor: selectable ? 'pointer' : 'default',
+                  opacity: selectable || c.status === 'existing_lead' ? 1 : 0.6,
+                  '&:hover': selectable ? { backgroundColor: 'action.hover' } : undefined,
                 }}
               >
                 <Checkbox
                   checked={selected.has(c.externalId)}
-                  disabled={!isNew || importMutation.isPending}
+                  disabled={!selectable || importMutation.isPending}
                   inputProps={{ 'aria-label': c.name }}
                   onClick={(e) => e.stopPropagation()}
                   onChange={() => toggle(c.externalId)}
@@ -327,6 +340,9 @@ export const DiscoveryReview: React.FC<DiscoveryReviewProps> = ({
                     color={STATUS_CHIP_COLOR[c.status]}
                     label={t(`discovery.candidateStatus.${c.status}`)}
                   />
+                  {c.unavailable && (
+                    <Chip size="small" color="warning" data-testid="candidate-unavailable" label={unavailableLabel(c.unavailable)} />
+                  )}
                   {c.status === 'existing_lead' && c.leadId && (
                     <Link
                       component="button"

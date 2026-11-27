@@ -523,6 +523,13 @@ export const ru: Translation = {
       completed: 'Готово',
       failed: 'Ошибка',
     },
+    unavailable: {
+      held: 'Занят до {{date}}',
+      heldNoDate: 'Закреплён за другой студией',
+      cooldown: 'Доступен с {{date}}',
+      cooldownNoDate: 'Пауза после контакта',
+      opted_out: 'Отказался от рассылки',
+    },
     candidateStatus: {
       new: 'Новая',
       existing_lead: 'Уже в лидах',
@@ -594,6 +601,7 @@ export const ru: Translation = {
     nothingNewHint: 'Нечего импортировать: все найденные компании уже в лидах или не имеют своего сайта. Попробуйте другой район или ключевое слово.',
     importDone: 'Импортировано: {{imported}}. Их аудит запущен.',
     importSkipped: 'Не импортировано: {{skipped}} (уже в лидах или больше недоступны).',
+    importUnavailable: 'Не импортировано: {{count}} (закреплены за другой студией или отказались от рассылки).',
     importFailedCount: 'Ошибок: {{failed}}.',
     legacyResult: 'Этот поиск выполнен до появления проверки, поэтому компании были импортированы автоматически.',
     errors: {

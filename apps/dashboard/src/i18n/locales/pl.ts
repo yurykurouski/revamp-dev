@@ -523,6 +523,13 @@ export const pl: Translation = {
       completed: 'Gotowe',
       failed: 'Błąd',
     },
+    unavailable: {
+      held: 'Zajęta do {{date}}',
+      heldNoDate: 'Zarezerwowana przez inne studio',
+      cooldown: 'Dostępna od {{date}}',
+      cooldownNoDate: 'Przerwa po kontakcie',
+      opted_out: 'Zrezygnowała z wiadomości',
+    },
     candidateStatus: {
       new: 'Nowa',
       existing_lead: 'Już w leadach',
@@ -594,6 +601,7 @@ export const pl: Translation = {
     nothingNewHint: 'Nie ma nic nowego do importu: wszystkie znalezione firmy są już w leadach lub nie mają własnej strony. Spróbuj innego obszaru lub słowa kluczowego.',
     importDone: 'Zaimportowano: {{imported}}. Ich audyty ruszyły.',
     importSkipped: 'Nie zaimportowano: {{skipped}} (już w leadach lub niedostępne).',
+    importUnavailable: 'Nie zaimportowano: {{count}} (zarezerwowane przez inne studio lub zrezygnowały z wiadomości).',
     importFailedCount: 'Błędy: {{failed}}.',
     legacyResult: 'To wyszukiwanie odbyło się przed wprowadzeniem przeglądu, więc firmy zaimportowano automatycznie.',
     errors: {

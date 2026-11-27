@@ -278,7 +278,8 @@ export function discoverySearchOutcome(
 
 /** External ids the operator can still import */
 export function importableIds(candidates: IDiscoveryCandidate[]): string[] {
-  return candidates.filter((c) => c.status === 'new').map((c) => c.externalId);
+  // A candidate another studio holds, in cooldown or opted out cannot be claimed (REV-228)
+  return candidates.filter((c) => c.status === 'new' && !c.unavailable).map((c) => c.externalId);
 }
 
 /** Drops selected ids that are no longer importable (e.g. imported since the last poll) */
@@ -288,9 +289,11 @@ export function pruneSelection(selected: ReadonlySet<string>, candidates: IDisco
 }
 
 /** Import outcome for the operator: how many were imported and how many were not */
-export function summarizeImport(result: IDiscoveryImportResult): { imported: number; skipped: number; failed: number } {
+export function summarizeImport(result: IDiscoveryImportResult): { imported: number; skipped: number; failed: number; unavailable: number } {
   const failed = result.results.filter((r) => r.outcome === 'failed').length;
-  return { imported: result.imported, failed, skipped: result.results.length - result.imported - failed };
+  // Refused because of the contact right (REV-225): counted apart from the other skips
+  const unavailable = result.results.filter((r) => r.outcome === 'right_held' || r.outcome === 'cooldown' || r.outcome === 'opted_out').length;
+  return { imported: result.imported, failed, unavailable, skipped: result.results.length - result.imported - failed - unavailable };
 }
 
 export const useStartDiscoveryMutation = () =>

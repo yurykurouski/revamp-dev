@@ -162,7 +162,32 @@ describe('discovery hook helpers (REV-27)', () => {
             { externalId: '5', outcome: 'failed' },
           ],
         }),
-      ).toEqual({ imported: 2, skipped: 2, failed: 1 });
+      ).toEqual({ imported: 2, skipped: 2, failed: 1, unavailable: 0 });
+    });
+
+    it('summarizeImport counts the rights refusals apart from the other skips (REV-228)', () => {
+      expect(
+        summarizeImport({
+          imported: 1,
+          results: [
+            { externalId: '1', outcome: 'imported' },
+            { externalId: '2', outcome: 'right_held', until: '2026-12-31T00:00:00.000Z' },
+            { externalId: '3', outcome: 'cooldown' },
+            { externalId: '4', outcome: 'opted_out' },
+            { externalId: '5', outcome: 'existing_lead' },
+          ],
+        }),
+      ).toEqual({ imported: 1, skipped: 1, failed: 0, unavailable: 3 });
+    });
+
+    it('candidates another studio holds are not importable and drop out of a selection (REV-228)', () => {
+      const held = { ...c('h', 'new'), unavailable: { reason: 'held' as const, until: '2026-12-31T00:00:00.000Z' } };
+      const optedOut = { ...c('o', 'new'), unavailable: { reason: 'opted_out' as const } };
+      const mixed = [c('a', 'new'), held, optedOut];
+      expect(importableIds(mixed)).toEqual(['a']);
+      expect([...pruneSelection(new Set(['a', 'h', 'o']), mixed)]).toEqual(['a']);
+      // A selection made before a poll marked a candidate unavailable is pruned
+      expect([...pruneSelection(new Set(['a', 'b']), [c('a', 'new'), { ...c('b', 'new'), unavailable: { reason: 'cooldown' as const } }])]).toEqual(['a']);
     });
   });
 
