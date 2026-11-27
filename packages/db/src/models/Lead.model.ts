@@ -1,11 +1,13 @@
 import mongoose, { Schema, Document, Model, Types } from 'mongoose';
-import { ILead, NicheType, LEAD_STATUSES, LeadSource, OPERATOR_LOCALES, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
+import { ILead, NicheType, LEAD_OUTREACH_ERROR_CODES, LEAD_STATUSES, LeadSource, OPERATOR_LOCALES, SITE_COMPLEXITY_CLASSES } from '@revamp/shared-types';
 
-export interface ILeadDocument extends Omit<ILead, '_id' | 'tenantId' | 'businessId' | 'createdAt' | 'updatedAt'>, Document {
+export interface ILeadDocument extends Omit<ILead, '_id' | 'tenantId' | 'businessId' | 'outreachError' | 'createdAt' | 'updatedAt'>, Document {
   /** The studio (organization) this lead belongs to (REV-208); absent on leads made before the split until REV-210 */
   tenantId?: Types.ObjectId;
   /** The shared business this lead pursues (REV-208); absent until the backfill */
   businessId?: Types.ObjectId;
+  /** Why an approved send was returned to review (REV-226) */
+  outreachError?: { code: (typeof LEAD_OUTREACH_ERROR_CODES)[number]; message: string; at: Date };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -125,6 +127,17 @@ const LeadSchema = new Schema<ILeadDocument>(
     // REV-44: why the last audit failed for good; shown on the card with a retry action
     auditError: {
       type: String,
+    },
+    // REV-226: why the approved send was returned to review; cleared by the next approval
+    outreachError: {
+      type: new Schema(
+        {
+          code: { type: String, enum: [...LEAD_OUTREACH_ERROR_CODES], required: true },
+          message: { type: String, required: true, maxlength: 500 },
+          at: { type: Date, required: true },
+        },
+        { _id: false },
+      ),
     },
     // REV-38: complexity class from the latest audit; one-page brochure sites sort first
     siteComplexity: {

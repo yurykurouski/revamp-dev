@@ -110,6 +110,17 @@ export const OPERATOR_LOCALE_NAMES: Record<OperatorLocale, string> = {
   lt: 'Lithuanian',
 };
 
+/** Codes of `Lead.outreachError`; REV-227 extends the list (REV-226) */
+export const LEAD_OUTREACH_ERROR_CODES = ['CONTACT_RIGHT_EXPIRED'] as const;
+export type LeadOutreachErrorCode = (typeof LEAD_OUTREACH_ERROR_CODES)[number];
+
+/** The reason an approved send was returned to review, shown to the operator (REV-226) */
+export interface ILeadOutreachError {
+  code: LeadOutreachErrorCode;
+  message: string;
+  at: string | Date;
+}
+
 export interface ILead {
   _id: string;
   /** The studio this lead belongs to (REV-208) */
@@ -146,6 +157,8 @@ export interface ILead {
   generationFailure?: IMvpRenderFailure;
   /** Why the last audit failed for good, as one readable line; cleared when a new audit is queued (REV-44) */
   auditError?: string;
+  /** Why outreach was returned to review at send time; cleared by the next approval (REV-226) */
+  outreachError?: ILeadOutreachError;
   /** Complexity class from the latest audit, copied here for list sorting and filtering (REV-38) */
   siteComplexity?: SiteComplexityClass;
   /** Set when the latest audit found a one-page brochure site; these leads sort first (REV-38) */
@@ -1223,6 +1236,9 @@ export const API_ERROR_CODES = [
   'CONTACT_RIGHT_HELD',
   'BUSINESS_IN_COOLDOWN',
   'BUSINESS_OPTED_OUT',
+  // Outreach (REV-226): the studio's right to contact the business is not active, so approval is refused
+  // (`details.expiredAt` when the studio had one)
+  'CONTACT_RIGHT_REQUIRED',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];

@@ -9,6 +9,8 @@ import {
   canApproveOutreach,
   canRejectLead,
   canTransition,
+  requiresContactRight,
+  LeadOutreachErrorSchema,
   isLeadStatus,
   leadStatusesInto,
   mvpGenerationMode,
@@ -165,6 +167,28 @@ describe('Lead state machine (REV-62)', () => {
       }
       expect(canChangeMvpLayout(undefined)).toBe(false);
       expect(canChangeMvpLayout(null)).toBe(false);
+    });
+  });
+
+  describe('requiresContactRight and LeadOutreachErrorSchema (REV-226)', () => {
+    it('is true exactly for SCHEDULED and SENT', () => {
+      expect(LEAD_STATUSES.filter((status) => requiresContactRight(status))).toEqual(
+        LEAD_STATUSES.filter((status) => status === 'SCHEDULED' || status === 'SENT'),
+      );
+    });
+
+    it('names only statuses that are targets in LEAD_TRANSITIONS', () => {
+      const targets = new Set(Object.values(LEAD_TRANSITIONS).flat());
+      for (const status of LEAD_STATUSES.filter((s) => requiresContactRight(s))) expect(targets.has(status)).toBe(true);
+    });
+
+    it('accepts a valid outreach error and rejects an unknown code or a long message', () => {
+      const ok = { code: 'CONTACT_RIGHT_EXPIRED', message: 'Ended', at: new Date() };
+      expect(LeadOutreachErrorSchema.safeParse(ok).success).toBe(true);
+      expect(LeadOutreachErrorSchema.safeParse({ ...ok, code: 'OTHER' }).success).toBe(false);
+      expect(LeadOutreachErrorSchema.safeParse({ ...ok, message: 'x'.repeat(501) }).success).toBe(false);
+      expect(LeadOutreachErrorSchema.safeParse({ ...ok, message: 'x'.repeat(500) }).success).toBe(true);
+      expect(LeadOutreachErrorSchema.safeParse({ ...ok, message: '' }).success).toBe(false);
     });
   });
 });

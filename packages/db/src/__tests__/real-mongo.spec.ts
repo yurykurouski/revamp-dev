@@ -660,6 +660,28 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await EmailCampaign.countDocuments({ leadId: lead._id })).toBe(1);
     });
 
+    it('revertOutreachApproval stores outreachError on the lead, and approving again clears it (REV-226)', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      await approveOutreachWithCampaign(String(lead._id), approved(11));
+      const outreachError = { code: 'CONTACT_RIGHT_EXPIRED' as const, message: 'Ended before sending', at: new Date() };
+      expect(await revertOutreachApproval(String(lead._id), { outreachError })).toBe(true);
+      const reverted = await Lead.findById(lead._id).lean();
+      expect(reverted?.status).toBe('NEEDS_APPROVAL');
+      expect(reverted?.outreachError?.code).toBe('CONTACT_RIGHT_EXPIRED');
+      expect(reverted?.outreachError?.message).toBe('Ended before sending');
+      await approveOutreachWithCampaign(String(lead._id), approved(12));
+      expect((await Lead.findById(lead._id).lean())?.outreachError).toBeUndefined();
+    });
+
+    it('an invalid outreachError throws before anything is written (REV-226)', async () => {
+      const lead = await Lead.create({ ...leadFields, status: 'NEEDS_APPROVAL' });
+      await approveOutreachWithCampaign(String(lead._id), approved(13));
+      await expect(
+        revertOutreachApproval(String(lead._id), { outreachError: { code: 'NOPE', message: 'x', at: new Date() } as never }),
+      ).rejects.toThrow();
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('SCHEDULED');
+    });
+
     it('leaves a lead the worker already sent alone', async () => {
       const lead = await Lead.create({ ...leadFields, status: 'SENT' });
       await EmailCampaign.create({ ...approved(5), status: 'DELIVERED', leadId: lead._id });

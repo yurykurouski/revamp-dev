@@ -32,6 +32,13 @@ export const LEAD_TRANSITIONS: Readonly<Record<LeadStatus, readonly LeadStatus[]
   UNSUBSCRIBED: [],
 };
 
+/**
+ * Statuses whose entry needs an active contact right of the studio for the lead's business (REV-226): approval
+ * moves a lead into SCHEDULED, the email worker into SENT. The table above is unchanged; this names the guarded edges.
+ */
+const CONTACT_RIGHT_TARGETS: readonly LeadStatus[] = ['SCHEDULED', 'SENT'];
+export const requiresContactRight = (to: LeadStatus): boolean => CONTACT_RIGHT_TARGETS.includes(to);
+
 export const isLeadStatus = (status: unknown): status is LeadStatus =>
   (LEAD_STATUSES as readonly unknown[]).includes(status);
 
