@@ -422,6 +422,7 @@ export const en = {
   },
   contactRight: {
     until: 'Contact right until {{date}}',
+    untilShort: 'Until {{date}}',
     expired: 'Right expired',
     optedOut: 'Business opted out',
     approveBlocked: 'Your studio\'s right to contact this business has ended, so outreach can\'t be approved.',
