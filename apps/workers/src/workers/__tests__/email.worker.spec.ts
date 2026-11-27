@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { createEmailWorker } from '../email.worker.js';
 import { Lead } from '../../models/Lead.model.js';
 import { EmailCampaign, revertOutreachApproval } from '../../models/EmailCampaign.model.js';
+import { LeadOutreachErrorSchema } from '@revamp/validation';
 import { findActiveContactRight } from '../../models/ContactRight.model.js';
 import { mxValidator } from '../../services/mx.validator.js';
 import { loadStudioSender, simulateDelivery } from '../../services/email.service.js';
@@ -440,6 +441,7 @@ describe('EmailWorker (@revamp/workers)', () => {
         expect(revertedId).toBe(leadId);
         expect(options?.outreachError).toMatchObject({ code: 'CONTACT_RIGHT_EXPIRED', message: expect.any(String) });
         expect(options?.outreachError?.at).toBeInstanceOf(Date);
+        expect(LeadOutreachErrorSchema.safeParse(options?.outreachError).success).toBe(true);
         expectNothingWritten();
       });
 

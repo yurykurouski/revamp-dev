@@ -1,6 +1,5 @@
 import mongoose from 'mongoose';
 import type { ILeadOutreachError } from '@revamp/shared-types';
-import { LeadOutreachErrorSchema } from '@revamp/validation';
 import { EmailCampaign, type IEmailCampaignDocument } from './models/EmailCampaign.model.js';
 import { Lead, type ILeadDocument } from './models/Lead.model.js';
 
@@ -34,13 +33,12 @@ const REVERTIBLE_CAMPAIGN_STATUSES: readonly string[] = ['SCHEDULED', 'APPROVED'
 
 /**
  * Undoes an approval whose send could not be queued (REV-203): the lead SCHEDULED → NEEDS_APPROVAL (with `outreachError` when given, REV-226) and its campaign
- * back to NEEDS_APPROVAL without the approval stamps, in one transaction, so the operator can approve again. Only a
+ * back to NEEDS_APPROVAL without the approval stamps, in one transaction, so the operator can approve again. An invalid `outreachError` is refused by the Lead model's validators (the caller parses it with `LeadOutreachErrorSchema` first, REV-226). Only a
  * lead still SCHEDULED changes, and nothing changes when its campaign is already claimed or finished by the email
  * worker (SENDING, DELIVERED, …) or the lead is already SENT. Returns whether the lead was moved.
  */
 export async function revertOutreachApproval(leadId: string, options: { outreachError?: ILeadOutreachError } = {}): Promise<boolean> {
-  // Validated before anything is written (REV-226); an invalid error throws
-  const outreachError = options.outreachError ? LeadOutreachErrorSchema.parse(options.outreachError) : undefined;
+  const outreachError = options.outreachError;
   let moved = false;
   await mongoose.connection.transaction(async (session) => {
     moved = false;
@@ -48,7 +46,7 @@ export async function revertOutreachApproval(leadId: string, options: { outreach
     // would let a second approval send the email again
     const campaign = await EmailCampaign.findOne({ leadId }, { status: 1 }, { session }).lean().exec();
     if (campaign && !REVERTIBLE_CAMPAIGN_STATUSES.includes(campaign.status)) return;
-    const lead = await Lead.findOneAndUpdate({ _id: leadId, status: 'SCHEDULED' }, { $set: { status: 'NEEDS_APPROVAL', ...(outreachError ? { outreachError } : {}) } }, { session }).exec();
+    const lead = await Lead.findOneAndUpdate({ _id: leadId, status: 'SCHEDULED' }, { $set: { status: 'NEEDS_APPROVAL', ...(outreachError ? { outreachError } : {}) } }, { session, runValidators: true }).exec();
     moved = Boolean(lead);
     if (!lead) return;
     await EmailCampaign.updateOne(

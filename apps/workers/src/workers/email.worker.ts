@@ -1,7 +1,7 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
 import type { Types } from 'mongoose';
 import { IEmailDispatchJobData } from '@revamp/shared-types';
-import { canTransition, leadStatusesInto, requiresContactRight } from '@revamp/validation';
+import { LeadOutreachErrorSchema, canTransition, leadStatusesInto, requiresContactRight } from '@revamp/validation';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
 import { Lead } from '../models/Lead.model.js';
@@ -113,7 +113,8 @@ export const createEmailWorker = (): Worker => {
         if (!right) {
           const reason = 'The right to contact this business ended before the email was sent. Nothing was sent.';
           console.warn(`[EmailWorker] ${reason} (lead ${leadId}); lead returned to review`);
-          await revertOutreachApproval(lead._id.toString(), { outreachError: { code: 'CONTACT_RIGHT_EXPIRED', message: reason, at: new Date() } });
+          const outreachError = LeadOutreachErrorSchema.parse({ code: 'CONTACT_RIGHT_EXPIRED', message: reason, at: new Date() });
+          await revertOutreachApproval(lead._id.toString(), { outreachError });
           return { success: false, aborted: true, leadId, campaignId: campaign._id.toString(), reason };
         }
       }
