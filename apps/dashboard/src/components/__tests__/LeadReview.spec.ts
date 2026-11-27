@@ -13,6 +13,7 @@ import { getTheme } from '../../theme/theme.js';
 import { LeadReview, type ReviewDecision } from '../leadReview/LeadReview.js';
 import { APPROVE_ARM_DELAY_MS } from '../leadReview/ReviewActionBar.js';
 import { REVIEW_STEPS, ReviewStep, nextStep, previousStep } from '../leadReview/steps.js';
+import { useAuthStore } from '../../store/useAuthStore.js';
 import { isMacPlatform } from '../../utils/shortcuts.js';
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -278,6 +279,22 @@ describe('LeadReview (REV-77)', () => {
     await flush();
     expect(apiClient.approveOutreach).toHaveBeenCalledTimes(1);
     expect(onDecision).toHaveBeenCalledExactlyOnceWith('approved');
+  });
+
+  it("the email step's draft and inbox preview end with the studio sender name (REV-223)", async () => {
+    vi.mocked(senderApi.get).mockResolvedValue({ configured: true, name: 'Studio Kraków', address: 'hello@studio-krakow.test' });
+    useAuthStore.setState({
+      session: { token: 't', user: { id: 'u', email: 'a@org.test' }, organization: { id: 'o', name: 'Org Name' }, role: 'owner' },
+    });
+    await mount();
+    await goToEmail();
+    await flush();
+
+    const body = panel('email').querySelector('textarea')!;
+    expect(body.value.endsWith('Studio Kraków')).toBe(true);
+    expect(body.value).not.toMatch(/revamp|platform/i);
+    expect(panel('email').textContent).toContain('Studio Kraków');
+    useAuthStore.setState({ session: null });
   });
 
   it('keeps unsaved email edits while moving between steps and approves them', async () => {

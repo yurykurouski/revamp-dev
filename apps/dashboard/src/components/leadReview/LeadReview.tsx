@@ -13,8 +13,9 @@ import {
   useRejectLeadMutation,
   useSendTestEmailMutation,
 } from '../../hooks/useLeads.js';
-import { useEmailDraft } from '../../hooks/useEmailDraft.js';
+import { draftSignerName, useEmailDraft } from '../../hooks/useEmailDraft.js';
 import { SENDER_QUERY_KEY, useSenderQuery } from '../../hooks/useSender.js';
+import { useAuthStore } from '../../store/useAuthStore.js';
 import { criticalIssueFields } from '../../utils/completeness.js';
 import { isDashboardNiche } from '../../i18n/niches.js';
 import { EmailDraftEditor } from '../EmailDraftEditor.js';
@@ -67,8 +68,9 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
       void queryClient.invalidateQueries({ queryKey: ['mvp', lead.id] });
     }
   }, [lead.id, lead.mvpGeneratedAt, queryClient]);
-  const draft = useEmailDraft(lead, audit);
   const { data: sender } = useSenderQuery();
+  const organizationName = useAuthStore((s) => s.session?.organization.name);
+  const draft = useEmailDraft(lead, audit, draftSignerName(sender, organizationName));
   const [outboxOpen, setOutboxOpen] = useState(false);
 
   const approveMutation = useApproveOutreachMutation();
