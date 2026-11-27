@@ -36,6 +36,7 @@ import { hashAddress } from '../address-hash.js';
 import { ContactRightRefusedError, endContactRight, findActiveContactRight, grantContactRight } from '../contact-rights.js';
 import { contactAvailabilityByDomain } from '../contact-availability.js';
 import { MIGRATE_CONTACT_RIGHTS_COMMAND, checkContactRights, migrateContactRights } from '../contact-rights-migration.js';
+import { isAddressSuppressed, isBusinessOptedOut, recordBusinessOptOut } from '../opt-out.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
 
@@ -2165,6 +2166,154 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(warning).toContain('3 business(es)');
       await migrateContactRights({ apply: true, durations, now });
       expect(await checkContactRights(mongoose.connection)).toEqual([]);
+    });
+  });
+
+  describe('recordBusinessOptOut (REV-227)', () => {
+    const durations = { rightDays: 14, cooldownDays: 30 };
+    const day = 24 * 60 * 60 * 1000;
+    const t0 = at('2026-11-01T00:00:00Z');
+    const optOutAt = at('2026-11-03T00:00:00Z');
+    const statuses = ['QUEUED', 'AUDITING', 'AUDITED', 'GENERATING', 'NEEDS_APPROVAL', 'SCHEDULED', 'SENT', 'OPENED', 'CLICKED', 'ENGAGED'] as const;
+    const studioA = new Types.ObjectId();
+    const studioC = new Types.ObjectId();
+    const studioD = new Types.ObjectId();
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-optout-test' });
+      await Promise.all([Business.init(), Lead.init(), EmailCampaign.init(), ContactRight.init(), SuppressedAddress.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([
+        Business.deleteMany({}),
+        Lead.deleteMany({}),
+        EmailCampaign.deleteMany({}),
+        ContactRight.deleteMany({}),
+        SuppressedAddress.deleteMany({}),
+      ]);
+    });
+
+    const makeBusiness = (n: number) => Business.create({ domain: `x${n}.test`, originalUrl: `https://x${n}.test`, businessName: `X${n}` });
+    const makeLead = (business: { _id: Types.ObjectId }, tenantId: Types.ObjectId, status: string) =>
+      Lead.create({
+        businessName: 'X',
+        originalUrl: 'https://x.test',
+        domain: `x-${new Types.ObjectId().toString()}.test`,
+        businessId: business._id,
+        tenantId,
+        status,
+      });
+    const makeCampaign = (lead: { _id: Types.ObjectId }, tenantId: Types.ObjectId, status: string, n: number) =>
+      EmailCampaign.create({ ...campaignFields(n), leadId: lead._id, tenantId, status });
+
+    it("an opt-out closes every studio's lead and open campaign of the business", async () => {
+      const x = await makeBusiness(1);
+      const other = await makeBusiness(2);
+      const leadA = await makeLead(x, studioA, 'SENT');
+      const leadC = await makeLead(x, studioC, 'SCHEDULED');
+      const leadD = await makeLead(x, studioD, 'AUDITED');
+      const leadOther = await makeLead(other, studioA, 'SCHEDULED');
+      const campaignA = await makeCampaign(leadA, studioA, 'DELIVERED', 1);
+      const campaignC = await makeCampaign(leadC, studioC, 'SCHEDULED', 2);
+      const campaignOther = await makeCampaign(leadOther, studioA, 'SCHEDULED', 3);
+
+      const result = await recordBusinessOptOut({
+        businessId: x._id,
+        recipientEmail: 'owner@example.com',
+        unsubscribableStatuses: statuses,
+        now: optOutAt,
+      });
+
+      expect(result).toMatchObject({ newlyOptedOut: true, leadsUnsubscribed: 3, campaignsClosed: 1, addressSuppressed: true });
+      expect((await Business.findById(x._id).lean())?.optedOutAt).toEqual(optOutAt);
+      for (const lead of [leadA, leadC, leadD]) {
+        const stored = await Lead.findById(lead._id).lean();
+        expect(stored?.status).toBe('UNSUBSCRIBED');
+        expect(stored?.tags).toContain('unsubscribed');
+      }
+      const closed = await EmailCampaign.findById(campaignC._id).lean();
+      expect(closed?.status).toBe('UNSUBSCRIBED');
+      expect(closed?.unsubscribedAt).toEqual(optOutAt);
+      expect((await EmailCampaign.findById(campaignA._id).lean())?.status).toBe('DELIVERED');
+      // another business is untouched
+      expect((await Lead.findById(leadOther._id).lean())?.status).toBe('SCHEDULED');
+      expect((await EmailCampaign.findById(campaignOther._id).lean())?.status).toBe('SCHEDULED');
+    });
+
+    it('ends the active right and starts its cooldown at the opt-out', async () => {
+      const x = await makeBusiness(1);
+      const lead = await makeLead(x, studioA, 'SCHEDULED');
+      const granted = await grantContactRight({
+        tenantId: studioA,
+        businessId: x._id,
+        leadId: lead._id,
+        source: 'ADD_LEAD',
+        durations,
+        now: t0,
+      });
+      expect(granted.granted).toBe(true);
+
+      const result = await recordBusinessOptOut({ businessId: x._id, recipientEmail: 'o@example.com', unsubscribableStatuses: statuses, now: optOutAt });
+
+      expect(result.rightEnded).toBe(true);
+      const hold = (await Business.findById(x._id).lean())?.contactHold;
+      expect(hold?.expiresAt).toEqual(optOutAt);
+      expect(hold?.cooldownUntil).toEqual(new Date(optOutAt.getTime() + 30 * day));
+      expect(await findActiveContactRight({ leadId: lead._id }, optOutAt)).toBeNull();
+      // the opt-out outlasts the cooldown
+      const later = new Date(optOutAt.getTime() + 60 * day);
+      expect(await grantContactRight({ tenantId: studioC, businessId: x._id, leadId: new Types.ObjectId(), source: 'ADD_LEAD', durations, now: later })).toEqual({
+        granted: false,
+        reason: 'opted_out',
+      });
+    });
+
+    it('stores only the hash of the address', async () => {
+      const x = await makeBusiness(1);
+      await recordBusinessOptOut({ businessId: x._id, recipientEmail: 'Owner@Example.com ', unsubscribableStatuses: statuses, now: optOutAt });
+      const docs = await SuppressedAddress.find({}).lean();
+      expect(docs).toHaveLength(1);
+      expect(docs[0]?.hash).toBe(hashAddress('owner@example.com'));
+      const serialized = JSON.stringify(docs).toLowerCase();
+      expect(serialized).not.toContain('owner@example.com');
+      expect(serialized).not.toContain('example.com');
+    });
+
+    it('a second call changes nothing', async () => {
+      const x = await makeBusiness(1);
+      const lead = await makeLead(x, studioC, 'SCHEDULED');
+      await makeCampaign(lead, studioC, 'SCHEDULED', 1);
+      const input = { businessId: x._id, recipientEmail: 'owner@example.com', unsubscribableStatuses: statuses };
+      await recordBusinessOptOut({ ...input, now: optOutAt });
+      const again = await recordBusinessOptOut({ ...input, now: new Date(optOutAt.getTime() + day) });
+      expect(again).toEqual({ newlyOptedOut: false, rightEnded: false, leadsUnsubscribed: 0, campaignsClosed: 0, addressSuppressed: false });
+      expect((await Business.findById(x._id).lean())?.optedOutAt).toEqual(optOutAt);
+      expect(await SuppressedAddress.countDocuments()).toBe(1);
+    });
+
+    it('isAddressSuppressed normalizes the address, and is false without one', async () => {
+      const x = await makeBusiness(1);
+      await recordBusinessOptOut({ businessId: x._id, recipientEmail: 'owner@example.com', unsubscribableStatuses: statuses, now: optOutAt });
+      expect(await isAddressSuppressed(' Owner@Example.COM ')).toBe(true);
+      expect(await isAddressSuppressed('other@example.com')).toBe(false);
+      expect(await isAddressSuppressed(undefined)).toBe(false);
+      expect(await isAddressSuppressed('')).toBe(false);
+      expect(await isBusinessOptedOut(x._id)).toBe(true);
+      expect(await isBusinessOptedOut(undefined)).toBe(false);
+      expect(await isBusinessOptedOut((await makeBusiness(2))._id)).toBe(false);
+    });
+
+    it('without a businessId only the address is suppressed', async () => {
+      const x = await makeBusiness(1);
+      const lead = await makeLead(x, studioA, 'SCHEDULED');
+      const result = await recordBusinessOptOut({ recipientEmail: 'legacy@example.com', unsubscribableStatuses: statuses, now: optOutAt });
+      expect(result).toEqual({ newlyOptedOut: false, rightEnded: false, leadsUnsubscribed: 0, campaignsClosed: 0, addressSuppressed: true });
+      expect(await isAddressSuppressed('legacy@example.com')).toBe(true);
+      expect((await Lead.findById(lead._id).lean())?.status).toBe('SCHEDULED');
+      expect((await Business.findById(x._id).lean())?.optedOutAt).toBeUndefined();
     });
   });
 });
