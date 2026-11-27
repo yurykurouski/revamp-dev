@@ -204,7 +204,7 @@ export class LeadService {
 
     // The studio's own right per business, one query for the page (REV-228)
     const now = new Date();
-    const businessIds = [...new Set(leads.map((l: any) => l.businessId?.toString()).filter(Boolean))] as string[];
+    const businessIds = [...new Set(leads.flatMap((l) => (l.businessId ? [l.businessId.toString()] : [])))];
     const rightViews = await contactRightViews(scope, businessIds, now);
 
     const enrichedLeads = leads.map((lead: any) => {
@@ -252,7 +252,7 @@ export class LeadService {
     const audit = await findAuditForLead(lead);
 
     const right = await latestContactRight(scope, lead.businessId);
-    const obj = typeof (lead as any).toJSON === 'function' ? lead.toJSON() : { ...(lead as object) };
+    const obj = typeof lead.toJSON === 'function' ? lead.toJSON() : { ...lead };
     return {
       lead: { ...obj, contactRight: right ? toContactRightView(right) : null },
       audit,
