@@ -424,6 +424,7 @@ export const lt: Translation = {
     untilShort: 'Iki {{date}}',
     expired: 'Teisė baigėsi',
     optedOut: 'Įmonė atsisakė laiškų',
+    optedOutShort: 'Atsisakė',
     approveBlocked: 'Jūsų studijos teisė susisiekti su šia įmone baigėsi, todėl siuntimo patvirtinti negalima.',
     approveBlockedOptedOut: 'Ši įmonė paprašė su ja nesusisiekti, todėl siuntimo patvirtinti negalima.',
     column: 'Teisė susisiekti',

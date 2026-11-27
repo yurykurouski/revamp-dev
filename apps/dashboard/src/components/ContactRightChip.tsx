@@ -16,10 +16,12 @@ export const ContactRightChip: React.FC<{ right: IContactRightView | null | unde
   const state = contactRightState(right, now);
   if (state === 'none' || !right) return null;
   if (state === 'ended') {
-    const label = right.endReason === 'opted_out' ? t('contactRight.optedOut') : t('contactRight.expired');
+    const optedOut = right.endReason === 'opted_out';
+    const full = optedOut ? t('contactRight.optedOut') : t('contactRight.expired');
+    // The narrow column cuts the long opted-out label (ru "Бизнес отказался от рассылки"): the table gets a short one, the tooltip the full text
+    const label = variant === 'compact' && optedOut ? t('contactRight.optedOutShort') : full;
     const ended = <Chip size={size} color="default" data-testid="contact-right-chip" label={label} />;
-    // The narrow column can cut a long label (ru "Бизнес отказался от рассылки"); the tooltip keeps it readable
-    return variant === 'compact' ? <Tooltip title={label}>{ended}</Tooltip> : ended;
+    return variant === 'compact' ? <Tooltip title={full}>{ended}</Tooltip> : ended;
   }
   const date = formatDate(right.expiresAt, language, DATE_FORMAT);
   const color = state === 'expiring' ? 'warning' : 'success';

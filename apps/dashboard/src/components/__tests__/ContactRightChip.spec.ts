@@ -88,11 +88,11 @@ describe('ContactRightChip (REV-228)', () => {
       expect(chip()!.getAttribute('aria-label')).toBe(en.contactRight.until.replace('{{date}}', formatDate(expiresAt, 'en', DATE_FORMAT)));
     });
 
-    it('keeps the ended and opted-out labels', () => {
+    it('keeps the expired label and shortens the opted-out one', () => {
       render({ expiresAt: expires(-DAY), active: false }, 'compact');
       expect(chip()!.textContent).toBe(en.contactRight.expired);
       render({ expiresAt: expires(20 * DAY), active: false, endedAt: NOW.toISOString(), endReason: 'opted_out' }, 'compact');
-      expect(chip()!.textContent).toBe(en.contactRight.optedOut);
+      expect(chip()!.textContent).toBe(en.contactRight.optedOutShort);
       expect(chip()!.getAttribute('aria-label')).toBe(en.contactRight.optedOut);
     });
 

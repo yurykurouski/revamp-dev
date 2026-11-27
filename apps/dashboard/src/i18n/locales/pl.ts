@@ -424,6 +424,7 @@ export const pl: Translation = {
     untilShort: 'Do {{date}}',
     expired: 'Prawo wygasło',
     optedOut: 'Firma zrezygnowała z wiadomości',
+    optedOutShort: 'Rezygnacja',
     approveBlocked: 'Prawo Twojego studia do kontaktu z tą firmą wygasło, więc nie można zatwierdzić wysyłki.',
     approveBlockedOptedOut: 'Ta firma poprosiła, by się z nią nie kontaktować, więc nie można zatwierdzić wysyłki.',
     column: 'Prawo do kontaktu',
