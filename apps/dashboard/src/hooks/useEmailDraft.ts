@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { ISenderView } from '../api/client.js';
+import type { ISenderView } from '@revamp/shared-types';
 import type { IAuditDetail, IEmailDraft, ILeadItem } from '../api/client.js';
 import { auditSummarySentence, EmailTemplateContext, renderEmailDraft, renderEmailTemplate } from '../utils/emailTemplate.js';
 
@@ -81,7 +81,6 @@ export function useEmailDraft(lead: ILeadItem, audit?: IAuditDetail | null, sign
       setBody(next);
     }
     // Only a new signer re-derives the default; the lead and audit are read as they are at that moment
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signerName]);
 
   const context: EmailTemplateContext = {
