@@ -26,6 +26,9 @@ export interface ContactRightsMigrationReport {
   conflicts: Array<{ businessId: string; keptLeadId: string; otherLeadIds: string[] }>;
 }
 
+/** Leads that ended without outreach; `UNSUBSCRIBED` is handled as an opt-out */
+const CLOSED_STATUSES = ['REJECTED', 'AUDIT_FAILED'];
+
 const hasStudioAndBusiness = { tenantId: { $type: 'objectId' }, businessId: { $type: 'objectId' } } as const;
 
 interface MigrationLead {
@@ -69,7 +72,8 @@ export async function migrateContactRights(options: {
       for (const lead of unsubscribed) if (lead.contactEmail) hashes.add(hashAddress(lead.contactEmail));
     }
     if (business.contactHold || business.optedOutAt || unsubscribed.length > 0) continue;
-    const [kept, ...others] = group;
+    // A closed lead (rejected, audit failed) never keeps the right: it would block another studio's live pipeline
+    const [kept, ...others] = group.filter((lead) => !CLOSED_STATUSES.includes(lead.status ?? ''));
     if (!kept) continue;
     grants.push({ lead: kept });
     if (others.length > 0) conflicts.push({ businessId: String(business._id), keptLeadId: String(kept._id), otherLeadIds: others.map((lead) => String(lead._id)) });
@@ -113,7 +117,7 @@ export async function checkContactRights(connection: mongoose.Connection): Promi
     .collection('businesses')
     .aggregate<{ count: number }>([
       { $match: { contactHold: { $exists: false }, optedOutAt: { $exists: false } } },
-      { $lookup: { from: 'leads', localField: '_id', foreignField: 'businessId', pipeline: [{ $match: { tenantId: { $type: 'objectId' } } }, { $limit: 1 }], as: 'studioLeads' } },
+      { $lookup: { from: 'leads', localField: '_id', foreignField: 'businessId', pipeline: [{ $match: { tenantId: { $type: 'objectId' }, status: { $nin: CLOSED_STATUSES } } }, { $limit: 1 }], as: 'studioLeads' } },
       { $match: { studioLeads: { $ne: [] } } },
       { $count: 'count' },
     ])

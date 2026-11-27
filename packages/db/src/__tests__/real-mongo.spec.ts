@@ -431,11 +431,14 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       await seedDemoDataset(ds, { reset: false });
       await Promise.all([ContactRight.deleteMany({}), SuppressedAddress.deleteMany({}), Business.updateMany({}, { $unset: { contactHold: 1, optedOutAt: 1 } })]);
       await migrateContactRights({ apply: true, durations: { rightDays: 14, cooldownDays: 30 }, now: new Date('2026-11-21T12:00:00.000Z') });
-      const before = await ContactRight.countDocuments();
+      const claimed = await ContactRight.find().lean();
+      expect(claimed.length).toBeGreaterThan(0);
       const report = await seedDemoDataset(ds, { reset: false });
-      expect(report.contactRights.inserted).toBe(0);
       expect(report.suppressedAddresses.inserted).toBe(0);
-      expect(await ContactRight.countDocuments()).toBe(before);
+      // A business the migration left free (its only lead is closed) may get the seed's right; none gets two
+      const perBusiness = await ContactRight.aggregate([{ $group: { _id: '$businessId', n: { $sum: 1 } } }, { $match: { n: { $gt: 1 } } }]);
+      expect(perBusiness).toEqual([]);
+      for (const right of claimed) expect(await ContactRight.countDocuments({ _id: right._id })).toBe(1);
     });
 
     it('leaves a real user and organization alone, also on reset (REV-206)', async () => {
@@ -1955,6 +1958,28 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       const report = await migrateContactRights({ apply: true, durations, now });
       expect(report).toMatchObject({ rightsToGrant: 0, conflicts: [] });
       expect(await ContactRight.countDocuments()).toBe(1);
+    });
+
+    it('never gives the right to a closed lead: a newer live lead of another studio holds it, with no conflict', async () => {
+      const x = await business(6);
+      const studioC = new Types.ObjectId();
+      await lead(x, studioA, { status: 'REJECTED', createdAt: at('2026-10-01T00:00:00Z') });
+      const live = await lead(x, studioC, { status: 'NEEDS_APPROVAL', createdAt: at('2026-10-05T00:00:00Z') });
+      const report = await migrateContactRights({ apply: true, durations, now });
+      expect(report.conflicts).toEqual([]);
+      const right = await ContactRight.findOne({ businessId: x._id }).lean();
+      expect(String(right?.leadId)).toBe(String(live._id));
+      expect(String(right?.tenantId)).toBe(String(studioC));
+    });
+
+    it('a business whose only lead is closed gets no right, and checkContactRights does not warn about it', async () => {
+      const x = await business(7);
+      await lead(x, studioA, { status: 'AUDIT_FAILED' });
+      expect(await checkContactRights(mongoose.connection)).toEqual([]);
+      const report = await migrateContactRights({ apply: true, durations, now });
+      expect(report).toMatchObject({ rightsToGrant: 0, conflicts: [] });
+      expect(await ContactRight.countDocuments()).toBe(0);
+      expect((await Business.findById(x._id).lean())?.contactHold).toBeUndefined();
     });
 
     it('checkContactRights warns with the command before the migration and returns [] after it', async () => {
