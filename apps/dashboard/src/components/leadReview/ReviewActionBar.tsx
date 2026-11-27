@@ -29,6 +29,10 @@ import { usePermissions } from '../../hooks/usePermissions.js';
 import { useShortcuts } from '../../hooks/useShortcuts.js';
 import { ariaKeyShortcuts, getShortcut } from '../../utils/shortcuts.js';
 import { ShortcutTitle } from '../KeyCaps.js';
+import { useLanguageStore } from '../../store/useLanguageStore.js';
+import { formatDate } from '../../i18n/languages.js';
+import { useNow } from '../../hooks/useNow.js';
+import { DATE_FORMAT, contactRightState, refusalMessage } from '../../utils/contactRight.js';
 import { REVIEW_STEPS, ReviewStep } from './steps.js';
 
 /**
@@ -58,6 +62,8 @@ interface ReviewActionBarProps {
   sender?: ISenderView;
   /** Called when the API says the studio has no sender, so the sender is read again */
   onSenderMissing?: () => void;
+  /** Called when the API refuses for the contact right or an opt-out, so the lead (and its chip) is read again (REV-228) */
+  onRightRefused?: () => void;
 }
 
 /** A link to Settings; a plain anchor when the bar is shown outside the router */
@@ -92,8 +98,12 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
   criticalDataIssues = [],
   sender,
   onSenderMissing,
+  onRightRefused,
 }) => {
   const { t } = useTranslation();
+  const { language } = useLanguageStore();
+  // The clock moves while the review is open: a right that ends then disables Approve without a reload (REV-228)
+  const now = useNow(60_000);
   // A viewer reads the review and changes nothing (REV-207); the API would answer 403 to each of these actions
   const { canWrite, canManageMembers } = usePermissions();
   // Approval and test sends need the studio's sender (REV-221)
@@ -112,6 +122,11 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
   // The API refuses approve/reject outside these statuses (REV-59), so neither is offered there
   const canApprove = canApproveOutreach(lead.status);
   const canReject = canRejectLead(lead.status);
+  // Approval needs the studio's active contact right (REV-226). A lead without the field is not loaded from the API
+  // and blocks nothing; the API refuses with CONTACT_RIGHT_REQUIRED anyway
+  const rightState = contactRightState(lead.contactRight, now);
+  const rightBlocked = canApprove && lead.contactRight !== undefined && (rightState === 'ended' || rightState === 'none');
+  const optedOut = lead.contactRight?.endReason === 'opted_out';
 
   /** Runs an action and shows its failure instead of reporting a success that did not happen (REV-45) */
   const runAction = async (action: () => Promise<void>): Promise<boolean> => {
@@ -125,6 +140,12 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
         // The sender query is stale: read it again, so the warning and the disabled buttons show
         onSenderMissing?.();
         setErrorAlert(t('email.sender.notConfigured'));
+        return false;
+      }
+      const refusal = refusalMessage(t, err, language);
+      if (refusal) {
+        setErrorAlert(refusal);
+        if (err instanceof ApiError && (err.code === 'CONTACT_RIGHT_REQUIRED' || err.code === 'BUSINESS_OPTED_OUT')) onRightRefused?.();
         return false;
       }
       setErrorAlert(t('email.actionFailed', { error: err instanceof Error ? err.message : String(err) }));
@@ -145,7 +166,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
 
   // Missing or changed critical business data needs an explicit extra confirmation (REV-36)
   const handleApproveSubmit = async () => {
-    if (!canWrite || !isEmailStep || !approveArmed || !canApprove || senderMissing || isActionLoading) return;
+    if (!canWrite || !isEmailStep || !approveArmed || !canApprove || senderMissing || rightBlocked || isActionLoading) return;
     if (criticalDataIssues.length > 0) {
       setDataConfirmOpen(true);
       return;
@@ -198,6 +219,16 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
           action={canManageMembers ? <SettingsLink>{t('email.sender.openSettings')}</SettingsLink> : undefined}
         >
           {canManageMembers ? t('email.sender.notConfigured') : `${t('email.sender.notConfigured')} ${t('email.sender.askOwner')}`}
+        </Alert>
+      )}
+      {canWrite && isEmailStep && canApprove && !senderMissing && rightBlocked && (
+        <Alert severity="warning" data-testid="contact-right-blocked-notice">
+          {optedOut ? t('contactRight.approveBlockedOptedOut') : t('contactRight.approveBlocked')}
+        </Alert>
+      )}
+      {isEmailStep && lead.status === 'NEEDS_APPROVAL' && lead.outreachError && (
+        <Alert severity="error" data-testid="outreach-error-notice">
+          {t(`outreachError.${lead.outreachError.code}`)} {t('outreachError.at', { date: formatDate(lead.outreachError.at, language, DATE_FORMAT) })}
         </Alert>
       )}
       {canWrite && isEmailStep && !canApprove && !successAlert && (
@@ -281,7 +312,7 @@ export const ReviewActionBar: React.FC<ReviewActionBarProps> = ({
                   variant="contained"
                   startIcon={isActionLoading ? <CircularProgress size={18} color="inherit" /> : <SendIcon />}
                   onClick={handleApproveSubmit}
-                  disabled={isActionLoading || !canApprove || !approveArmed || !canWrite || senderMissing}
+                  disabled={isActionLoading || !canApprove || !approveArmed || !canWrite || senderMissing || rightBlocked}
                   aria-keyshortcuts={ariaKeyShortcuts(getShortcut('approve'))}
                   sx={{ px: 2 }}
                 >

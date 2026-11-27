@@ -8,6 +8,7 @@ import { isKnownLeadStatus, LEAD_STATUS_CHIP_COLOR } from '../utils/leadStages.j
 import { ILeadItem } from '../api/client.js';
 import { SiteComplexityChip } from './SiteComplexityChip.js';
 import { ScoreChip } from './ScoreChip.js';
+import { ContactRightChip } from './ContactRightChip.js';
 import { AuditFailedActions } from './AuditFailedActions.js';
 import { isAuditFailed } from '../utils/auditFailure.js';
 import { useOpenLead } from '../hooks/useOpenLead.js';
@@ -135,6 +136,14 @@ export const LeadsDataGrid: React.FC<LeadsDataGridProps> = ({ leads, isLoading }
           {params.row.city || '—'}
         </Typography>
       ),
+    },
+    {
+      field: 'contactRight',
+      headerName: t('contactRight.column'),
+      width: 200,
+      // Sorted by the expiry date; a lead without a right sorts last
+      valueGetter: (_value, row) => (row.contactRight ? new Date(row.contactRight.expiresAt).getTime() : null),
+      renderCell: (params: GridRenderCellParams<ILeadItem>) => <ContactRightChip right={params.row.contactRight} />,
     },
     {
       field: 'createdAt',

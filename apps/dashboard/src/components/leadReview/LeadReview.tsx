@@ -7,6 +7,7 @@ import CheckIcon from '@mui/icons-material/Check';
 import { useTranslation } from 'react-i18next';
 import type { IEmailDraft, ILeadItem } from '../../api/client.js';
 import {
+  LEADS_QUERY_KEY,
   useApproveOutreachMutation,
   useAuditQuery,
   useMvpQuery,
@@ -19,6 +20,7 @@ import { useAuthStore } from '../../store/useAuthStore.js';
 import { criticalIssueFields } from '../../utils/completeness.js';
 import { isDashboardNiche } from '../../i18n/niches.js';
 import { EmailDraftEditor } from '../EmailDraftEditor.js';
+import { ContactRightChip } from '../ContactRightChip.js';
 import { AuditStep, NOT_MEASURED } from './AuditStep.js';
 import { PrototypeStep } from './PrototypeStep.js';
 import { OutboxDialog } from './OutboxDialog.js';
@@ -136,6 +138,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
           </Box>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <ContactRightChip right={lead.contactRight} />
           {/* The original site's audit score; no MVP score is measured, so none is shown */}
           <Chip label={t('inspector.originalScore', { score: lead.totalScore ?? NOT_MEASURED })} size="small" color="error" />
           {headerActions}
@@ -224,6 +227,7 @@ export const LeadReview: React.FC<LeadReviewProps> = ({ lead, onClose, onDecisio
         criticalDataIssues={criticalIssueFields(mvp?.completenessReport, lead.completeness)}
         sender={sender}
         onSenderMissing={() => void queryClient.invalidateQueries({ queryKey: SENDER_QUERY_KEY })}
+        onRightRefused={() => void queryClient.invalidateQueries({ queryKey: LEADS_QUERY_KEY })}
       />
     </Box>
   );
