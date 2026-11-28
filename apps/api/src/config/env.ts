@@ -2,6 +2,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { z } from 'zod';
 import { loadFileSecrets } from '@revamp/db';
+import { lotPriceSettingsFromEnv } from '@revamp/validation';
 import { DEFAULT_CONTACT_COOLDOWN_DAYS, DEFAULT_CONTACT_RIGHT_DAYS } from '@revamp/shared-types';
 
 // Load .env from root or local directory
@@ -40,3 +41,5 @@ const EnvSchema = z.object({
 });
 
 export const env = EnvSchema.parse(process.env);
+// REV-231: lot price floor, cap, currency and signal weights; a bad value stops startup
+export const lotPriceSettings = lotPriceSettingsFromEnv(process.env);
