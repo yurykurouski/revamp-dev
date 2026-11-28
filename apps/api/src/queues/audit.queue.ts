@@ -24,7 +24,7 @@ export const addAuditJob = async (data: IAuditJobData) => {
   return await auditQueue.add(AUDIT_JOB_NAMES.LEAD, data);
 };
 
-/** The platform audit of a business no studio owns yet (REV-232): its own job name on the same queue, no `tenantId` */
+/** The platform audit of a business no studio owns yet (REV-232): its own job name on the same queue, no `tenantId`; one job id per audit, so a repeated add is deduplicated */
 export const addPlatformAuditJob = async (data: IPlatformAuditJobData) => {
-  return await auditQueue.add(AUDIT_JOB_NAMES.PLATFORM, data);
+  return await auditQueue.add(AUDIT_JOB_NAMES.PLATFORM, data, { jobId: `platform-audit-${data.auditId}` });
 };

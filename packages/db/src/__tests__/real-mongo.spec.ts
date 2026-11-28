@@ -38,7 +38,7 @@ import { contactAvailabilityByDomain } from '../contact-availability.js';
 import { MIGRATE_CONTACT_RIGHTS_COMMAND, checkContactRights, migrateContactRights } from '../contact-rights-migration.js';
 import { isAddressSuppressed, isBusinessOptedOut, recordBusinessOptOut } from '../opt-out.js';
 import { Lot } from '../models/Lot.model.js';
-import { LotError, createLot, createPlatformAudit, transitionLot } from '../lots.js';
+import { LotError, PLATFORM_AUDIT_STALE_MS, createLot, createPlatformAudit, transitionLot } from '../lots.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
 
@@ -2399,6 +2399,30 @@ describe('real MongoDB (mongodb-memory-server)', () => {
         expect(String(r.audit._id)).not.toBe(String(lead.audit!._id));
         expect((await Business.findById(lead.business._id).lean())?.city).toBe('Kaunas');
         expect(await Audit.countDocuments()).toBe(2);
+      });
+
+      it('a QUEUED or PROCESSING audit older than the stale limit is failed and a new one is queued', async () => {
+        for (const status of ['QUEUED', 'PROCESSING'] as const) {
+          const domain = `stale-${status.toLowerCase()}.example`;
+          const first = await platform(domain);
+          await Audit.updateOne({ _id: first.audit._id }, { status });
+          const later = new Date(Date.now() + PLATFORM_AUDIT_STALE_MS + 60_000);
+          const again = await createPlatformAudit({ domain, originalUrl: `https://${domain}`, businessName: 'Lot Co', niche: 'dental', city: 'Vilnius', now: later });
+          expect(again.queued).toBe(true);
+          expect(String(again.audit._id)).not.toBe(String(first.audit._id));
+          expect(again.audit.status).toBe('QUEUED');
+          const old = await Audit.findById(first.audit._id).lean();
+          expect(old).toMatchObject({ status: 'FAILED', errorMessage: 'The platform audit did not finish in time; a new one was queued' });
+        }
+      });
+
+      it('a fresh running audit is still returned with queued false', async () => {
+        const first = await platform('fresh.example');
+        const soon = new Date(Date.now() + PLATFORM_AUDIT_STALE_MS - 60_000);
+        const again = await createPlatformAudit({ domain: 'fresh.example', originalUrl: 'https://fresh.example', businessName: 'Lot Co', niche: 'dental', city: 'Vilnius', now: soon });
+        expect(again.queued).toBe(false);
+        expect(String(again.audit._id)).toBe(String(first.audit._id));
+        expect((await Audit.findById(first.audit._id).lean())?.status).toBe('QUEUED');
       });
 
       it('sets the city on a business that has none', async () => {

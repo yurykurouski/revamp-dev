@@ -8,6 +8,10 @@ import { retryOnDuplicateKey } from './retry-duplicate-key.js';
 
 // REV-232: the platform audit of a business no studio owns yet, and the lots made from it.
 
+/** A platform audit still QUEUED or PROCESSING after this long lost its job (or its worker): it is failed and re-queued */
+export const PLATFORM_AUDIT_STALE_MS = 30 * 60 * 1000;
+export const PLATFORM_AUDIT_STALE_MESSAGE = 'The platform audit did not finish in time; a new one was queued';
+
 export interface CreatePlatformAuditInput {
   /** Canonical domain (`normalizeDomain`) */
   domain: string;
@@ -15,6 +19,8 @@ export interface CreatePlatformAuditInput {
   businessName: string;
   niche: NicheType;
   city: string;
+  /** The clock for the stale check; defaults to now */
+  now?: Date;
 }
 
 export interface CreatePlatformAuditResult {
@@ -27,7 +33,7 @@ export interface CreatePlatformAuditResult {
 /**
  * Finds or creates the business and its platform audit in one transaction: a COMPLETED audit of the business
  * (any, the audit is shared) or a QUEUED/PROCESSING platform audit is returned as it is; otherwise a QUEUED audit
- * without `leadId` is created. A city is written only for a business that has none.
+ * without `leadId` is created. One still running after `PLATFORM_AUDIT_STALE_MS` is failed and replaced. A city is written only for a business that has none.
  */
 export async function createPlatformAudit(input: CreatePlatformAuditInput): Promise<CreatePlatformAuditResult> {
   const domain = input.domain.toLowerCase();
@@ -54,8 +60,17 @@ export async function createPlatformAudit(input: CreatePlatformAuditInput): Prom
         { session },
       ).sort({ createdAt: -1 });
       if (running) {
-        result = { business, audit: running, queued: false };
-        return;
+        const staleBefore = (input.now ?? new Date()).getTime() - PLATFORM_AUDIT_STALE_MS;
+        if (running.updatedAt.getTime() >= staleBefore) {
+          result = { business, audit: running, queued: false };
+          return;
+        }
+        // Its job is gone or its worker died: fail it and fall through to a new audit
+        await Audit.updateOne(
+          { _id: running._id, status: { $in: ['QUEUED', 'PROCESSING'] } },
+          { $set: { status: 'FAILED', errorMessage: PLATFORM_AUDIT_STALE_MESSAGE } },
+          { session },
+        );
       }
       const [audit] = await Audit.create([{ businessId: business._id, status: 'QUEUED' }], { session });
       result = { business, audit: audit!, queued: true };
