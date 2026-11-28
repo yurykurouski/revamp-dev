@@ -38,7 +38,7 @@ import { contactAvailabilityByDomain } from '../contact-availability.js';
 import { MIGRATE_CONTACT_RIGHTS_COMMAND, checkContactRights, migrateContactRights } from '../contact-rights-migration.js';
 import { isAddressSuppressed, isBusinessOptedOut, recordBusinessOptOut } from '../opt-out.js';
 import { Lot } from '../models/Lot.model.js';
-import { LotError, PLATFORM_AUDIT_STALE_MS, createLot, createPlatformAudit, transitionLot } from '../lots.js';
+import { LotError, PLATFORM_AUDIT_STALE_MS, createLot, createPlatformAudit, listMaskedLots, transitionLot } from '../lots.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
 
@@ -2643,6 +2643,112 @@ describe('real MongoDB (mongodb-memory-server)', () => {
         expect(result.reused).toBe(false);
         expect(result.withdrawnLots).toBe(1);
       });
+    });
+  });
+  describe('masked lot listings (REV-233)', () => {
+    const now = new Date('2026-11-28T12:00:00.000Z');
+    const past = new Date(now.getTime() - 60_000);
+    let seq = 0;
+    const mk = (over: Record<string, unknown> = {}) =>
+      Lot.create({
+        businessId: new Types.ObjectId(),
+        auditId: new Types.ObjectId(),
+        niche: 'dental',
+        city: 'Vilnius',
+        priceCents: 1000 + seq++,
+        currency: 'EUR',
+        band: 'B',
+        need: 0.6,
+        priceSignals: [{ signal: 'siteEra', value: 4, need: 0.6, weight: 1 }],
+        status: 'OPEN',
+        live: true,
+        releaseAt: past,
+        ...over,
+      });
+    const many = async (n: number, over: Record<string, unknown> = {}) => {
+      for (let i = 0; i < n; i++) await mk(over);
+    };
+    const list = (over: Record<string, unknown> = {}) => listMaskedLots({ page: 1, limit: 20, minGroup: 3, now, ...over });
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-masked-lots-test' });
+      await Lot.init();
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Lot.deleteMany({});
+    });
+
+    it('lists a group of exactly k and withholds k-1', async () => {
+      await many(3);
+      await many(2, { niche: 'auto', city: 'Kaunas', band: 'A' });
+      const result = await list();
+      expect(result.total).toBe(3);
+      expect(result.items).toHaveLength(3);
+      expect(result.items.every((i) => i.niche === 'dental')).toBe(true);
+    });
+
+    it('a band filter selecting a group of 3 returns 3 with total 3', async () => {
+      await many(3, { band: 'B' });
+      await many(5, { band: 'C' });
+      const result = await list({ band: 'B' });
+      expect(result.total).toBe(3);
+      expect(result.items).toHaveLength(3);
+    });
+
+    it('a lot released exactly now is listed, one ms later is not, and a future lot does not count toward k', async () => {
+      await many(2);
+      await mk({ releaseAt: now });
+      expect((await list()).total).toBe(3);
+      await Lot.deleteMany({});
+      await many(2);
+      await mk({ releaseAt: new Date(now.getTime() + 1) });
+      expect((await list()).total).toBe(0);
+    });
+
+    it('never lists DRAFT, RESERVED, SOLD or WITHDRAWN lots, and they do not count toward k', async () => {
+      await many(2);
+      for (const status of ['DRAFT', 'RESERVED', 'SOLD', 'WITHDRAWN']) {
+        await mk({ status, live: status === 'SOLD' || status === 'WITHDRAWN' ? undefined : true });
+      }
+      expect((await list()).total).toBe(0);
+      await many(1);
+      expect((await list()).total).toBe(3);
+    });
+
+    it('filters by niche, city (case-insensitive, escaped) and band', async () => {
+      await many(3, { niche: 'dental', city: 'Vilnius' });
+      await many(3, { niche: 'auto', city: 'Kaunas', band: 'A' });
+      await many(3, { niche: 'auto', city: 'a.b', band: 'C' });
+      await many(3, { niche: 'auto', city: 'axb', band: 'C' });
+      expect((await list({ niche: 'auto' })).total).toBe(9);
+      expect((await list({ city: 'vilnius' })).total).toBe(3);
+      expect((await list({ city: 'a.b' })).total).toBe(3);
+      expect((await list({ band: 'A' })).items[0]?.city).toBe('Kaunas');
+      expect((await list({ city: 'Vil' })).total).toBe(0);
+    });
+
+    it('pages in a stable order, newest release first', async () => {
+      for (let i = 0; i < 5; i++) await mk({ releaseAt: new Date(past.getTime() - i * 1000) });
+      const p1 = await list({ limit: 2, page: 1 });
+      const p2 = await list({ limit: 2, page: 2 });
+      const p3 = await list({ limit: 2, page: 3 });
+      expect(p1.total).toBe(5);
+      expect([p1.items.length, p2.items.length, p3.items.length]).toEqual([2, 2, 1]);
+      const all = [...p1.items, ...p2.items, ...p3.items];
+      expect(new Set(all.map((i) => i.id)).size).toBe(5);
+      const times = all.map((i) => i.releaseAt.getTime());
+      expect(times).toEqual([...times].sort((a, b) => b - a));
+    });
+
+    it('projects exactly the allow-listed keys, signals carry only signal and need', async () => {
+      await many(3);
+      const { items } = await list();
+      expect(Object.keys(items[0]!).sort()).toEqual(['band', 'city', 'currency', 'id', 'niche', 'priceCents', 'releaseAt', 'signals']);
+      expect(items[0]!.signals).toEqual([{ signal: 'siteEra', need: 0.6 }]);
+      expect(typeof items[0]!.id).toBe('string');
     });
   });
 });
