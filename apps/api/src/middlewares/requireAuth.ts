@@ -2,6 +2,8 @@ import type { NextFunction, Request, RequestHandler, Response } from 'express';
 import { canManageMembers, canWrite } from '@revamp/shared-types';
 import { AppError } from './errorHandler.js';
 import { findMembershipRole } from '../services/membership.service.js';
+import { platformAdminEmails } from '../config/env.js';
+import { User } from '../models/User.model.js';
 import { scopeFor, type TenantScope } from '../data/tenant-scope.js';
 import { verifySessionToken, type SessionClaims } from '../services/token.js';
 
@@ -92,3 +94,31 @@ export const requireOwner: RequestHandler = (req, _res, next) => {
   }
   refuse(next, 'Only an owner can manage members');
 };
+
+/** True when the email is on the platform admin list (`PLATFORM_ADMIN_EMAILS`); case and surrounding spaces do not matter */
+export const isPlatformAdmin = (email: string | null | undefined, admins: ReadonlySet<string> = platformAdminEmails): boolean =>
+  typeof email === 'string' && admins.has(email.trim().toLowerCase());
+
+/** The guard of `/admin/*` for a given admin list; `requirePlatformAdmin` is the one the app uses */
+export const createPlatformAdminGuard =
+  (admins: ReadonlySet<string>): RequestHandler =>
+  (req, _res, next) => {
+    if (!req.auth) {
+      next(new AppError(401, 'UNAUTHENTICATED', 'Sign in to use the API'));
+      return;
+    }
+    if (admins.size === 0) {
+      refuse(next, 'Platform admins only');
+      return;
+    }
+    User.findById(req.auth.userId, { email: 1 })
+      .lean()
+      .exec()
+      .then(
+        (user) => (isPlatformAdmin(user?.email, admins) ? next() : refuse(next, 'Platform admins only')),
+        (error: unknown) => next(error),
+      );
+  };
+
+/** After `requireAuth`: only a user whose email is in `PLATFORM_ADMIN_EMAILS` passes (REV-232); an owner not listed gets 403 */
+export const requirePlatformAdmin: RequestHandler = createPlatformAdminGuard(platformAdminEmails);

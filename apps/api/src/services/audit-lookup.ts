@@ -44,9 +44,13 @@ export async function findGenerationAudit(
   if (!exact) return null;
   // An audit that more than one lead of the studio reads says nothing about whose lead is meant: the request must name
   // its lead then (the dashboard always does). Audits are shared, so the lead is looked up in the studio only: an
-  // audit no lead of the studio reads answers like a missing one (REV-209)
+  // audit no lead of the studio reads answers like a missing one (REV-209). A platform audit has no `leadId` (REV-232):
+  // `{ _id: undefined }` would be dropped by Mongoose and match every lead, so the `$or` is built without it.
+  const readerFilters = [...(exact.leadId ? [{ _id: exact.leadId }] : []), ...(exact.businessId ? [{ businessId: exact.businessId }] : [])];
+  // An audit that names neither a lead nor a business has no reader: an empty `$or` is invalid, so it answers as missing
+  if (readerFilters.length === 0) return null;
   const readers = await scope.leads
-    .find({ $or: [{ _id: exact.leadId }, ...(exact.businessId ? [{ businessId: exact.businessId }] : [])] })
+    .find({ $or: readerFilters })
     .limit(2)
     .exec();
   if (readers.length !== 1) return null;

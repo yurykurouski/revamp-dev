@@ -1,10 +1,11 @@
 import mongoose, { Types } from 'mongoose';
-import { EMAIL_GUESSED_TAG, type ContactRightSource } from '@revamp/shared-types';
+import { EMAIL_GUESSED_TAG, type ContactRightSource, type LotStatus } from '@revamp/shared-types';
 import { Audit, type IAuditDocument } from './models/Audit.model.js';
 import { Business, type IBusinessDocument } from './models/Business.model.js';
 import { Lead, type ILeadDocument } from './models/Lead.model.js';
 import { ContactRightRefusedError, grantContactRight, type ContactRightDurations } from './contact-rights.js';
 import type { IContactRightDocument } from './models/ContactRight.model.js';
+import { Lot } from './models/Lot.model.js';
 import { retryOnDuplicateKey } from './retry-duplicate-key.js';
 
 // REV-208: adding a lead. The company and its site are one shared `Business` (one per domain); the lead is one
@@ -36,6 +37,12 @@ export interface AddLeadInput {
    * throws `ContactRightRefusedError` and rolls back the lead, its audit and a new business. Scripts omit it.
    */
   contactRight?: { durations: ContactRightDurations; source: ContactRightSource; now?: Date };
+  /**
+   * REV-232: when the studio's right was claimed, withdraw the business's lots in these statuses in the same
+   * transaction (`withdrawnReason: 'claimed_by_studio'`). A studio's own add wins over a lot; the caller passes
+   * `LOT_CLAIMABLE_BY_STUDIO` (`@revamp/validation`). Needs `tenantId` and `contactRight`.
+   */
+  withdrawLots?: { statuses: readonly LotStatus[]; now?: Date };
 }
 
 export interface AddLeadResult {
@@ -49,6 +56,44 @@ export interface AddLeadResult {
   reused: boolean;
   /** The right claimed together with the lead (only when `contactRight` was asked for) */
   contactRight?: IContactRightDocument;
+  /** How many lots of the business were withdrawn because of this add; never shown to the studio */
+  withdrawnLots: number;
+}
+
+/** The business upsert of both `addLeadToBusiness` and `createPlatformAudit`: one document per canonical domain */
+export async function upsertBusinessByDomain(
+  fields: { domain: string; originalUrl: string; businessName: string; niche?: string; city?: string },
+  session: mongoose.ClientSession,
+): Promise<IBusinessDocument> {
+  const business = await Business.findOneAndUpdate(
+    { domain: fields.domain },
+    {
+      $setOnInsert: {
+        originalUrl: fields.originalUrl,
+        businessName: fields.businessName,
+        niche: fields.niche ?? 'other',
+        ...(fields.city ? { city: fields.city } : {}),
+      },
+    },
+    { upsert: true, new: true, session, setDefaultsOnInsert: true },
+  );
+  if (!business) throw new Error(`Could not find or create the business of ${fields.domain}`);
+  return business;
+}
+
+async function withdrawClaimedLots(
+  input: AddLeadInput,
+  business: IBusinessDocument,
+  claimed: IContactRightDocument | undefined,
+  session: mongoose.ClientSession,
+): Promise<number> {
+  if (!input.withdrawLots || !claimed) return 0;
+  const res = await Lot.updateMany(
+    { businessId: business._id, status: { $in: [...input.withdrawLots.statuses] } },
+    { $set: { status: 'WITHDRAWN', withdrawnAt: input.withdrawLots.now ?? new Date(), withdrawReason: 'claimed_by_studio' }, $unset: { live: '' } },
+    { session },
+  );
+  return res.modifiedCount;
 }
 
 async function claimRight(
@@ -87,19 +132,16 @@ export async function addLeadToBusiness(input: AddLeadInput): Promise<AddLeadRes
   return retryOnDuplicateKey(async () => {
     let result: AddLeadResult | undefined;
     await mongoose.connection.transaction(async (session) => {
-      const business = await Business.findOneAndUpdate(
-        { domain },
+      const business = await upsertBusinessByDomain(
         {
-          $setOnInsert: {
-            originalUrl: input.lead['originalUrl'],
-            businessName: input.lead['businessName'],
-            niche: input.lead['niche'] ?? 'other',
-            ...(input.lead['city'] ? { city: input.lead['city'] } : {}),
-          },
+          domain,
+          originalUrl: input.lead['originalUrl'] as string,
+          businessName: input.lead['businessName'] as string,
+          niche: (input.lead['niche'] as string | undefined) ?? 'other',
+          city: input.lead['city'] as string | undefined,
         },
-        { upsert: true, new: true, session, setDefaultsOnInsert: true },
+        session,
       );
-      if (!business) throw new Error(`Could not find or create the business of ${domain}`);
 
       if (input.tenantId) {
         const existing = await Lead.findOne({ tenantId: input.tenantId, businessId: business._id }, { _id: 1 }, { session }).lean();
@@ -122,14 +164,16 @@ export async function addLeadToBusiness(input: AddLeadInput): Promise<AddLeadRes
         const tags = (input.lead['tags'] as string[] | undefined)?.filter((tag) => !(clearsEmailGuess && tag === EMAIL_GUESSED_TAG));
         const [lead] = await Lead.create([{ ...base, ...set, ...(tags ? { tags } : {}), status: 'AUDITED' }], { session });
         const contactRight = await claimRight(input, business, lead!, session);
-        result = { lead: lead!, business, sourceAudit: completed, reused: true, ...(contactRight ? { contactRight } : {}) };
+        const withdrawnLots = await withdrawClaimedLots(input, business, contactRight, session);
+        result = { lead: lead!, business, sourceAudit: completed, reused: true, withdrawnLots, ...(contactRight ? { contactRight } : {}) };
         return;
       }
 
       const [lead] = await Lead.create([base], { session });
       const [audit] = await Audit.create([{ leadId: lead!._id, businessId: business._id, status: 'QUEUED' }], { session });
       const contactRight = await claimRight(input, business, lead!, session);
-      result = { lead: lead!, business, audit: audit!, reused: false, ...(contactRight ? { contactRight } : {}) };
+      const withdrawnLots = await withdrawClaimedLots(input, business, contactRight, session);
+      result = { lead: lead!, business, audit: audit!, reused: false, withdrawnLots, ...(contactRight ? { contactRight } : {}) };
     });
     return result!;
   }).catch(async (error) => {

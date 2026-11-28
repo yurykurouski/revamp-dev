@@ -1,5 +1,5 @@
 import type { Job } from 'bullmq';
-import type { IAuditJobData } from '@revamp/shared-types';
+import { AUDIT_JOB_NAMES, type IAuditJobData, type IPlatformAuditJobData } from '@revamp/shared-types';
 import { Audit } from '../models/Audit.model.js';
 import { Lead } from '../models/Lead.model.js';
 
@@ -46,8 +46,26 @@ export const STALLED_AUDIT_MESSAGE =
  * processor's own catch never runs. Closes the audit and moves the lead out of AUDITING the same way (REV-145).
  * Failures raised inside the processor are handled there and ignored here. Never throws.
  */
-export async function handleAuditJobFailed(job: Job<IAuditJobData> | undefined, error: Error): Promise<void> {
+export async function handleAuditJobFailed(job: Job<IAuditJobData | IPlatformAuditJobData> | undefined, error: Error): Promise<void> {
   if (!job || !STALLED_JOB_ERROR.test(error.message)) return;
+  if (job.name === AUDIT_JOB_NAMES.PLATFORM) return failPlatformAudit(job.data as IPlatformAuditJobData);
+  const leadJob = job as Job<IAuditJobData>;
+  return handleLeadAuditJobStalled(leadJob);
+}
+
+/** A platform audit (REV-232) that stalled out: only that audit is closed, no lead is read or changed. Never throws. */
+async function failPlatformAudit({ auditId, businessId }: IPlatformAuditJobData): Promise<void> {
+  try {
+    await Audit.findOneAndUpdate(
+      { _id: auditId, businessId, leadId: { $exists: false }, status: { $in: ['QUEUED', 'PROCESSING'] } },
+      { status: 'FAILED', errorMessage: STALLED_AUDIT_MESSAGE },
+    ).exec();
+  } catch (updateErr) {
+    console.error(`[AuditFailure] Could not mark platform audit ${auditId} as failed:`, updateErr);
+  }
+}
+
+async function handleLeadAuditJobStalled(job: Job<IAuditJobData>): Promise<void> {
   // The audit is shared with other studios' leads: it is closed only for a lead of the job's studio
   if (typeof job.data.tenantId !== 'string' || !/^[0-9a-f]{24}$/i.test(job.data.tenantId)) return;
   try {

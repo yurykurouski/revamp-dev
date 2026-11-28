@@ -498,6 +498,7 @@ describe('API Routes Integration Tests (Supertest)', () => {
       const auditId = new mongoose.Types.ObjectId().toString();
       const mockAudit = {
         _id: auditId,
+        businessId: new mongoose.Types.ObjectId(),
         status: 'COMPLETED',
         scores: { total: 85, design: 80, performance: 90, accessibility: 85, standards: 100 },
         designCritique: { visualHierarchyRating: 80, criticalFlaws: [], quickWins: [] },
@@ -516,6 +517,17 @@ describe('API Routes Integration Tests (Supertest)', () => {
       expect(res.status).toBe(200);
       expect(res.body.success).toBe(true);
       expect(res.body.data.scores.total).toBe(85);
+    });
+
+    it('answers 404 without querying the leads for an audit with neither leadId nor businessId (REV-232)', async () => {
+      const auditId = new mongoose.Types.ObjectId().toString();
+      vi.spyOn(Lead, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue(null) } as any);
+      const find = vi.spyOn(Lead, 'find').mockClear();
+      vi.spyOn(Audit, 'findById').mockReturnValue({ exec: vi.fn().mockResolvedValue({ _id: auditId, status: 'COMPLETED' }) } as any);
+      const res = await request(app).get(`/api/v1/audits/${auditId}`);
+      expect(res.status).toBe(404);
+      expect(res.body.error.code).toBe('AUDIT_NOT_FOUND');
+      expect(find).not.toHaveBeenCalled();
     });
 
     it('should return 404 when audit is not found', async () => {

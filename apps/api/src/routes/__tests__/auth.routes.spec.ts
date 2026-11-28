@@ -124,7 +124,8 @@ describe('auth routes (REV-206)', () => {
       vi.mocked(authService.getAuthContext).mockResolvedValue(context);
       const res = await request(server).get('/auth/me').set('Authorization', `Bearer ${signSessionToken(claims)}`);
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ success: true, data: context });
+      // REV-232: not on the admin list (PLATFORM_ADMIN_EMAILS is empty in tests)
+      expect(res.body).toEqual({ success: true, data: { ...context, platformAdmin: false } });
       expect(authService.getAuthContext).toHaveBeenCalledWith(claims);
     });
 

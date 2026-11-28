@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import { isValidObjectId } from 'mongoose';
 import { recordBusinessOptOut } from '@revamp/db';
-import { MvpTrackEventDto, canTransition, leadStatusesInto } from '@revamp/validation';
+import { LOT_LIVE_STATUSES, MvpTrackEventDto, canTransition, leadStatusesInto } from '@revamp/validation';
 import { bySecret, scopeFor, type TenantScope } from '../data/tenant-scope.js';
 
 export interface IRequestMetadata {
@@ -247,6 +247,8 @@ export class TrackingService {
       businessId: lead?.businessId as never,
       recipientEmail: campaign.recipientEmail,
       unsubscribableStatuses: leadStatusesInto('UNSUBSCRIBED'),
+      // REV-232: an opted-out business is not offered as a lot
+      withdrawLotStatuses: [...LOT_LIVE_STATUSES],
     });
     if (outcome.leadsUnsubscribed > 0 || outcome.campaignsClosed > 0 || outcome.newlyOptedOut) {
       console.info(

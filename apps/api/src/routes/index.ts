@@ -10,7 +10,8 @@ import mvpRoutes from './mvp.routes.js';
 import outreachRoutes from './outreach.routes.js';
 import trackRoutes from './track.routes.js';
 import discoveryRoutes from './discovery.routes.js';
-import { requireAuth, requireAuthUnless, requireOwner, requireWriter } from '../middlewares/requireAuth.js';
+import adminRoutes from './admin.routes.js';
+import { requireAuth, requireAuthUnless, requireOwner, requirePlatformAdmin, requireWriter } from '../middlewares/requireAuth.js';
 
 const router = Router();
 
@@ -25,6 +26,9 @@ router.use('/auth', authRoutes);
 router.use('/invitations', invitationRoutes);
 // Public: called by email recipients and by the generated MVP pages, which carry a campaign token
 router.use('/track', trackRoutes);
+
+// REV-232: platform audits and lots; only users listed in PLATFORM_ADMIN_EMAILS (a studio owner who is not gets 403)
+router.use('/admin', requireAuth, requirePlatformAdmin, adminRoutes);
 
 // REV-221: the studio's sender is set by the owner (before the generic /organization mount)
 router.use('/organization/sender', requireAuth, requireOwner, senderRoutes);

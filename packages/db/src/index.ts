@@ -10,6 +10,7 @@ export * from './models/Business.model.js';
 export * from './models/Invitation.model.js';
 export * from './models/ContactRight.model.js';
 export * from './models/SuppressedAddress.model.js';
+export * from './models/Lot.model.js';
 
 export * from './password.js';
 export * from './address-hash.js';
@@ -23,6 +24,7 @@ export * from './business-migration.js';
 export * from './tenant-migration.js';
 export * from './retry-duplicate-key.js';
 export * from './add-lead-to-business.js';
+export * from './lots.js';
 export * from './audit-for-lead.js';
 export * from './create-organization-with-owner.js';
 export * from './organization-members.js';

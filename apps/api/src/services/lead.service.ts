@@ -1,6 +1,7 @@
 import { ILeadStats, LeadSource, SiteComplexityClass } from '@revamp/shared-types';
 import {
   CreateLeadDto,
+  LOT_CLAIMABLE_BY_STUDIO,
   MvpCompletenessReportDto,
   leadFieldsFromAudit,
   normalizeDomain,
@@ -92,6 +93,9 @@ export class LeadService {
         deriveFromAudit: leadFieldsFromAudit as DeriveFromAudit,
         // REV-225: the studio claims the business's contact right in the same transaction, or the add is refused
         contactRight: { durations: { rightDays: env.CONTACT_RIGHT_DAYS, cooldownDays: env.CONTACT_COOLDOWN_DAYS }, source: 'ADD_LEAD' },
+        // REV-232: the studio's own add wins over a draft or open lot of the business; the lot is withdrawn in the same
+        // transaction and nothing about it reaches the response
+        withdrawLots: { statuses: [...LOT_CLAIMABLE_BY_STUDIO] },
         lead: {
           businessName: dto.businessName,
           originalUrl: dto.originalUrl,

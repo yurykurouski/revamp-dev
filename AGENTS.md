@@ -105,6 +105,7 @@ Revamp-dev/
 8. **One Lead State Machine (REV-62):**
    * `LEAD_STATUSES` (`@revamp/shared-types`) lists every lead status; `LEAD_TRANSITIONS`, `canTransition` and `leadStatusesInto` (`@revamp/validation`) define the allowed moves.
    * Every write of `Lead.status` checks the table, normally as an atomic filter (`Lead.findOneAndUpdate({ _id, status: { $in: leadStatusesInto(to) } }, …)`), so stale jobs and late tracking hits never move a lead backwards. Never keep a local list of statuses; add a status or an edge to the table (and its tests) instead.
+   * Lots have their own table (REV-232): `LOT_TRANSITIONS`, `canLotTransition` and `lotStatusesInto` (`@revamp/validation`), with the same rule: every write of `Lot.status` is an atomic `status: { $in: lotStatusesInto(to) }` filter (`transitionLot`, `@revamp/db`), never a local list ([packages/db/AGENTS.md](packages/db/AGENTS.md)).
    * Writers into `AUDIT_FAILED` filter on the one status they move from (`QUEUED` in the API, `AUDITING` in the workers), not on every source in the table, so a stale job never fails a retried lead.
    * Adding a lead and approving outreach are transactions with an enqueue-or-revert step: [apps/api/AGENTS.md](apps/api/AGENTS.md). Stalled worker jobs: [apps/workers/AGENTS.md](apps/workers/AGENTS.md). A new status also needs a column, bucket, chip color and five labels ([apps/dashboard/AGENTS.md](apps/dashboard/AGENTS.md)) and a place in the demo dataset ([packages/db/AGENTS.md](packages/db/AGENTS.md)).
 9. **One API Error Format (REV-63):**

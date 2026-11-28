@@ -132,7 +132,9 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
     };
     /** Not refused by the guard: neither 401 nor 403 (a timeout, 0, means a handler is running, which is a pass) */
     const gotThrough = (status: number) => status !== 401 && status !== 403;
-    const roleRoutes = () => routes.filter((r) => !PUBLIC_ROUTES.includes(r) && !own(r));
+    // REV-232: `/admin/*` is for the platform admins list, not for a studio role: checked in its own test below
+    const adminRoutes = () => routes.filter((r) => r.includes(' /admin/'));
+    const roleRoutes = () => routes.filter((r) => !PUBLIC_ROUTES.includes(r) && !own(r) && !r.includes(' /admin/'));
     const writeRoutes = () => roleRoutes().filter((r) => !READ.has(r.split(' ')[0]!) && !r.includes(' /organization/'));
     const readRoutes = () => roleRoutes().filter((r) => READ.has(r.split(' ')[0]!) && !r.includes(' /organization/'));
     const ownerRoutes = () => roleRoutes().filter((r) => r.includes(' /organization/'));
@@ -188,6 +190,20 @@ describe('every API route needs a token unless it is public (REV-206)', () => {
       }
       setMemberRole('owner');
       for (const route of ownerRoutes()) expect(gotThrough((await call(route)).status), route).toBe(true);
+    });
+
+    it('refuses every /admin route to a studio owner who is not a platform admin with 403 FORBIDDEN (REV-232)', async () => {
+      expect(adminRoutes().length).toBeGreaterThanOrEqual(6);
+      for (const role of ['owner', 'operator', 'viewer'] as const) {
+        setMemberRole(role);
+        const failures: string[] = [];
+        for (const route of adminRoutes()) {
+          const res = await call(route, true);
+          if (res.status !== 403 || res.body?.error?.code !== 'FORBIDDEN') failures.push(`${role} ${route} -> ${res.status}`);
+        }
+        expect(failures).toEqual([]);
+      }
+      setMemberRole('owner');
     });
 
     it('answers 401 when the membership is gone, on a read and on a write route', async () => {

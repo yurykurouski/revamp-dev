@@ -5,3 +5,5 @@ export * from './EmailCampaign.model.js';
 export * from './AnalyticsEvent.model.js';
 export * from './ContactRight.model.js';
 export * from './SuppressedAddress.model.js';
+export * from './Lot.model.js';
+export * from './Business.model.js';

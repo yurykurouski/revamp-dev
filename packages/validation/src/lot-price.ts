@@ -7,13 +7,13 @@
  * Band A is the strongest case for a redesign (the most valuable lot), D the weakest.
  */
 import { z } from 'zod';
-import type { IAudit, IAuditScores } from '@revamp/shared-types';
+import { LOT_BANDS, type IAudit, type IAuditScores, type LotBandCode } from '@revamp/shared-types';
 
 export const LOT_PRICE_SIGNALS = ['siteEra', 'accessibility', 'standards', 'lcp'] as const;
 export type LotPriceSignal = (typeof LOT_PRICE_SIGNALS)[number];
 
-export const LOT_BANDS = ['A', 'B', 'C', 'D'] as const;
-export type LotBand = (typeof LOT_BANDS)[number];
+export { LOT_BANDS };
+export type LotBand = LotBandCode;
 export const LotBandSchema = z.enum(LOT_BANDS);
 
 const SITE_ERA_SCORE_FULL = 6; // twice SITE_DATED_THRESHOLD
@@ -32,7 +32,7 @@ export interface LotPriceSettings {
   weights: Record<LotPriceSignal, number>;
 }
 
-const WeightSchema = z.number().finite().min(0);
+const WeightSchema = z.number().finite().min(0).max(1000);
 
 export const LotPriceSettingsSchema: z.ZodType<LotPriceSettings, z.ZodTypeDef, unknown> = z
   .object({
@@ -91,6 +91,7 @@ export interface LotPrice {
   missing: LotPriceSignal[];
 }
 
+const roundNeed = (n: number): number => Number(n.toFixed(12));
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
 
 function measuredValue(audit: PriceableAudit, signal: LotPriceSignal): number | undefined {
@@ -139,7 +140,8 @@ export function priceFromAudit(
     return { amountCents: settings.floorCents, currency: settings.currency, need: null, signals: [], missing };
   }
 
-  const need = clamp01(measured.reduce((sum, m) => sum + m.rawWeight * m.need, 0) / totalWeight);
+  // 12 decimals: 0.1 * 7.5 style float noise must not push a need of exactly 0.75 under the band edge
+  const need = roundNeed(clamp01(measured.reduce((sum, m) => sum + m.rawWeight * m.need, 0) / totalWeight));
   const amountCents = settings.floorCents + Math.round((settings.capCents - settings.floorCents) * need);
   return {
     amountCents: Math.min(settings.capCents, Math.max(settings.floorCents, amountCents)),
@@ -170,8 +172,8 @@ export function auditBand(audit: PriceableAudit, settings?: LotPriceSettings): L
 /** Reads the LOT_* variables; an empty string counts as unset. Throws a ZodError on a bad value. */
 export function lotPriceSettingsFromEnv(env: Record<string, string | undefined>): LotPriceSettings {
   const get = (name: string): string | undefined => {
-    const v = env[name];
-    return v === undefined || v.trim() === '' ? undefined : v;
+    const v = env[name]?.trim();
+    return v === undefined || v === '' ? undefined : v;
   };
   const d = DEFAULT_LOT_PRICE_SETTINGS;
   const num = (name: string, fallback: number): unknown => {

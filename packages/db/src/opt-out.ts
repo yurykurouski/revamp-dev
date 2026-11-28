@@ -1,11 +1,12 @@
 import mongoose, { Types, type ClientSession } from 'mongoose';
-import type { LeadStatus } from '@revamp/shared-types';
+import type { LeadStatus, LotStatus } from '@revamp/shared-types';
 import { hashAddress } from './address-hash.js';
 import { endContactRight } from './contact-rights.js';
 import { Business } from './models/Business.model.js';
 import { ContactRight } from './models/ContactRight.model.js';
 import { EmailCampaign } from './models/EmailCampaign.model.js';
 import { Lead } from './models/Lead.model.js';
+import { Lot } from './models/Lot.model.js';
 import { SuppressedAddress } from './models/SuppressedAddress.model.js';
 
 /**
@@ -25,6 +26,11 @@ export interface BusinessOptOutInput {
   businessId?: Types.ObjectId | string;
   recipientEmail?: string;
   unsubscribableStatuses: readonly LeadStatus[];
+  /**
+   * REV-232: lots of the business in these statuses are withdrawn in the same transaction (reason `opted_out`); the
+   * caller passes `LOT_LIVE_STATUSES`. A withdrawn RESERVED lot must be refunded by the purchase flow (REV-234).
+   */
+  withdrawLotStatuses?: readonly LotStatus[];
   now?: Date;
 }
 
@@ -72,6 +78,14 @@ export async function recordBusinessOptOut(input: BusinessOptOutInput): Promise<
         await endContactRight(rightId, { at: now, reason: 'opted_out' }, session);
         result.rightEnded = true;
       }
+    }
+
+    if (input.withdrawLotStatuses && input.withdrawLotStatuses.length > 0) {
+      await Lot.updateMany(
+        { businessId, status: { $in: [...input.withdrawLotStatuses] } },
+        { $set: { status: 'WITHDRAWN', withdrawnAt: now, withdrawReason: 'opted_out' }, $unset: { live: '' } },
+        { session },
+      );
     }
 
     const leadIds = (await Lead.find({ businessId }, { _id: 1 }, { session }).lean()).map((lead) => lead._id);
