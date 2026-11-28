@@ -39,6 +39,13 @@ describe('findGenerationAudit (REV-55, REV-208)', () => {
     expect(Audit.findById).not.toHaveBeenCalled();
   });
 
+  it('answers like a missing audit, without querying the leads, for an audit with neither leadId nor businessId (REV-232)', async () => {
+    vi.mocked(Lead.findById).mockReturnValue(exec(null) as never);
+    vi.mocked(Audit.findById).mockReturnValue(exec({ _id: auditId, status: 'COMPLETED' }) as never);
+    expect(await findGenerationAudit(scope, auditId)).toBeNull();
+    expect(Lead.find).not.toHaveBeenCalled();
+  });
+
   it('returns the asking lead, not the lead that ran a shared audit', async () => {
     const owner = { _id: new mongoose.Types.ObjectId(), businessId };
     vi.mocked(Lead.findById).mockReturnValue(exec(lead) as never);
