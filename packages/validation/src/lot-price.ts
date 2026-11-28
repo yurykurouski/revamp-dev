@@ -7,7 +7,7 @@
  * Band A is the strongest case for a redesign (the most valuable lot), D the weakest.
  */
 import { z } from 'zod';
-import { LOT_BANDS, type IAudit, type IAuditScores, type LotBandCode } from '@revamp/shared-types';
+import { LOT_BANDS, type IAudit, type IAuditScores, type LotBandCode, type NeedLevel } from '@revamp/shared-types';
 
 export const LOT_PRICE_SIGNALS = ['siteEra', 'accessibility', 'standards', 'lcp'] as const;
 export type LotPriceSignal = (typeof LOT_PRICE_SIGNALS)[number];
@@ -15,6 +15,15 @@ export type LotPriceSignal = (typeof LOT_PRICE_SIGNALS)[number];
 export { LOT_BANDS };
 export type LotBand = LotBandCode;
 export const LotBandSchema = z.enum(LOT_BANDS);
+
+export { NEED_LEVELS } from '@revamp/shared-types';
+
+/** REV-233: the coarse level of a signal's need (0..1) shown in masked listings: below 1/3 low, below 2/3 medium, else high */
+export function needLevel(need: number): NeedLevel {
+  if (need < 1 / 3) return 'low';
+  if (need < 2 / 3) return 'medium';
+  return 'high';
+}
 
 const SITE_ERA_SCORE_FULL = 6; // twice SITE_DATED_THRESHOLD
 const A11Y_VIOLATIONS_FULL = 20;

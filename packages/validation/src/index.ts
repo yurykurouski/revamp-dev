@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { LOT_PRICE_SIGNALS, LotBandSchema } from './lot-price.js';
 import {
   LEAD_OUTREACH_ERROR_CODES,
+  NEED_LEVELS,
   DISCOVERY_MAX_EXCLUDED_DOMAINS,
   DiscoveryCandidateStatus,
   LLM_PROVIDER_IDS,
@@ -255,7 +257,7 @@ export const SiteEraSchema = z
   .strict();
 
 /** Query-string value: an empty parameter counts as missing */
-const optionalQueryParam = <T extends z.ZodTypeAny>(schema: T) =>
+export const optionalQueryParam = <T extends z.ZodTypeAny>(schema: T) =>
   z.preprocess((val) => (val === '' ? undefined : val), schema.optional());
 
 /**
@@ -271,6 +273,34 @@ export const GetLeadsQuerySchema = z.object({
 });
 
 export type GetLeadsQueryDto = z.infer<typeof GetLeadsQuerySchema>;
+
+/** Query of `GET /lots` (REV-233): filters are the group keys of the k threshold; invalid values answer 400 */
+export const LotListingQuerySchema = z.object({
+  niche: optionalQueryParam(NicheEnumSchema),
+  city: optionalQueryParam(z.string().trim().min(1).max(100)),
+  band: optionalQueryParam(LotBandSchema),
+  page: optionalQueryParam(z.coerce.number().int().min(1)).transform((v) => v ?? 1),
+  limit: optionalQueryParam(z.coerce.number().int().min(1).max(50)).transform((v) => v ?? 20),
+});
+
+export type LotListingQuery = z.infer<typeof LotListingQuerySchema>;
+
+/**
+ * REV-233: the only shape of a listed lot. A strict allow-list: an identity field (business, audit, name, domain,
+ * contacts, exact measurements) added to the projection by mistake fails the parse instead of reaching a studio.
+ */
+export const MaskedLotSchema = z
+  .object({
+    id: z.string().regex(/^[a-f\d]{24}$/i),
+    niche: NicheEnumSchema,
+    city: z.string().min(1).max(100),
+    band: LotBandSchema,
+    priceCents: z.number().int().min(0),
+    currency: z.string().regex(/^[A-Z]{3}$/),
+    releaseAt: z.string().datetime(),
+    signals: z.array(z.object({ signal: z.enum(LOT_PRICE_SIGNALS), level: z.enum(NEED_LEVELS) }).strict()).max(LOT_PRICE_SIGNALS.length),
+  })
+  .strict();
 
 export const QuickAddLeadSchema = z.object({
   url: z.preprocess((val) => {
