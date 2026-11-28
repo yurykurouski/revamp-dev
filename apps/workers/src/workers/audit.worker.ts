@@ -1,5 +1,5 @@
 import { Worker, Job, UnrecoverableError } from 'bullmq';
-import { IAuditJobData } from '@revamp/shared-types';
+import { AUDIT_JOB_NAMES, IAuditJobData, IPlatformAuditJobData } from '@revamp/shared-types';
 import type { LlmUsage } from '../services/llm-client.js';
 import { redisConnection } from '../queues/connection.js';
 import { QUEUE_NAMES } from '../queues/queue.constants.js';
@@ -12,14 +12,18 @@ import { EMAIL_GUESSED_TAG } from '../services/discovery.constants.js';
 import { isPermanentAuditError, leadFieldsFromAudit, leadStatusesInto, sanitizeAuditError } from '@revamp/validation';
 import { handleAuditJobFailed, isFinalAuditAttempt, markLeadAuditFailed } from './audit-failure.js';
 import { jobTenant, withTenant } from '../tenant.js';
+import { processPlatformAudit } from './platform-audit.js';
 
 // A lead can be re-audited, which creates a new Audit document; always write to the latest one
 const LATEST_AUDIT = { sort: { createdAt: -1 } } as const;
 
 export const createAuditWorker = (): Worker => {
-  const worker = new Worker<IAuditJobData>(
+  const worker = new Worker<IAuditJobData | IPlatformAuditJobData>(
     QUEUE_NAMES.AUDIT,
-    async (job: Job<IAuditJobData>) => {
+    async (queued: Job<IAuditJobData | IPlatformAuditJobData>) => {
+      // The platform audit of a business no studio owns yet (REV-232) carries no studio and touches no lead
+      if (queued.name === AUDIT_JOB_NAMES.PLATFORM) return processPlatformAudit(queued as Job<IPlatformAuditJobData>);
+      const job = queued as Job<IAuditJobData>;
       const { leadId, url, niche } = job.data;
       console.log(`[AuditWorker] Received job ${job.id} for lead: ${leadId}, URL: ${url}, niche: ${niche}`);
 
