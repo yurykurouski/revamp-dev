@@ -34,7 +34,15 @@ Read this when you change the workers: audit, site assessment, content and brand
 
 ## Shared audits (REV-208)
 
+A COMPLETED audit with no `leadId` is a platform audit (REV-232, below): a studio's Add lead of the same business reuses it instead of queuing a second audit.
+
 * An audit is computed once per business and read by every studio's lead of it. Read a lead's audit with `findAuditForLead` / `findGenerationAudit` (own newest audit, else the business's COMPLETED one), never `Audit.findOne({ leadId })` for a lead that may have taken another studio's audit, and never take the lead from the audit (`audit.leadId` is the lead that ran it). A COMPLETED audit is **read-only**: write nothing derived from one MVP or lead onto it (the comparison banner lives on the lead and the MVP project, because its URL names that MVP's slug). Only the audit worker writes an audit, and only its own lead's.
+
+## Platform audit (REV-232)
+
+* A `platform-audit` job (`AUDIT_JOB_NAMES.PLATFORM`, payload `IPlatformAuditJobData`) runs on the same `audit-queue`, worker, concurrency and browser leases as a lead audit; the processor dispatches on `job.name` before anything else. The measurement (`measureSite`, `src/services/site-audit.ts`) is the one shared by both, so the two cannot drift; a platform audit stores `businessId` and no `leadId`, leaves a failed measurement out and lists it (REV-100), moves no lead and queues no generation job.
+* `processPlatformAudit` claims `{ _id, businessId, leadId: { $exists: false }, status: QUEUED|PROCESSING }` and writes the result by `_id`, so a stale or retried job never overwrites a finished audit and never touches a studio's own audit; a job it cannot claim returns `skipped`. It marks the audit `FAILED` only on the last attempt (a retry must still find it claimable). Screenshots go under `business-<id>`; token events carry `auditId` and `businessId` and no `leadId` or `tenantId`.
+* This is the one written exception to the REV-210 rule below: a platform job carries no `tenantId` because it writes only platform-owned records (the `Audit` and studio-less token events). `handleAuditJobFailed` closes a stalled platform audit by id and reads no lead.
 
 ## Tenant isolation (REV-210)
 
