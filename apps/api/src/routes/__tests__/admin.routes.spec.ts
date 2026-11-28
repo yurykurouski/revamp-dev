@@ -266,6 +266,22 @@ describe('lots', () => {
     expect((await as(admin).post(`/admin/lots/${lot._id}/open`).send({ releaseAt: 'soon' })).status).toBe(400);
   });
 
+  it.each([
+    ['opted out', { optedOutAt: new Date() }],
+    ['held', { contactHold: { rightId: new Types.ObjectId(), tenantId: new Types.ObjectId(), expiresAt: new Date(Date.now() + 864e5), cooldownUntil: new Date(Date.now() + 40 * 864e5) } }],
+    ['in cooldown', { contactHold: { rightId: new Types.ObjectId(), tenantId: new Types.ObjectId(), expiresAt: new Date(Date.now() - 864e5), cooldownUntil: new Date(Date.now() + 864e5) } }],
+  ])('refuses to open a DRAFT lot of a business that became %s, and writes nothing', async (_name, patch) => {
+    const { business } = await completedBusiness(`open-elig-${n++}.example`);
+    const lot = (await as(admin).post('/admin/lots').send({ businessId: String(business._id) })).body.data;
+    await Business.collection.updateOne({ _id: business._id }, { $set: patch });
+    const res = await as(admin).post(`/admin/lots/${lot._id}/open`).send({});
+    expect(res.status).toBe(409);
+    expect(res.body.error.code).toBe('LOT_NOT_ELIGIBLE');
+    const after = await Lot.findById(lot._id).lean();
+    expect(after?.status).toBe('DRAFT');
+    expect(after?.releaseAt).toBeUndefined();
+  });
+
   it('opens with releaseAt defaulting to now, and does not open a RESERVED lot', async () => {
     const { business } = await completedBusiness('reserved.example');
     const lot = (await as(admin).post('/admin/lots').send({ businessId: String(business._id) })).body.data;

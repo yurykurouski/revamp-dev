@@ -13,6 +13,7 @@ import { LotError, createLot, createPlatformAudit, transitionLot } from '@revamp
 import { lotPriceSettings } from '../config/env.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { Audit } from '../models/Audit.model.js';
+import { Business } from '../models/Business.model.js';
 import { Lot } from '../models/Lot.model.js';
 import { addPlatformAuditJob } from '../queues/audit.queue.js';
 import { redisConnection } from '../queues/connection.js';
@@ -119,6 +120,15 @@ async function notFoundOrNotAllowed(id: string): Promise<AppError> {
 /** DRAFT to OPEN; `releaseAt` defaults to now */
 export async function openLot(id: string, releaseAt?: string) {
   if (!mongoose.isValidObjectId(id)) throw await notFoundOrNotAllowed(id);
+  // A business that opted out or was claimed since the lot was made is not offered (REV-232 review)
+  const draft = await Lot.findOne({ _id: id, status: { $in: [...LOT_ADMIN_OPENABLE] } }, { businessId: 1 }).lean().exec();
+  if (draft) {
+    const business = await Business.findById(draft.businessId, { optedOutAt: 1, contactHold: 1 }).lean().exec();
+    const held = business?.contactHold && business.contactHold.cooldownUntil.getTime() > Date.now();
+    if (!business || business.optedOutAt || held) {
+      throw new AppError(409, 'LOT_NOT_ELIGIBLE', 'The business is opted out, held by a studio or in cooldown');
+    }
+  }
   const lot = await transitionLot(id, 'OPEN', {
     allowedFrom: LOT_ADMIN_OPENABLE,
     set: { releaseAt: releaseAt ? new Date(releaseAt) : new Date() },
