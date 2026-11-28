@@ -115,27 +115,47 @@ export interface CreateLotInput {
  */
 export async function createLot(input: CreateLotInput): Promise<ILotDocument> {
   const now = input.now ?? new Date();
-  const business = await Business.findById(input.businessId).lean();
-  if (!business) throw new LotError('LOT_NOT_ELIGIBLE', 'The business does not exist');
-  if (business.optedOutAt) throw new LotError('LOT_NOT_ELIGIBLE', 'The business asked not to be contacted');
-  if (business.contactHold && business.contactHold.cooldownUntil.getTime() > now.getTime()) {
-    throw new LotError('LOT_NOT_ELIGIBLE', 'The business is held by a studio or in cooldown');
-  }
-  if (!business.city) throw new LotError('LOT_NOT_ELIGIBLE', 'The business has no city');
-
   try {
-    return await Lot.create({
-      businessId: business._id,
-      auditId: input.auditId,
-      niche: business.niche,
-      city: business.city,
-      priceCents: input.price.amountCents,
-      currency: input.price.currency,
-      band: input.price.band,
-      need: input.price.need,
-      priceSignals: input.price.signals,
-      status: 'DRAFT',
-      live: true,
+    // One transaction: the eligibility check is a WRITE on the business, so a concurrent `grantContactRight`
+    // (Add lead, which also writes the business) conflicts with it and one of the two retries and sees the other:
+    // a lot is never created on a business a studio just claimed
+    return await mongoose.connection.transaction(async (session) => {
+      const eligible = await Business.findOneAndUpdate(
+        {
+          _id: input.businessId,
+          optedOutAt: { $exists: false },
+          city: { $exists: true, $ne: '' },
+          $or: [{ contactHold: { $exists: false } }, { contactHold: null }, { 'contactHold.cooldownUntil': { $lte: now } }],
+        },
+        { $set: { updatedAt: now } },
+        { session, new: true, timestamps: false },
+      );
+      if (!eligible) {
+        const business = await Business.findById(input.businessId, null, { session }).lean();
+        if (!business) throw new LotError('LOT_NOT_ELIGIBLE', 'The business does not exist');
+        if (business.optedOutAt) throw new LotError('LOT_NOT_ELIGIBLE', 'The business asked not to be contacted');
+        if (!business.city) throw new LotError('LOT_NOT_ELIGIBLE', 'The business has no city');
+        throw new LotError('LOT_NOT_ELIGIBLE', 'The business is held by a studio or in cooldown');
+      }
+      const [lot] = await Lot.create(
+        [
+          {
+            businessId: eligible._id,
+            auditId: input.auditId,
+            niche: eligible.niche,
+            city: eligible.city,
+            priceCents: input.price.amountCents,
+            currency: input.price.currency,
+            band: input.price.band,
+            need: input.price.need,
+            priceSignals: input.price.signals,
+            status: 'DRAFT',
+            live: true,
+          },
+        ],
+        { session },
+      );
+      return lot!;
     });
   } catch (error) {
     if ((error as { code?: unknown } | null)?.code === 11000) throw new LotError('LOT_ALREADY_LIVE', 'The business already has a live lot');

@@ -2485,6 +2485,30 @@ describe('real MongoDB (mongodb-memory-server)', () => {
         expect(await Lot.countDocuments({ businessId: business._id })).toBe(1);
       });
 
+      it('createLot racing an add that claims the contact right never leaves a live lot on a held business', async () => {
+        const holdsRight = async (businessId: Types.ObjectId) => {
+          const b = await Business.findById(businessId).lean();
+          return Boolean(b?.contactHold && b.contactHold.cooldownUntil.getTime() > Date.now());
+        };
+        for (let round = 0; round < 15; round++) {
+          const domain = `race-claim-${round}.example`;
+          const { business, audit } = await completedBusiness(domain);
+          const now = new Date();
+          await Promise.allSettled([
+            createLot({ businessId: business._id, auditId: audit._id, price, now }),
+            addLeadToBusiness({
+              tenantId: studioA,
+              lead: { businessName: 'Lot Co', originalUrl: `https://${domain}`, domain, niche: 'dental', status: 'QUEUED' },
+              deriveFromAudit: derive as never,
+              contactRight: { durations, source: 'ADD_LEAD', now },
+              withdrawLots: { statuses: ['DRAFT', 'OPEN'], now },
+            }),
+          ]);
+          expect(await holdsRight(business._id), `round ${round}: the add must win the hold`).toBe(true);
+          expect(await Lot.countDocuments({ businessId: business._id, live: true }), `round ${round}: live lot on a held business`).toBe(0);
+        }
+      });
+
       it('a WITHDRAWN lot does not block a new one', async () => {
         const { business, audit, lot } = await lotFor('again.example');
         await transitionLot(lot._id, 'WITHDRAWN', { allowedFrom: ['DRAFT', 'OPEN', 'RESERVED'], set: { withdrawReason: 'admin' } });
