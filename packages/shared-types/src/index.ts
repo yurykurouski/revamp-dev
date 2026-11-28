@@ -425,7 +425,8 @@ export interface IScreenshotUrls {
 
 export interface IAudit {
   _id: string;
-  leadId: string;
+  /** Absent on a platform audit, one no studio's lead ran (REV-232) */
+  leadId?: string;
   /** The shared business this audit measured (REV-208) */
   businessId?: string;
   status: AuditStatus;
@@ -765,6 +766,20 @@ export interface IAuditJobData {
   /** The studio the job runs for (REV-210): a worker refuses a job whose tenant is missing or is not its lead's */
   tenantId: string;
   leadId: string;
+  url: string;
+  niche: NicheType;
+}
+
+/** Job names on the audit queue (REV-232): the lead audit keeps its name, the platform audit is new */
+export const AUDIT_JOB_NAMES = { LEAD: 'audit-website', PLATFORM: 'platform-audit' } as const;
+
+/**
+ * The audit of a business no studio owns yet (REV-232). It carries no `tenantId`: the job writes only the
+ * shared `Audit` and studio-less token events.
+ */
+export interface IPlatformAuditJobData {
+  auditId: string;
+  businessId: string;
   url: string;
   niche: NicheType;
 }
@@ -1241,6 +1256,15 @@ export const API_ERROR_CODES = [
   // Outreach (REV-226): the studio's right to contact the business is not active, so approval is refused
   // (`details.expiredAt` when the studio had one)
   'CONTACT_RIGHT_REQUIRED',
+  // Lots and platform audits (REV-232): admin only. `LOT_NOT_ELIGIBLE`: the business is opted out, held or in
+  // cooldown, or has no city; `LOT_NOT_PRICEABLE`: the audit measured no price signal
+  'LOT_NOT_FOUND',
+  'LOT_NOT_ELIGIBLE',
+  'LOT_ALREADY_LIVE',
+  'LOT_NOT_PRICEABLE',
+  'LOT_TRANSITION_NOT_ALLOWED',
+  'PLATFORM_AUDIT_NOT_FOUND',
+  'NO_COMPLETED_PLATFORM_AUDIT',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1526,4 +1550,43 @@ export interface IContactRightView {
   /** Set when the right ended before `expiresAt` (REV-228) */
   endedAt?: string;
   endReason?: 'opted_out';
+}
+
+// 13. Lots (REV-232)
+export const LOT_STATUSES = ['DRAFT', 'OPEN', 'RESERVED', 'SOLD', 'WITHDRAWN'] as const;
+export type LotStatus = (typeof LOT_STATUSES)[number];
+
+/** Why a lot was withdrawn: by a platform admin, or because a studio added the business itself */
+export const LOT_WITHDRAW_REASONS = ['admin', 'claimed_by_studio'] as const;
+export type LotWithdrawReason = (typeof LOT_WITHDRAW_REASONS)[number];
+
+/** Audit bands of a lot: A is the strongest case for a redesign, D the weakest (REV-231) */
+export const LOT_BANDS = ['A', 'B', 'C', 'D'] as const;
+export type LotBandCode = (typeof LOT_BANDS)[number];
+
+export interface ILotPriceSignal {
+  signal: string;
+  value: number;
+  need: number;
+  weight: number;
+}
+
+/** A priced offer of one business and its audit; the platform owns it until a studio buys it */
+export interface ILot {
+  _id: string;
+  businessId: string;
+  auditId: string;
+  niche: NicheType;
+  city: string;
+  priceCents: number;
+  currency: string;
+  band: LotBandCode;
+  need: number;
+  priceSignals: ILotPriceSignal[];
+  status: LotStatus;
+  releaseAt?: string | Date;
+  withdrawnAt?: string | Date;
+  withdrawReason?: LotWithdrawReason;
+  createdAt: string | Date;
+  updatedAt: string | Date;
 }

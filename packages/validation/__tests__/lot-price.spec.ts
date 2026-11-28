@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { ZodError } from 'zod';
 import {
   DEFAULT_LOT_PRICE_SETTINGS,
   LotPriceSettingsSchema,
@@ -181,5 +182,56 @@ describe('lotPriceSettingsFromEnv', () => {
 describe('LotPriceSettingsSchema', () => {
   it('rejects an unknown key', () => {
     expect(() => LotPriceSettingsSchema.parse({ ...DEFAULT_LOT_PRICE_SETTINGS, extra: 1 })).toThrow();
+  });
+});
+
+describe('REV-231 follow-ups', () => {
+  it('rejects a weight above 1000 (two of 1e308 would sum to Infinity)', () => {
+    expect(() =>
+      LotPriceSettingsSchema.parse({
+        ...DEFAULT_LOT_PRICE_SETTINGS,
+        weights: { siteEra: 1e308, accessibility: 1e308, standards: 0, lcp: 0 },
+      }),
+    ).toThrow(ZodError);
+    expect(() => lotPriceSettingsFromEnv({ LOT_PRICE_WEIGHT_LCP: '1001' })).toThrow(ZodError);
+  });
+
+  it('trims the currency from the env', () => {
+    expect(lotPriceSettingsFromEnv({ LOT_CURRENCY: ' eur ' }).currency).toBe('EUR');
+  });
+
+  it('rounds a need of exactly 0.75 that floats under it, so the band is A', () => {
+    const settings = {
+      ...DEFAULT_LOT_PRICE_SETTINGS,
+      weights: { siteEra: 0.1, accessibility: 0.1, standards: 0.1, lcp: 0 },
+    };
+    const a = audit({ era: 1.5, violations: 20, standards: 0 });
+    const raw = (0.1 * (1.5 / 6) + 0.1 * 1 + 0.1 * 1) / (0.1 + 0.1 + 0.1);
+    expect(raw).toBeLessThan(0.75);
+    const p = priceFromAudit(a, settings);
+    expect(p.need).toBe(0.75);
+    expect(auditBand(a, settings)).toBe('A');
+  });
+
+  it('throws a ZodError naming the failing path', () => {
+    const issuePath = (fn: () => unknown): unknown => {
+      try {
+        fn();
+      } catch (e) {
+        return (e as ZodError).issues[0]?.path;
+      }
+      return undefined;
+    };
+    expect(issuePath(() => lotPriceSettingsFromEnv({ LOT_PRICE_CAP_CENTS: '1000' }))).toEqual(['capCents']);
+    expect(
+      issuePath(() =>
+        lotPriceSettingsFromEnv({
+          LOT_PRICE_WEIGHT_SITE_ERA: '0',
+          LOT_PRICE_WEIGHT_ACCESSIBILITY: '0',
+          LOT_PRICE_WEIGHT_STANDARDS: '0',
+          LOT_PRICE_WEIGHT_LCP: '0',
+        }),
+      ),
+    ).toEqual(['weights']);
   });
 });

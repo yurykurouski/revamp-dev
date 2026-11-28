@@ -30,6 +30,7 @@ import {
 
 export * from './lead-status.js';
 export * from './lot-price.js';
+export * from './lot-status.js';
 
 // ==============================================================================
 // Accounts and sign-in (REV-206)
@@ -148,6 +149,20 @@ export const NicheEnumSchema = z.enum([
   'real_estate',
   'other',
 ]);
+
+/** Body of `POST /admin/platform-audits` (REV-232): the platform audits a business no studio owns yet */
+export const CreatePlatformAuditSchema = z.object({
+  url: z
+    .string()
+    .trim()
+    .max(2048)
+    .url()
+    .refine((u) => /^https?:\/\//i.test(u), 'URL must start with http:// or https://'),
+  businessName: z.string().trim().min(1).max(100),
+  niche: NicheEnumSchema,
+  city: z.string().trim().min(1).max(100),
+});
+export type CreatePlatformAuditInput = z.infer<typeof CreatePlatformAuditSchema>;
 
 /**
  * Schema for POST /api/v1/leads
