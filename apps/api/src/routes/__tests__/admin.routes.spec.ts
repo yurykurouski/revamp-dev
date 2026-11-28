@@ -65,7 +65,7 @@ afterAll(async () => {
   await closeServer(server);
   await mongoose.disconnect();
   await mongo.stop();
-});
+}, 60_000);
 
 beforeEach(async () => {
   vi.clearAllMocks();
