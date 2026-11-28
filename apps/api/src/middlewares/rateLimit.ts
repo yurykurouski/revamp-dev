@@ -72,12 +72,12 @@ export function createTenantRateLimiter(options: TenantRateLimiterOptions): Requ
   };
 }
 
-/** The runtime store: one MULTI (INCR, EXPIRE NX) per request; refuses at once while Redis is not ready */
+/** The runtime store: one MULTI (INCR, EXPIRE; the key holds the window index, so a repeated EXPIRE is harmless and Redis 6 works) per request; refuses at once while Redis is not ready */
 export function redisRateLimitStore(connection: Pick<Redis, 'status' | 'multi'>, timeoutMs: number): RateLimitStore {
   return {
     async hit(key, windowSeconds) {
       if (connection.status !== 'ready') throw new Error('Redis is not ready');
-      const results = await withDeadline(connection.multi().incr(key).expire(key, windowSeconds, 'NX').exec(), timeoutMs);
+      const results = await withDeadline(connection.multi().incr(key).expire(key, windowSeconds).exec(), timeoutMs);
       const [incr] = results ?? [];
       if (!incr || incr[0]) throw incr?.[0] ?? new Error('Redis returned no count');
       return Number(incr[1]);

@@ -84,14 +84,14 @@ describe('redisRateLimitStore (REV-233)', () => {
     expect(multi).not.toHaveBeenCalled();
   });
 
-  it('runs INCR and EXPIRE NX in one MULTI and returns the count', async () => {
+  it('runs INCR and a plain EXPIRE (Redis 6 has no NX) in one MULTI and returns the count', async () => {
     const exec = vi.fn().mockResolvedValue([[null, 4], [null, 0]]);
     const expire = vi.fn(() => ({ exec }));
     const incr = vi.fn(() => ({ expire }));
     const store = redisRateLimitStore({ status: 'ready', multi: () => ({ incr }) } as never, 500);
     expect(await store.hit('rl:k', 60)).toBe(4);
     expect(incr).toHaveBeenCalledWith('rl:k');
-    expect(expire).toHaveBeenCalledWith('rl:k', 60, 'NX');
+    expect(expire).toHaveBeenCalledWith('rl:k', 60);
   });
 
   it('rejects when the transaction reports an error', async () => {
