@@ -331,6 +331,7 @@ Settings reach every container as environment variables: `npm run dev` reads the
 | `API_PREFIX` | api | URL prefix of the API (`/api/v1`) |
 | `CONTACT_RIGHT_DAYS` / `CONTACT_COOLDOWN_DAYS` | api | REV-224: days a studio holds the exclusive right to contact a business (default 14) and the cooldown after it that blocks every studio (default 30) |
 | `LOT_PRICE_FLOOR_CENTS` / `LOT_PRICE_CAP_CENTS` / `LOT_CURRENCY` | api | REV-231: lot price floor and cap in integer minor units (defaults 1500 and 9900) and the ISO 4217 currency (default `EUR`); the cap must be at least the floor, a bad value stops startup |
+| `LOT_PRICE_STEP_CENTS` | api | REV-233: lot prices are rounded to a multiple of this many minor units (default 500, 1 to 10000) so the exact price does not reveal the audit; the floor and cap still clamp the result |
 | `LOT_PRICE_WEIGHT_SITE_ERA` / `LOT_PRICE_WEIGHT_ACCESSIBILITY` / `LOT_PRICE_WEIGHT_STANDARDS` / `LOT_PRICE_WEIGHT_LCP` | api | REV-231: relative weights of the four audit signals in the lot price (defaults 35, 25, 20, 20); renormalized over the signals that were measured, 0 leaves one out, not all may be 0 |
 | `LOT_LISTING_MIN_GROUP` | api | REV-233: k, the smallest number of open released lots a (niche, city, band) group needs before `GET /lots` shows it (default 3) |
 | `LOT_LISTING_RATE_LIMIT` / `LOT_LISTING_RATE_WINDOW_SECONDS` | api | REV-233: requests per studio per fixed window on `GET /lots` (defaults 30 and 60); over it the API answers `429 RATE_LIMITED`, and `503 LISTINGS_UNAVAILABLE` when Redis is not ready |
