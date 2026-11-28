@@ -11,6 +11,7 @@ import outreachRoutes from './outreach.routes.js';
 import trackRoutes from './track.routes.js';
 import discoveryRoutes from './discovery.routes.js';
 import adminRoutes from './admin.routes.js';
+import { createLotRoutes } from './lot.routes.js';
 import { requireAuth, requireAuthUnless, requireOwner, requirePlatformAdmin, requireWriter } from '../middlewares/requireAuth.js';
 
 const router = Router();
@@ -29,6 +30,9 @@ router.use('/track', trackRoutes);
 
 // REV-232: platform audits and lots; only users listed in PLATFORM_ADMIN_EMAILS (a studio owner who is not gets 403)
 router.use('/admin', requireAuth, requirePlatformAdmin, adminRoutes);
+
+// REV-233: masked lot listings for every studio member (a viewer reads), rate limited per studio
+router.use('/lots', requireAuth, requireWriter, createLotRoutes());
 
 // REV-221: the studio's sender is set by the owner (before the generic /organization mount)
 router.use('/organization/sender', requireAuth, requireOwner, senderRoutes);

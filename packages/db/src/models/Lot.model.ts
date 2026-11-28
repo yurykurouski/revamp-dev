@@ -59,6 +59,8 @@ const LotSchema = new Schema<ILotDocument>(
 LotSchema.index({ businessId: 1 }, { unique: true, partialFilterExpression: { live: true } });
 // Listings by status, niche, city and band (REV-233)
 LotSchema.index({ status: 1, niche: 1, city: 1, band: 1 });
+// The masked listing matches OPEN lots by release time (REV-233)
+LotSchema.index({ status: 1, releaseAt: -1 });
 LotSchema.index({ auditId: 1 });
 
 export const Lot: Model<ILotDocument> =

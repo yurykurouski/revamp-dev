@@ -7,7 +7,7 @@
  * Band A is the strongest case for a redesign (the most valuable lot), D the weakest.
  */
 import { z } from 'zod';
-import { LOT_BANDS, type IAudit, type IAuditScores, type LotBandCode } from '@revamp/shared-types';
+import { LOT_BANDS, type IAudit, type IAuditScores, type LotBandCode, type NeedLevel } from '@revamp/shared-types';
 
 export const LOT_PRICE_SIGNALS = ['siteEra', 'accessibility', 'standards', 'lcp'] as const;
 export type LotPriceSignal = (typeof LOT_PRICE_SIGNALS)[number];
@@ -15,6 +15,15 @@ export type LotPriceSignal = (typeof LOT_PRICE_SIGNALS)[number];
 export { LOT_BANDS };
 export type LotBand = LotBandCode;
 export const LotBandSchema = z.enum(LOT_BANDS);
+
+export { NEED_LEVELS } from '@revamp/shared-types';
+
+/** REV-233: the coarse level of a signal's need (0..1) shown in masked listings: below 1/3 low, below 2/3 medium, else high */
+export function needLevel(need: number): NeedLevel {
+  if (need < 1 / 3) return 'low';
+  if (need < 2 / 3) return 'medium';
+  return 'high';
+}
 
 const SITE_ERA_SCORE_FULL = 6; // twice SITE_DATED_THRESHOLD
 const A11Y_VIOLATIONS_FULL = 20;
@@ -28,6 +37,8 @@ const BAND_C_MIN = 0.25;
 export interface LotPriceSettings {
   floorCents: number;
   capCents: number;
+  /** REV-233: the price is rounded to a multiple of this, so the exact price does not reveal the audit */
+  stepCents: number;
   currency: string;
   weights: Record<LotPriceSignal, number>;
 }
@@ -38,6 +49,7 @@ export const LotPriceSettingsSchema: z.ZodType<LotPriceSettings, z.ZodTypeDef, u
   .object({
     floorCents: z.number().int().min(0),
     capCents: z.number().int().min(0),
+    stepCents: z.number().int().min(1).max(10000),
     currency: z
       .string()
       .transform((c) => c.toUpperCase())
@@ -64,6 +76,7 @@ export const LotPriceSettingsSchema: z.ZodType<LotPriceSettings, z.ZodTypeDef, u
 export const DEFAULT_LOT_PRICE_SETTINGS: LotPriceSettings = {
   floorCents: 1500,
   capCents: 9900,
+  stepCents: 500,
   currency: 'EUR',
   weights: { siteEra: 35, accessibility: 25, standards: 20, lcp: 20 },
 };
@@ -90,6 +103,9 @@ export interface LotPrice {
   /** Signals left out because they were not measured or weigh 0 */
   missing: LotPriceSignal[];
 }
+
+/** Nearest multiple of `step`, half up (REV-233) */
+export const roundToStep = (amount: number, step: number): number => Math.round(amount / step) * step;
 
 const roundNeed = (n: number): number => Number(n.toFixed(12));
 const clamp01 = (n: number): number => Math.min(1, Math.max(0, n));
@@ -142,7 +158,8 @@ export function priceFromAudit(
 
   // 12 decimals: 0.1 * 7.5 style float noise must not push a need of exactly 0.75 under the band edge
   const need = roundNeed(clamp01(measured.reduce((sum, m) => sum + m.rawWeight * m.need, 0) / totalWeight));
-  const amountCents = settings.floorCents + Math.round((settings.capCents - settings.floorCents) * need);
+  const exact = settings.floorCents + Math.round((settings.capCents - settings.floorCents) * need);
+  const amountCents = roundToStep(exact, settings.stepCents);
   return {
     amountCents: Math.min(settings.capCents, Math.max(settings.floorCents, amountCents)),
     currency: settings.currency,
@@ -183,6 +200,7 @@ export function lotPriceSettingsFromEnv(env: Record<string, string | undefined>)
   return LotPriceSettingsSchema.parse({
     floorCents: num('LOT_PRICE_FLOOR_CENTS', d.floorCents),
     capCents: num('LOT_PRICE_CAP_CENTS', d.capCents),
+    stepCents: num('LOT_PRICE_STEP_CENTS', d.stepCents),
     currency: get('LOT_CURRENCY') ?? d.currency,
     weights: {
       siteEra: num('LOT_PRICE_WEIGHT_SITE_ERA', d.weights.siteEra),

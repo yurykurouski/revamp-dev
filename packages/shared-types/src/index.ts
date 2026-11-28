@@ -1265,6 +1265,10 @@ export const API_ERROR_CODES = [
   'LOT_TRANSITION_NOT_ALLOWED',
   'PLATFORM_AUDIT_NOT_FOUND',
   'NO_COMPLETED_PLATFORM_AUDIT',
+  // Masked listings (REV-233): the studio's request budget is used up (`details.retryAfterSeconds`), or the limiter's
+  // store is down and the request is refused rather than served unlimited
+  'RATE_LIMITED',
+  'LISTINGS_UNAVAILABLE',
 ] as const;
 
 export type ApiErrorCode = (typeof API_ERROR_CODES)[number];
@@ -1589,4 +1593,26 @@ export interface ILot {
   withdrawReason?: LotWithdrawReason;
   createdAt: string | Date;
   updatedAt: string | Date;
+}
+
+// 14. Masked lot listings (REV-233)
+/** How strongly one measured signal argues for a redesign; the exact measurement is never shown before purchase */
+export const NEED_LEVELS = ['low', 'medium', 'high'] as const;
+export type NeedLevel = (typeof NEED_LEVELS)[number];
+
+export interface IMaskedLotSignal {
+  signal: 'siteEra' | 'accessibility' | 'standards' | 'lcp';
+  level: NeedLevel;
+}
+
+/** A lot as a studio sees it before buying: nothing that identifies the business (allow-list, `MaskedLotSchema`) */
+export interface IMaskedLot {
+  id: string;
+  niche: NicheType;
+  city: string;
+  band: LotBandCode;
+  priceCents: number;
+  currency: string;
+  releaseAt: string;
+  signals: IMaskedLotSignal[];
 }

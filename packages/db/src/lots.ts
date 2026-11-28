@@ -194,3 +194,79 @@ export async function transitionLot(
     { new: true },
   );
 }
+
+// REV-233: masked listings
+
+export interface ListMaskedLotsInput {
+  niche?: NicheType;
+  /** Matched case-insensitively and whole (an escaped anchored regex) */
+  city?: string;
+  band?: LotBandCode;
+  page: number;
+  limit: number;
+  /** k: a (niche, city, band) group with fewer listed lots is withheld */
+  minGroup: number;
+  now: Date;
+}
+
+/** One listed lot, allow-listed fields only; the API maps `need` to a level and parses the item with `MaskedLotSchema` */
+export interface MaskedLotRow {
+  id: string;
+  niche: NicheType;
+  city: string;
+  band: LotBandCode;
+  priceCents: number;
+  currency: string;
+  releaseAt: Date;
+  signals: { signal: string; need: number }[];
+}
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * Lots a studio may see: OPEN and released (`releaseAt <= now`), in a (niche, city, band) group of at least `minGroup`
+ * such lots. Every filter is a group key, so filtering before counting keeps or drops whole groups. Newest release first.
+ */
+export async function listMaskedLots(input: ListMaskedLotsInput): Promise<{ items: MaskedLotRow[]; total: number }> {
+  const match: Record<string, unknown> = { status: 'OPEN', releaseAt: { $lte: input.now } };
+  if (input.niche) match['niche'] = input.niche;
+  if (input.band) match['band'] = input.band;
+  if (input.city) match['city'] = { $regex: `^${escapeRegExp(input.city)}$`, $options: 'i' };
+
+  const [result] = await Lot.aggregate<{ items: Record<string, unknown>[]; total: { n: number }[] }>([
+    { $match: match },
+    {
+      $setWindowFields: {
+        partitionBy: { niche: '$niche', city: '$city', band: '$band' },
+        output: { groupSize: { $count: {} } },
+      },
+    },
+    { $match: { groupSize: { $gte: input.minGroup } } },
+    { $sort: { releaseAt: -1, _id: 1 } },
+    {
+      $facet: {
+        items: [
+          { $skip: (input.page - 1) * input.limit },
+          { $limit: input.limit },
+          {
+            $project: {
+              _id: 0,
+              id: { $toString: '$_id' },
+              niche: 1,
+              city: 1,
+              band: 1,
+              priceCents: 1,
+              currency: 1,
+              releaseAt: 1,
+              signals: {
+                $map: { input: '$priceSignals', as: 's', in: { signal: '$$s.signal', need: '$$s.need' } },
+              },
+            },
+          },
+        ],
+        total: [{ $count: 'n' }],
+      },
+    },
+  ]);
+  return { items: (result?.items ?? []) as unknown as MaskedLotRow[], total: result?.total[0]?.n ?? 0 };
+}

@@ -7,6 +7,7 @@ import {
   lotBandFromNeed,
   lotPriceSettingsFromEnv,
   priceFromAudit,
+  roundToStep,
   type PriceableAudit,
 } from '../src/lot-price';
 
@@ -60,7 +61,7 @@ describe('priceFromAudit', () => {
     const a = audit({ era: 3, violations: 0, standards: 100, lcp: 2500 });
     const p = priceFromAudit(a);
     expect(p.need).toBeCloseTo(0.175, 10);
-    expect(p.amountCents).toBe(2970);
+    expect(p.amountCents).toBe(3000);
     expect(auditBand(a)).toBe('D');
     expect(p.signals.map((s) => s.weight).reduce((x, y) => x + y, 0)).toBeCloseTo(1, 10);
   });
@@ -233,5 +234,40 @@ describe('REV-231 follow-ups', () => {
         }),
       ),
     ).toEqual(['weights']);
+  });
+});
+
+describe('price step (REV-233)', () => {
+  it('roundToStep rounds to the nearest multiple, half up', () => {
+    expect(roundToStep(2749, 500)).toBe(2500);
+    expect(roundToStep(2750, 500)).toBe(3000);
+    expect(roundToStep(2970, 1)).toBe(2970);
+  });
+
+  it('a step of 1 reproduces the exact price', () => {
+    const a = audit({ era: 3, violations: 0, standards: 100, lcp: 2500 });
+    expect(priceFromAudit(a, { ...DEFAULT_LOT_PRICE_SETTINGS, stepCents: 1 }).amountCents).toBe(2970);
+  });
+
+  it('keeps need, signals and band from the unrounded need, and the clamp wins over the step (cap 9900)', () => {
+    const a = audit({ era: 14, violations: 50, standards: 0, lcp: 9000 });
+    expect(priceFromAudit(a).amountCents).toBe(9900);
+    const b = audit({ era: 3, violations: 0, standards: 100, lcp: 2500 });
+    expect(priceFromAudit(b).need).toBeCloseTo(0.175, 10);
+  });
+
+  it('the no-signal price stays exactly the floor even when the floor is not a multiple', () => {
+    const s = { ...DEFAULT_LOT_PRICE_SETTINGS, floorCents: 1234 };
+    expect(priceFromAudit(audit({}), s).amountCents).toBe(1234);
+  });
+
+  it('defaults to 500 and reads LOT_PRICE_STEP_CENTS', () => {
+    expect(DEFAULT_LOT_PRICE_SETTINGS.stepCents).toBe(500);
+    expect(lotPriceSettingsFromEnv({ LOT_PRICE_STEP_CENTS: '' }).stepCents).toBe(500);
+    expect(lotPriceSettingsFromEnv({ LOT_PRICE_STEP_CENTS: '100' }).stepCents).toBe(100);
+  });
+
+  it.each(['0', '-5', '1.5', '10001', 'abc'])('rejects LOT_PRICE_STEP_CENTS=%s', (v) => {
+    expect(() => lotPriceSettingsFromEnv({ LOT_PRICE_STEP_CENTS: v })).toThrow(ZodError);
   });
 });
