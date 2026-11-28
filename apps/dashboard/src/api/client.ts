@@ -677,7 +677,8 @@ export type IMvpPageResult = IMvpPageJobResult & { mvp: IMvpProjectDetail };
  */
 export interface IAuditDetail {
   id: string;
-  leadId: string;
+  /** Absent when the audit was run by the platform, not by a lead (REV-232) */
+  leadId?: string;
   desktopScreenshotUrl?: string;
   mobileScreenshotUrl?: string;
   /** Full-page captures of the original site; absent for audits made before REV-21 */
@@ -711,9 +712,9 @@ export interface IAuditDetail {
 
 /**
  * An audit as `GET /audits/:id` returns it (REV-67). A queued or failed audit has not filled in its
- * sections yet, so everything but the lead is optional.
+ * sections yet, so everything is optional.
  */
-export type IServerAudit = Pick<Serialized<IAudit>, 'leadId'> & Partial<Serialized<IAudit>>;
+export type IServerAudit = Partial<Serialized<IAudit>>;
 
 /** Maps an audit from the API, keeping unmeasured values undefined */
 export const mapServerAudit = (a: IServerAudit, auditId: string): IAuditDetail => {
