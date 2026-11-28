@@ -2494,6 +2494,32 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       });
     });
 
+    describe('an opt-out withdraws the lots of the business (REV-232)', () => {
+      it('withdraws DRAFT, OPEN and RESERVED lots with reason opted_out and leaves another business alone', async () => {
+        const a = await lotFor('optout-a.example');
+        const b = await lotFor('optout-b.example', 'OPEN');
+        const c = await lotFor('optout-c.example', 'OPEN');
+        await Lot.updateOne({ _id: c.lot._id }, { status: 'RESERVED' });
+        const other = await lotFor('optout-other.example', 'OPEN');
+        const now = at('2026-12-03T00:00:00Z');
+        for (const x of [a, b, c]) {
+          await recordBusinessOptOut({ businessId: x.business._id, unsubscribableStatuses: ['QUEUED'], withdrawLotStatuses: ['DRAFT', 'OPEN', 'RESERVED'], now });
+          const lot = await Lot.findById(x.lot._id).lean();
+          expect(lot).toMatchObject({ status: 'WITHDRAWN', withdrawReason: 'opted_out', withdrawnAt: now });
+          expect(lot?.live).toBeUndefined();
+        }
+        const untouched = await Lot.findById(other.lot._id).lean();
+        expect(untouched?.status).toBe('OPEN');
+        expect(untouched?.live).toBe(true);
+      });
+
+      it('without withdrawLotStatuses the lots stay (existing callers)', async () => {
+        const a = await lotFor('optout-keep.example', 'OPEN');
+        await recordBusinessOptOut({ businessId: a.business._id, unsubscribableStatuses: ['QUEUED'] });
+        expect((await Lot.findById(a.lot._id).lean())?.status).toBe('OPEN');
+      });
+    });
+
     describe('transitionLot', () => {
       it('DRAFT to OPEN sets releaseAt', async () => {
         const { lot } = await lotFor('open.example');

@@ -1556,8 +1556,8 @@ export interface IContactRightView {
 export const LOT_STATUSES = ['DRAFT', 'OPEN', 'RESERVED', 'SOLD', 'WITHDRAWN'] as const;
 export type LotStatus = (typeof LOT_STATUSES)[number];
 
-/** Why a lot was withdrawn: by a platform admin, or because a studio added the business itself */
-export const LOT_WITHDRAW_REASONS = ['admin', 'claimed_by_studio'] as const;
+/** Why a lot was withdrawn: by a platform admin, because a studio added the business itself, or because the business opted out */
+export const LOT_WITHDRAW_REASONS = ['admin', 'claimed_by_studio', 'opted_out'] as const;
 export type LotWithdrawReason = (typeof LOT_WITHDRAW_REASONS)[number];
 
 /** Audit bands of a lot: A is the strongest case for a redesign, D the weakest (REV-231) */

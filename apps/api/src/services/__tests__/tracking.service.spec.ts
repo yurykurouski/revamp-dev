@@ -380,7 +380,8 @@ describe('TrackingService (REV-18 Telemetry & Tracking)', () => {
       const recipient = { recipientEmail: 'owner@example.com' };
       vi.spyOn(EmailCampaign, 'findOneAndUpdate').mockReturnValueOnce(execOf({ _id: 'camp-1', leadId: 'lead-1', ...recipient }));
       vi.spyOn(EmailCampaign, 'findOne').mockReturnValue(execOf({ _id: 'camp-1', leadId: 'lead-1', status: 'UNSUBSCRIBED', ...recipient }));
-      const expected = { businessId: 'biz-1', recipientEmail: 'owner@example.com', unsubscribableStatuses: NOT_OPTED_OUT };
+      // REV-232: a lot of the business that can still change is withdrawn with the opt-out
+      const expected = { businessId: 'biz-1', recipientEmail: 'owner@example.com', unsubscribableStatuses: NOT_OPTED_OUT, withdrawLotStatuses: ['DRAFT', 'OPEN', 'RESERVED'] };
 
       expect(await service.recordUnsubscribe('tok-1')).toEqual({ found: true, alreadyUnsubscribed: false, leadId: 'lead-1' });
       expect(recordBusinessOptOut).toHaveBeenLastCalledWith(expected);
