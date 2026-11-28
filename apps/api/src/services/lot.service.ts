@@ -1,16 +1,19 @@
 import mongoose from 'mongoose';
-import type { ILotPriceSignal } from '@revamp/shared-types';
+import type { ILotPriceSignal, IMaskedLot } from '@revamp/shared-types';
 import {
   LOT_ADMIN_OPENABLE,
   lotBandFromNeed,
   lotStatusesInto,
+  MaskedLotSchema,
+  needLevel,
+  type LotListingQuery,
   normalizeDomain,
   priceFromAudit,
   type CreatePlatformAuditInput,
 } from '@revamp/validation';
 import type { LotStatus } from '@revamp/shared-types';
-import { LotError, createLot, createPlatformAudit, transitionLot } from '@revamp/db';
-import { lotPriceSettings } from '../config/env.js';
+import { LotError, createLot, createPlatformAudit, listMaskedLots, transitionLot, type MaskedLotRow } from '@revamp/db';
+import { env, lotPriceSettings } from '../config/env.js';
 import { AppError } from '../middlewares/errorHandler.js';
 import { Audit } from '../models/Audit.model.js';
 import { Business } from '../models/Business.model.js';
@@ -157,4 +160,47 @@ export async function listLots(query: { status?: LotStatus; page: number; limit:
     Lot.countDocuments(filter).exec(),
   ]);
   return { data, pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) } };
+}
+
+// REV-233: masked listings for studios
+
+export type MaskedLotFetcher = typeof listMaskedLots;
+
+export interface MaskedLotPage {
+  items: IMaskedLot[];
+  total: number;
+  page: number;
+  limit: number;
+}
+
+/** Spreads the row so that any field the projection adds reaches the strict schema, which refuses it */
+const toMaskedCandidate = (row: MaskedLotRow) => ({
+  ...row,
+  releaseAt: row.releaseAt instanceof Date ? row.releaseAt.toISOString() : row.releaseAt,
+  signals: row.signals.map((s) => ({ signal: s.signal, level: needLevel(s.need) })),
+});
+
+/**
+ * Open, released lots for a studio. Every item is parsed with the strict `MaskedLotSchema` before it is returned, so a
+ * field added to the projection by mistake fails the request (500) instead of reaching a studio.
+ */
+export async function listMaskedLotsForStudio(
+  query: LotListingQuery,
+  deps: { fetchLots?: MaskedLotFetcher; now?: () => Date; minGroup?: number } = {},
+): Promise<MaskedLotPage> {
+  const fetchLots = deps.fetchLots ?? listMaskedLots;
+  const { items, total } = await fetchLots({
+    niche: query.niche,
+    city: query.city,
+    band: query.band,
+    page: query.page,
+    limit: query.limit,
+    minGroup: deps.minGroup ?? env.LOT_LISTING_MIN_GROUP,
+    now: (deps.now ?? (() => new Date()))(),
+  });
+  const parsed = items.map((row) => MaskedLotSchema.safeParse(toMaskedCandidate(row)));
+  if (parsed.some((p) => !p.success)) {
+    throw new AppError(500, 'INTERNAL', 'The listing could not be produced');
+  }
+  return { items: parsed.map((p) => p.data as IMaskedLot), total, page: query.page, limit: query.limit };
 }

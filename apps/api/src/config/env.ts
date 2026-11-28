@@ -36,6 +36,10 @@ const EnvSchema = z.object({
   // REV-224: how long a studio holds the exclusive right to contact a business, and the cooldown after it (days)
   CONTACT_RIGHT_DAYS: z.coerce.number().int().positive().default(DEFAULT_CONTACT_RIGHT_DAYS),
   CONTACT_COOLDOWN_DAYS: z.coerce.number().int().positive().default(DEFAULT_CONTACT_COOLDOWN_DAYS),
+  // REV-233: masked lot listings: k (the smallest group of lots a studio may see), and the per-studio request budget
+  LOT_LISTING_MIN_GROUP: z.coerce.number().int().positive().default(3),
+  LOT_LISTING_RATE_LIMIT: z.coerce.number().int().positive().default(30),
+  LOT_LISTING_RATE_WINDOW_SECONDS: z.coerce.number().int().positive().default(60),
   // REV-232: emails of the platform admins (platform audits, lots); empty = nobody
   PLATFORM_ADMIN_EMAILS: z.string().default(''),
   S3_ENDPOINT: z.string().default('http://localhost:9000'),

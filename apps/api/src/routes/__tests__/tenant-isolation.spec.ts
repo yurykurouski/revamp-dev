@@ -754,6 +754,8 @@ const NO_TENANT_DATA = [
   'GET /discovery/reverse-geocode',
   // REV-221: reads the caller's own organization, never a tenant-owned record
   'GET /outreach/sender',
+  // REV-233: platform lots, masked, the same for every studio
+  'GET /lots',
   // REV-232: platform-owned lots and audits; admin only (`PLATFORM_ADMIN_EMAILS`), never a studio's records
   'POST /admin/platform-audits',
   'GET /admin/platform-audits/:id',
