@@ -29,6 +29,7 @@ import {
 } from '@revamp/shared-types';
 
 export * from './lead-status.js';
+export * from './lot-price.js';
 
 // ==============================================================================
 // Accounts and sign-in (REV-206)
