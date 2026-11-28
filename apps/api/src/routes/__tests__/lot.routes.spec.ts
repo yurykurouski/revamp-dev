@@ -115,6 +115,12 @@ describe('GET /lots masking (REV-233)', () => {
     expect(JSON.stringify(res.body)).not.toContain('b'.repeat(24));
   });
 
+  it('shows releaseAt truncated to the whole minute', async () => {
+    await lots(3, { releaseAt: new Date('2026-11-01T12:34:56.789Z') });
+    const res = await get(await serve(), studioA);
+    expect(res.body.data.items.map((i: { releaseAt: string }) => i.releaseAt)).toEqual(Array(3).fill('2026-11-01T12:34:00.000Z'));
+  });
+
   it.each(['owner', 'operator', 'viewer'] as const)('answers 200 for a %s', async (role) => {
     const member = await account(`m-${++n}@studio.test`);
     await Membership.updateOne({ userId: member.userId, organizationId: member.organizationId }, { role });

@@ -173,10 +173,16 @@ export interface MaskedLotPage {
   limit: number;
 }
 
+/** The release time shown to a studio is exact to the minute only (REV-233); the stored value and the filter keep the millisecond */
+const truncateToMinute = (value: Date | string): string => {
+  const ms = new Date(value).getTime();
+  return new Date(ms - (((ms % 60_000) + 60_000) % 60_000)).toISOString();
+};
+
 /** Spreads the row so that any field the projection adds reaches the strict schema, which refuses it */
 const toMaskedCandidate = (row: MaskedLotRow) => ({
   ...row,
-  releaseAt: row.releaseAt instanceof Date ? row.releaseAt.toISOString() : row.releaseAt,
+  releaseAt: truncateToMinute(row.releaseAt),
   signals: row.signals.map((s) => ({ signal: s.signal, level: needLevel(s.need) })),
 });
 
