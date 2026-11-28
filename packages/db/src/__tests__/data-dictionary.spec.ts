@@ -5,7 +5,7 @@ describe('modelFieldPaths (REV-200)', () => {
   const paths = modelFieldPaths();
 
   it('lists every collection with nested and subdocument paths', () => {
-    expect(Object.keys(paths).sort()).toEqual(['analyticsevents', 'audits', 'businesses', 'emailcampaigns', 'invitations', 'leads', 'memberships', 'mvpprojects', 'organizations', 'users']);
+    expect(Object.keys(paths).sort()).toEqual(['analyticsevents', 'audits', 'businesses', 'emailcampaigns', 'invitations', 'leads', 'lots', 'memberships', 'mvpprojects', 'organizations', 'users']);
     expect(paths.businesses).toEqual(expect.arrayContaining(['domain', 'originalUrl', 'businessName', 'niche']));
     expect(paths.leads).toEqual(expect.arrayContaining(['tenantId', 'businessId']));
     expect(paths.audits).toContain('businessId');

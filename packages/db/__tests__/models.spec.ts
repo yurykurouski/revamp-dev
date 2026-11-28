@@ -156,12 +156,12 @@ describe('Mongoose Models (Lead, Audit, EmailCampaign & AnalyticsEvent)', () => 
       expect(unknown.validateSync()).toBeDefined();
     });
 
-    it('should fail validation if leadId is missing', () => {
-      const audit = new Audit({});
-      const err = audit.validateSync();
+    it('accepts an audit without leadId: a platform audit of a business (REV-232)', () => {
+      const audit = new Audit({ businessId: new mongoose.Types.ObjectId() });
 
-      expect(err).toBeDefined();
-      expect(err?.errors['leadId']).toBeDefined();
+      expect(audit.validateSync()).toBeUndefined();
+      expect(audit.leadId).toBeUndefined();
+      expect(audit.status).toBe('QUEUED');
     });
 
     it('should support populated a11y violations and critical flaws', () => {

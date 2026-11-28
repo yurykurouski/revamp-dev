@@ -4,7 +4,8 @@ import { IAudit, AuditStatus, AUDIT_MEASUREMENTS } from '@revamp/shared-types';
 export interface IAuditDocument
   extends Omit<IAudit, '_id' | 'leadId' | 'businessId' | 'createdAt' | 'completedAt'>,
     Document {
-  leadId: Types.ObjectId;
+  /** Absent on a platform audit, one no studio's lead ran (REV-232) */
+  leadId?: Types.ObjectId;
   /** The shared business this audit measured (REV-208); other studios' leads of the business read it too */
   businessId?: Types.ObjectId;
   desktopScreenshotUrl?: string;
@@ -51,7 +52,7 @@ const AuditSchema = new Schema<IAuditDocument>(
     leadId: {
       type: Schema.Types.ObjectId,
       ref: 'Lead',
-      required: [true, 'Lead ID is required'],
+      // REV-232: a platform audit of a business no studio owns yet has `businessId` and no lead
       index: true,
     },
     businessId: { type: Schema.Types.ObjectId, ref: 'Business' },

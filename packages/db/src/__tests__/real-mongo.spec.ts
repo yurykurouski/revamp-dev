@@ -37,6 +37,8 @@ import { ContactRightRefusedError, endContactRight, findActiveContactRight, gran
 import { contactAvailabilityByDomain } from '../contact-availability.js';
 import { MIGRATE_CONTACT_RIGHTS_COMMAND, checkContactRights, migrateContactRights } from '../contact-rights-migration.js';
 import { isAddressSuppressed, isBusinessOptedOut, recordBusinessOptOut } from '../opt-out.js';
+import { Lot } from '../models/Lot.model.js';
+import { LotError, createLot, createPlatformAudit, transitionLot } from '../lots.js';
 import { startMongoReplSet } from '../testing/mongo-memory.js';
 import { skippedDemoLeadFilter, stalledAuditedLeadFilter } from '../stalled-lead-recovery.js';
 
@@ -2314,6 +2316,259 @@ describe('real MongoDB (mongodb-memory-server)', () => {
       expect(await isAddressSuppressed('legacy@example.com')).toBe(true);
       expect((await Lead.findById(lead._id).lean())?.status).toBe('SCHEDULED');
       expect((await Business.findById(x._id).lean())?.optedOutAt).toBeUndefined();
+    });
+  });
+
+  describe('lots and platform audits (REV-232)', () => {
+    const durations = { rightDays: 14, cooldownDays: 30 };
+    const day = 24 * 60 * 60 * 1000;
+    const t0 = at('2026-11-01T00:00:00Z');
+    const studioA = new Types.ObjectId();
+    const price = { amountCents: 5000, currency: 'EUR', need: 0.6, band: 'B' as const, signals: [{ signal: 'siteEra', value: 4, need: 0.6, weight: 1 }] };
+    const platform = (domain: string, city = 'Vilnius') =>
+      createPlatformAudit({ domain, originalUrl: `https://${domain}`, businessName: 'Lot Co', niche: 'dental', city });
+    const derive = (audit: { scores?: { total?: number } }) => ({ set: { totalScore: audit.scores?.total }, clearsEmailGuess: false });
+    const addAsStudio = (domain: string, tenantId: Types.ObjectId, now = t0) =>
+      addLeadToBusiness({
+        tenantId,
+        lead: { businessName: 'Lot Co', originalUrl: `https://${domain}`, domain, niche: 'dental', status: 'QUEUED' },
+        deriveFromAudit: derive as never,
+        contactRight: { durations, source: 'ADD_LEAD', now },
+        withdrawLots: { statuses: ['DRAFT', 'OPEN'], now },
+      });
+    const completedBusiness = async (domain: string) => {
+      const { business, audit } = await platform(domain);
+      await Audit.updateOne({ _id: audit._id }, { status: 'COMPLETED', 'scores.total': 60 });
+      return { business, audit };
+    };
+    const lotFor = async (domain: string, status?: 'OPEN') => {
+      const { business, audit } = await completedBusiness(domain);
+      const lot = await createLot({ businessId: business._id, auditId: audit._id, price });
+      if (status === 'OPEN') await transitionLot(lot._id, 'OPEN', { allowedFrom: ['DRAFT'] });
+      return { business, audit, lot };
+    };
+
+    beforeAll(async () => {
+      await mongoose.connect(mongo.uri, { dbName: 'revamp-lots-test' });
+      await Promise.all([Business.init(), Lead.init(), Audit.init(), ContactRight.init(), SuppressedAddress.init(), Lot.init()]);
+    });
+    afterAll(async () => {
+      await mongoose.disconnect();
+    });
+    beforeEach(async () => {
+      await Promise.all([Business.deleteMany({}), Lead.deleteMany({}), Audit.deleteMany({}), ContactRight.deleteMany({}), SuppressedAddress.deleteMany({}), Lot.deleteMany({})]);
+    });
+
+    describe('createPlatformAudit', () => {
+      it('creates a business and a QUEUED audit with no leadId', async () => {
+        const r = await platform('new.example');
+        expect(r.queued).toBe(true);
+        expect(r.audit.status).toBe('QUEUED');
+        expect(r.audit.leadId).toBeUndefined();
+        expect(String(r.audit.businessId)).toBe(String(r.business._id));
+        expect(r.business.city).toBe('Vilnius');
+        expect(await Audit.countDocuments({ leadId: { $exists: true } })).toBe(0);
+      });
+
+      it('a second call returns the same audit and queues nothing', async () => {
+        const first = await platform('twice.example');
+        const second = await platform('twice.example');
+        expect(second.queued).toBe(false);
+        expect(String(second.audit._id)).toBe(String(first.audit._id));
+        expect(await Audit.countDocuments()).toBe(1);
+        expect(await Business.countDocuments()).toBe(1);
+      });
+
+      it('returns a COMPLETED audit with queued false', async () => {
+        const first = await platform('done.example');
+        await Audit.updateOne({ _id: first.audit._id }, { status: 'COMPLETED' });
+        const again = await platform('done.example');
+        expect(again.queued).toBe(false);
+        expect(again.audit.status).toBe('COMPLETED');
+        expect(await Audit.countDocuments()).toBe(1);
+      });
+
+      it('does not reuse a QUEUED audit of a studio lead, and keeps an existing city', async () => {
+        const lead = await addLeadToBusiness({
+          tenantId: studioA,
+          lead: { businessName: 'Lot Co', originalUrl: 'https://own.example', domain: 'own.example', niche: 'dental', status: 'QUEUED', city: 'Kaunas' },
+          deriveFromAudit: derive as never,
+        });
+        const r = await platform('own.example', 'Vilnius');
+        expect(r.queued).toBe(true);
+        expect(String(r.audit._id)).not.toBe(String(lead.audit!._id));
+        expect((await Business.findById(lead.business._id).lean())?.city).toBe('Kaunas');
+        expect(await Audit.countDocuments()).toBe(2);
+      });
+
+      it('sets the city on a business that has none', async () => {
+        await Business.create({ domain: 'nocity.example', originalUrl: 'https://nocity.example', businessName: 'N' });
+        await platform('nocity.example', 'Riga');
+        expect((await Business.findOne({ domain: 'nocity.example' }).lean())?.city).toBe('Riga');
+      });
+    });
+
+    describe('createLot', () => {
+      it('creates a DRAFT lot with the price, niche and city', async () => {
+        const { lot, business, audit } = await lotFor('lot.example');
+        expect(lot.status).toBe('DRAFT');
+        expect(lot.priceCents).toBe(5000);
+        expect(lot.band).toBe('B');
+        expect(lot.city).toBe('Vilnius');
+        expect(lot.niche).toBe('dental');
+        expect(lot.live).toBe(true);
+        expect(String(lot.businessId)).toBe(String(business._id));
+        expect(String(lot.auditId)).toBe(String(audit._id));
+      });
+
+      it.each([
+        ['opted out', { optedOutAt: t0 }],
+        ['held', { contactHold: { rightId: new Types.ObjectId(), tenantId: studioA, expiresAt: new Date(t0.getTime() + day), cooldownUntil: new Date(t0.getTime() + 31 * day) } }],
+        ['in cooldown', { contactHold: { rightId: new Types.ObjectId(), tenantId: studioA, expiresAt: new Date(t0.getTime() - day), cooldownUntil: new Date(t0.getTime() + day) } }],
+      ])('refuses a business that is %s', async (_name, patch) => {
+        const { business, audit } = await completedBusiness('refused.example');
+        await Business.updateOne({ _id: business._id }, { $set: patch });
+        const error = await createLot({ businessId: business._id, auditId: audit._id, price, now: t0 }).catch((e) => e);
+        expect(error).toBeInstanceOf(LotError);
+        expect(error.code).toBe('LOT_NOT_ELIGIBLE');
+        expect(await Lot.countDocuments()).toBe(0);
+      });
+
+      it('accepts a business whose cooldown passed', async () => {
+        const { business, audit } = await completedBusiness('after.example');
+        await Business.updateOne({ _id: business._id }, { $set: { contactHold: { rightId: new Types.ObjectId(), tenantId: studioA, expiresAt: new Date(t0.getTime() - 40 * day), cooldownUntil: new Date(t0.getTime() - day) } } });
+        const lot = await createLot({ businessId: business._id, auditId: audit._id, price, now: t0 });
+        expect(lot.status).toBe('DRAFT');
+      });
+
+      it('refuses a business without a city and a missing business', async () => {
+        const business = await Business.create({ domain: 'nocity2.example', originalUrl: 'https://nocity2.example', businessName: 'N' });
+        const e1 = await createLot({ businessId: business._id, auditId: new Types.ObjectId(), price }).catch((e) => e);
+        expect(e1.code).toBe('LOT_NOT_ELIGIBLE');
+        const e2 = await createLot({ businessId: new Types.ObjectId(), auditId: new Types.ObjectId(), price }).catch((e) => e);
+        expect(e2.code).toBe('LOT_NOT_ELIGIBLE');
+      });
+
+      it('five concurrent creates for one business: one winner, the rest LOT_ALREADY_LIVE', async () => {
+        const { business, audit } = await completedBusiness('race.example');
+        const results = await Promise.allSettled(
+          Array.from({ length: 5 }, () => createLot({ businessId: business._id, auditId: audit._id, price })),
+        );
+        expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+        const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+        expect(rejected).toHaveLength(4);
+        for (const r of rejected) expect((r.reason as LotError).code).toBe('LOT_ALREADY_LIVE');
+        expect(await Lot.countDocuments({ businessId: business._id })).toBe(1);
+      });
+
+      it('a WITHDRAWN lot does not block a new one', async () => {
+        const { business, audit, lot } = await lotFor('again.example');
+        await transitionLot(lot._id, 'WITHDRAWN', { allowedFrom: ['DRAFT', 'OPEN', 'RESERVED'], set: { withdrawReason: 'admin' } });
+        const next = await createLot({ businessId: business._id, auditId: audit._id, price });
+        expect(String(next._id)).not.toBe(String(lot._id));
+        expect(await Lot.countDocuments({ businessId: business._id })).toBe(2);
+      });
+    });
+
+    describe('transitionLot', () => {
+      it('DRAFT to OPEN sets releaseAt', async () => {
+        const { lot } = await lotFor('open.example');
+        const releaseAt = at('2026-12-01T10:00:00Z');
+        const opened = await transitionLot(lot._id, 'OPEN', { allowedFrom: ['DRAFT'], set: { releaseAt } });
+        expect(opened?.status).toBe('OPEN');
+        expect(opened?.releaseAt).toEqual(releaseAt);
+        expect(opened?.live).toBe(true);
+      });
+
+      it('OPEN to WITHDRAWN unsets live and records the reason', async () => {
+        const { lot } = await lotFor('wd.example', 'OPEN');
+        const now = at('2026-12-02T00:00:00Z');
+        const out = await transitionLot(lot._id, 'WITHDRAWN', { allowedFrom: ['DRAFT', 'OPEN', 'RESERVED'], set: { withdrawReason: 'admin' }, now });
+        expect(out?.status).toBe('WITHDRAWN');
+        expect(out?.live).toBeUndefined();
+        expect(out?.withdrawReason).toBe('admin');
+        expect(out?.withdrawnAt).toEqual(now);
+      });
+
+      it('a wrong allowedFrom returns null and writes nothing', async () => {
+        const { lot } = await lotFor('wrong.example', 'OPEN');
+        expect(await transitionLot(lot._id, 'OPEN', { allowedFrom: ['DRAFT'] })).toBeNull();
+        expect(await transitionLot(new Types.ObjectId(), 'OPEN', { allowedFrom: ['DRAFT'] })).toBeNull();
+        const fresh = await Lot.findById(lot._id).lean();
+        expect(fresh?.status).toBe('OPEN');
+        expect(fresh?.live).toBe(true);
+      });
+    });
+
+    describe('addLeadToBusiness withdraws a lot of the business', () => {
+      it('an OPEN lot is withdrawn, the lead reuses the platform audit and no audit is added', async () => {
+        const { lot, audit } = await lotFor('claim.example', 'OPEN');
+        const result = await addAsStudio('claim.example', studioA);
+        expect(result.withdrawnLots).toBe(1);
+        expect(result.reused).toBe(true);
+        expect(result.audit).toBeUndefined();
+        expect(String(result.sourceAudit?._id)).toBe(String(audit._id));
+        expect(result.lead.status).toBe('AUDITED');
+        expect(await Audit.countDocuments()).toBe(1);
+        const after = await Lot.findById(lot._id).lean();
+        expect(after?.status).toBe('WITHDRAWN');
+        expect(after?.withdrawReason).toBe('claimed_by_studio');
+        expect(after?.live).toBeUndefined();
+        expect(after?.withdrawnAt).toEqual(t0);
+      });
+
+      it('a DRAFT lot is withdrawn too', async () => {
+        const { lot } = await lotFor('draft.example');
+        const result = await addAsStudio('draft.example', studioA);
+        expect(result.withdrawnLots).toBe(1);
+        expect((await Lot.findById(lot._id).lean())?.status).toBe('WITHDRAWN');
+      });
+
+      it('a RESERVED lot is not touched', async () => {
+        const { lot } = await lotFor('reserved.example', 'OPEN');
+        await Lot.updateOne({ _id: lot._id }, { status: 'RESERVED' });
+        const result = await addAsStudio('reserved.example', studioA);
+        expect(result.withdrawnLots).toBe(0);
+        expect((await Lot.findById(lot._id).lean())?.status).toBe('RESERVED');
+      });
+
+      it('a refused right leaves the lot OPEN', async () => {
+        const { business, lot } = await lotFor('refused2.example', 'OPEN');
+        await Business.updateOne({ _id: business._id }, { $set: { optedOutAt: t0 } });
+        const error = await addAsStudio('refused2.example', studioA).catch((e) => e);
+        expect(error).toBeInstanceOf(ContactRightRefusedError);
+        const after = await Lot.findById(lot._id).lean();
+        expect(after?.status).toBe('OPEN');
+        expect(after?.live).toBe(true);
+        expect(await Lead.countDocuments()).toBe(0);
+      });
+
+      it('without withdrawLots the lot stays, and a business without a lot reports 0', async () => {
+        const { lot } = await lotFor('keep.example', 'OPEN');
+        const result = await addLeadToBusiness({
+          tenantId: studioA,
+          lead: { businessName: 'Lot Co', originalUrl: 'https://keep.example', domain: 'keep.example', niche: 'dental', status: 'QUEUED' },
+          deriveFromAudit: derive as never,
+          contactRight: { durations, source: 'ADD_LEAD', now: t0 },
+        });
+        expect(result.withdrawnLots).toBe(0);
+        expect((await Lot.findById(lot._id).lean())?.status).toBe('OPEN');
+        const plain = await addAsStudio('nolot.example', studioA);
+        expect(plain.withdrawnLots).toBe(0);
+      });
+
+      it('an add on the own-audit branch (no completed audit) also withdraws', async () => {
+        const { business } = await platform('own2.example');
+        // a lot needs a completed audit: make one from another business, then point the lot at this business
+        const other = await completedBusiness('other2.example');
+        await Lot.create({
+          businessId: business._id, auditId: other.audit._id, niche: 'dental', city: 'Vilnius', priceCents: 1500,
+          currency: 'EUR', band: 'D', need: 0.1, status: 'OPEN', live: true,
+        });
+        const result = await addAsStudio('own2.example', studioA);
+        expect(result.reused).toBe(false);
+        expect(result.withdrawnLots).toBe(1);
+      });
     });
   });
 });

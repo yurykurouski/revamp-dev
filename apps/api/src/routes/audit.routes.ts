@@ -85,7 +85,8 @@ router.get('/:id', async (req: Request, res: Response, next: NextFunction) => {
         const found = await Audit.findById(id).exec();
         if (found) {
           const readers = await req.tenant!.leads
-            .find({ $or: [{ _id: found.leadId }, ...(found.businessId ? [{ businessId: found.businessId }] : [])] })
+            // A platform audit has no leadId (REV-232): never put `{ _id: undefined }` in the $or, it matches every lead
+            .find({ $or: [...(found.leadId ? [{ _id: found.leadId }] : []), ...(found.businessId ? [{ businessId: found.businessId }] : [])] })
             .limit(1)
             .exec();
           audit = readers.length > 0 ? found : null;
