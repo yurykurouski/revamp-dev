@@ -9,3 +9,4 @@ export * from './Membership.model.js';
 export * from './Organization.model.js';
 export * from './ContactRight.model.js';
 export * from './Lot.model.js';
+export * from './Business.model.js';

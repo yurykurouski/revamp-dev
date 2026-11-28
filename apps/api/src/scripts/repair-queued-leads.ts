@@ -27,7 +27,7 @@ async function main() {
     if (audit) latestAuditByLead.set(String(lead._id), { _id: String(audit._id), status: audit.status });
   }
   const jobs = await auditQueue.getJobs(['waiting', 'active', 'delayed', 'prioritized', 'paused', 'waiting-children']);
-  const leadIdsWithJob = new Set(jobs.map((job) => job?.data?.leadId).filter((id): id is string => Boolean(id)));
+  const leadIdsWithJob = new Set(jobs.map((job) => (job?.data as { leadId?: string } | undefined)?.leadId).filter((id): id is string => Boolean(id)));
 
   const plan = planQueuedLeadRepair({
     leads: leads.map((lead) => ({ _id: String(lead._id), updatedAt: lead.updatedAt as Date })),

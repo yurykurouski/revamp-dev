@@ -1,9 +1,9 @@
 import { Queue } from 'bullmq';
-import { IAuditJobData } from '@revamp/shared-types';
+import { AUDIT_JOB_NAMES, IAuditJobData, IPlatformAuditJobData } from '@revamp/shared-types';
 import { redisConnection } from './connection.js';
 import { QUEUE_NAMES } from './queue.constants.js';
 
-export const auditQueue = new Queue<IAuditJobData>(QUEUE_NAMES.AUDIT, {
+export const auditQueue = new Queue<IAuditJobData | IPlatformAuditJobData>(QUEUE_NAMES.AUDIT, {
   connection: redisConnection,
   defaultJobOptions: {
     attempts: 3,
@@ -21,5 +21,10 @@ export const auditQueue = new Queue<IAuditJobData>(QUEUE_NAMES.AUDIT, {
 });
 
 export const addAuditJob = async (data: IAuditJobData) => {
-  return await auditQueue.add('audit-website', data);
+  return await auditQueue.add(AUDIT_JOB_NAMES.LEAD, data);
+};
+
+/** The platform audit of a business no studio owns yet (REV-232): its own job name on the same queue, no `tenantId` */
+export const addPlatformAuditJob = async (data: IPlatformAuditJobData) => {
+  return await auditQueue.add(AUDIT_JOB_NAMES.PLATFORM, data);
 };

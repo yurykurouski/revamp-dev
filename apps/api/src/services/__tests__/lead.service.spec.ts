@@ -133,6 +133,18 @@ describe('LeadService', () => {
       expect(vi.mocked(addLeadToBusiness).mock.calls[1]?.[0]?.lead).not.toHaveProperty('operatorLocale');
     });
 
+    it("withdraws a draft or open lot of the business in the add's transaction and tells the caller nothing (REV-232)", async () => {
+      vi.mocked(addLeadToBusiness).mockResolvedValue({
+        lead: { _id: 'lead-1', originalUrl: 'https://a.lt', niche: 'dental' },
+        audit: { _id: 'audit-1' },
+        reused: false,
+        withdrawnLots: 1,
+      } as any);
+      const result = await create(dto);
+      expect(addLeadToBusiness).toHaveBeenCalledWith(expect.objectContaining({ withdrawLots: { statuses: ['DRAFT', 'OPEN'] } }));
+      expect(JSON.stringify(result)).not.toMatch(/withdrawn|lot/i);
+    });
+
     it('should store the given tags', async () => {
       await create(dto, { tags: ['discovered', 'source:osm'] });
       expect(addLeadToBusiness).toHaveBeenCalledWith(expect.objectContaining({ lead: expect.objectContaining({ tags: ['discovered', 'source:osm'] }) }));

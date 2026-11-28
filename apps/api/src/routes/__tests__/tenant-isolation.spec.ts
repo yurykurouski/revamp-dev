@@ -3,7 +3,7 @@ import mongoose, { Types } from 'mongoose';
 import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { Business, ContactRight, Organization, SuppressedAddress, createOrganizationWithOwner, hashAddress } from '@revamp/db';
+import { Business, ContactRight, Lot, Organization, SuppressedAddress, createOrganizationWithOwner, hashAddress } from '@revamp/db';
 import { createApp } from '../../app.js';
 import { env } from '../../config/env.js';
 import { signSessionToken } from '../../services/token.js';
@@ -555,6 +555,60 @@ describe('audits are shared between studios and reached through leads (REV-209)'
   });
 });
 
+describe('a platform audit is read only through a lead of its business (REV-232)', () => {
+  it('a studio with a lead of the business reads it; a studio without one gets 404, not every lead of its own', async () => {
+    const alpha = await Lead.findById(A.leadId).lean();
+    // No leadId: the shared-audit lookup must not put `{ _id: undefined }` in its $or, which Mongoose drops and which then matches every lead
+    const platform = await Audit.create({ businessId: alpha!.businessId, status: 'COMPLETED' });
+    expect(platform.leadId).toBeUndefined();
+    expect((await as(A).get(`/audits/${platform._id}`)).status).toBe(200);
+    const denied = await as(B).get(`/audits/${platform._id}`);
+    expect(denied.status).toBe(404);
+    expect(denied.body.error.code).toBe('AUDIT_NOT_FOUND');
+  });
+});
+
+describe('a studio adding a business that has a lot wins (REV-232)', () => {
+  const body = { businessName: 'Lot Dental', originalUrl: 'https://lot-site.example', niche: 'dental' };
+  const makeLot = async (status: 'DRAFT' | 'OPEN' | 'RESERVED') => {
+    const business = await Business.create({ domain: 'lot-site.example', originalUrl: 'https://lot-site.example', businessName: 'Lot Dental', niche: 'dental', city: 'Vilnius' });
+    const audit = await Audit.create({ businessId: business._id, status: 'COMPLETED', scores: { total: 40, standards: 0 } });
+    const lot = await Lot.create({ businessId: business._id, auditId: audit._id, niche: 'dental', city: 'Vilnius', priceCents: 5000, currency: 'EUR', band: 'B', need: 0.6, status, live: true });
+    return { business, audit, lot };
+  };
+
+  it.each(['DRAFT', 'OPEN'] as const)('the add answers 201 as for any business, withdraws the %s lot and reuses the platform audit', async (status) => {
+    const { lot, audit } = await makeLot(status);
+    const res = await as(B).post('/leads').send(body);
+    expect(res.status).toBe(201);
+    const text = JSON.stringify(res.body);
+    expect(text).not.toContain(String(lot._id));
+    expect(Object.keys(res.body.data).join()).not.toMatch(/lot/i);
+    expect(text).not.toMatch(/claimed_by_studio|WITHDRAWN/);
+    const after = await Lot.findById(lot._id).lean();
+    expect(after).toMatchObject({ status: 'WITHDRAWN', withdrawReason: 'claimed_by_studio' });
+    expect(after?.live).toBeUndefined();
+    expect(String((await Lead.findOne({ tenantId: B.tenantId, domain: 'lot-site.example' }).lean())?.status)).toBe('AUDITED');
+    expect(await Audit.countDocuments({ businessId: audit.businessId })).toBe(1);
+    expect(addAuditJob).not.toHaveBeenCalled();
+  });
+
+  it('a RESERVED lot is left alone', async () => {
+    const { lot } = await makeLot('RESERVED');
+    expect((await as(B).post('/leads').send(body)).status).toBe(201);
+    expect((await Lot.findById(lot._id).lean())?.status).toBe('RESERVED');
+  });
+
+  it('a refused add (the business is held by another studio) leaves the lot OPEN', async () => {
+    const { business, lot } = await makeLot('OPEN');
+    await Lot.updateOne({ _id: lot._id }, { status: 'OPEN' });
+    await Business.updateOne({ _id: business._id }, { $set: { optedOutAt: new Date() } });
+    const res = await as(B).post('/leads').send(body);
+    expect(res.status).toBe(409);
+    expect((await Lot.findById(lot._id).lean())?.status).toBe('OPEN');
+  });
+});
+
 describe('public routes take the studio from their secret (REV-209)', () => {
   const setStatus = (status: string) => Lead.updateMany({ _id: { $in: [A.leadId, B.leadId] } }, { $set: { status } });
 
@@ -700,6 +754,13 @@ const NO_TENANT_DATA = [
   'GET /discovery/reverse-geocode',
   // REV-221: reads the caller's own organization, never a tenant-owned record
   'GET /outreach/sender',
+  // REV-232: platform-owned lots and audits; admin only (`PLATFORM_ADMIN_EMAILS`), never a studio's records
+  'POST /admin/platform-audits',
+  'GET /admin/platform-audits/:id',
+  'POST /admin/lots',
+  'GET /admin/lots',
+  'POST /admin/lots/:id/open',
+  'POST /admin/lots/:id/withdraw',
 ];
 
 describe('every route is classified (REV-209)', () => {

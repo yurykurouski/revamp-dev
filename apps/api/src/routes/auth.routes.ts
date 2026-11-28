@@ -1,6 +1,6 @@
 import { NextFunction, Request, Response, Router } from 'express';
 import { LoginSchema, RegisterSchema } from '@revamp/validation';
-import { requireAuth } from '../middlewares/requireAuth.js';
+import { isPlatformAdmin, requireAuth } from '../middlewares/requireAuth.js';
 import { validateBody } from '../middlewares/validate.js';
 import { getAuthContext, loginUser, registerUser } from '../services/auth.service.js';
 
@@ -25,7 +25,9 @@ router.post('/login', validateBody(LoginSchema), async (req: Request, res: Respo
 
 router.get('/me', requireAuth, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    res.status(200).json({ success: true, data: await getAuthContext(req.auth!) });
+    const context = await getAuthContext(req.auth!);
+    // REV-232: whether the caller is a platform admin; the dashboard shows nothing for it yet
+    res.status(200).json({ success: true, data: { ...context, platformAdmin: isPlatformAdmin(context.user.email) } });
   } catch (error) {
     next(error);
   }
